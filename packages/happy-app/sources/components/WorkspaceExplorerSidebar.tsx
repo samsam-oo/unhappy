@@ -17,9 +17,12 @@ import Animated, {
     FadeIn,
     FadeOut,
     LinearTransition,
+    Easing,
+    cancelAnimation,
     runOnJS,
     useAnimatedStyle,
     useSharedValue,
+    withRepeat,
     withTiming,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -284,21 +287,60 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     const sessionStatus = useSessionStatus(props.session);
     const sessionTitle = props.session.metadata?.summary?.text?.trim() || 'Session';
 
-    const { iconName, iconColor } = React.useMemo(() => {
+    // Keep icon colors intentionally monotone. Use selection state (not session status)
+    // to slightly increase contrast.
+    const iconColor = props.selected ? theme.colors.text : theme.colors.textSecondary;
+
+    const shouldPulseUnreadIcon =
+        !!props.session.unread &&
+        sessionStatus.state !== 'thinking' &&
+        sessionStatus.state !== 'permission_required';
+
+    const unreadPulse = useSharedValue(0);
+
+    React.useEffect(() => {
+        if (shouldPulseUnreadIcon) {
+            unreadPulse.value = withRepeat(
+                // Smooth fade out/in (blink) for unread sessions.
+                withTiming(1, { duration: 1100, easing: Easing.inOut(Easing.cubic) }),
+                -1,
+                true
+            );
+            return;
+        }
+        cancelAnimation(unreadPulse);
+        unreadPulse.value = withTiming(0, { duration: 150 });
+    }, [shouldPulseUnreadIcon, unreadPulse]);
+
+    const unreadPulseStyle = useAnimatedStyle(() => {
+        const t = unreadPulse.value;
+        return {
+            // Fade between almost-hidden and fully visible (no scale/motion).
+            opacity: 0.15 + (1 - t) * 0.85,
+        };
+    });
+
+    const iconName = React.useMemo(() => {
+        // If a session became ready while the user was away, prioritize an explicit "unread" icon.
+        // Keep "thinking" and "permission_required" icons since those states are more actionable.
+        if (props.session.unread && sessionStatus.state !== 'thinking' && sessionStatus.state !== 'permission_required') {
+            return 'notifications-outline';
+        }
+
         switch (sessionStatus.state) {
             case 'thinking':
-                return { iconName: 'sparkles-outline', iconColor: sessionStatus.statusDotColor };
+                return 'sparkles-outline';
             case 'permission_required':
-                return { iconName: 'alert-circle-outline', iconColor: sessionStatus.statusDotColor };
+                return 'alert-circle-outline';
             case 'waiting':
                 // "Waiting for your message" feels closer to chat than terminal.
-                return { iconName: 'chatbubble-outline', iconColor: sessionStatus.statusDotColor };
+                return 'chatbubble-outline';
             case 'disconnected':
-                return { iconName: 'cloud-outline', iconColor: sessionStatus.statusDotColor };
+                return 'cloud-outline';
             default:
-                return { iconName: 'terminal-outline', iconColor: theme.colors.textSecondary };
+                return 'terminal-outline';
         }
-    }, [sessionStatus.state, sessionStatus.statusDotColor, theme.colors.textSecondary]);
+    }, [props.session.unread, sessionStatus.state]);
 
     return (
         <Pressable
@@ -314,20 +356,13 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             <View style={styles.chevron} />
             <View style={styles.icon}>
                 {sessionStatus.state === 'thinking'
-                    ? <ActivityIndicator size={14} color={sessionStatus.statusDotColor} />
-                    : <Ionicons name={iconName} size={18} color={iconColor} />
+                    ? <ActivityIndicator size={14} color={iconColor} />
+                    : (
+                        <Animated.View style={shouldPulseUnreadIcon ? unreadPulseStyle : undefined}>
+                            <Ionicons name={iconName} size={18} color={iconColor} />
+                        </Animated.View>
+                    )
                 }
-                {props.session.unread && sessionStatus.state !== 'thinking' && (
-                    <View style={{
-                        position: 'absolute',
-                        top: -2,
-                        right: -2,
-                        width: 7,
-                        height: 7,
-                        borderRadius: 3.5,
-                        backgroundColor: theme.colors.chrome.accent,
-                    }} />
-                )}
             </View>
             <View style={styles.textBlock}>
                 <Text style={styles.title} numberOfLines={1}>
