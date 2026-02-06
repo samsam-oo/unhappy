@@ -1083,7 +1083,7 @@ function NewSessionWizard() {
                 );
 
                 if (!worktreeResult.success) {
-                    if (worktreeResult.error === 'Not a Git repository') {
+                    if (worktreeResult.errorCode === 'NOT_GIT_REPO' || worktreeResult.error === 'Not a Git repository') {
                         Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
                     } else {
                         Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));

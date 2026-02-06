@@ -46,5 +46,8 @@ CLAUDE.local.md
 
 .dev/worktree/*
 
+# Unhappy local state/worktrees (keep local, don't commit)
+.unhappy/
+
 # Development planning notes (keep local, don't commit)
 notes/
