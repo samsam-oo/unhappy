@@ -47,5 +47,6 @@ COPY --from=builder /repo/packages/happy-server /repo/packages/happy-server
 # Expose the port the app will run on
 EXPOSE 3000
 
-# Command to run the application
-CMD ["yarn", "--cwd", "packages/happy-server", "start"]
+# Run DB migrations on container start, then start the server.
+# Note: the server reads PORT from env (defaults to 3005).
+CMD ["bash", "-lc", "yarn --cwd packages/happy-server prisma migrate deploy && yarn --cwd packages/happy-server start"]
