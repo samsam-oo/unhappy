@@ -293,6 +293,9 @@ export const pl: TranslationStructure = {
             comingSoon: 'Wkrótce dostępne',
         },
         worktree: {
+            nameLabel: 'Nazwa worktree',
+            namePlaceholder: 'np. swift-island',
+            nameHint: 'Używana zarówno jako nazwa folderu worktree, jak i gałęzi git.',
             creating: ({ name }: { name: string }) => `Tworzenie worktree '${name}'...`,
             notGitRepo: 'Worktree wymaga repozytorium git',
             failed: ({ error }: { error: string }) => `Nie udało się utworzyć worktree: ${error}`,

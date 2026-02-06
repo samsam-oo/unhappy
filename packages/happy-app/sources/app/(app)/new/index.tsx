@@ -18,6 +18,7 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
+import { generateWorktreeName } from '@/utils/generateWorktreeName';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
@@ -91,6 +92,14 @@ const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ 
 
     // Return the most recently created session's path, or default
     return pathsWithTimestamps[0]?.path || defaultPath;
+};
+
+const sanitizeWorktreeNameInput = (value: string): string => {
+    // Allow: English letters, numbers, dot, underscore, dash. Everything else becomes '-'.
+    // Also collapse multiple '-' so IME input doesn't turn into "------".
+    const replaced = value.replace(/[^A-Za-z0-9._-]/g, '-');
+    const collapsed = replaced.replace(/-+/g, '-');
+    return collapsed.slice(0, 64);
 };
 
 // Configuration constants
@@ -252,6 +261,46 @@ const styles = StyleSheet.create((theme, rt) => ({
         textAlign: 'center',
         ...Typography.default()
     },
+
+    worktreeNameBlock: {
+        marginTop: 10,
+    },
+    worktreeNameHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    worktreeNameLabel: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
+    worktreeNameHint: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        marginTop: 6,
+        ...Typography.default(),
+    },
+    worktreeNameInput: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ web: 10, default: 12 }),
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        color: theme.colors.text,
+        fontSize: 14,
+        ...Typography.default(),
+    },
+    worktreeNameAction: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfacePressed,
+    },
 }));
 
 function NewSessionWizard() {
@@ -346,7 +395,21 @@ function NewSessionWizard() {
         sync.applySettings({ lastUsedAgent: agentType });
     }, [agentType]);
 
-    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
+    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>(() => {
+        if (tempSessionData?.sessionType === 'worktree') return 'worktree';
+        if (persistedDraft?.sessionType === 'worktree') return 'worktree';
+        return 'simple';
+    });
+    const [worktreeName, setWorktreeName] = React.useState<string>(() => {
+        return sanitizeWorktreeNameInput(persistedDraft?.worktreeName || '');
+    });
+    const didInitWorktreeNameRef = React.useRef(false);
+    React.useEffect(() => {
+        if (sessionType !== 'worktree') return;
+        if (didInitWorktreeNameRef.current) return;
+        didInitWorktreeNameRef.current = true;
+        setWorktreeName((prev) => (prev.trim() ? prev : generateWorktreeName()));
+    }, [sessionType]);
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
         // Initialize with last used permission mode if valid, otherwise default to 'default'
         const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
@@ -1012,7 +1075,12 @@ function NewSessionWizard() {
 
             // Handle worktree creation
             if (sessionType === 'worktree') {
-                const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
+                const requestedName = worktreeName.trim();
+                const worktreeResult = await createWorktree(
+                    selectedMachineId,
+                    selectedPath,
+                    requestedName ? { name: requestedName } : undefined
+                );
 
                 if (!worktreeResult.success) {
                     if (worktreeResult.error === 'Not a Git repository') {
@@ -1132,6 +1200,7 @@ function NewSessionWizard() {
                 agentType,
                 permissionMode,
                 sessionType,
+                worktreeName,
                 updatedAt: Date.now(),
             });
         }, 250);
@@ -1140,7 +1209,7 @@ function NewSessionWizard() {
                 clearTimeout(draftSaveTimerRef.current);
             }
         };
-    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
+    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType, worktreeName]);
 
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
@@ -1161,6 +1230,32 @@ function NewSessionWizard() {
                                 value={sessionType}
                                 onChange={setSessionType}
                             />
+                            {sessionType === 'worktree' && (
+                                <View style={styles.worktreeNameBlock}>
+                                    <View style={styles.worktreeNameHeader}>
+                                        <Text style={styles.worktreeNameLabel}>{t('newSession.worktree.nameLabel')}</Text>
+                                        <Pressable
+                                            onPress={() => setWorktreeName(generateWorktreeName())}
+                                            hitSlop={10}
+                                            style={styles.worktreeNameAction}
+                                            accessibilityLabel="Generate worktree name"
+                                        >
+                                            <Ionicons name="shuffle" size={16} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </View>
+                                    <TextInput
+                                        value={worktreeName}
+                                        onChangeText={(text) => setWorktreeName(sanitizeWorktreeNameInput(text))}
+                                        placeholder={t('newSession.worktree.namePlaceholder')}
+                                        placeholderTextColor={theme.colors.textSecondary}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        spellCheck={false}
+                                        style={styles.worktreeNameInput}
+                                    />
+                                    <Text style={styles.worktreeNameHint}>{t('newSession.worktree.nameHint')}</Text>
+                                </View>
+                            )}
                         </View>
                     </View>
 
@@ -1890,6 +1985,32 @@ function NewSessionWizard() {
                                     value={sessionType}
                                     onChange={setSessionType}
                                 />
+                                {sessionType === 'worktree' && (
+                                    <View style={styles.worktreeNameBlock}>
+                                        <View style={styles.worktreeNameHeader}>
+                                            <Text style={styles.worktreeNameLabel}>{t('newSession.worktree.nameLabel')}</Text>
+                                            <Pressable
+                                                onPress={() => setWorktreeName(generateWorktreeName())}
+                                                hitSlop={10}
+                                                style={styles.worktreeNameAction}
+                                                accessibilityLabel="Generate worktree name"
+                                            >
+                                                <Ionicons name="shuffle" size={16} color={theme.colors.textSecondary} />
+                                            </Pressable>
+                                        </View>
+                                        <TextInput
+                                            value={worktreeName}
+                                            onChangeText={(text) => setWorktreeName(sanitizeWorktreeNameInput(text))}
+                                            placeholder={t('newSession.worktree.namePlaceholder')}
+                                            placeholderTextColor={theme.colors.textSecondary}
+                                            autoCapitalize="none"
+                                            autoCorrect={false}
+                                            spellCheck={false}
+                                            style={styles.worktreeNameInput}
+                                        />
+                                        <Text style={styles.worktreeNameHint}>{t('newSession.worktree.nameHint')}</Text>
+                                    </View>
+                                )}
                             </View>
                         </View>
                     </View>

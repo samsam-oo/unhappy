@@ -282,6 +282,9 @@ export const es: TranslationStructure = {
             comingSoon: 'Próximamente',
         },
         worktree: {
+            nameLabel: 'Nombre del worktree',
+            namePlaceholder: 'p. ej. swift-island',
+            nameHint: 'Se usa tanto para la carpeta del worktree como para la rama de git.',
             creating: ({ name }: { name: string }) => `Creando worktree '${name}'...`,
             notGitRepo: 'Los worktrees requieren un repositorio git',
             failed: ({ error }: { error: string }) => `Error al crear worktree: ${error}`,

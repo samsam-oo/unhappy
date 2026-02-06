@@ -283,6 +283,9 @@ export const zhHant: TranslationStructure = {
             comingSoon: '即將推出',
         },
         worktree: {
+            nameLabel: 'Worktree 名稱',
+            namePlaceholder: '例如 swift-island',
+            nameHint: '同時用作 worktree 資料夾名稱與 git 分支名稱。',
             creating: ({ name }: { name: string }) => `正在建立 worktree '${name}'...`,
             notGitRepo: 'Worktree 需要 git 倉庫',
             failed: ({ error }: { error: string }) => `建立 worktree 失敗：${error}`,

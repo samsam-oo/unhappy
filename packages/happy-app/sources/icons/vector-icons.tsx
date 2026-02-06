@@ -318,6 +318,7 @@ const IONICONS_MAP: Record<string, LucideIcon> = {
     'remove-circle': CircleMinus,
     'rocket': Rocket,
     'repeat': Repeat,
+    'reorder-three': GripVertical,
     'remove': Minus,
     'return-down-forward': CornerDownRight,
     'search': Search,

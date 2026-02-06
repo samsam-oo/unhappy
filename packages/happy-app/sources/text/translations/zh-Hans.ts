@@ -284,6 +284,9 @@ export const zhHans: TranslationStructure = {
             comingSoon: '即将推出',
         },
         worktree: {
+            nameLabel: 'Worktree 名称',
+            namePlaceholder: '例如 swift-island',
+            nameHint: '同时用作 worktree 文件夹名和 git 分支名。',
             creating: ({ name }: { name: string }) => `正在创建 worktree '${name}'...`,
             notGitRepo: 'Worktree 需要 git 仓库',
             failed: ({ error }: { error: string }) => `创建 worktree 失败：${error}`,

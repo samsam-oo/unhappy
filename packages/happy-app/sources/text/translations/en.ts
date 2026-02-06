@@ -297,6 +297,9 @@ export const en: TranslationStructure = {
             comingSoon: 'Coming soon',
         },
         worktree: {
+            nameLabel: 'Worktree name',
+            namePlaceholder: 'e.g. swift-island',
+            nameHint: 'Used for both the worktree folder and the git branch.',
             creating: ({ name }: { name: string }) => `Creating worktree '${name}'...`,
             notGitRepo: 'Worktrees require a git repository',
             failed: ({ error }: { error: string }) => `Failed to create worktree: ${error}`,

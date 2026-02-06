@@ -274,6 +274,9 @@ export const ko: TranslationStructure = {
             comingSoon: '준비 중',
         },
         worktree: {
+            nameLabel: '워크트리 이름',
+            namePlaceholder: '예: swift-island',
+            nameHint: '워크트리 폴더 이름과 git 브랜치 이름으로 사용됩니다.',
             creating: ({ name }: { name: string }) => `워크트리 '${name}' 생성 중...`,
             notGitRepo: '워크트리는 Git 저장소가 필요합니다',
             failed: ({ error }: { error: string }) => `워크트리 생성에 실패했습니다: ${error}`,

@@ -264,6 +264,9 @@ export const ru: TranslationStructure = {
             comingSoon: 'Скоро будет доступно',
         },
         worktree: {
+            nameLabel: 'Имя worktree',
+            namePlaceholder: 'например, swift-island',
+            nameHint: 'Используется и для папки worktree, и для ветки git.',
             creating: ({ name }: { name: string }) => `Создание worktree '${name}'...`,
             notGitRepo: 'Worktree требует наличия git репозитория',
             failed: ({ error }: { error: string }) => `Не удалось создать worktree: ${error}`,

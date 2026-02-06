@@ -314,6 +314,9 @@ export const ja: TranslationStructure = {
             comingSoon: '近日公開',
         },
         worktree: {
+            nameLabel: 'ワークツリー名',
+            namePlaceholder: '例: swift-island',
+            nameHint: 'ワークツリーのフォルダ名とgitブランチ名の両方に使用されます。',
             creating: ({ name }: { name: string }) => `ワークツリー '${name}' を作成中...`,
             notGitRepo: 'ワークツリーにはGitリポジトリが必要です',
             failed: ({ error }: { error: string }) => `ワークツリーの作成に失敗しました: ${error}`,
