@@ -1,6 +1,6 @@
 /* Theme-aware scrollbar styles using Unistyles CSS variables */
 
-/* VSCode-like selection colors */
+/* Selection colors */
 ::selection {
     background: rgba(173, 214, 255, 0.6);
 }
@@ -17,7 +17,7 @@
 }
 
 ::-webkit-scrollbar-track {
-    /* VSCode-like: track is subtle/transparent, thumb provides contrast. */
+    /* Track is subtle/transparent; thumb provides contrast. */
     background: transparent;
     border-radius: 6px;
 }

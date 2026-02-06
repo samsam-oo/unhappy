@@ -5,7 +5,7 @@ const sharedSpacing = {
     // Spacing scale (based on actual usage patterns in codebase)
     margins: {
         xs: 4,   // Tight spacing, status indicators
-        sm: Platform.select({ web: 6, default: 8 }),   // Web is denser (VSCode-ish)
+        sm: Platform.select({ web: 6, default: 8 }),   // Web is denser (desktop-like)
         md: Platform.select({ web: 10, default: 12 }),
         lg: Platform.select({ web: 12, default: 16 }),
         xl: Platform.select({ web: 16, default: 20 }),
@@ -46,7 +46,7 @@ export const lightTheme = {
         warningCritical: '#FF3B30',
         warning: Platform.select({ web: '#6B6B6B', default: '#8E8E93' }),
         success: '#34C759',
-        // VSCode Light+: editor bg is white, sidebars/panels are light gray.
+        // Light theme: white base with subtle gray panels.
         surface: Platform.select({ web: '#FFFFFF', default: '#ffffff' }),
         surfaceRipple: 'rgba(0, 0, 0, 0.08)',
         surfacePressed: Platform.select({ web: '#E8E8E8', default: '#f0f0f2' }),
@@ -73,7 +73,7 @@ export const lightTheme = {
         //
 
         groupped: {
-            // Web uses a more neutral gray (VSCode light-ish), iOS keeps native grouped background.
+            // Web uses a more neutral gray, iOS keeps native grouped background.
             background: Platform.select({ ios: '#F2F2F7', web: '#FFFFFF', default: '#F5F5F5' }),
             chevron: Platform.select({ ios: '#C7C7CC', web: '#6B6B6B', default: '#49454F' }),
             sectionTitle: Platform.select({ ios: '#8E8E93', web: '#6B6B6B', default: '#49454F' }),
@@ -107,7 +107,7 @@ export const lightTheme = {
         },
         button: {
             primary: {
-                background: Platform.select({ web: '#0E639C', default: '#000000' }), // VSCode-ish blue on web
+                background: Platform.select({ web: '#0E639C', default: '#000000' }), // Desktop-ish blue on web
                 tint: '#FFFFFF',
                 disabled: '#C0C0C0',
             },
@@ -257,7 +257,7 @@ export const darkTheme = {
         // Main colors
         //
 
-        // VSCode Dark+: editor foreground is ~#D4D4D4.
+        // Dark theme: light text on near-black surfaces (web).
         text: Platform.select({ web: '#D4D4D4', default: '#ffffff' }),
         textDestructive: Platform.select({ ios: '#FF453A', default: '#F48FB1' }),
         textSecondary: Platform.select({ ios: '#8E8E93', web: '#9D9D9D', default: '#CAC4D0' }),
@@ -266,23 +266,23 @@ export const darkTheme = {
         warningCritical: '#FF453A',
         warning: Platform.select({ web: '#9D9D9D', default: '#8E8E93' }),
         success: '#32D74B',
-        // Web: bias toward VSCode Dark+ surfaces (slightly lighter than editor bg).
-        surface: Platform.select({ ios: '#18171C', web: '#252526', default: '#212121' }),
+        // Web: near-black base with subtle surface steps (easier on the eyes than pure #000 everywhere).
+        surface: Platform.select({ ios: '#18171C', web: '#101112', default: '#212121' }),
         surfaceRipple: 'rgba(255, 255, 255, 0.08)',
-        surfacePressed: '#2C2C2E',
-        surfaceSelected: Platform.select({ web: '#37373D', default: '#2C2C2E' }),
+        surfacePressed: Platform.select({ ios: '#2C2C2E', web: '#17181A', default: '#2C2C2E' }),
+        surfaceSelected: Platform.select({ ios: '#2C2C2E', web: '#1B1C1E', default: '#2C2C2E' }),
         surfacePressedOverlay: Platform.select({ ios: '#2C2C2E', default: 'transparent' }),
         // iOS dark theme is #1c1c1e for items, and #000 for the background
-        surfaceHigh: Platform.select({ ios: '#2C2C2E', web: '#1E1E1E', default: '#171717' }),
-        surfaceHighest: Platform.select({ ios: '#38383A', web: '#2D2D2D', default: '#292929' }),
-        divider: Platform.select({ ios: '#38383A', web: '#3C3C3C', default: '#292929' }),
+        surfaceHigh: Platform.select({ ios: '#2C2C2E', web: '#141516', default: '#171717' }),
+        surfaceHighest: Platform.select({ ios: '#38383A', web: '#1B1C1E', default: '#292929' }),
+        divider: Platform.select({ ios: '#38383A', web: '#202023', default: '#292929' }),
         chrome: {
-            editorBackground: Platform.select({ web: '#1E1E1E', default: '#1E1E1E' }),
-            sidebarBackground: Platform.select({ web: '#252526', default: '#252526' }),
-            panelBorder: Platform.select({ web: '#3C3C3C', default: '#3C3C3C' }),
+            editorBackground: Platform.select({ web: '#0B0B0C', default: '#1E1E1E' }),
+            sidebarBackground: Platform.select({ web: '#0F0F10', default: '#252526' }),
+            panelBorder: Platform.select({ web: '#202023', default: '#3C3C3C' }),
             accent: Platform.select({ web: '#007ACC', default: '#0A84FF' }),
-            listHoverBackground: Platform.select({ web: '#2A2D2E', default: '#2A2D2E' }),
-            listActiveBackground: Platform.select({ web: '#37373D', default: '#37373D' }),
+            listHoverBackground: Platform.select({ web: '#141516', default: '#2A2D2E' }),
+            listActiveBackground: Platform.select({ web: '#1B1C1E', default: '#37373D' }),
         },
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
@@ -294,7 +294,7 @@ export const darkTheme = {
         //
 
         header: {
-            background: Platform.select({ ios: '#18171C', web: '#252526', default: '#212121' }),
+            background: Platform.select({ ios: '#18171C', web: '#0F0F10', default: '#212121' }),
             tint: Platform.select({ web: '#CCCCCC', default: '#ffffff' })
         },
         switch: {
@@ -308,7 +308,7 @@ export const darkTheme = {
             },
         },
         groupped: {
-            background: Platform.select({ ios: '#1C1C1E', web: '#1E1E1E', default: '#1e1e1e' }),
+            background: Platform.select({ ios: '#1C1C1E', web: '#0B0B0C', default: '#1e1e1e' }),
             chevron: Platform.select({ ios: '#48484A', web: '#9D9D9D', default: '#CAC4D0' }),
             sectionTitle: Platform.select({ ios: '#8E8E93', web: '#9D9D9D', default: '#CAC4D0' }),
         },
@@ -327,7 +327,7 @@ export const darkTheme = {
         },
         button: {
             primary: {
-                background: Platform.select({ web: '#0E639C', default: '#000000' }), // VSCode-ish blue on web
+                background: Platform.select({ web: '#0E639C', default: '#000000' }), // Desktop-ish blue on web
                 tint: '#FFFFFF',
                 disabled: '#C0C0C0',
             },
@@ -336,7 +336,7 @@ export const darkTheme = {
             }
         },
         input: {
-            background: Platform.select({ ios: '#1C1C1E', default: '#303030' }),
+            background: Platform.select({ ios: '#1C1C1E', web: '#141516', default: '#303030' }),
             text: Platform.select({ web: '#D4D4D4', default: '#FFFFFF' }),
             placeholder: Platform.select({ web: '#9D9D9D', default: '#8E8E93' }),
         },
@@ -429,7 +429,7 @@ export const darkTheme = {
         },
 
         // Message View colors
-        userMessageBackground: '#2C2C2E',
+        userMessageBackground: Platform.select({ web: '#141516', default: '#2C2C2E' }),
         userMessageText: '#FFFFFF',
         agentMessageText: '#FFFFFF',
         agentEventText: '#8E8E93',
@@ -455,7 +455,7 @@ export const darkTheme = {
 
         // Terminal/Command colors
         terminal: {
-            background: '#1E1E1E',
+            background: Platform.select({ web: '#0B0B0C', default: '#1E1E1E' }),
             prompt: '#32D74B',
             command: '#E0E0E0',
             stdout: '#E0E0E0',

@@ -18,7 +18,7 @@ export const SidebarNavigator = React.memo(() => {
     // Calculate drawer width only when needed
     const drawerWidth = React.useMemo(() => {
         if (!showPermanentDrawer) return 260; // Default width for hidden drawer
-        // Slightly narrower + tighter clamp for a more compact desktop feel (VSCode-ish).
+        // Slightly narrower + tighter clamp for a more compact desktop feel.
         return Math.min(Math.max(Math.floor(windowWidth * 0.26), 240), 320);
     }, [windowWidth, showPermanentDrawer]);
 

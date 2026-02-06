@@ -6,7 +6,7 @@ import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListView
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
-import { SessionsList } from './SessionsList';
+import { WorkspaceExplorerSidebar } from './WorkspaceExplorerSidebar';
 import { FABWide } from './FABWide';
 import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
@@ -283,7 +283,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         // Sessions list
         return (
             <View style={styles.sidebarContentContainer}>
-                <SessionsList />
+                <WorkspaceExplorerSidebar />
             </View>
         );
     }

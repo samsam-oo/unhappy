@@ -145,7 +145,7 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 type Row =
     | { type: 'project'; project: Project; expanded: boolean }
-    | { type: 'session'; session: Session; projectStableId: string }
+    | { type: 'session'; session: Session }
     | { type: 'section'; id: 'playground'; title: string }
     | { type: 'action'; id: 'new-playground'; title: string };
 
@@ -205,6 +205,7 @@ export function WorkspaceExplorerSidebar() {
 
     const rows: Row[] = React.useMemo(() => {
         const out: Row[] = [];
+        const included = new Set<string>();
 
         for (const project of projects) {
             const stableId = getProjectStableId(project);
@@ -219,15 +220,27 @@ export function WorkspaceExplorerSidebar() {
                 projectSessions.sort((a, b) => b.updatedAt - a.updatedAt);
 
                 for (const s of projectSessions) {
-                    out.push({ type: 'session', session: s, projectStableId: stableId });
+                    included.add(s.id);
+                    out.push({ type: 'session', session: s });
                 }
+            } else {
+                // still track included ids to avoid duplication in ungrouped
+                for (const id of project.sessionIds || []) included.add(id);
             }
+        }
+
+        // Fallback: sessions without metadata/project association.
+        const ungrouped = sessions
+            .filter((s) => !included.has(s.id))
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+        for (const s of ungrouped) {
+            out.push({ type: 'session', session: s });
         }
 
         out.push({ type: 'section', id: 'playground', title: 'Playground' });
         out.push({ type: 'action', id: 'new-playground', title: 'New Playground' });
         return out;
-    }, [projects, expanded, sessionById]);
+    }, [projects, expanded, sessionById, sessions]);
 
     return (
         <View style={styles.container}>
@@ -250,7 +263,7 @@ export function WorkspaceExplorerSidebar() {
 
             <FlatList
                 data={rows}
-                keyExtractor={(row) => {
+                keyExtractor={(row, idx) => {
                     switch (row.type) {
                         case 'project':
                             return `p:${getProjectStableId(row.project)}`;
@@ -392,4 +405,3 @@ export function WorkspaceExplorerSidebar() {
         </View>
     );
 }
-

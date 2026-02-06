@@ -68,7 +68,7 @@ export function calculateHeaderHeight(params: {
     
     // Web platform: Use Material Design height
     if (platform === 'web') {
-        return 48; // Web: tighter desktop toolbar height (more VSCode-like density)
+        return 48; // Web: tighter desktop toolbar height (more desktop-like density)
     }
     
     if (platform === 'android') {

@@ -1,19 +1,20 @@
 import * as React from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { SessionsList } from './SessionsList';
 import { EmptyMainScreen } from './EmptyMainScreen';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { WorkspaceExplorerSidebar } from './WorkspaceExplorerSidebar';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
+        backgroundColor: theme.colors.chrome.sidebarBackground,
     },
     loadingContainerWrapper: {
         flex: 1,
         flexBasis: 0,
         flexGrow: 1,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: theme.colors.chrome.sidebarBackground,
     },
     loadingContainer: {
         flex: 1,
@@ -26,7 +27,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexBasis: 0,
         flexGrow: 1,
         flexDirection: 'column',
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: theme.colors.chrome.sidebarBackground,
     },
     emptyStateContentContainer: {
         flex: 1,
@@ -66,7 +67,7 @@ export const SessionsListWrapper = React.memo(() => {
 
     return (
         <View style={styles.container}>
-            <SessionsList />
+            <WorkspaceExplorerSidebar />
         </View>
     );
 });
