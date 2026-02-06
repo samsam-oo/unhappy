@@ -12,7 +12,7 @@
 /**
  * Supported language codes
  */
-export type SupportedLanguage = 'en' | 'ru' | 'pl' | 'es' | 'it' | 'pt' | 'ca' | 'zh-Hans' | 'zh-Hant' | 'ja';
+export type SupportedLanguage = 'en' | 'ru' | 'pl' | 'es' | 'it' | 'pt' | 'ca' | 'zh-Hans' | 'zh-Hant' | 'ja' | 'ko';
 
 /**
  * Language metadata interface
@@ -76,6 +76,11 @@ export const SUPPORTED_LANGUAGES: Record<SupportedLanguage, LanguageInfo> = {
         code: 'ja',
         nativeName: '日本語',
         englishName: 'Japanese'
+    },
+    ko: {
+        code: 'ko',
+        nativeName: '한국어',
+        englishName: 'Korean'
     }
 } as const;
 
