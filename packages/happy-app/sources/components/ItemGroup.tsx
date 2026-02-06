@@ -35,20 +35,22 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         width: '100%',
         maxWidth: layout.maxWidth,
-        paddingHorizontal: Platform.select({ ios: 0, default: 4 }),
+        // Provide the outer inset; content containers can then be full-width inside this.
+        paddingHorizontal: Platform.select({ ios: 0, web: theme.margins.md, default: theme.margins.sm }),
     },
     header: {
-        paddingTop: Platform.select({ ios: 35, default: 16 }),
-        paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        paddingTop: Platform.select({ ios: 28, web: 10, default: 14 }),
+        paddingBottom: Platform.select({ ios: 6, web: 6, default: 8 }),
+        // Align header label with the first line of Item text (outer inset + item padding).
+        paddingHorizontal: Platform.select({ ios: 24, web: theme.margins.md + theme.margins.lg, default: 16 }),
     },
     headerNoTitle: {
-        paddingTop: Platform.select({ ios: 20, default: 16 }),
+        paddingTop: Platform.select({ ios: 18, web: 10, default: 14 }),
     },
     headerText: {
         ...Typography.default('regular'),
         color: theme.colors.groupped.sectionTitle,
-        fontSize: Platform.select({ ios: 13, default: 14 }),
+        fontSize: Platform.select({ ios: 13, web: 12, default: 13 }),
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         textTransform: 'uppercase',
@@ -56,24 +58,31 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     contentContainer: {
         backgroundColor: theme.colors.surface,
-        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        marginHorizontal: Platform.select({ ios: 14, web: 0, default: 12 }),
+        borderRadius: Platform.select({ ios: 10, web: 12, default: 12 }),
         overflow: 'hidden',
-        shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 0.33 },
-        shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 0,
-        elevation: 1
+        ...(Platform.OS === 'web'
+            ? {
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.divider,
+            }
+            : {
+                shadowColor: theme.colors.shadow.color,
+                shadowOffset: { width: 0, height: 0.33 },
+                shadowOpacity: theme.colors.shadow.opacity,
+                shadowRadius: 0,
+                elevation: 1,
+            }),
     },
     footer: {
         paddingTop: Platform.select({ ios: 6, default: 8 }),
-        paddingBottom: Platform.select({ ios: 8, default: 16 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        paddingBottom: Platform.select({ ios: 8, web: 10, default: 12 }),
+        paddingHorizontal: Platform.select({ ios: 24, web: theme.margins.md + theme.margins.lg, default: 16 }),
     },
     footerText: {
         ...Typography.default('regular'),
         color: theme.colors.groupped.sectionTitle,
-        fontSize: Platform.select({ ios: 13, default: 14 }),
+        fontSize: Platform.select({ ios: 13, web: 12, default: 13 }),
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0 }),
     },

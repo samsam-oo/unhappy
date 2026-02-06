@@ -81,16 +81,16 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
         return (
             <View style={{
                 backgroundColor: statusInfo.backgroundColor,
-                height: 32,
+                height: Platform.select({ web: 28, default: 32 }),
                 width: '100%',
                 justifyContent: 'center',
                 alignItems: 'center',
-                paddingHorizontal: 16,
+                paddingHorizontal: Platform.select({ web: 12, default: 16 }),
             }}>
                 <Pressable
                     onPress={handlePress}
                     style={{
-                        height: 32,
+                        height: Platform.select({ web: 28, default: 32 }),
                         width: '100%',
                         justifyContent: 'center',
                         alignItems: 'center',
@@ -199,7 +199,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
 
 const styles = StyleSheet.create({
     container: {
-        height: 32,
+        height: Platform.select({ web: 28, default: 32 }),
         justifyContent: 'center',
         alignItems: 'center',
         width: '100%',
@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         width: '100%',
-        paddingHorizontal: 12,
+        paddingHorizontal: Platform.select({ web: 10, default: 12 }),
     },
     leftSection: {
         flexDirection: 'row',
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
         marginLeft: 8,
     },
     statusText: {
-        fontSize: 14,
+        fontSize: Platform.select({ web: 12, default: 14 }),
         fontWeight: '500',
         ...Typography.default(),
     },
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     tapToEndText: {
-        fontSize: 12,
+        fontSize: Platform.select({ web: 11, default: 12 }),
         fontWeight: '400',
         opacity: 0.8,
         ...Typography.default(),

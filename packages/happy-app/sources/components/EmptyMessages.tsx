@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
@@ -12,37 +12,37 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 48,
+        paddingHorizontal: Platform.select({ web: 16, default: 24 }),
     },
     iconContainer: {
-        marginBottom: 12,
+        marginBottom: 10,
     },
     hostText: {
-        fontSize: 18,
+        fontSize: 16,
         color: theme.colors.text,
         textAlign: 'center',
         marginBottom: 4,
         ...Typography.default('semiBold'),
     },
     pathText: {
-        fontSize: 14,
+        fontSize: 13,
         color: theme.colors.textSecondary,
         textAlign: 'center',
-        marginBottom: 40,
+        marginBottom: 24,
         ...Typography.default('regular'),
     },
     noMessagesText: {
-        fontSize: 20,
+        fontSize: 16,
         color: theme.colors.textSecondary,
         textAlign: 'center',
         marginBottom: 8,
         ...Typography.default('regular'),
     },
     createdText: {
-        fontSize: 16,
+        fontSize: 13,
         color: theme.colors.textSecondary,
         textAlign: 'center',
-        lineHeight: 24,
+        lineHeight: 18,
         ...Typography.default(),
     },
 }));

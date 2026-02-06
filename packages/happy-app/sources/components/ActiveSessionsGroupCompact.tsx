@@ -25,25 +25,34 @@ import { HappyError } from '@/utils/errors';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
-        backgroundColor: theme.colors.groupped.background,
-        paddingTop: 8,
+        backgroundColor: Platform.select({ web: theme.colors.chrome.sidebarBackground, default: theme.colors.groupped.background }),
+        paddingTop: Platform.select({ web: 0, default: 8 }),
     },
     projectCard: {
-        backgroundColor: theme.colors.surface,
-        marginBottom: 8,
-        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
+        marginBottom: Platform.select({ web: 0, default: 8 }),
+        marginHorizontal: Platform.select({ ios: 16, web: 0, default: 12 }),
+        borderRadius: Platform.select({ ios: 10, web: 0, default: 16 }),
         overflow: 'hidden',
-        shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 0.33 },
-        shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 0,
-        elevation: 1,
+        ...(Platform.OS === 'web'
+            ? {
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: theme.colors.chrome.panelBorder,
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.chrome.panelBorder,
+            }
+            : {
+                shadowColor: theme.colors.shadow.color,
+                shadowOffset: { width: 0, height: 0.33 },
+                shadowOpacity: theme.colors.shadow.opacity,
+                shadowRadius: 0,
+                elevation: 1,
+            }),
     },
     sectionHeader: {
-        paddingTop: 12,
-        paddingBottom: Platform.select({ ios: 6, default: 8 }),
-        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+        paddingTop: Platform.select({ web: 10, default: 12 }),
+        paddingBottom: Platform.select({ ios: 6, web: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ ios: 32, web: 12, default: 24 }),
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -60,25 +69,28 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sectionHeaderPath: {
         ...Typography.default('regular'),
         color: theme.colors.groupped.sectionTitle,
-        fontSize: Platform.select({ ios: 13, default: 14 }),
+        fontSize: Platform.select({ ios: 13, web: 11, default: 14 }),
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
         flex: 1,
     },
     sessionRow: {
-        height: 56,
+        height: Platform.select({ web: 48, default: 56 }),
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        backgroundColor: theme.colors.surface,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
     },
     sessionRowWithBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: theme.colors.divider,
+        borderBottomColor: Platform.select({ web: theme.colors.chrome.panelBorder, default: theme.colors.divider }),
     },
     sessionRowSelected: {
         backgroundColor: theme.colors.surfaceSelected,
+    },
+    sessionRowHovered: {
+        backgroundColor: theme.colors.chrome.listHoverBackground,
     },
     sessionContent: {
         flex: 1,
@@ -89,7 +101,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
     },
     sessionTitle: {
-        fontSize: 15,
+        fontSize: Platform.select({ web: 13, default: 15 }),
         flex: 1,
         ...Typography.default('regular'),
     },
@@ -109,11 +121,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'flex-start',
-        height: 56,
-        paddingHorizontal: 16,
+        height: Platform.select({ web: 48, default: 56 }),
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
         borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: theme.colors.divider,
-        backgroundColor: theme.colors.surface,
+        borderTopColor: Platform.select({ web: theme.colors.chrome.panelBorder, default: theme.colors.divider }),
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
     },
     newSessionButtonDisabled: {
         opacity: 0.4,
@@ -129,7 +141,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'center',
     },
     newSessionButtonText: {
-        fontSize: 15,
+        fontSize: Platform.select({ web: 13, default: 15 }),
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
     },
@@ -146,6 +158,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         color: '#FFFFFF',
         textAlign: 'center',
         ...Typography.default('semiBold'),
+    },
+    selectionBar: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 2,
+        backgroundColor: theme.colors.chrome.accent,
     },
 }));
 
@@ -324,11 +344,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
     const itemContent = (
         <Pressable
-            style={[
+            style={({ pressed, hovered }: any) => ([
                 styles.sessionRow,
                 showBorder && styles.sessionRowWithBorder,
-                selected && styles.sessionRowSelected
-            ]}
+                selected && styles.sessionRowSelected,
+                Platform.OS === 'web' && hovered && !selected && styles.sessionRowHovered,
+                Platform.OS === 'web' && pressed && styles.sessionRowHovered,
+            ])}
             onPressIn={() => {
                 if (isTablet) {
                     navigateToSession(session.id);
@@ -340,6 +362,9 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 }
             }}
         >
+            {Platform.OS === 'web' && selected && (
+                <View style={styles.selectionBar} />
+            )}
             <View style={styles.sessionContent}>
                 {/* Title line with status */}
                 <View style={styles.sessionTitleRow}>

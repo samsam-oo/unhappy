@@ -26,6 +26,7 @@
     "start:dev": "cross-env APP_ENV=development expo start",
     "start:preview": "cross-env APP_ENV=preview expo start",
     "start:production": "cross-env APP_ENV=production expo start",
+    "start:local-server": "cross-env APP_ENV=development EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005 EXPO_PUBLIC_DEBUG=1 expo start",
     "// ==== macOS Desktop (Tauri) Variants ====": "",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "tauri:build:dev": "tauri build --config src-tauri/tauri.dev.conf.json",

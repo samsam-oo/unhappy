@@ -22,7 +22,7 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
         paddingVertical: 4,
         backgroundColor: theme.colors.box.warning.background,
         borderRadius: 8,
-        marginHorizontal: 32,
+        marginHorizontal: 16,
         marginTop: 4,
     };
     const warningTextStyle: TextStyle = {

@@ -132,23 +132,32 @@ export const SettingsView = React.memo(function SettingsView() {
         <ItemList style={{ paddingTop: 0 }}>
             {/* App Info Header */}
             <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
-                <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginTop: 16, borderRadius: 12, marginHorizontal: 16 }}>
+                <View style={{
+                    alignItems: 'center',
+                    paddingVertical: Platform.select({ web: 14, default: 24 }),
+                    backgroundColor: theme.colors.surface,
+                    marginTop: Platform.select({ web: 10, default: 16 }),
+                    borderRadius: Platform.select({ web: 10, default: 12 }),
+                    marginHorizontal: Platform.select({ web: 12, default: 16 }),
+                    borderWidth: Platform.OS === 'web' ? 1 : 0,
+                    borderColor: Platform.OS === 'web' ? theme.colors.chrome.panelBorder : 'transparent',
+                }}>
                     {profile.firstName ? (
                         // Profile view: Avatar + name + version
                         <>
-                            <View style={{ marginBottom: 12 }}>
+                            <View style={{ marginBottom: Platform.select({ web: 8, default: 12 }) }}>
                                 <Avatar
                                     id={profile.id}
-                                    size={90}
+                                    size={Platform.select({ web: 72, default: 90 })}
                                     imageUrl={avatarUrl}
                                     thumbhash={profile.avatar?.thumbhash}
                                 />
                             </View>
-                            <Text style={{ fontSize: 20, fontWeight: '600', color: theme.colors.text, marginBottom: bio ? 4 : 8 }}>
+                            <Text style={{ fontSize: Platform.select({ web: 16, default: 20 }), fontWeight: '600', color: theme.colors.text, marginBottom: bio ? 4 : 8 }}>
                                 {displayName}
                             </Text>
                             {bio && (
-                                <Text style={{ fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center', marginBottom: 8, paddingHorizontal: 16 }}>
+                                <Text style={{ fontSize: Platform.select({ web: 12, default: 14 }), color: theme.colors.textSecondary, textAlign: 'center', marginBottom: 8, paddingHorizontal: Platform.select({ web: 12, default: 16 }) }}>
                                     {bio}
                                 </Text>
                             )}
@@ -159,7 +168,7 @@ export const SettingsView = React.memo(function SettingsView() {
                             <Image
                                 source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
                                 contentFit="contain"
-                                style={{ width: 300, height: 90, marginBottom: 12 }}
+                                style={{ width: Platform.select({ web: 240, default: 300 }), height: Platform.select({ web: 72, default: 90 }), marginBottom: 12 }}
                             />
                         </>
                     )}

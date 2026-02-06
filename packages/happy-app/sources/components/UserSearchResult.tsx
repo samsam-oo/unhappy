@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Pressable } from 'react-native';
-import { StyleSheet } from 'react-native-unistyles';
+import { View, Text, TouchableOpacity, ActivityIndicator, Pressable, Platform } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
@@ -18,6 +18,7 @@ export function UserSearchResult({
     isProcessing = false 
 }: UserSearchResultProps) {
     const router = useRouter();
+    const { theme } = useUnistyles();
     const displayName = getDisplayName(user);
     const avatarUrl = user.avatar?.url || user.avatar?.path;
     
@@ -43,13 +44,16 @@ export function UserSearchResult({
 
     return (
         <Pressable 
-            style={styles.container}
+            style={({ pressed, hovered }: any) => ([
+                styles.container,
+                Platform.OS === 'web' && (hovered || pressed) && { backgroundColor: theme.colors.chrome.listHoverBackground },
+            ])}
             onPress={() => router.push(`/user/${user.id}`)}
         >
             <View style={styles.content}>
                 <Avatar
                     id={user.id}
-                    size={48}
+                    size={Platform.select({ web: 40, default: 48 })}
                     imageUrl={avatarUrl}
                     thumbhash={user.avatar?.thumbhash}
                 />
@@ -76,54 +80,61 @@ export function UserSearchResult({
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
-        marginHorizontal: 16,
-        marginVertical: 4,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 2,
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
+        borderRadius: Platform.select({ web: 0, default: 12 }),
+        marginHorizontal: Platform.select({ web: 0, default: 16 }),
+        marginVertical: Platform.select({ web: 0, default: 4 }),
+        ...(Platform.OS === 'web'
+            ? {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.chrome.panelBorder,
+            }
+            : {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 2,
+                elevation: 2,
+            }),
     },
     content: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 16,
+        padding: Platform.select({ web: 12, default: 16 }),
     },
     info: {
         flex: 1,
-        marginLeft: 16,
+        marginLeft: Platform.select({ web: 12, default: 16 }),
     },
     name: {
-        fontSize: 16,
+        fontSize: Platform.select({ web: 13, default: 16 }),
         fontWeight: '600',
         color: theme.colors.text,
         marginBottom: 2,
     },
     username: {
-        fontSize: 14,
+        fontSize: Platform.select({ web: 12, default: 14 }),
         color: theme.colors.textSecondary,
     },
     button: {
         backgroundColor: theme.colors.button.primary.background,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
-        minWidth: 100,
+        paddingHorizontal: Platform.select({ web: 10, default: 16 }),
+        paddingVertical: Platform.select({ web: 6, default: 10 }),
+        borderRadius: Platform.select({ web: 6, default: 8 }),
+        minWidth: Platform.select({ web: 86, default: 100 }),
         alignItems: 'center',
     },
     buttonDisabled: {
-        backgroundColor: theme.colors.divider,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHighest, default: theme.colors.divider }),
     },
     buttonText: {
         color: theme.colors.button.primary.tint,
-        fontSize: 14,
+        fontSize: Platform.select({ web: 12, default: 14 }),
         fontWeight: '600',
     },
     buttonTextDisabled: {
         color: theme.colors.textSecondary,
-        fontSize: 14,
+        fontSize: Platform.select({ web: 12, default: 14 }),
         fontWeight: '500',
     },
 }));

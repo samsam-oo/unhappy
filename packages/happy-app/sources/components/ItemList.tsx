@@ -22,7 +22,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.groupped.background,
     },
     contentContainer: {
-        paddingBottom: Platform.select({ ios: 34, default: 16 }),
+        paddingBottom: Platform.select({ ios: 34, web: 12, default: 16 }),
         paddingTop: 0,
     },
 }));

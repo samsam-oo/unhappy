@@ -12,24 +12,30 @@ interface SessionTypeSelectorProps {
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         backgroundColor: theme.colors.surface,
-        borderRadius: Platform.select({ default: 12, android: 16 }),
-        marginBottom: 12,
+        borderRadius: Platform.select({ web: theme.borderRadius.md, default: 12, android: 16 }),
+        marginBottom: Platform.select({ web: 10, default: 12 }),
         overflow: 'hidden',
+        ...(Platform.OS === 'web'
+            ? {
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.chrome.panelBorder,
+            }
+            : null),
     },
     title: {
         fontSize: 13,
         color: theme.colors.textSecondary,
-        marginBottom: 8,
-        marginLeft: 16,
-        marginTop: 12,
+        marginBottom: Platform.select({ web: 6, default: 8 }),
+        marginLeft: Platform.select({ web: 12, default: 16 }),
+        marginTop: Platform.select({ web: 10, default: 12 }),
         ...Typography.default('semiBold'),
     },
     optionContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        minHeight: 44,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+        paddingVertical: Platform.select({ web: 10, default: 12 }),
+        minHeight: Platform.select({ web: 40, default: 44 }),
     },
     optionPressed: {
         backgroundColor: theme.colors.surfacePressed,
@@ -62,7 +68,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'space-between',
     },
     optionLabel: {
-        fontSize: 16,
+        fontSize: Platform.select({ web: 14, default: 16 }),
         ...Typography.default('regular'),
     },
     optionLabelActive: {
@@ -74,7 +80,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     divider: {
         height: Platform.select({ ios: 0.33, default: 0.5 }),
         backgroundColor: theme.colors.divider,
-        marginLeft: 48,
+        marginLeft: Platform.select({ web: 40, default: 48 }),
     },
 }));
 

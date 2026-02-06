@@ -45,14 +45,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        minHeight: Platform.select({ ios: 44, default: 56 }),
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+        minHeight: Platform.select({ ios: 44, web: 44, default: 56 }),
     },
     containerWithSubtitle: {
-        paddingVertical: Platform.select({ ios: 11, default: 16 }),
+        paddingVertical: Platform.select({ ios: 11, web: 10, default: 14 }),
     },
     containerWithoutSubtitle: {
-        paddingVertical: Platform.select({ ios: 12, default: 16 }),
+        paddingVertical: Platform.select({ ios: 12, web: 10, default: 14 }),
     },
     iconContainer: {
         marginRight: 12,
@@ -67,8 +67,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     title: {
         ...Typography.default('regular'),
-        fontSize: Platform.select({ ios: 17, default: 16 }),
-        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        fontSize: Platform.select({ ios: 17, web: 14, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, web: 20, default: 24 }),
         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
     },
     titleNormal: {
@@ -83,8 +83,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     subtitle: {
         ...Typography.default('regular'),
         color: theme.colors.textSecondary,
-        fontSize: Platform.select({ ios: 15, default: 14 }),
-        lineHeight: 20,
+        fontSize: Platform.select({ ios: 15, web: 12, default: 14 }),
+        lineHeight: Platform.select({ ios: 20, web: 16, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
         marginTop: Platform.select({ ios: 2, default: 0 }),
     },
@@ -96,11 +96,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     detail: {
         ...Typography.default('regular'),
         color: theme.colors.textSecondary,
-        fontSize: 17,
+        fontSize: Platform.select({ ios: 17, web: 13, default: 17 }),
         letterSpacing: -0.41,
     },
     divider: {
-        height: Platform.select({ ios: 0.33, default: 0 }),
+        height: Platform.select({ ios: 0.33, web: StyleSheet.hairlineWidth, default: 0 }),
         backgroundColor: theme.colors.divider,
     },
     pressablePressed: {
@@ -293,9 +293,15 @@ export const Item = React.memo<ItemProps>((props) => {
                 onPressIn={handlePressIn}
                 onPressOut={handlePressOut}
                 disabled={disabled || loading}
-                style={({ pressed }) => [
+                style={({ pressed, hovered }: any) => [
                     {
-                        backgroundColor: pressed && isIOS && !isWeb ? theme.colors.surfacePressedOverlay : 'transparent',
+                        backgroundColor: isWeb
+                            ? (pressed
+                                ? theme.colors.chrome.listActiveBackground
+                                : hovered
+                                    ? theme.colors.chrome.listHoverBackground
+                                    : 'transparent')
+                            : (pressed && isIOS && !isWeb ? theme.colors.surfacePressedOverlay : 'transparent'),
                         opacity: disabled ? 0.5 : 1
                     },
                     pressableStyle

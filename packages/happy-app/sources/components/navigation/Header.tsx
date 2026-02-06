@@ -210,7 +210,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     content: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: Platform.select({ ios: 8, default: 16 }),
+        paddingHorizontal: Platform.select({ ios: 8, web: 12, default: 16 }),
         width: '100%',
         maxWidth: layout.headerMaxWidth,
     },
@@ -249,12 +249,25 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default('regular'),
     },
     shadow: {
-        shadowColor: theme.colors.shadow.color,
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: theme.colors.shadow.opacity,
-        shadowRadius: 3,
-        elevation: 4,
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
+        ...(Platform.OS === 'web'
+            ? {
+                shadowColor: 'transparent',
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0,
+                shadowRadius: 0,
+                elevation: 0,
+                boxShadow: 'none',
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.chrome.panelBorder,
+            }
+            : {
+                shadowColor: theme.colors.shadow.color,
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: theme.colors.shadow.opacity,
+                shadowRadius: 3,
+                elevation: 4,
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
+            }),
     },
     backButton: {
         color: theme.colors.header.tint,

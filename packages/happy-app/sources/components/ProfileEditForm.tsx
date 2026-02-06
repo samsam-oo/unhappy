@@ -569,12 +569,18 @@ const profileEditFormStyles = StyleSheet.create((theme, rt) => ({
         flex: 1,
     },
     scrollContent: {
-        padding: 20,
+        padding: Platform.select({ web: 12, default: 20 }),
     },
     formContainer: {
         backgroundColor: theme.colors.surface,
-        borderRadius: 16, // Matches new session panel main container
-        padding: 20,
+        borderRadius: Platform.select({ web: theme.borderRadius.md, default: 16 }), // Matches new session panel main container
+        padding: Platform.select({ web: 12, default: 20 }),
         width: '100%',
+        ...(Platform.OS === 'web'
+            ? {
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.chrome.panelBorder,
+            }
+            : null),
     },
 }));

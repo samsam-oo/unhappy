@@ -15,7 +15,7 @@ import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListView
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
@@ -36,29 +36,42 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'stretch',
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: Platform.select({
+            web: theme.colors.chrome.sidebarBackground,
+            default: theme.colors.groupped.background
+        }),
     },
     contentContainer: {
         flex: 1,
         maxWidth: layout.maxWidth,
     },
     headerSection: {
-        backgroundColor: theme.colors.groupped.background,
-        paddingHorizontal: 24,
-        paddingTop: 20,
-        paddingBottom: 8,
+        backgroundColor: Platform.select({
+            web: theme.colors.chrome.sidebarBackground,
+            default: theme.colors.groupped.background
+        }),
+        paddingHorizontal: Platform.select({ web: 12, default: 20 }),
+        paddingTop: Platform.select({ web: 10, default: 18 }),
+        paddingBottom: Platform.select({ web: 6, default: 8 }),
+        ...(Platform.OS === 'web'
+            ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.chrome.panelBorder }
+            : null),
     },
     headerText: {
-        fontSize: 14,
+        fontSize: Platform.select({ web: 11, default: 14 }),
         fontWeight: '600',
         color: theme.colors.groupped.sectionTitle,
-        letterSpacing: 0.1,
+        letterSpacing: Platform.select({ web: 0.6, default: 0.1 }),
+        textTransform: Platform.select({ web: 'uppercase', default: 'none' }),
         ...Typography.default('semiBold'),
     },
     projectGroup: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        backgroundColor: theme.colors.surface,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+        paddingVertical: Platform.select({ web: 8, default: 10 }),
+        backgroundColor: Platform.select({ web: theme.colors.chrome.sidebarBackground, default: theme.colors.surface }),
+        ...(Platform.OS === 'web'
+            ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.chrome.panelBorder }
+            : null),
     },
     projectGroupTitle: {
         fontSize: 13,
@@ -73,47 +86,56 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
     sessionItem: {
-        height: 88,
+        height: Platform.select({ web: 64, default: 76 }),
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        backgroundColor: theme.colors.surface,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+        backgroundColor: Platform.select({ web: 'transparent', default: theme.colors.surface }),
     },
     sessionItemContainer: {
-        marginHorizontal: 16,
-        marginBottom: 1,
+        marginHorizontal: Platform.select({ web: 0, default: 16 }),
+        marginBottom: Platform.select({ web: 0, default: 1 }),
         overflow: 'hidden',
+        ...(Platform.OS === 'web'
+            ? {
+                borderBottomWidth: StyleSheet.hairlineWidth,
+                borderBottomColor: theme.colors.chrome.panelBorder,
+            }
+            : null),
     },
     sessionItemFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: Platform.select({ web: 0, default: 12 }),
+        borderTopRightRadius: Platform.select({ web: 0, default: 12 }),
     },
     sessionItemLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
+        borderBottomLeftRadius: Platform.select({ web: 0, default: 12 }),
+        borderBottomRightRadius: Platform.select({ web: 0, default: 12 }),
     },
     sessionItemSingle: {
-        borderRadius: 12,
+        borderRadius: Platform.select({ web: 0, default: 12 }),
     },
     sessionItemContainerFirst: {
-        borderTopLeftRadius: 12,
-        borderTopRightRadius: 12,
+        borderTopLeftRadius: Platform.select({ web: 0, default: 12 }),
+        borderTopRightRadius: Platform.select({ web: 0, default: 12 }),
     },
     sessionItemContainerLast: {
-        borderBottomLeftRadius: 12,
-        borderBottomRightRadius: 12,
-        marginBottom: 12,
+        borderBottomLeftRadius: Platform.select({ web: 0, default: 12 }),
+        borderBottomRightRadius: Platform.select({ web: 0, default: 12 }),
+        marginBottom: Platform.select({ web: 0, default: 12 }),
     },
     sessionItemContainerSingle: {
-        borderRadius: 12,
-        marginBottom: 12,
+        borderRadius: Platform.select({ web: 0, default: 12 }),
+        marginBottom: Platform.select({ web: 0, default: 12 }),
     },
     sessionItemSelected: {
-        backgroundColor: theme.colors.surfaceSelected,
+        backgroundColor: Platform.select({ web: theme.colors.chrome.listActiveBackground, default: theme.colors.surfaceSelected }),
+    },
+    sessionItemHovered: {
+        backgroundColor: theme.colors.chrome.listHoverBackground,
     },
     sessionContent: {
         flex: 1,
-        marginLeft: 16,
+        marginLeft: Platform.select({ web: 12, default: 16 }),
         justifyContent: 'center',
     },
     sessionTitleRow: {
@@ -122,7 +144,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginBottom: 2,
     },
     sessionTitle: {
-        fontSize: 15,
+        fontSize: Platform.select({ web: 13, default: 15 }),
         fontWeight: '500',
         flex: 1,
         ...Typography.default('semiBold'),
@@ -134,9 +156,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     sessionSubtitle: {
-        fontSize: 13,
+        fontSize: Platform.select({ web: 12, default: 13 }),
         color: theme.colors.textSecondary,
-        marginBottom: 4,
+        marginBottom: Platform.select({ web: 2, default: 4 }),
         ...Typography.default(),
     },
     statusRow: {
@@ -151,22 +173,22 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginRight: 4,
     },
     statusText: {
-        fontSize: 12,
+        fontSize: Platform.select({ web: 11, default: 12 }),
         fontWeight: '500',
         lineHeight: 16,
         ...Typography.default(),
     },
     avatarContainer: {
         position: 'relative',
-        width: 48,
-        height: 48,
+        width: Platform.select({ web: 40, default: 48 }),
+        height: Platform.select({ web: 40, default: 48 }),
     },
     draftIconContainer: {
         position: 'absolute',
         bottom: -2,
         right: -2,
-        width: 18,
-        height: 18,
+        width: Platform.select({ web: 16, default: 18 }),
+        height: Platform.select({ web: 16, default: 18 }),
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -191,6 +213,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: '#FFFFFF',
         textAlign: 'center',
         ...Typography.default('semiBold'),
+    },
+    selectionBar: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 2,
+        backgroundColor: theme.colors.chrome.accent,
     },
 }));
 
@@ -314,7 +344,10 @@ export function SessionsList() {
                     data={dataWithSelected}
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
+                    contentContainerStyle={{
+                        paddingBottom: safeArea.bottom + Platform.select({ web: 24, default: 128 }),
+                        maxWidth: layout.maxWidth
+                    }}
                     ListHeaderComponent={HeaderComponent}
                 />
             </View>
@@ -338,6 +371,7 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const isTablet = useIsTablet();
     const swipeableRef = React.useRef<Swipeable | null>(null);
     const swipeEnabled = Platform.OS !== 'web';
+    const avatarSize = Platform.select({ web: 40, default: 48 });
 
     const [deletingSession, performDelete] = useHappyAction(async () => {
         const result = await sessionDelete(session.id);
@@ -368,9 +402,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
     const itemContent = (
         <Pressable
-            style={[
+            style={({ pressed, hovered }: any) => [
                 styles.sessionItem,
                 selected && styles.sessionItemSelected,
+                Platform.OS === 'web' && hovered && !selected && styles.sessionItemHovered,
+                Platform.OS === 'web' && pressed && styles.sessionItemHovered,
                 isSingle ? styles.sessionItemSingle :
                     isFirst ? styles.sessionItemFirst :
                         isLast ? styles.sessionItemLast : {}
@@ -386,8 +422,11 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 }
             }}
         >
+            {Platform.OS === 'web' && selected && (
+                <View style={styles.selectionBar} />
+            )}
             <View style={styles.avatarContainer}>
-                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+                <Avatar id={avatarId} size={avatarSize} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
                 {session.draft && (
                     <View style={styles.draftIconContainer}>
                         <Ionicons

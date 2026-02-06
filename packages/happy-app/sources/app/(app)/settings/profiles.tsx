@@ -1,25 +1,17 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, Alert, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingMutable } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { Modal as HappyModal } from '@/modal/ModalManager';
 import { layout } from '@/components/layout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useWindowDimensions } from 'react-native';
 import { AIBackendProfile } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { randomUUID } from 'expo-crypto';
-
-interface ProfileDisplay {
-    id: string;
-    name: string;
-    isBuiltIn: boolean;
-}
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: AIBackendProfile | null) => void;
@@ -36,6 +28,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     const [showAddForm, setShowAddForm] = React.useState(false);
     const safeArea = useSafeAreaInsets();
     const screenWidth = useWindowDimensions().width;
+    const styles = stylesheet;
 
     const handleAddProfile = () => {
         setEditingProfile({
@@ -164,231 +157,112 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
         setEditingProfile(null);
     };
 
+    const items = React.useMemo(() => {
+        const rows: Array<
+            | { key: string; kind: 'none' }
+            | { key: string; kind: 'built-in'; profile: AIBackendProfile }
+            | { key: string; kind: 'custom'; profile: AIBackendProfile }
+            | { key: string; kind: 'add' }
+        > = [];
+
+        rows.push({ key: '__none__', kind: 'none' });
+
+        DEFAULT_PROFILES.forEach((profileDisplay) => {
+            const profile = getBuiltInProfile(profileDisplay.id);
+            if (!profile) return;
+            rows.push({ key: `built-in-${profile.id}`, kind: 'built-in', profile });
+        });
+
+        profiles.forEach((profile) => {
+            rows.push({ key: `custom-${profile.id}`, kind: 'custom', profile });
+        });
+
+        rows.push({ key: '__add__', kind: 'add' });
+
+        return rows;
+    }, [profiles]);
+
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
+        <View style={styles.screen}>
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{
-                    paddingHorizontal: screenWidth > 700 ? 16 : 8,
+                    paddingHorizontal: Platform.select({ web: 12, default: screenWidth > 700 ? 16 : 8 }),
                     paddingBottom: safeArea.bottom + 100,
                 }}
             >
                 <View style={[{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }]}>
-                    <Text style={{
-                        fontSize: 24,
-                        fontWeight: 'bold',
-                        color: theme.colors.text,
-                        marginVertical: 16,
-                        ...Typography.default('semiBold')
-                    }}>
+                    <Text style={styles.title}>
                         {t('profiles.title')}
                     </Text>
 
-                    {/* None option - no profile */}
-                    <Pressable
-                        style={{
-                            backgroundColor: theme.colors.input.background,
-                            borderRadius: 12,
-                            padding: 16,
-                            marginBottom: 12,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            borderWidth: selectedProfileId === null ? 2 : 0,
-                            borderColor: theme.colors.text,
-                        }}
-                        onPress={() => handleSelectProfile(null)}
-                    >
-                        <View style={{
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            backgroundColor: theme.colors.button.secondary.tint,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            marginRight: 12,
-                        }}>
-                            <Ionicons name="remove" size={16} color="white" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                            <Text style={{
-                                fontSize: 16,
-                                fontWeight: '600',
-                                color: theme.colors.text,
-                                ...Typography.default('semiBold')
-                            }}>
-                                {t('profiles.noProfile')}
-                            </Text>
-                            <Text style={{
-                                fontSize: 14,
-                                color: theme.colors.textSecondary,
-                                marginTop: 2,
-                                ...Typography.default()
-                            }}>
-                                {t('profiles.noProfileDescription')}
-                            </Text>
-                        </View>
-                        {selectedProfileId === null && (
-                            <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
-                        )}
-                    </Pressable>
+                    <View style={styles.listPanel}>
+                        {items.map((item, idx) => {
+                            const isLast = idx === items.length - 1;
 
-                    {/* Built-in profiles */}
-                    {DEFAULT_PROFILES.map((profileDisplay) => {
-                        const profile = getBuiltInProfile(profileDisplay.id);
-                        if (!profile) return null;
+                            if (item.kind === 'none') {
+                                return (
+                                    <ProfileRow
+                                        key={item.key}
+                                        kind="none"
+                                        title={t('profiles.noProfile')}
+                                        subtitle={t('profiles.noProfileDescription')}
+                                        selected={selectedProfileId === null}
+                                        isLast={isLast}
+                                        onPress={() => handleSelectProfile(null)}
+                                    />
+                                );
+                            }
 
-                        return (
-                            <Pressable
-                                key={profile.id}
-                                style={{
-                                    backgroundColor: theme.colors.input.background,
-                                    borderRadius: 12,
-                                    padding: 16,
-                                    marginBottom: 12,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderWidth: selectedProfileId === profile.id ? 2 : 0,
-                                    borderColor: theme.colors.text,
-                                }}
-                                onPress={() => handleSelectProfile(profile.id)}
-                            >
-                                <View style={{
-                                    width: 24,
-                                    height: 24,
-                                    borderRadius: 12,
-                                    backgroundColor: theme.colors.button.primary.background,
-                                    justifyContent: 'center',
-                                    alignItems: 'center',
-                                    marginRight: 12,
-                                }}>
-                                    <Ionicons name="star" size={16} color="white" />
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={{
-                                        fontSize: 16,
-                                        fontWeight: '600',
-                                        color: theme.colors.text,
-                                        ...Typography.default('semiBold')
-                                    }}>
-                                        {profile.name}
-                                    </Text>
-                                    <Text style={{
-                                        fontSize: 14,
-                                        color: theme.colors.textSecondary,
-                                        marginTop: 2,
-                                        ...Typography.default()
-                                    }}>
-                                        {profile.anthropicConfig?.model || 'Default model'}
-                                        {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
-                                    </Text>
-                                </View>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    {selectedProfileId === profile.id && (
-                                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
-                                    )}
-                                    <Pressable
-                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                        onPress={() => handleEditProfile(profile)}
-                                    >
-                                        <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                    </Pressable>
-                                </View>
-                            </Pressable>
-                        );
-                    })}
+                            if (item.kind === 'built-in') {
+                                const profile = item.profile;
+                                const subtitle = `${profile.anthropicConfig?.model || 'Default model'}${profile.anthropicConfig?.baseUrl ? ` • ${profile.anthropicConfig.baseUrl}` : ''}`;
 
-                    {/* Custom profiles */}
-                    {profiles.map((profile) => (
-                        <Pressable
-                            key={profile.id}
-                            style={{
-                                backgroundColor: theme.colors.input.background,
-                                borderRadius: 12,
-                                padding: 16,
-                                marginBottom: 12,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                borderWidth: selectedProfileId === profile.id ? 2 : 0,
-                                borderColor: theme.colors.text,
-                            }}
-                            onPress={() => handleSelectProfile(profile.id)}
-                        >
-                            <View style={{
-                                width: 24,
-                                height: 24,
-                                borderRadius: 12,
-                                backgroundColor: theme.colors.button.secondary.tint,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 12,
-                            }}>
-                                <Ionicons name="person" size={16} color="white" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    color: theme.colors.text,
-                                    ...Typography.default('semiBold')
-                                }}>
-                                    {profile.name}
-                                </Text>
-                                <Text style={{
-                                    fontSize: 14,
-                                    color: theme.colors.textSecondary,
-                                    marginTop: 2,
-                                    ...Typography.default()
-                                }}>
-                                    {profile.anthropicConfig?.model || t('profiles.defaultModel')}
-                                    {profile.tmuxConfig?.sessionName && ` • tmux: ${profile.tmuxConfig.sessionName}`}
-                                    {profile.tmuxConfig?.tmpDir && ` • dir: ${profile.tmuxConfig.tmpDir}`}
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                {selectedProfileId === profile.id && (
-                                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
-                                )}
-                                <Pressable
-                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                    onPress={() => handleEditProfile(profile)}
-                                >
-                                    <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                </Pressable>
-                                <Pressable
-                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                    onPress={() => handleDeleteProfile(profile)}
-                                    style={{ marginLeft: 16 }}
-                                >
-                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
-                                </Pressable>
-                            </View>
-                        </Pressable>
-                    ))}
+                                return (
+                                    <ProfileRow
+                                        key={item.key}
+                                        kind="built-in"
+                                        title={profile.name}
+                                        subtitle={subtitle}
+                                        selected={selectedProfileId === profile.id}
+                                        isLast={isLast}
+                                        onPress={() => handleSelectProfile(profile.id)}
+                                        onEdit={() => handleEditProfile(profile)}
+                                    />
+                                );
+                            }
 
-                    {/* Add profile button */}
-                    <Pressable
-                        style={{
-                            backgroundColor: theme.colors.surface,
-                            borderRadius: 12,
-                            padding: 16,
-                            marginBottom: 12,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
-                        onPress={handleAddProfile}
-                    >
-                        <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
-                        <Text style={{
-                            fontSize: 16,
-                            fontWeight: '600',
-                            color: theme.colors.button.secondary.tint,
-                            marginLeft: 8,
-                            ...Typography.default('semiBold')
-                        }}>
-                            {t('profiles.addProfile')}
-                        </Text>
-                    </Pressable>
+                            if (item.kind === 'custom') {
+                                const profile = item.profile;
+                                const subtitle = `${profile.anthropicConfig?.model || t('profiles.defaultModel')}${profile.tmuxConfig?.sessionName ? ` • tmux: ${profile.tmuxConfig.sessionName}` : ''}${profile.tmuxConfig?.tmpDir ? ` • dir: ${profile.tmuxConfig.tmpDir}` : ''}`;
+
+                                return (
+                                    <ProfileRow
+                                        key={item.key}
+                                        kind="custom"
+                                        title={profile.name}
+                                        subtitle={subtitle}
+                                        selected={selectedProfileId === profile.id}
+                                        isLast={isLast}
+                                        onPress={() => handleSelectProfile(profile.id)}
+                                        onEdit={() => handleEditProfile(profile)}
+                                        onDelete={() => handleDeleteProfile(profile)}
+                                    />
+                                );
+                            }
+
+                            return (
+                                <ProfileRow
+                                    key={item.key}
+                                    kind="add"
+                                    title={t('profiles.addProfile')}
+                                    selected={false}
+                                    isLast={isLast}
+                                    onPress={handleAddProfile}
+                                />
+                            );
+                        })}
+                    </View>
                 </View>
             </ScrollView>
 
@@ -421,16 +295,249 @@ const profileManagerStyles = StyleSheet.create((theme) => ({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: Platform.select({
+            web: theme.dark ? 'rgba(0, 0, 0, 0.45)' : 'rgba(0, 0, 0, 0.18)',
+            default: 'rgba(0, 0, 0, 0.5)',
+        }),
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
+        padding: Platform.select({ web: 12, default: 20 }),
     },
     modalContent: {
         width: '100%',
-        maxWidth: Math.min(layout.maxWidth, 600),
+        maxWidth: Math.min(layout.maxWidth, 720),
         maxHeight: '90%',
+        borderRadius: Platform.select({ web: theme.borderRadius.lg, default: 0 }),
+        overflow: Platform.OS === 'web' ? 'hidden' : 'visible',
+        ...(Platform.OS === 'web'
+            ? ({
+                boxShadow: theme.dark
+                    ? '0 18px 60px rgba(0, 0, 0, 0.6)'
+                    : '0 18px 60px rgba(0, 0, 0, 0.22)',
+            } as any)
+            : null),
     },
 }));
 
 export default ProfileManager;
+
+const stylesheet = StyleSheet.create((theme) => ({
+    screen: {
+        flex: 1,
+        backgroundColor: theme.colors.groupped.background,
+    },
+    title: {
+        fontSize: Platform.select({ web: 16, default: 24 }),
+        fontWeight: 'bold',
+        color: theme.colors.text,
+        marginVertical: Platform.select({ web: 10, default: 16 }),
+        ...Typography.default('semiBold'),
+    },
+    listPanel: {
+        ...(Platform.OS === 'web'
+            ? ({
+                backgroundColor: theme.colors.surface,
+                borderRadius: theme.borderRadius.md,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.chrome.panelBorder,
+                overflow: 'hidden',
+            } as any)
+            : null),
+    },
+    row: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        position: 'relative',
+    },
+    rowWeb: {
+        height: 52,
+        paddingHorizontal: 12,
+        backgroundColor: 'transparent',
+    },
+    rowNative: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    rowWebDivider: {
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.chrome.panelBorder,
+    },
+    rowWebHovered: {
+        backgroundColor: theme.colors.chrome.listHoverBackground,
+    },
+    rowWebSelected: {
+        backgroundColor: theme.colors.chrome.listActiveBackground,
+    },
+    rowNativeSelected: {
+        borderColor: theme.colors.text,
+        borderWidth: 2,
+    },
+    selectionBar: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 2,
+        backgroundColor: theme.colors.chrome.accent,
+    },
+    leftIcon: {
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        backgroundColor: Platform.select({ web: theme.colors.surfaceHighest, default: theme.colors.button.secondary.tint }),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+    leftIconAccent: {
+        backgroundColor: theme.colors.chrome.accent,
+    },
+    content: {
+        flex: 1,
+    },
+    rowTitle: {
+        fontSize: Platform.select({ web: 13, default: 16 }),
+        fontWeight: '600',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    rowSubtitle: {
+        fontSize: Platform.select({ web: 12, default: 14 }),
+        color: theme.colors.textSecondary,
+        marginTop: 2,
+        ...Typography.default(),
+    },
+    actions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 8,
+        gap: 8,
+    },
+    actionIcon: {
+        color: theme.colors.textSecondary,
+    },
+    actionIconDestructive: {
+        color: theme.colors.deleteAction,
+    },
+    checkIcon: {
+        marginRight: 6,
+        color: theme.colors.chrome.accent,
+    },
+    addRow: {
+        justifyContent: 'center',
+    },
+    addTitle: {
+        fontSize: Platform.select({ web: 13, default: 16 }),
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+        marginLeft: 8,
+        ...Typography.default('semiBold'),
+    },
+}));
+
+const ProfileRow = React.memo((props: {
+    kind: 'none' | 'built-in' | 'custom' | 'add';
+    title: string;
+    subtitle?: string;
+    selected: boolean;
+    isLast: boolean;
+    onPress: () => void;
+    onEdit?: () => void;
+    onDelete?: () => void;
+}) => {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    const [hovered, setHovered] = React.useState(false);
+
+    const isWeb = Platform.OS === 'web';
+    const showActions = !isWeb || hovered || props.selected;
+
+    const icon = (() => {
+        switch (props.kind) {
+            case 'none': return { name: 'remove' as const, accent: false };
+            case 'built-in': return { name: 'star' as const, accent: true };
+            case 'custom': return { name: 'person' as const, accent: false };
+            case 'add': return { name: 'add' as const, accent: false };
+        }
+    })();
+
+    return (
+        <Pressable
+            onPress={props.onPress}
+            onHoverIn={isWeb ? () => setHovered(true) : undefined}
+            onHoverOut={isWeb ? () => setHovered(false) : undefined}
+            style={({ pressed, hovered: pressableHovered }: any) => ([
+                styles.row,
+                isWeb ? styles.rowWeb : styles.rowNative,
+                isWeb && !props.isLast && styles.rowWebDivider,
+                isWeb && (pressableHovered || pressed) && styles.rowWebHovered,
+                isWeb && props.selected && styles.rowWebSelected,
+                !isWeb && props.selected && styles.rowNativeSelected,
+                props.kind === 'add' && isWeb && styles.addRow,
+            ])}
+        >
+            {isWeb && props.selected && <View style={styles.selectionBar} />}
+
+            {props.kind !== 'add' ? (
+                <View style={[styles.leftIcon, icon.accent && styles.leftIconAccent]}>
+                    <Ionicons
+                        name={icon.name}
+                        size={14}
+                        color={icon.accent ? '#FFFFFF' : (isWeb ? theme.colors.textSecondary : 'white')}
+                    />
+                </View>
+            ) : (
+                <Ionicons name="add-circle-outline" size={18} color={theme.colors.textSecondary} />
+            )}
+
+            <View style={styles.content}>
+                {props.kind === 'add' ? (
+                    <Text style={styles.addTitle}>{props.title}</Text>
+                ) : (
+                    <>
+                        <Text style={styles.rowTitle}>{props.title}</Text>
+                        {!!props.subtitle && <Text style={styles.rowSubtitle} numberOfLines={1}>{props.subtitle}</Text>}
+                    </>
+                )}
+            </View>
+
+            {(props.onEdit || props.onDelete || props.selected) && (
+                <View style={styles.actions}>
+                    {props.selected && (
+                        <Ionicons name="checkmark-circle" size={18} color={styles.checkIcon.color as any} />
+                    )}
+                    {props.onEdit && (
+                        <Pressable
+                            hitSlop={10}
+                            style={{ opacity: showActions ? 1 : 0 }}
+                            onPress={(e: any) => {
+                                e?.stopPropagation?.();
+                                props.onEdit?.();
+                            }}
+                        >
+                            <Ionicons name="create-outline" size={18} color={styles.actionIcon.color as any} />
+                        </Pressable>
+                    )}
+                    {props.onDelete && (
+                        <Pressable
+                            hitSlop={10}
+                            style={{ opacity: showActions ? 1 : 0 }}
+                            onPress={(e: any) => {
+                                e?.stopPropagation?.();
+                                props.onDelete?.();
+                            }}
+                        >
+                            <Ionicons name="trash-outline" size={18} color={styles.actionIconDestructive.color as any} />
+                        </Pressable>
+                    )}
+                </View>
+            )}
+        </Pressable>
+    );
+});

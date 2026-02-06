@@ -30,10 +30,12 @@ export default function Root({ children }: { children: React.ReactNode }) {
 
 const responsiveBackground = `
 body {
-  background-color: #fff;
+  /* Match the app's web "light" background (VSCode-ish). */
+  background-color: #FFFFFF;
 }
 @media (prefers-color-scheme: dark) {
   body {
-    background-color: #000;
+    /* Match the app's web "dark" background (VSCode Dark+ editor bg). */
+    background-color: #1E1E1E;
   }
 }`;

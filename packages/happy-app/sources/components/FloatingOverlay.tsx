@@ -5,16 +5,23 @@ import { StyleSheet } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
-        borderRadius: 12,
+        borderRadius: Platform.select({ web: theme.borderRadius.md, default: 12 }),
         overflow: 'hidden',
         backgroundColor: theme.colors.surface,
-        borderWidth: Platform.OS === 'web' ? 0 : 0.5,
-        borderColor: theme.colors.modal.border,
+        borderWidth: Platform.select({ web: StyleSheet.hairlineWidth, default: 0.5 }),
+        borderColor: Platform.select({ web: theme.colors.chrome.panelBorder, default: theme.colors.modal.border }),
         shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 2 },
         shadowRadius: 3.84,
         shadowOpacity: theme.colors.shadow.opacity,
         elevation: 5,
+        ...(Platform.OS === 'web'
+            ? ({
+                boxShadow: theme.dark
+                    ? '0 10px 28px rgba(0, 0, 0, 0.55)'
+                    : '0 10px 28px rgba(0, 0, 0, 0.18)',
+            } as any)
+            : null),
     },
 }));
 

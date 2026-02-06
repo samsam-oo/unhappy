@@ -157,7 +157,7 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
             <ScrollView
                 style={{ flexGrow: 0, flexShrink: 0 }}
                 horizontal={true}
-                contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
+                contentContainerStyle={{ paddingHorizontal: Platform.select({ web: 12, default: 16 }), paddingVertical: Platform.select({ web: 12, default: 16 }) }}
                 showsHorizontalScrollIndicator={false}
             >
                 <SimpleSyntaxHighlighter
@@ -290,10 +290,10 @@ const style = StyleSheet.create((theme) => ({
 
     text: {
         ...Typography.default(),
-        fontSize: 16,
-        lineHeight: 24, // Reduced from 28 to 24
-        marginTop: 8,
-        marginBottom: 8,
+        fontSize: Platform.select({ web: 14, default: 16 }),
+        lineHeight: Platform.select({ web: 20, default: 24 }),
+        marginTop: Platform.select({ web: 6, default: 8 }),
+        marginBottom: Platform.select({ web: 6, default: 8 }),
         color: theme.colors.text,
         fontWeight: '400',
     },
@@ -309,8 +309,8 @@ const style = StyleSheet.create((theme) => ({
     },
     code: {
         ...Typography.mono(),
-        fontSize: 16,
-        lineHeight: 21,  // Reduced from 24 to 21
+        fontSize: Platform.select({ web: 13, default: 16 }),
+        lineHeight: Platform.select({ web: 18, default: 21 }),
         backgroundColor: theme.colors.surfaceHighest,
         color: theme.colors.text,
     },
@@ -327,41 +327,41 @@ const style = StyleSheet.create((theme) => ({
         color: theme.colors.text,
     },
     header1: {
-        fontSize: 16,
-        lineHeight: 24,  // Reduced from 36 to 24
+        fontSize: Platform.select({ web: 14, default: 16 }),
+        lineHeight: Platform.select({ web: 20, default: 24 }),
         fontWeight: '900',
-        marginTop: 16,
-        marginBottom: 8
+        marginTop: Platform.select({ web: 10, default: 16 }),
+        marginBottom: Platform.select({ web: 6, default: 8 })
     },
     header2: {
-        fontSize: 20,
-        lineHeight: 24,  // Reduced from 36 to 32
+        fontSize: Platform.select({ web: 16, default: 20 }),
+        lineHeight: Platform.select({ web: 22, default: 24 }),
         fontWeight: '600',
-        marginTop: 16,
-        marginBottom: 8
+        marginTop: Platform.select({ web: 10, default: 16 }),
+        marginBottom: Platform.select({ web: 6, default: 8 })
     },
     header3: {
-        fontSize: 16,
-        lineHeight: 28,  // Reduced from 32 to 28
+        fontSize: Platform.select({ web: 14, default: 16 }),
+        lineHeight: Platform.select({ web: 22, default: 28 }),
         fontWeight: '600',
-        marginTop: 16,
-        marginBottom: 8,
+        marginTop: Platform.select({ web: 10, default: 16 }),
+        marginBottom: Platform.select({ web: 6, default: 8 }),
     },
     header4: {
-        fontSize: 16,
-        lineHeight: 24,
+        fontSize: Platform.select({ web: 14, default: 16 }),
+        lineHeight: Platform.select({ web: 20, default: 24 }),
         fontWeight: '600',
-        marginTop: 8,
-        marginBottom: 8,
+        marginTop: Platform.select({ web: 6, default: 8 }),
+        marginBottom: Platform.select({ web: 6, default: 8 }),
     },
     header5: {
-        fontSize: 16,
-        lineHeight: 24,  // Reduced from 28 to 24
+        fontSize: Platform.select({ web: 14, default: 16 }),
+        lineHeight: Platform.select({ web: 20, default: 24 }),
         fontWeight: '600'
     },
     header6: {
-        fontSize: 16,
-        lineHeight: 24, // Reduced from 28 to 24
+        fontSize: Platform.select({ web: 14, default: 16 }),
+        lineHeight: Platform.select({ web: 20, default: 24 }),
         fontWeight: '600'
     },
 
@@ -393,15 +393,15 @@ const style = StyleSheet.create((theme) => ({
 
     codeBlock: {
         backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
-        marginVertical: 8,
+        borderRadius: Platform.select({ web: 6, default: 8 }),
+        marginVertical: Platform.select({ web: 6, default: 8 }),
         position: 'relative',
         zIndex: 1,
     },
     copyButtonWrapper: {
         position: 'absolute',
-        top: 8,
-        right: 8,
+        top: Platform.select({ web: 6, default: 8 }),
+        right: Platform.select({ web: 6, default: 8 }),
         opacity: 0,
         zIndex: 10,
         elevation: 10,
@@ -415,8 +415,8 @@ const style = StyleSheet.create((theme) => ({
         ...Typography.mono(),
         color: theme.colors.textSecondary,
         fontSize: 12,
-        marginTop: 8,
-        paddingHorizontal: 16,
+        marginTop: Platform.select({ web: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
         marginBottom: 0,
     },
     codeText: {
@@ -428,8 +428,8 @@ const style = StyleSheet.create((theme) => ({
     horizontalRule: {
         height: 1,
         backgroundColor: theme.colors.divider,
-        marginTop: 8,
-        marginBottom: 8,
+        marginTop: Platform.select({ web: 6, default: 8 }),
+        marginBottom: Platform.select({ web: 6, default: 8 }),
     },
     copyButtonContainer: {
         position: 'absolute',
@@ -472,14 +472,14 @@ const style = StyleSheet.create((theme) => ({
 
     optionsContainer: {
         flexDirection: 'column',
-        gap: 8,
-        marginVertical: 8,
+        gap: Platform.select({ web: 6, default: 8 }),
+        marginVertical: Platform.select({ web: 6, default: 8 }),
     },
     optionItem: {
         backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        borderRadius: Platform.select({ web: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+        paddingVertical: Platform.select({ web: 10, default: 12 }),
         borderWidth: 1,
         borderColor: theme.colors.divider,
     },
@@ -489,8 +489,8 @@ const style = StyleSheet.create((theme) => ({
     },
     optionText: {
         ...Typography.default(),
-        fontSize: 16,
-        lineHeight: 24,
+        fontSize: Platform.select({ web: 14, default: 16 }),
+        lineHeight: Platform.select({ web: 20, default: 24 }),
         color: theme.colors.text,
     },
 

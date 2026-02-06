@@ -2,6 +2,7 @@ import React from 'react';
 import { View, TextInput, StyleSheet, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface CommandPaletteInputProps {
     value: string;
@@ -11,6 +12,7 @@ interface CommandPaletteInputProps {
 }
 
 export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef }: CommandPaletteInputProps) {
+    const { theme } = useUnistyles();
     const handleKeyDown = React.useCallback((e: any) => {
         if (Platform.OS === 'web' && onKeyPress) {
             const key = e.nativeEvent.key;
@@ -25,14 +27,14 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef 
     }, [onKeyPress]);
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { borderBottomColor: theme.colors.chrome.panelBorder, backgroundColor: theme.colors.surface }]}>
             <TextInput
                 ref={inputRef}
-                style={[styles.input, Typography.default()]}
+                style={[styles.input, { color: theme.colors.text }, Typography.default()]}
                 value={value}
                 onChangeText={onChangeText}
                 placeholder={t('commandPalette.placeholder')}
-                placeholderTextColor="#999"
+                placeholderTextColor={theme.colors.textSecondary}
                 autoFocus
                 autoCorrect={false}
                 autoCapitalize="none"
@@ -51,9 +53,9 @@ const styles = StyleSheet.create({
         backgroundColor: '#FAFAFA',
     },
     input: {
-        paddingHorizontal: 32,
-        paddingVertical: 24,
-        fontSize: 20,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        fontSize: 16,
         color: '#000',
         letterSpacing: -0.3,
         // Remove outline on web

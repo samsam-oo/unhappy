@@ -15,8 +15,17 @@ function getMaxWidth(): number {
     if (isRunningOnMac()) {
         return Number.POSITIVE_INFINITY;
     }
+
+    // Web: avoid the "stretched mobile UI" feeling by allowing a bit more width on large screens,
+    // but keep line-length reasonable for chat.
+    if (Platform.OS === 'web') {
+        const { width } = Dimensions.get('window');
+        if (width >= 1440) return 1100;
+        if (width >= 1024) return 960;
+        return 800;
+    }
     
-    // For tablets and web, use 700px
+    // Tablets: keep content reasonably narrow for readability.
     return 800;
 }
 
@@ -33,8 +42,15 @@ function getMaxLayoutWidth(): number {
     if (isRunningOnMac()) {
         return 1400;
     }
+
+    if (Platform.OS === 'web') {
+        const { width } = Dimensions.get('window');
+        if (width >= 1440) return 1100;
+        if (width >= 1024) return 960;
+        return 800;
+    }
     
-    // For tablets and web, use 700px
+    // Tablets: keep content reasonably narrow for readability.
     return 800;
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -23,13 +23,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 24,
-        paddingVertical: 16,
+        paddingHorizontal: Platform.select({ web: 16, default: 24 }),
+        paddingVertical: Platform.select({ web: 10, default: 16 }),
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
     },
     headerTitle: {
-        fontSize: 18,
+        fontSize: Platform.select({ web: 15, default: 18 }),
         fontWeight: '600',
         color: theme.colors.text,
         ...Typography.default('semiBold'),
@@ -37,8 +37,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     stepIndicator: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 16,
+        paddingHorizontal: Platform.select({ web: 16, default: 24 }),
+        paddingVertical: Platform.select({ web: 10, default: 16 }),
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
     },
@@ -56,35 +56,35 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     stepContent: {
         flex: 1,
-        paddingHorizontal: 24,
-        paddingTop: 24,
+        paddingHorizontal: Platform.select({ web: 16, default: 24 }),
+        paddingTop: Platform.select({ web: 16, default: 24 }),
         paddingBottom: 0, // No bottom padding since footer is separate
     },
     stepTitle: {
-        fontSize: 20,
+        fontSize: Platform.select({ web: 16, default: 20 }),
         fontWeight: '600',
         color: theme.colors.text,
         marginBottom: 8,
         ...Typography.default('semiBold'),
     },
     stepDescription: {
-        fontSize: 16,
+        fontSize: Platform.select({ web: 13, default: 16 }),
         color: theme.colors.textSecondary,
-        marginBottom: 24,
+        marginBottom: Platform.select({ web: 16, default: 24 }),
         ...Typography.default(),
     },
     footer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingHorizontal: 24,
-        paddingVertical: 16,
+        paddingHorizontal: Platform.select({ web: 16, default: 24 }),
+        paddingVertical: Platform.select({ web: 10, default: 16 }),
         borderTopWidth: 1,
         borderTopColor: theme.colors.divider,
         backgroundColor: theme.colors.surface, // Ensure footer has solid background
     },
     button: {
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingVertical: Platform.select({ web: 10, default: 12 }),
         borderRadius: 8,
         minWidth: 100,
         alignItems: 'center',
@@ -123,7 +123,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     agentOption: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 16,
+        padding: Platform.select({ web: 12, default: 16 }),
         borderRadius: 12,
         borderWidth: 2,
         marginBottom: 12,

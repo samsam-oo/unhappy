@@ -2,22 +2,24 @@ import * as React from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
+import { useUnistyles } from 'react-native-unistyles';
 interface ToolStatusIndicatorProps {
     tool: ToolCall;
 }
 
 export function ToolStatusIndicator({ tool }: ToolStatusIndicatorProps) {
+    const { theme } = useUnistyles();
     return (
         <View style={styles.container}>
-            <StatusIndicator state={tool.state} />
+            <StatusIndicator state={tool.state} accentColor={theme.colors.chrome.accent} />
         </View>
     );
 }
 
-function StatusIndicator({ state }: { state: ToolCall['state'] }) {
+function StatusIndicator({ state, accentColor }: { state: ToolCall['state']; accentColor: string }) {
     switch (state) {
         case 'running':
-            return <ActivityIndicator size="small" color="#007AFF" />;
+            return <ActivityIndicator size="small" color={accentColor} />;
         case 'completed':
             return <Ionicons name="checkmark-circle" size={22} color="#34C759" />;
         case 'error':

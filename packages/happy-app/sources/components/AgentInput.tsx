@@ -80,8 +80,8 @@ const MAX_CONTEXT_SIZE = 190000;
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
-        paddingBottom: 8,
-        paddingTop: 8,
+        paddingBottom: Platform.select({ web: 6, default: 8 }),
+        paddingTop: Platform.select({ web: 6, default: 8 }),
     },
     innerContainer: {
         width: '100%',
@@ -89,11 +89,18 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     unifiedPanel: {
         backgroundColor: theme.colors.input.background,
-        borderRadius: Platform.select({ default: 16, android: 20 }),
+        borderRadius: Platform.select({ web: theme.borderRadius.md, default: 16, android: 20 }),
         overflow: 'hidden',
         paddingVertical: 2,
         paddingBottom: 8,
         paddingHorizontal: 8,
+        ...(Platform.OS === 'web'
+            ? {
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.colors.chrome.panelBorder,
+                backgroundColor: theme.colors.surfaceHigh,
+            }
+            : null),
     },
     inputContainer: {
         flexDirection: 'row',
@@ -129,6 +136,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         right: -1000,
         bottom: -1000,
         zIndex: 999,
+        backgroundColor: Platform.select({
+            web: theme.dark ? 'rgba(0, 0, 0, 0.32)' : 'rgba(0, 0, 0, 0.10)',
+            default: 'transparent'
+        }),
     },
     overlaySection: {
         paddingVertical: 8,
@@ -137,21 +148,21 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 12,
         fontWeight: '600',
         color: theme.colors.textSecondary,
-        paddingHorizontal: 16,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
         paddingBottom: 4,
         ...Typography.default('semiBold'),
     },
     overlayDivider: {
         height: 1,
-        backgroundColor: theme.colors.divider,
-        marginHorizontal: 16,
+        backgroundColor: Platform.select({ web: theme.colors.chrome.panelBorder, default: theme.colors.divider }),
+        marginHorizontal: Platform.select({ web: 12, default: 16 }),
     },
 
     // Selection styles
     selectionItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
         paddingVertical: 8,
         backgroundColor: 'transparent',
     },
@@ -195,7 +206,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
         paddingBottom: 4,
     },
     statusRow: {
@@ -534,10 +545,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     <Text style={styles.overlaySectionTitle}>
                                         {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
                                     </Text>
-                                    {((isCodex || isGemini)
-                                        ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
-                                    ).map((mode) => {
+                                {((isCodex || isGemini)
+                                    ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
+                                    : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
+                                ).map((mode) => {
                                         const modeConfig = isCodex ? {
                                             'default': { label: t('agentInput.codexPermissionMode.default') },
                                             'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
@@ -562,12 +573,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             <Pressable
                                                 key={mode}
                                                 onPress={() => handleSettingsSelect(mode)}
-                                                style={({ pressed }) => ({
+                                                style={({ pressed, hovered }: any) => ({
                                                     flexDirection: 'row',
                                                     alignItems: 'center',
-                                                    paddingHorizontal: 16,
+                                                    paddingHorizontal: Platform.select({ web: 12, default: 16 }),
                                                     paddingVertical: 8,
-                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                    backgroundColor: Platform.OS === 'web'
+                                                        ? (pressed
+                                                            ? theme.colors.chrome.listActiveBackground
+                                                            : hovered
+                                                                ? theme.colors.chrome.listHoverBackground
+                                                                : 'transparent')
+                                                        : (pressed ? theme.colors.surfacePressed : 'transparent')
                                                 })}
                                             >
                                                 <View style={{
@@ -604,8 +621,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {/* Divider */}
                                 <View style={{
                                     height: 1,
-                                    backgroundColor: theme.colors.divider,
-                                    marginHorizontal: 16
+                                    backgroundColor: Platform.select({ web: theme.colors.chrome.panelBorder, default: theme.colors.divider }),
+                                    marginHorizontal: Platform.select({ web: 12, default: 16 })
                                 }} />
 
                                 {/* Model Section */}
@@ -614,7 +631,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         fontSize: 12,
                                         fontWeight: '600',
                                         color: theme.colors.textSecondary,
-                                        paddingHorizontal: 16,
+                                        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
                                         paddingBottom: 4,
                                         ...Typography.default('semiBold')
                                     }}>
@@ -638,12 +655,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                         hapticsLight();
                                                         props.onModelModeChange?.(model);
                                                     }}
-                                                    style={({ pressed }) => ({
+                                                    style={({ pressed, hovered }: any) => ({
                                                         flexDirection: 'row',
                                                         alignItems: 'center',
-                                                        paddingHorizontal: 16,
+                                                        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
                                                         paddingVertical: 8,
-                                                        backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                        backgroundColor: Platform.OS === 'web'
+                                                            ? (pressed
+                                                                ? theme.colors.chrome.listActiveBackground
+                                                                : hovered
+                                                                    ? theme.colors.chrome.listHoverBackground
+                                                                    : 'transparent')
+                                                            : (pressed ? theme.colors.surfacePressed : 'transparent')
                                                     })}
                                                 >
                                                     <View style={{
@@ -688,7 +711,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.textSecondary,
-                                            paddingHorizontal: 16,
+                                            paddingHorizontal: Platform.select({ web: 12, default: 16 }),
                                             paddingVertical: 8,
                                             ...Typography.default()
                                         }}>

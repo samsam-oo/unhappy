@@ -6,9 +6,10 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export type RoundButtonSize = 'large' | 'normal' | 'small';
 const sizes: { [key in RoundButtonSize]: { height: number, fontSize: number, hitSlop: number, pad: number } } = {
-    large: { height: 48, fontSize: 21, hitSlop: 0, pad: Platform.OS == 'ios' ? 0 : -1 },
-    normal: { height: 32, fontSize: 16, hitSlop: 8, pad: Platform.OS == 'ios' ? 1 : -2 },
-    small: { height: 24, fontSize: 14, hitSlop: 12, pad: Platform.OS == 'ios' ? -1 : -1 }
+    // Web: denser controls to match desktop UI expectations.
+    large: { height: Platform.OS === 'web' ? 40 : 48, fontSize: Platform.OS === 'web' ? 16 : 21, hitSlop: 0, pad: Platform.OS == 'ios' ? 0 : -1 },
+    normal: { height: Platform.OS === 'web' ? 30 : 32, fontSize: Platform.OS === 'web' ? 14 : 16, hitSlop: 8, pad: Platform.OS == 'ios' ? 1 : -2 },
+    small: { height: Platform.OS === 'web' ? 24 : 24, fontSize: Platform.OS === 'web' ? 12 : 14, hitSlop: 12, pad: Platform.OS == 'ios' ? -1 : -1 }
 }
 
 export type RoundButtonDisplay = 'default' | 'inverted';

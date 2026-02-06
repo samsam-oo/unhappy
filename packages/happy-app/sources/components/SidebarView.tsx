@@ -1,6 +1,6 @@
 import { useSocketStatus, useFriendRequests, useSettings } from '@/sync/storage';
 import * as React from 'react';
-import { Text, View, Pressable, useWindowDimensions } from 'react-native';
+import { Text, View, Pressable, useWindowDimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
@@ -15,28 +15,31 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 import { Ionicons } from '@expo/vector-icons';
+import { isRunningOnMac } from '@/utils/platform';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         flex: 1,
         borderStyle: 'solid',
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: theme.colors.chrome.sidebarBackground,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.divider,
+        borderColor: theme.colors.chrome.panelBorder,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        backgroundColor: theme.colors.groupped.background,
+        paddingHorizontal: 12,
+        backgroundColor: theme.colors.chrome.sidebarBackground,
         position: 'relative',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.chrome.panelBorder,
     },
     logoContainer: {
-        width: 32,
+        width: 24,
     },
     logo: {
-        height: 24,
-        width: 24,
+        height: 18,
+        width: 18,
     },
     titleContainer: {
         position: 'absolute',
@@ -54,7 +57,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'center',
     },
     titleText: {
-        fontSize: 17,
+        fontSize: 13,
         fontWeight: '600',
         color: theme.colors.header.tint,
         ...Typography.default('semiBold'),
@@ -68,7 +71,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginRight: 4,
     },
     statusText: {
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: '500',
         lineHeight: 16,
         ...Typography.default(),
@@ -77,7 +80,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginLeft: 'auto',
         alignItems: 'flex-end',
         flexDirection: 'row',
-        gap: 8,
+        gap: 6,
     },
     settingsButton: {
         color: theme.colors.header.tint,
@@ -184,12 +187,14 @@ export const SidebarView = React.memo(() => {
     })();
 
     // Calculate sidebar width and determine title positioning
-    // Uses same formula as SidebarNavigator.tsx:18 for consistency
+    // Uses same formula as SidebarNavigator.tsx for consistency
     const { width: windowWidth } = useWindowDimensions();
-    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
-    // With experiments: 4 icons (148px total), threshold 408px > max 360px → always left-justify
-    // Without experiments: 3 icons (108px total), threshold 328px → left-justify below ~340px
-    const shouldLeftJustify = settings.experiments || sidebarWidth < 340;
+    const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.26), 240), 320);
+    // Keep the title in flow when the header is tight to avoid overlap with right-side icons.
+    const shouldLeftJustify = settings.experiments || sidebarWidth < 300;
+    const actionIconSize = Platform.select({ web: 20, default: 28 });
+    const actionImageSize = Platform.select({ web: 20, default: 32 });
+    const showFab = Platform.OS !== 'web' && !isRunningOnMac();
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
@@ -224,7 +229,7 @@ export const SidebarView = React.memo(() => {
                         <Image
                             source={theme.dark ? require('@/assets/images/logo-white.png') : require('@/assets/images/logo-black.png')}
                             contentFit="contain"
-                            style={[styles.logo, { height: 24, width: 24 }]}
+                            style={[styles.logo, { height: 18, width: 18 }]}
                         />
                     </View>
 
@@ -245,7 +250,7 @@ export const SidebarView = React.memo(() => {
                                 <Image
                                     source={require('@/assets/images/brutalist/Brutalism 3.png')}
                                     contentFit="contain"
-                                    style={[{ width: 32, height: 32 }]}
+                                    style={[{ width: actionImageSize, height: actionImageSize }]}
                                     tintColor={theme.colors.header.tint}
                                 />
                             </Pressable>
@@ -258,7 +263,7 @@ export const SidebarView = React.memo(() => {
                             <Image
                                 source={require('@/assets/images/brutalist/Brutalism 27.png')}
                                 contentFit="contain"
-                                style={[{ width: 32, height: 32 }]}
+                                style={[{ width: actionImageSize, height: actionImageSize }]}
                                 tintColor={theme.colors.header.tint}
                             />
                             {friendRequests.length > 0 && (
@@ -279,7 +284,7 @@ export const SidebarView = React.memo(() => {
                             <Image
                                 source={require('@/assets/images/brutalist/Brutalism 9.png')}
                                 contentFit="contain"
-                                style={[{ width: 32, height: 32 }]}
+                                style={[{ width: actionImageSize, height: actionImageSize }]}
                                 tintColor={theme.colors.header.tint}
                             />
                         </Pressable>
@@ -287,7 +292,7 @@ export const SidebarView = React.memo(() => {
                             onPress={handleNewSession}
                             hitSlop={15}
                         >
-                            <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
+                            <Ionicons name="add-outline" size={actionIconSize} color={theme.colors.header.tint} />
                         </Pressable>
                     </View>
 
@@ -303,7 +308,7 @@ export const SidebarView = React.memo(() => {
                 )}
                 <MainView variant="sidebar" />
             </View>
-            <FABWide onPress={handleNewSession} />
+            {showFab && <FABWide onPress={handleNewSession} />}
         </>
     )
 });

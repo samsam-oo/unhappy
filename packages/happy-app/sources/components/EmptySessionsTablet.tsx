@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -12,30 +12,30 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: 48,
+        paddingHorizontal: Platform.select({ web: 16, default: 24 }),
     },
     iconContainer: {
-        marginBottom: 24,
+        marginBottom: 16,
     },
     titleText: {
-        fontSize: 20,
+        fontSize: 16,
         color: theme.colors.textSecondary,
         textAlign: 'center',
         marginBottom: 8,
         ...Typography.default('regular'),
     },
     descriptionText: {
-        fontSize: 16,
+        fontSize: 13,
         color: theme.colors.textSecondary,
         textAlign: 'center',
-        marginBottom: 24,
+        marginBottom: 16,
         ...Typography.default(),
     },
     button: {
         backgroundColor: theme.colors.button.primary.background,
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: 12,
+        paddingHorizontal: 18,
+        paddingVertical: 10,
+        borderRadius: 10,
         flexDirection: 'row',
         alignItems: 'center',
     },
@@ -47,7 +47,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginRight: 8,
     },
     buttonText: {
-        fontSize: 16,
+        fontSize: 14,
         color: theme.colors.button.primary.tint,
         fontWeight: '600',
         ...Typography.default('semiBold'),

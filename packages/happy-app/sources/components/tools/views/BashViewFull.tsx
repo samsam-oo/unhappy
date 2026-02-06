@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, Platform } from 'react-native';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
@@ -63,8 +63,8 @@ export const BashViewFull = React.memo<BashViewFullProps>(({ tool, metadata }) =
 const styles = StyleSheet.create({
     container: {
         paddingHorizontal: 0,
-        paddingTop: 32,
-        paddingBottom: 64,
+        paddingTop: Platform.select({ web: 12, default: 32 }),
+        paddingBottom: Platform.select({ web: 24, default: 64 }),
         marginBottom: 0,
         flex: 1,
     },

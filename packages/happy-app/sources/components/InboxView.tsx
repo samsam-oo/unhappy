@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useFeedItems, useFeedLoaded, useFriendsLoaded, useRealtimeStatus } from '@/sync/storage';
 import { UserCard } from '@/components/UserCard';
@@ -26,32 +26,32 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 24,
+        padding: Platform.select({ web: 16, default: 24 }),
     },
     emptyIcon: {
         marginBottom: 16,
     },
     emptyTitle: {
-        fontSize: 20,
+        fontSize: Platform.select({ web: 16, default: 20 }),
         ...Typography.default('semiBold'),
         color: theme.colors.text,
         marginBottom: 8,
         textAlign: 'center',
     },
     emptyDescription: {
-        fontSize: 16,
+        fontSize: Platform.select({ web: 13, default: 16 }),
         ...Typography.default(),
         color: theme.colors.textSecondary,
         textAlign: 'center',
-        lineHeight: 22,
+        lineHeight: Platform.select({ web: 18, default: 22 }),
     },
     sectionHeader: {
-        fontSize: 14,
+        fontSize: Platform.select({ web: 12, default: 14 }),
         ...Typography.default('semiBold'),
         color: theme.colors.textSecondary,
-        paddingHorizontal: 16,
-        paddingTop: 24,
-        paddingBottom: 8,
+        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+        paddingTop: Platform.select({ web: 14, default: 24 }),
+        paddingBottom: Platform.select({ web: 6, default: 8 }),
         textTransform: 'uppercase',
     },
 }));

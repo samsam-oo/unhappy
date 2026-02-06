@@ -5,8 +5,10 @@ import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { trackConnectAttempt } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
+import { useUnistyles } from 'react-native-unistyles';
 
 export const ConnectButton = React.memo(() => {
+    const { theme } = useUnistyles();
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const [manualUrl, setManualUrl] = React.useState('');
     const [showManualEntry, setShowManualEntry] = React.useState(false);
@@ -45,12 +47,12 @@ export const ConnectButton = React.memo(() => {
                 <Ionicons 
                     name="link-outline" 
                     size={16} 
-                    color="#666" 
+                    color={theme.colors.textSecondary}
                     style={{ marginRight: 6 }}
                 />
                 <Text style={{
                     fontSize: 14,
-                    color: '#666',
+                    color: theme.colors.textSecondary,
                     textDecorationLine: 'underline',
                 }}>
                     {t('connectButton.authenticateWithUrlPaste')}
@@ -62,12 +64,12 @@ export const ConnectButton = React.memo(() => {
                     marginTop: 12,
                     padding: 12,
                     borderRadius: 8,
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: theme.colors.surfaceHigh,
                     width: 210,
                 }}>
                     <Text style={{
                         fontSize: 12,
-                        color: '#666',
+                        color: theme.colors.textSecondary,
                         marginBottom: 8,
                     }}>
                         {t('connectButton.pasteAuthUrl')}
@@ -79,17 +81,18 @@ export const ConnectButton = React.memo(() => {
                         <TextInput
                             style={{
                                 flex: 1,
-                                backgroundColor: 'white',
+                                backgroundColor: theme.colors.surface,
                                 borderWidth: 1,
-                                borderColor: '#ddd',
+                                borderColor: theme.colors.chrome.panelBorder,
                                 borderRadius: 6,
                                 padding: 8,
                                 fontSize: 12,
+                                color: theme.colors.text,
                             }}
                             value={manualUrl}
                             onChangeText={setManualUrl}
                             placeholder="happy://terminal?..."
-                            placeholderTextColor="#999"
+                            placeholderTextColor={theme.colors.input.placeholder}
                             autoCapitalize="none"
                             autoCorrect={false}
                             onSubmitEditing={handleManualConnect}
@@ -106,7 +109,7 @@ export const ConnectButton = React.memo(() => {
                             <Ionicons 
                                 name="checkmark-circle" 
                                 size={24} 
-                                color="#007AFF" 
+                                color={theme.colors.chrome.accent} 
                             />
                         </TouchableOpacity>
                     </View>

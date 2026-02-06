@@ -3,6 +3,7 @@ import { View, ScrollView, Text, StyleSheet, Platform } from 'react-native';
 import { Command, CommandCategory } from './types';
 import { CommandPaletteItem } from './CommandPaletteItem';
 import { Typography } from '@/constants/Typography';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface CommandPaletteResultsProps {
     categories: CommandCategory[];
@@ -17,6 +18,7 @@ export function CommandPaletteResults({
     onSelectCommand, 
     onSelectionChange 
 }: CommandPaletteResultsProps) {
+    const { theme } = useUnistyles();
     const scrollViewRef = useRef<ScrollView>(null);
     const itemRefs = useRef<{ [key: number]: View | null }>({});
     
@@ -42,7 +44,7 @@ export function CommandPaletteResults({
     if (categories.length === 0 || allCommands.length === 0) {
         return (
             <View style={styles.emptyContainer}>
-                <Text style={[styles.emptyText, Typography.default()]}>
+                <Text style={[styles.emptyText, { color: theme.colors.textSecondary }, Typography.default()]}>
                     No commands found
                 </Text>
             </View>
@@ -86,7 +88,7 @@ export function CommandPaletteResults({
 
                 return (
                     <View key={category.id}>
-                        <Text style={[styles.categoryTitle, Typography.default('semiBold')]}>
+                        <Text style={[styles.categoryTitle, { color: theme.colors.textSecondary }, Typography.default('semiBold')]}>
                             {category.title}
                         </Text>
                         {categoryCommands}
@@ -108,7 +110,7 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
     },
     emptyContainer: {
-        padding: 48,
+        padding: 20,
         alignItems: 'center',
     },
     emptyText: {
@@ -117,7 +119,7 @@ const styles = StyleSheet.create({
         letterSpacing: -0.2,
     },
     categoryTitle: {
-        paddingHorizontal: 32,
+        paddingHorizontal: 16,
         paddingTop: 16,
         paddingBottom: 8,
         fontSize: 12,
