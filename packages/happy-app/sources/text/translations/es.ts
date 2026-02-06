@@ -889,6 +889,39 @@ export const es: TranslationStructure = {
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
     },
 
+    finishSession: {
+        title: 'Finalizar sesión',
+        subtitle: 'Fusionar, crear PR o limpiar worktree',
+        branchName: 'Rama',
+        basePath: 'Repositorio base',
+        uncommittedWarning: 'Este worktree tiene cambios sin confirmar',
+        actions: 'Acciones',
+        mergeInto: ({ branch }: { branch: string }) => `Fusionar en ${branch}`,
+        mergeSubtitle: ({ branch }: { branch: string }) => `Fusionar esta rama en ${branch}`,
+        mergeConfirmTitle: 'Fusionar rama',
+        mergeConfirmMessage: ({ branch, target }: { branch: string; target: string }) =>
+            `¿Fusionar '${branch}' en '${target}'?`,
+        merge: 'Fusionar',
+        pushAfterMerge: 'Enviar después de fusionar',
+        mergeSuccess: 'Fusión completada',
+        mergeSuccessMessage: 'La rama se fusionó correctamente.',
+        mergeAndPushSuccessMessage: 'La rama se fusionó y envió correctamente.',
+        createPR: 'Crear Pull Request',
+        createPRSubtitle: 'Enviar rama y abrir un PR en GitHub',
+        prCreated: 'Pull Request creado',
+        copyUrl: 'Copiar URL',
+        dangerZone: 'Zona de peligro',
+        deleteWorktree: 'Eliminar worktree',
+        deleteWorktreeSubtitle: 'Eliminar worktree, rama y limpiar',
+        deleteConfirmTitle: 'Eliminar worktree',
+        deleteConfirmMessage: ({ branch }: { branch: string }) =>
+            `Se eliminará el worktree '${branch}' y la rama. Esta acción no se puede deshacer.`,
+        deleteSuccess: 'Worktree eliminado',
+        deleteSuccessMessage: 'El worktree y la rama han sido eliminados.',
+        notAWorktree: 'Esta sesión no es una sesión de worktree.',
+        resolvingBranch: 'Resolviendo rama principal...',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Perfiles',

@@ -890,6 +890,39 @@ export const ko: TranslationStructure = {
         friendAcceptedGeneric: '친구 요청이 수락되었습니다',
     },
 
+    finishSession: {
+        title: '세션 완료',
+        subtitle: '머지, PR 생성 또는 워크트리 정리',
+        branchName: '브랜치',
+        basePath: '기본 저장소',
+        uncommittedWarning: '이 워크트리에 커밋되지 않은 변경 사항이 있습니다',
+        actions: '작업',
+        mergeInto: ({ branch }: { branch: string }) => `${branch}에 머지`,
+        mergeSubtitle: ({ branch }: { branch: string }) => `이 브랜치를 ${branch}에 머지`,
+        mergeConfirmTitle: '브랜치 머지',
+        mergeConfirmMessage: ({ branch, target }: { branch: string; target: string }) =>
+            `'${branch}'를 '${target}'에 머지하시겠습니까?`,
+        merge: '머지',
+        pushAfterMerge: '머지 후 푸시',
+        mergeSuccess: '머지 완료',
+        mergeSuccessMessage: '브랜치가 성공적으로 머지되었습니다.',
+        mergeAndPushSuccessMessage: '브랜치가 성공적으로 머지 및 푸시되었습니다.',
+        createPR: 'Pull Request 생성',
+        createPRSubtitle: '브랜치를 푸시하고 GitHub에서 PR 열기',
+        prCreated: 'Pull Request 생성됨',
+        copyUrl: 'URL 복사',
+        dangerZone: '위험 영역',
+        deleteWorktree: '워크트리 삭제',
+        deleteWorktreeSubtitle: '워크트리 제거, 브랜치 삭제 및 정리',
+        deleteConfirmTitle: '워크트리 삭제',
+        deleteConfirmMessage: ({ branch }: { branch: string }) =>
+            `'${branch}' 워크트리를 제거하고 브랜치를 삭제합니다. 이 작업은 취소할 수 없습니다.`,
+        deleteSuccess: '워크트리 삭제됨',
+        deleteSuccessMessage: '워크트리와 브랜치가 제거되었습니다.',
+        notAWorktree: '이 세션은 워크트리 세션이 아닙니다.',
+        resolvingBranch: '메인 브랜치 확인 중...',
+    },
+
     profiles: {
         // Profile management feature
         title: '프로필',

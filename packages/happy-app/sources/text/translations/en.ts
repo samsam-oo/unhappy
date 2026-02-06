@@ -904,6 +904,39 @@ export const en: TranslationStructure = {
         friendAcceptedGeneric: 'Friend request accepted',
     },
 
+    finishSession: {
+        title: 'Finish Session',
+        subtitle: 'Merge, create PR, or clean up this worktree',
+        branchName: 'Branch',
+        basePath: 'Base Repository',
+        uncommittedWarning: 'This worktree has uncommitted changes',
+        actions: 'Actions',
+        mergeInto: ({ branch }: { branch: string }) => `Merge into ${branch}`,
+        mergeSubtitle: ({ branch }: { branch: string }) => `Merge this branch into ${branch}`,
+        mergeConfirmTitle: 'Merge Branch',
+        mergeConfirmMessage: ({ branch, target }: { branch: string; target: string }) =>
+            `Merge '${branch}' into '${target}'?`,
+        merge: 'Merge',
+        pushAfterMerge: 'Push after merge',
+        mergeSuccess: 'Merge Complete',
+        mergeSuccessMessage: 'Branch merged successfully.',
+        mergeAndPushSuccessMessage: 'Branch merged and pushed successfully.',
+        createPR: 'Create Pull Request',
+        createPRSubtitle: 'Push branch and open a PR on GitHub',
+        prCreated: 'Pull Request Created',
+        copyUrl: 'Copy URL',
+        dangerZone: 'Danger Zone',
+        deleteWorktree: 'Delete Worktree',
+        deleteWorktreeSubtitle: 'Remove worktree, delete branch, and clean up',
+        deleteConfirmTitle: 'Delete Worktree',
+        deleteConfirmMessage: ({ branch }: { branch: string }) =>
+            `This will remove '${branch}' worktree and delete the branch. This cannot be undone.`,
+        deleteSuccess: 'Worktree Deleted',
+        deleteSuccessMessage: 'The worktree and branch have been removed.',
+        notAWorktree: 'This session is not a worktree session.',
+        resolvingBranch: 'Resolving main branch...',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Profiles',

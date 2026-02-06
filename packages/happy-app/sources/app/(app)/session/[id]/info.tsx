@@ -257,6 +257,14 @@ function SessionInfoContent({ session }: { session: Session }) {
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
+                    {session.metadata?.path?.includes('/.unhappy/worktree/') && session.metadata?.machineId && (
+                        <Item
+                            title={t('finishSession.title')}
+                            subtitle={t('finishSession.subtitle')}
+                            icon={<Ionicons name="checkmark-done-outline" size={29} color="#34C759" />}
+                            onPress={() => router.push(`/session/${session.id}/finish`)}
+                        />
+                    )}
                     {sessionStatus.isConnected && (
                         <Item
                             title={t('sessionInfo.archiveSession')}
