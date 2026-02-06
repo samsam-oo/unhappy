@@ -112,40 +112,84 @@ class ApiSocket {
      * RPC call for sessions - uses session-specific encryption
      */
     async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
-        const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
+        if (!this.socket) {
+            throw new Error('Socket not connected');
+        }
+        if (!this.socket.connected) {
+            throw new Error('Socket not connected');
+        }
+        if (!this.encryption) {
+            throw new Error('SyncSocket not initialized');
+        }
+
+        const sessionEncryption = this.encryption.getSessionEncryption(sessionId);
         if (!sessionEncryption) {
             throw new Error(`Session encryption not found for ${sessionId}`);
         }
         
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const ackTimeoutMs =
+            method === 'bash'
+                ? (typeof (params as any)?.timeout === 'number' && (params as any).timeout > 0
+                    ? (params as any).timeout + 60000
+                    : 10 * 60 * 1000)
+                : 30000;
+
+        const result: any = await this.socket.timeout(ackTimeoutMs).emitWithAck('rpc-call', {
             method: `${sessionId}:${method}`,
             params: await sessionEncryption.encryptRaw(params)
         });
         
-        if (result.ok) {
+        if (result && typeof result === 'object' && result.ok) {
             return await sessionEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        const err =
+            result && typeof result === 'object' && typeof result.error === 'string' && result.error.trim()
+                ? result.error.trim()
+                : 'RPC call failed';
+        const endpoint = this.config?.endpoint ? ` @ ${this.config.endpoint}` : '';
+        throw new Error(`RPC call failed (session:${sessionId}:${method})${endpoint}: ${err}`);
     }
 
     /**
      * RPC call for machines - uses legacy/global encryption (for now)
      */
     async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {
-        const machineEncryption = this.encryption!.getMachineEncryption(machineId);
+        if (!this.socket) {
+            throw new Error('Socket not connected');
+        }
+        if (!this.socket.connected) {
+            throw new Error('Socket not connected');
+        }
+        if (!this.encryption) {
+            throw new Error('SyncSocket not initialized');
+        }
+
+        const machineEncryption = this.encryption.getMachineEncryption(machineId);
         if (!machineEncryption) {
             throw new Error(`Machine encryption not found for ${machineId}`);
         }
 
-        const result = await this.socket!.emitWithAck('rpc-call', {
+        const ackTimeoutMs =
+            method === 'bash'
+                ? (typeof (params as any)?.timeout === 'number' && (params as any).timeout > 0
+                    ? (params as any).timeout + 60000
+                    : 10 * 60 * 1000)
+                : 30000;
+
+        const result: any = await this.socket.timeout(ackTimeoutMs).emitWithAck('rpc-call', {
             method: `${machineId}:${method}`,
             params: await machineEncryption.encryptRaw(params)
         });
 
-        if (result.ok) {
+        if (result && typeof result === 'object' && result.ok) {
             return await machineEncryption.decryptRaw(result.result) as R;
         }
-        throw new Error('RPC call failed');
+        const err =
+            result && typeof result === 'object' && typeof result.error === 'string' && result.error.trim()
+                ? result.error.trim()
+                : 'RPC call failed';
+        const endpoint = this.config?.endpoint ? ` @ ${this.config.endpoint}` : '';
+        throw new Error(`RPC call failed (machine:${machineId}:${method})${endpoint}: ${err}`);
     }
 
     send(event: string, data: any) {

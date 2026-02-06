@@ -19,6 +19,7 @@ interface ChatHeaderViewProps {
     tintColor?: string;
     isConnected?: boolean;
     flavor?: string | null;
+    rightActions?: React.ReactNode;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -29,6 +30,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     avatarId,
     isConnected = true,
     flavor,
+    rightActions,
 }) => {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
@@ -87,20 +89,23 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                     )}
                 </View>
                 
-                {avatarId && onAvatarPress && (
-                    <Pressable
-                        onPress={onAvatarPress}
-                        hitSlop={15}
-                        style={styles.avatarButton}
-                    >
-                        <Avatar
-                            id={avatarId}
-                            size={32}
-                            monochrome={!isConnected}
-                            flavor={flavor}
-                        />
-                    </Pressable>
-                )}
+                <View style={styles.rightContainer}>
+                    {rightActions}
+                    {avatarId && onAvatarPress && (
+                        <Pressable
+                            onPress={onAvatarPress}
+                            hitSlop={15}
+                            style={styles.avatarButton}
+                        >
+                            <Avatar
+                                id={avatarId}
+                                size={32}
+                                monochrome={!isConnected}
+                                flavor={flavor}
+                            />
+                        </Pressable>
+                    )}
+                </View>
                 </View>
             </View>
         </View>
@@ -130,6 +135,11 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'flex-start',
+    },
+    rightContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
     title: {
         fontSize: Platform.select({

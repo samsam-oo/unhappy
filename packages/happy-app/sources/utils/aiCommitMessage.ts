@@ -6,7 +6,8 @@ function bashQuote(value: string): string {
 
 function normalizeFlavor(flavor: string | null | undefined): 'claude' | 'codex' | 'gemini' | 'unknown' {
     const f = (flavor || '').toLowerCase().trim();
-    if (!f || f === 'claude') return 'claude';
+    if (!f) return 'unknown';
+    if (f === 'claude') return 'claude';
     if (f === 'codex' || f === 'gpt' || f === 'openai') return 'codex';
     if (f === 'gemini') return 'gemini';
     return 'unknown';
@@ -56,30 +57,60 @@ async function getRepoContextViaMachine(machineId: string, repoPath: string): Pr
 
 async function runHeadlessAgentPrompt(options: {
     sessionId: string;
-    repoPath: string;
     agent: 'claude' | 'codex';
     prompt: string;
+    timeoutMs?: number;
 }): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number }> {
     const delimiter = '__HAPPY_COMMIT_PROMPT__';
+    const tmpWorkDirVar = '__HAPPY_TMPDIR__';
     const cmd = [
-        'set -euo pipefail',
-        'tmp="$(mktemp)"',
-        `cat >"$tmp" <<'${delimiter}'`,
+        // sessionBash may execute via /bin/sh (e.g. dash), where `pipefail` is not supported.
+        // We do not rely on pipelines here, so `-eu` provides the useful safety without breaking on POSIX shells.
+        'set -eu',
+        `promptFile="$(mktemp)"`,
+        // Run the agent in an isolated directory so CLIs like Claude Code don't try to "index" the repo.
+        `${tmpWorkDirVar}="$(mktemp -d)"`,
+        `cleanup() { rm -f "$promptFile"; rm -rf "$${tmpWorkDirVar}"; }`,
+        'trap cleanup EXIT',
+        `cat >"$promptFile" <<'${delimiter}'`,
         options.prompt,
         delimiter,
+        `cd "$${tmpWorkDirVar}"`,
         `if command -v ${options.agent} >/dev/null 2>&1; then`,
-        `  ${options.agent} -p "$(cat "$tmp")"`,
+        ...(options.agent === 'claude'
+            ? [
+                // Keep it simple and fast: no tools, no project/local settings.
+                // We already pass git status/diff in the prompt.
+                `  ${options.agent} -p --tools "" --setting-sources user "$(cat "$promptFile")"`,
+            ]
+            : [
+                // Codex CLI doesn't support `-p` print mode; use `codex exec` and read the final message from a file.
+                '  out="$(mktemp)"',
+                '  err="$(mktemp)"',
+                // Codex prints progress/status to stderr even on success; silence it to avoid buffering issues.
+                '  if codex exec --skip-git-repo-check --output-last-message "$out" - < "$promptFile" >/dev/null 2>"$err"; then',
+                '    cat "$out"',
+                '    rm -f "$out"',
+                '    rm -f "$err"',
+                '  else',
+                '    cat "$err" 1>&2 || true',
+                '    ec=$?',
+                '    rm -f "$out"',
+                '    rm -f "$err"',
+                '    exit "$ec"',
+                '  fi',
+            ]),
         'else',
         `  echo "${options.agent} CLI not found in PATH" 1>&2`,
         '  exit 127',
         'fi',
-        'rm -f "$tmp"',
     ].join('\n');
 
     return await sessionBash(options.sessionId, {
         command: cmd,
-        cwd: options.repoPath,
-        timeout: 120000,
+        // Avoid repo cwd: it can cause slowdowns (e.g. agent indexing) and it can fail path validation if repoPath changes.
+        cwd: '/',
+        timeout: options.timeoutMs ?? 60000,
     });
 }
 
@@ -99,8 +130,10 @@ export async function generateCommitMessageWithAI(options: {
         return { success: false, error: 'AI commit message generation is not supported for Gemini sessions yet.' };
     }
 
-    // Prefer the provider that matches the session; fall back to claude for unknown flavors.
-    const agent: 'claude' | 'codex' = flavor === 'codex' ? 'codex' : 'claude';
+    const agentsToTry: Array<'claude' | 'codex'> =
+        flavor === 'claude'
+            ? ['claude', 'codex']
+            : ['codex', 'claude'];
 
     if (!options.machineId) {
         return { success: false, error: 'Missing machineId for git diff collection.' };
@@ -137,23 +170,29 @@ export async function generateCommitMessageWithAI(options: {
         ctx.diff || '(empty)',
     ].join('\n');
 
-    const result = await runHeadlessAgentPrompt({
-        sessionId: options.sessionId,
-        repoPath: options.repoPath,
-        agent,
-        prompt,
-    });
+    const errors: string[] = [];
+    for (const agent of agentsToTry) {
+        const result = await runHeadlessAgentPrompt({
+            sessionId: options.sessionId,
+            agent,
+            prompt,
+            timeoutMs: agent === 'claude' ? 45000 : 90000,
+        });
 
-    if (!result.success || result.exitCode !== 0) {
-        const err = (result.stderr || result.stdout || '').trim();
-        return {
-            success: false,
-            error: err || `Failed to run ${agent} headless prompt.`,
-        };
+        if (!result.success || result.exitCode !== 0) {
+            const err = (result.stderr || result.stdout || (result as any).error || '').trim();
+            errors.push(`${agent}: ${err || 'failed'}`);
+            continue;
+        }
+
+        const message = cleanupCommitMessage(result.stdout || '');
+        if (!message) {
+            errors.push(`${agent}: returned an empty commit message`);
+            continue;
+        }
+
+        return { success: true, message };
     }
 
-    const message = cleanupCommitMessage(result.stdout || '');
-    if (!message) return { success: false, error: 'AI returned an empty commit message.' };
-    return { success: true, message };
+    return { success: false, error: errors.length ? errors.join('\n') : 'AI generation failed.' };
 }
-

@@ -11,7 +11,7 @@ import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { sessionAbort } from '@/sync/ops';
+import { machineBash, sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, setCurrentViewedSessionId, getCurrentViewedSessionId } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
@@ -19,16 +19,310 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
+import { promptCommitMessage } from '@/utils/promptCommitMessage';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getSessionAvatarId, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { commitWorktreeChanges, extractWorktreeInfo } from '@/utils/finishWorktree';
 import { Ionicons } from '@/icons/vector-icons';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { useMemo } from 'react';
-import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
+import * as Clipboard from 'expo-clipboard';
+import { layout } from '@/components/layout';
+
+function bashQuote(value: string): string {
+    return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+async function openInEditor(machineId: string, path: string): Promise<{ success: boolean; error?: string }> {
+    const quoted = bashQuote(path);
+    const cmd = [
+        // Prefer editor CLIs; fall back to OS openers.
+        `if command -v code >/dev/null 2>&1; then code -r ${quoted}`,
+        `elif command -v cursor >/dev/null 2>&1; then cursor -r ${quoted}`,
+        `elif command -v subl >/dev/null 2>&1; then subl ${quoted}`,
+        `elif command -v xdg-open >/dev/null 2>&1; then xdg-open ${quoted}`,
+        `elif command -v open >/dev/null 2>&1; then open ${quoted}`,
+        `else echo "No editor/opener found (tried: code, cursor, subl, xdg-open, open)" 1>&2; exit 127; fi`,
+    ].join('; ');
+
+    const result = await machineBash(machineId, cmd, '/');
+    if (!result.success || result.exitCode !== 0) {
+        const msg = (result.stderr || result.stdout || '').trim() || 'Failed to open in editor.';
+        return { success: false, error: msg };
+    }
+    return { success: true };
+}
+
+function HeaderPillButton(props: {
+    label: string;
+    icon: React.ReactNode;
+    expanded?: boolean;
+    onPress: () => void;
+}) {
+    const { theme } = useUnistyles();
+    return (
+        <Pressable
+            onPress={props.onPress}
+            style={({ hovered, pressed }: any) => ({
+                height: 32,
+                paddingHorizontal: 12,
+                borderRadius: 999,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                borderWidth: 1,
+                borderColor: theme.dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)',
+                backgroundColor:
+                    (Platform.OS === 'web' && (hovered || pressed)) || pressed
+                        ? (theme.dark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.06)')
+                        : (theme.dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.04)'),
+            })}
+        >
+            {props.icon}
+            <Text style={{ color: theme.colors.header.tint, fontSize: 13, fontWeight: '600' }}>
+                {props.label}
+            </Text>
+            <Ionicons name={props.expanded ? 'chevron-up' : 'chevron-down'} size={14} color={theme.colors.header.tint} />
+        </Pressable>
+    );
+}
+
+function HeaderIconButton(props: { icon: React.ReactNode; label?: string; onPress: () => void }) {
+    const { theme } = useUnistyles();
+    return (
+        <Pressable
+            onPress={props.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={props.label}
+            style={({ hovered, pressed }: any) => ({
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor:
+                    (Platform.OS === 'web' && (hovered || pressed)) || pressed
+                        ? (theme.dark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)')
+                        : 'transparent',
+            })}
+        >
+            {props.icon}
+        </Pressable>
+    );
+}
+
+type HeaderMenuKind = 'open' | 'commit';
+
+function HeaderDropdownItem(props: { label: string; icon?: React.ReactNode; onPress: () => void }) {
+    const { theme } = useUnistyles();
+    return (
+        <Pressable
+            onPress={props.onPress}
+            style={({ hovered, pressed }: any) => ({
+                height: 40,
+                paddingHorizontal: 12,
+                borderRadius: 10,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                backgroundColor:
+                    (Platform.OS === 'web' && (hovered || pressed)) || pressed
+                        ? (theme.dark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.06)')
+                        : 'transparent',
+            })}
+        >
+            {props.icon}
+            <Text style={{ color: theme.colors.header.tint, fontSize: 13, fontWeight: '600' }}>
+                {props.label}
+            </Text>
+        </Pressable>
+    );
+}
+
+function HeaderDropdownPanel(props: {
+    kind: HeaderMenuKind;
+    sessionId: string;
+    agentFlavor?: string | null;
+    machineId: string;
+    path: string;
+    worktreeInfo: ReturnType<typeof extractWorktreeInfo>;
+    onClose: () => void;
+    top: number;
+}) {
+    const { theme } = useUnistyles();
+    const router = useRouter();
+
+    const items: Array<{ key: string; label: string; icon: React.ReactNode; onPress: () => void }> = [];
+
+    const closeThen = (fn: () => void) => () => {
+        props.onClose();
+        fn();
+    };
+
+    if (props.kind === 'open') {
+        items.push({
+            key: 'open-editor',
+            label: 'Open in Editor',
+            icon: <Ionicons name="code-outline" size={16} color={theme.colors.header.tint} />,
+            onPress: closeThen(async () => {
+                const result = await openInEditor(props.machineId, props.path);
+                if (!result.success) {
+                    Modal.alert(t('common.error'), result.error || 'Failed to open in editor.');
+                }
+            }) as any,
+        });
+        items.push({
+            key: 'copy-path',
+            label: 'Copy Path',
+            icon: <Ionicons name="copy-outline" size={16} color={theme.colors.header.tint} />,
+            onPress: closeThen(async () => {
+                try {
+                    await Clipboard.setStringAsync(props.path);
+                    Modal.alert(t('common.copied'));
+                } catch {
+                    // best-effort
+                }
+            }) as any,
+        });
+    }
+
+    if (props.kind === 'commit') {
+        items.push({
+            key: 'commit',
+            label: t('finishSession.commitChanges'),
+            icon: <Ionicons name="git-commit-outline" size={16} color={theme.colors.header.tint} />,
+            onPress: closeThen(async () => {
+                const message = await promptCommitMessage({
+                    sessionId: props.sessionId,
+                    agentFlavor: props.agentFlavor ?? null,
+                    machineId: props.machineId,
+                    repoPath: props.path
+                });
+                if (message == null) return;
+                if (!message.trim()) {
+                    Modal.alert(t('common.error'), t('finishSession.commitMessageRequired'));
+                    return;
+                }
+
+                const result = await commitWorktreeChanges(props.machineId, props.path, message.trim());
+                if (!result.success) {
+                    Modal.alert(t('common.error'), result.error || t('finishSession.commitMessageRequired'));
+                    return;
+                }
+
+                Modal.alert(t('finishSession.commitSuccess'), t('finishSession.commitSuccessMessage'));
+                gitStatusSync.invalidate(props.sessionId);
+            }) as any,
+        });
+        if (props.worktreeInfo) {
+            items.push({
+                key: 'finish',
+                label: t('finishSession.title'),
+                icon: <Ionicons name="checkmark-done-outline" size={16} color={theme.colors.header.tint} />,
+                onPress: closeThen(() => router.push(`/session/${props.sessionId}/finish`)),
+            });
+        }
+    }
+
+    return (
+        <View style={[StyleSheet.absoluteFillObject, { zIndex: 2000 }]} pointerEvents="box-none">
+            <Pressable style={StyleSheet.absoluteFillObject} onPress={props.onClose} />
+            <View style={{ position: 'absolute', left: 0, right: 0, top: props.top }} pointerEvents="box-none">
+                <View style={{ width: '100%', alignItems: 'center' }} pointerEvents="box-none">
+                    <View
+                        style={{
+                            width: '100%',
+                            maxWidth: layout.headerMaxWidth,
+                            paddingHorizontal: Platform.OS === 'ios' ? 8 : 16,
+                            paddingTop: 6,
+                        }}
+                        pointerEvents="box-none"
+                    >
+                        <View style={{ width: '100%', alignItems: 'flex-end' }}>
+                            <View
+                                style={{
+                                    width: 260,
+                                    padding: 8,
+                                    backgroundColor: theme.colors.header.background,
+                                    borderRadius: 14,
+                                    borderWidth: 1,
+                                    borderColor: theme.dark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.10)',
+                                    shadowColor: '#000',
+                                    shadowOffset: { width: 0, height: 10 },
+                                    shadowOpacity: theme.dark ? 0.35 : 0.18,
+                                    shadowRadius: 18,
+                                    elevation: 12,
+                                }}
+                            >
+                                {items.map((item) => (
+                                    <HeaderDropdownItem
+                                        key={item.key}
+                                        label={item.label}
+                                        icon={item.icon}
+                                        onPress={item.onPress}
+                                    />
+                                ))}
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </View>
+        </View>
+    );
+}
+
+function SessionHeaderActions(props: {
+    sessionId: string;
+    session: Session;
+    menu: HeaderMenuKind | null;
+    setMenu: (v: HeaderMenuKind | null) => void;
+}) {
+    const router = useRouter();
+    const { theme } = useUnistyles();
+
+    // Keep header clean on small screens.
+    const deviceType = useDeviceType();
+    const isTablet = useIsTablet();
+    const show = Platform.OS === 'web' || isRunningOnMac();
+    if (!show && !isTablet) return null;
+
+    const machineId = props.session.metadata?.machineId;
+    const path = props.session.metadata?.path;
+    if (!machineId || !path) return null;
+
+    const worktreeInfo = extractWorktreeInfo(path);
+
+    // Avoid crowding on compact phones.
+    if (deviceType === 'phone' && !isTablet && Platform.OS !== 'web' && !isRunningOnMac()) return null;
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <HeaderPillButton
+                label={t('common.open')}
+                icon={<Ionicons name="folder-outline" size={16} color={theme.colors.header.tint} />}
+                expanded={props.menu === 'open'}
+                onPress={() => props.setMenu(props.menu === 'open' ? null : 'open')}
+            />
+            <HeaderPillButton
+                label={t('common.commit')}
+                icon={<Ionicons name="git-commit-outline" size={16} color={theme.colors.header.tint} />}
+                expanded={props.menu === 'commit'}
+                onPress={() => props.setMenu(props.menu === 'commit' ? null : 'commit')}
+            />
+
+            <HeaderIconButton
+                label="More"
+                icon={<Ionicons name="reorder-three-outline" size={18} color={theme.colors.header.tint} />}
+                onPress={() => router.push(`/session/${props.sessionId}/info`)}
+            />
+        </View>
+    );
+}
 
 export const SessionView = React.memo((props: { id: string }) => {
     const sessionId = props.id;
@@ -42,6 +336,12 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+    const [headerMenu, setHeaderMenu] = React.useState<HeaderMenuKind | null>(null);
+
+    // Close menu if we navigate away or swap sessions.
+    React.useEffect(() => {
+        setHeaderMenu(null);
+    }, [sessionId]);
 
     // Track current viewed session and clear unread state
     React.useEffect(() => {
@@ -64,7 +364,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                 avatarId: undefined,
                 onAvatarPress: undefined,
                 isConnected: false,
-                flavor: null
+                flavor: null,
+                rightActions: undefined,
             };
         }
 
@@ -76,7 +377,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                 avatarId: undefined,
                 onAvatarPress: undefined,
                 isConnected: false,
-                flavor: null
+                flavor: null,
+                rightActions: undefined,
             };
         }
 
@@ -85,16 +387,36 @@ export const SessionView = React.memo((props: { id: string }) => {
         return {
             title: getSessionName(session),
             subtitle: session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined,
-            avatarId: getSessionAvatarId(session),
-            onAvatarPress: () => router.push(`/session/${sessionId}/info`),
+            avatarId: undefined,
+            onAvatarPress: undefined,
             isConnected: isConnected,
             flavor: session.metadata?.flavor || null,
-            tintColor: isConnected ? '#000' : '#8E8E93'
+            tintColor: isConnected ? '#000' : '#8E8E93',
+            rightActions: (
+                <SessionHeaderActions
+                    sessionId={sessionId}
+                    session={session}
+                    menu={headerMenu}
+                    setMenu={setHeaderMenu}
+                />
+            ),
         };
-    }, [session, isDataReady, sessionId, router]);
+    }, [session, isDataReady, sessionId, router, headerMenu]);
 
     return (
         <>
+            {session?.metadata?.machineId && session?.metadata?.path && headerMenu && (
+                <HeaderDropdownPanel
+                    kind={headerMenu}
+                    sessionId={sessionId}
+                    agentFlavor={session.metadata?.flavor ?? null}
+                    machineId={session.metadata.machineId}
+                    path={session.metadata.path}
+                    worktreeInfo={extractWorktreeInfo(session.metadata.path)}
+                    onClose={() => setHeaderMenu(null)}
+                    top={safeArea.top + headerHeight}
+                />
+            )}
             {/* Status bar shadow for landscape mode */}
             {isLandscape && deviceType === 'phone' && (
                 <View style={{

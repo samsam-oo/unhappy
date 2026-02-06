@@ -108,7 +108,12 @@ export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<str
 
             // Forward the RPC request to the target socket using emitWithAck
             try {
-                const response = await targetSocket.timeout(30000).emitWithAck('rpc-request', {
+                // Default 30s is too short for some handlers (notably `bash`, which can run long commands and/or
+                // call external CLIs). We can't inspect encrypted params to derive timeouts, so use a method-based
+                // heuristic with a generous upper bound.
+                const timeoutMs = method.endsWith(':bash') ? 10 * 60 * 1000 : 30000;
+
+                const response = await targetSocket.timeout(timeoutMs).emitWithAck('rpc-request', {
                     method,
                     params
                 });
