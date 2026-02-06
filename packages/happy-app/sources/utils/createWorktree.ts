@@ -15,6 +15,8 @@ export async function createWorktree(
     error?: string;
 }> {
     const name = generateWorktreeName();
+
+    const worktreeRoot = '.unhappy/worktree';
     
     // Check if it's a git repository
     const gitCheck = await machineBash(
@@ -33,10 +35,10 @@ export async function createWorktree(
     }
     
     // Create the worktree with new branch
-    const worktreePath = `.dev/worktree/${name}`;
+    const worktreePath = `${worktreeRoot}/${name}`;
     let result = await machineBash(
         machineId,
-        `git worktree add -b ${name} ${worktreePath}`,
+        `mkdir -p "${worktreeRoot}" && git worktree add -b "${name}" "${worktreePath}"`,
         basePath
     );
     
@@ -45,10 +47,10 @@ export async function createWorktree(
         // Try up to 3 times with numbered suffixes
         for (let i = 2; i <= 4; i++) {
             const newName = `${name}-${i}`;
-            const newWorktreePath = `.dev/worktree/${newName}`;
+            const newWorktreePath = `${worktreeRoot}/${newName}`;
             result = await machineBash(
                 machineId,
-                `git worktree add -b ${newName} ${newWorktreePath}`,
+                `mkdir -p "${worktreeRoot}" && git worktree add -b "${newName}" "${newWorktreePath}"`,
                 basePath
             );
             

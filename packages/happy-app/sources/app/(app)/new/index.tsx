@@ -416,7 +416,6 @@ function NewSessionWizard() {
         return tempSessionData?.prompt || prompt || persistedDraft?.input || '';
     });
     const [isCreating, setIsCreating] = React.useState(false);
-    const [showAdvanced, setShowAdvanced] = React.useState(false);
 
     // Handle machineId route param from picker screens (main's navigation pattern)
     React.useEffect(() => {
@@ -1012,7 +1011,7 @@ function NewSessionWizard() {
             let actualPath = selectedPath;
 
             // Handle worktree creation
-            if (sessionType === 'worktree' && experimentsEnabled) {
+            if (sessionType === 'worktree') {
                 const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
 
                 if (!worktreeResult.success) {
@@ -1156,16 +1155,14 @@ function NewSessionWizard() {
             >
                 <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                     {/* Session type selector only if experiments enabled */}
-                    {experimentsEnabled && (
-                        <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
-                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                                <SessionTypeSelector
-                                    value={sessionType}
-                                    onChange={setSessionType}
-                                />
-                            </View>
+                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
+                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                            <SessionTypeSelector
+                                value={sessionType}
+                                onChange={setSessionType}
+                            />
                         </View>
-                    )}
+                    </View>
 
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
@@ -1887,31 +1884,13 @@ function NewSessionWizard() {
                                 ))}
                             </ItemGroup>
 
-                            {/* Section 5: Advanced Options (Collapsible) */}
-                            {experimentsEnabled && (
-                                <>
-                                    <Pressable
-                                        style={styles.advancedHeader}
-                                        onPress={() => setShowAdvanced(!showAdvanced)}
-                                    >
-                                        <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                                        <Ionicons
-                                            name={showAdvanced ? "chevron-up" : "chevron-down"}
-                                            size={20}
-                                            color={theme.colors.text}
-                                        />
-                                    </Pressable>
-
-                                    {showAdvanced && (
-                                        <View style={{ marginBottom: 12 }}>
-                                            <SessionTypeSelector
-                                                value={sessionType}
-                                                onChange={setSessionType}
-                                            />
-                                        </View>
-                                    )}
-                                </>
-                            )}
+                            {/* Session Type */}
+                            <View style={{ marginBottom: 12 }}>
+                                <SessionTypeSelector
+                                    value={sessionType}
+                                    onChange={setSessionType}
+                                />
+                            </View>
                         </View>
                     </View>
                 </View>

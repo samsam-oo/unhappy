@@ -1,17 +1,17 @@
-import * as React from 'react';
-import { ActivityIndicator, FlatList, Platform, Pressable, View } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { usePathname, useRouter } from 'expo-router';
 import { Text } from '@/components/StyledText';
-import { Ionicons, Octicons } from '@/icons/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { useAllSessions, useProjects } from '@/sync/storage';
-import type { Project } from '@/sync/projectManager';
-import type { Session } from '@/sync/storageTypes';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { Ionicons, Octicons } from '@/icons/vector-icons';
+import type { Project } from '@/sync/projectManager';
+import { useAllSessions, useProjects } from '@/sync/storage';
+import type { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 import { useSessionStatus } from '@/utils/sessionUtils';
+import { usePathname, useRouter } from 'expo-router';
+import * as React from 'react';
+import { ActivityIndicator, FlatList, Platform, Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
 
@@ -29,13 +29,32 @@ function getProjectStableId(project: Project): string {
 }
 
 function getBasename(path: string): string {
-    const parts = path.split('/').filter(Boolean);
+    const parts = path.split(/[\\/]/).filter(Boolean);
     return parts[parts.length - 1] || path || 'Workspace';
 }
 
 function getSelectedSessionIdFromPathname(pathname: string): string | null {
     const match = pathname.match(/^\/session\/([^\/\?]+)(?:\/|$)/);
     return match?.[1] ?? null;
+}
+
+const WORKTREE_SEGMENT_POSIX = '/.unhappy/worktree/';
+const WORKTREE_SEGMENT_WIN = '\\.unhappy\\worktree\\';
+
+function isWorktreePath(path: string): boolean {
+    return path.includes(WORKTREE_SEGMENT_POSIX) || path.includes(WORKTREE_SEGMENT_WIN);
+}
+
+function getWorktreeBasePath(path: string): string | null {
+    const posixIdx = path.indexOf(WORKTREE_SEGMENT_POSIX);
+    if (posixIdx >= 0) return path.slice(0, posixIdx);
+    const winIdx = path.indexOf(WORKTREE_SEGMENT_WIN);
+    if (winIdx >= 0) return path.slice(0, winIdx);
+    return null;
+}
+
+function getExpandedKey(kind: 'project' | 'worktree', stableId: string): string {
+    return `${kind === 'project' ? 'p' : 'w'}:${stableId}`;
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -158,19 +177,22 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 
     childIndent: {
-        paddingLeft: 22,
+        paddingLeft: 6,
+    },
+    grandChildIndent: {
+        paddingLeft: 32,
     },
 }));
 
 type Row =
-    | { type: 'project'; project: Project; expanded: boolean }
-    | { type: 'session'; session: Session }
-    | { type: 'section'; id: 'playground'; title: string }
-    | { type: 'action'; id: 'new-playground'; title: string };
+    | { type: 'project'; project: Project; expanded: boolean; isVirtual?: boolean }
+    | { type: 'worktree'; project: Project; expanded: boolean; parentStableId: string }
+    | { type: 'session'; session: Session; depth: 1 | 2 };
 
 const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSessionRow(props: {
     session: Session;
     selected: boolean;
+    depth: 1 | 2;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -200,7 +222,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             onPress={() => navigateToSession(props.session.id)}
             style={({ hovered, pressed }: any) => [
                 styles.row,
-                styles.childIndent,
+                props.depth === 2 ? styles.grandChildIndent : styles.childIndent,
                 props.selected && styles.rowActive,
                 (Platform.OS === 'web' && (hovered || pressed) && !props.selected) && styles.rowHover,
             ]}
@@ -246,7 +268,15 @@ export function WorkspaceExplorerSidebar() {
             const stored = safeParseJson<Record<string, boolean>>(
                 window.localStorage.getItem(LOCAL_STORAGE_KEY)
             );
-            if (stored && typeof stored === 'object') return stored;
+            if (stored && typeof stored === 'object') {
+                // Migration: older versions stored keys as `${machineId}:${path}` without a type prefix.
+                const migrated: Record<string, boolean> = {};
+                for (const [k, v] of Object.entries(stored)) {
+                    if (k.startsWith('p:') || k.startsWith('w:')) migrated[k] = v;
+                    else migrated[`p:${k}`] = v;
+                }
+                return migrated;
+            }
         }
         return {} as Record<string, boolean>;
     }, []);
@@ -260,7 +290,23 @@ export function WorkspaceExplorerSidebar() {
         const path = s?.metadata?.path;
         if (!machineId || !path) return;
         const stableId = `${machineId}:${path}`;
-        setExpanded((prev) => (prev[stableId] === false ? { ...prev, [stableId]: true } : prev));
+
+        const basePath = isWorktreePath(path) ? (getWorktreeBasePath(path) || path) : path;
+        const baseStableId = `${machineId}:${basePath}`;
+
+        setExpanded((prev) => {
+            const next = { ...prev };
+
+            const projectKey = getExpandedKey('project', baseStableId);
+            if (next[projectKey] === false) next[projectKey] = true;
+
+            if (isWorktreePath(path)) {
+                const worktreeKey = getExpandedKey('worktree', stableId);
+                if (next[worktreeKey] === false) next[worktreeKey] = true;
+            }
+
+            return next;
+        });
     }, [selectedSessionId, sessionById]);
 
     React.useEffect(() => {
@@ -272,33 +318,128 @@ export function WorkspaceExplorerSidebar() {
         }
     }, [expanded]);
 
-    const toggleProject = React.useCallback((projectStableId: string) => {
-        setExpanded((prev) => ({ ...prev, [projectStableId]: !(prev[projectStableId] ?? true) }));
+    const toggleExpanded = React.useCallback((expandedKey: string) => {
+        setExpanded((prev) => ({ ...prev, [expandedKey]: !(prev[expandedKey] ?? true) }));
     }, []);
 
     const rows: Row[] = React.useMemo(() => {
         const out: Row[] = [];
         const included = new Set<string>();
 
+        const realProjectByStableId = new Map<string, Project>();
+        for (const p of projects) realProjectByStableId.set(getProjectStableId(p), p);
+
+        type ProjectGroup = {
+            stableId: string;
+            project: Project;
+            isVirtual: boolean;
+            worktrees: Project[];
+            updatedAt: number;
+        };
+
+        const groups = new Map<string, ProjectGroup>();
+
+        const ensureGroup = (stableId: string, project: Project, isVirtual: boolean) => {
+            const existing = groups.get(stableId);
+            if (!existing) {
+                groups.set(stableId, {
+                    stableId,
+                    project,
+                    isVirtual,
+                    worktrees: [],
+                    updatedAt: project.updatedAt,
+                });
+                return;
+            }
+
+            // Prefer the real project if we previously created a virtual placeholder.
+            if (existing.isVirtual && !isVirtual) {
+                existing.project = project;
+                existing.isVirtual = false;
+            }
+            existing.updatedAt = Math.max(existing.updatedAt, project.updatedAt);
+        };
+
+        const createVirtualProject = (machineId: string, basePath: string, template?: Project): Project => {
+            const now = Date.now();
+            return {
+                id: `virtual_${machineId}:${basePath}`,
+                key: { machineId, path: basePath },
+                sessionIds: [],
+                machineMetadata: template?.machineMetadata ?? null,
+                gitStatus: template?.gitStatus ?? null,
+                lastGitStatusUpdate: template?.lastGitStatusUpdate,
+                createdAt: template?.createdAt ?? now,
+                updatedAt: template?.updatedAt ?? now,
+            };
+        };
+
+        // 1) Ensure groups for all non-worktree projects (top-level workspaces).
         for (const project of projects) {
             const stableId = getProjectStableId(project);
-            const isExpanded = expanded[stableId] ?? true;
-            out.push({ type: 'project', project, expanded: isExpanded });
+            if (isWorktreePath(project.key.path)) continue;
+            ensureGroup(stableId, project, false);
+        }
 
-            if (isExpanded) {
-                const projectSessionIds = project.sessionIds || [];
-                const projectSessions: Session[] = projectSessionIds
+        // 2) Attach worktrees under their base project, creating a virtual base if needed.
+        for (const project of projects) {
+            if (!isWorktreePath(project.key.path)) continue;
+            const basePath = getWorktreeBasePath(project.key.path);
+            if (!basePath) continue;
+
+            const parentStableId = `${project.key.machineId}:${basePath}`;
+            const parentReal = realProjectByStableId.get(parentStableId);
+            ensureGroup(
+                parentStableId,
+                parentReal ?? createVirtualProject(project.key.machineId, basePath, project),
+                !parentReal
+            );
+
+            const group = groups.get(parentStableId)!;
+            group.worktrees.push(project);
+            group.updatedAt = Math.max(group.updatedAt, project.updatedAt);
+        }
+
+        const sortedGroups = Array.from(groups.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+
+        for (const group of sortedGroups) {
+            const projectStableId = group.stableId;
+            const projectExpandedKey = getExpandedKey('project', projectStableId);
+            const isProjectExpanded = expanded[projectExpandedKey] ?? true;
+
+            out.push({ type: 'project', project: group.project, expanded: isProjectExpanded, isVirtual: group.isVirtual });
+
+            // Mark included ids even if collapsed, so we don't duplicate in the "ungrouped" section.
+            for (const id of group.project.sessionIds || []) included.add(id);
+            for (const wt of group.worktrees) for (const id of wt.sessionIds || []) included.add(id);
+
+            if (!isProjectExpanded) continue;
+
+            const rootSessionIds = group.project.sessionIds || [];
+            const rootSessions: Session[] = rootSessionIds
+                .map((id) => sessionById.get(id))
+                .filter(Boolean) as Session[];
+            rootSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+
+            // Sessions and worktrees are siblings under the project, but the "folder" (worktree)
+            // should stay visually at the bottom of the list.
+            for (const s of rootSessions) out.push({ type: 'session', session: s, depth: 1 });
+
+            const worktrees = [...group.worktrees].sort((a, b) => b.updatedAt - a.updatedAt);
+            for (const wt of worktrees) {
+                const wtStableId = getProjectStableId(wt);
+                const wtExpandedKey = getExpandedKey('worktree', wtStableId);
+                const isWorktreeExpanded = expanded[wtExpandedKey] ?? true;
+
+                out.push({ type: 'worktree', project: wt, expanded: isWorktreeExpanded, parentStableId: projectStableId });
+
+                if (!isWorktreeExpanded) continue;
+
+                const wtSessions: Session[] = (wt.sessionIds || [])
                     .map((id) => sessionById.get(id))
                     .filter(Boolean) as Session[];
-                projectSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-
-                for (const s of projectSessions) {
-                    included.add(s.id);
-                    out.push({ type: 'session', session: s });
-                }
-            } else {
-                // still track included ids to avoid duplication in ungrouped
-                for (const id of project.sessionIds || []) included.add(id);
+                wtSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+                for (const s of wtSessions) out.push({ type: 'session', session: s, depth: 2 });
             }
         }
 
@@ -307,11 +448,9 @@ export function WorkspaceExplorerSidebar() {
             .filter((s) => !included.has(s.id))
             .sort((a, b) => b.updatedAt - a.updatedAt);
         for (const s of ungrouped) {
-            out.push({ type: 'session', session: s });
+            out.push({ type: 'session', session: s, depth: 1 });
         }
 
-        out.push({ type: 'section', id: 'playground', title: 'Playground' });
-        out.push({ type: 'action', id: 'new-playground', title: 'New Playground' });
         return out;
     }, [projects, expanded, sessionById, sessions]);
 
@@ -336,77 +475,18 @@ export function WorkspaceExplorerSidebar() {
 
             <FlatList
                 data={rows}
-                keyExtractor={(row, idx) => {
-                    switch (row.type) {
-                        case 'project':
-                            return `p:${getProjectStableId(row.project)}`;
-                        case 'session':
-                            return `s:${row.session.id}`;
-                        case 'section':
-                            return `sec:${row.id}`;
-                        case 'action':
-                            return `a:${row.id}`;
-                    }
+                keyExtractor={(row) => {
+                    if (row.type === 'project') return `p:${getProjectStableId(row.project)}`;
+                    if (row.type === 'worktree') return `w:${getProjectStableId(row.project)}`;
+                    return `s:${row.session.id}`;
                 }}
                 contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 16 }]}
                 renderItem={({ item: row }) => {
-                    if (row.type === 'section') {
-                        return (
-                            <View
-                                style={[
-                                    styles.sectionHeader,
-                                    {
-                                        borderTopWidth: StyleSheet.hairlineWidth,
-                                        borderTopColor: theme.colors.chrome.panelBorder,
-                                        marginTop: 8,
-                                        // Keep the break between groups, but avoid an extra "loose" feeling.
-                                        marginBottom: 4,
-                                    },
-                                ]}
-                            >
-                                <Text style={styles.sectionTitle}>{row.title}</Text>
-                                <View style={styles.headerButtons}>
-                                    <Pressable
-                                        onPress={() => router.push('/new')}
-                                        hitSlop={10}
-                                        style={({ hovered, pressed }: any) => [
-                                            styles.headerButton,
-                                            (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                                        ]}
-                                        accessibilityLabel="New playground"
-                                    >
-                                        <Ionicons name="add" size={18} color={theme.colors.header.tint} />
-                                    </Pressable>
-                                </View>
-                            </View>
-                        );
-                    }
-
-                    if (row.type === 'action') {
-                        return (
-                            <Pressable
-                                onPress={() => router.push('/new')}
-                                style={({ hovered, pressed }: any) => [
-                                    styles.row,
-                                    (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
-                                ]}
-                            >
-                                <View style={styles.chevron} />
-                                <View style={styles.icon}>
-                                    <Ionicons name="add-circle-outline" size={18} color={theme.colors.textSecondary} />
-                                </View>
-                                <View style={styles.textBlock}>
-                                    <Text style={styles.title} numberOfLines={1}>
-                                        {row.title}
-                                    </Text>
-                                </View>
-                            </Pressable>
-                        );
-                    }
-
                     if (row.type === 'project') {
                         const stableId = getProjectStableId(row.project);
+                        const expandedKey = getExpandedKey('project', stableId);
                         const title = getBasename(row.project.key.path);
+                        const hasGitStatus = row.project.gitStatus != null;
                         const branch = row.project.gitStatus?.branch;
                         const machineName =
                             row.project.machineMetadata?.displayName ||
@@ -415,7 +495,7 @@ export function WorkspaceExplorerSidebar() {
 
                         return (
                             <Pressable
-                                onPress={() => toggleProject(stableId)}
+                                onPress={() => toggleExpanded(expandedKey)}
                                 style={({ hovered, pressed }: any) => [
                                     styles.row,
                                     (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
@@ -429,10 +509,91 @@ export function WorkspaceExplorerSidebar() {
                                         {title}
                                     </Text>
                                     <View style={styles.subtitleRow}>
-                                        <Octicons name="git-branch" size={12} color={theme.colors.textSecondary} />
+                                        {hasGitStatus && (
+                                            <>
+                                                <Octicons name="git-branch" size={12} color={theme.colors.textSecondary} />
+                                                <Text style={styles.subtitle} numberOfLines={1}>
+                                                    {branch || 'detached'}
+                                                </Text>
+                                            </>
+                                        )}
                                         <Text style={styles.subtitle} numberOfLines={1}>
-                                            {branch || 'detached'}
+                                            {machineName}
                                         </Text>
+                                    </View>
+                                </View>
+                                <View style={styles.projectActions}>
+                                    <Pressable
+                                        hitSlop={10}
+                                        onPress={(e: any) => {
+                                            e?.stopPropagation?.();
+                                            router.push({
+                                                pathname: '/new',
+                                                params: { machineId: row.project.key.machineId, path: row.project.key.path },
+                                            });
+                                        }}
+                                        style={({ hovered, pressed }: any) => [
+                                            styles.rowActionButton,
+                                            (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
+                                        ]}
+                                        accessibilityLabel={t('newSession.startNewSessionInFolder')}
+                                    >
+                                        <Ionicons name="add" size={18} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                    <View style={styles.chevron}>
+                                        <Ionicons
+                                            name={row.expanded ? 'chevron-down' : 'chevron-forward'}
+                                            size={16}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    </View>
+                                </View>
+                            </Pressable>
+                        );
+                    }
+
+                    if (row.type === 'worktree') {
+                        const stableId = getProjectStableId(row.project);
+                        const expandedKey = getExpandedKey('worktree', stableId);
+
+                        const title = getBasename(row.project.key.path);
+                        const hasGitStatus = row.project.gitStatus != null;
+                        const branch = row.project.gitStatus?.branch;
+                        const machineName =
+                            row.project.machineMetadata?.displayName ||
+                            row.project.machineMetadata?.host ||
+                            row.project.key.machineId;
+
+                        return (
+                            <Pressable
+                                onPress={() => toggleExpanded(expandedKey)}
+                                style={({ hovered, pressed }: any) => [
+                                    styles.row,
+                                    styles.childIndent,
+                                    (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
+                                ]}
+                            >
+                                {/* Keep alignment consistent with session rows (which reserve a chevron slot). */}
+                                <View style={styles.chevron} />
+                                <View style={styles.icon}>
+                                    <Octicons name="file-directory" size={16} color={theme.colors.textSecondary} />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text style={styles.title} numberOfLines={1}>
+                                        {title}
+                                    </Text>
+                                    <View style={styles.subtitleRow}>
+                                        <Text style={styles.subtitle} numberOfLines={1}>
+                                            worktree
+                                        </Text>
+                                        {hasGitStatus && (
+                                            <>
+                                                <Octicons name="git-branch" size={12} color={theme.colors.textSecondary} />
+                                                <Text style={styles.subtitle} numberOfLines={1}>
+                                                    {branch || 'detached'}
+                                                </Text>
+                                            </>
+                                        )}
                                         <Text style={styles.subtitle} numberOfLines={1}>
                                             {machineName}
                                         </Text>
@@ -469,7 +630,13 @@ export function WorkspaceExplorerSidebar() {
                     }
 
                     const isSelected = selectedSessionId === row.session.id;
-                    return <WorkspaceExplorerSessionRow session={row.session} selected={isSelected} />;
+                    return (
+                        <WorkspaceExplorerSessionRow
+                            session={row.session}
+                            selected={isSelected}
+                            depth={row.depth}
+                        />
+                    );
                 }}
             />
         </View>

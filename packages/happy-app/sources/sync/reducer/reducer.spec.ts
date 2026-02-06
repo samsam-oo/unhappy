@@ -426,6 +426,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'denied',
@@ -452,6 +453,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -522,6 +524,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 3000,
                         status: 'approved'
@@ -529,6 +532,7 @@ describe('reducer', () => {
                     'tool-2': {
                         tool: 'Bash',
                         arguments: { command: 'pwd' },
+                        allowedTools: undefined,
                         createdAt: 2000,
                         completedAt: 3000,
                         status: 'approved'
@@ -584,6 +588,7 @@ describe('reducer', () => {
                     'tool-old': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -591,6 +596,7 @@ describe('reducer', () => {
                     'tool-new': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
+                        allowedTools: undefined,
                         createdAt: 3000,
                         completedAt: 4000,
                         status: 'approved'
@@ -664,6 +670,7 @@ describe('reducer', () => {
                     'tool-completed': {
                         tool: 'Write',
                         arguments: { file: 'output.txt', content: 'hello' },
+                        allowedTools: undefined,
                         createdAt: 2000,
                         completedAt: 3000,
                         status: 'approved'
@@ -715,6 +722,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -795,6 +803,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -854,6 +863,7 @@ describe('reducer', () => {
                     'tool-ls': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -861,6 +871,7 @@ describe('reducer', () => {
                     'tool-pwd': {
                         tool: 'Bash',
                         arguments: { command: 'pwd' },
+                        allowedTools: undefined,
                         createdAt: 1500,
                         completedAt: 2000,
                         status: 'approved'
@@ -1015,6 +1026,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 3000,
                         status: 'approved'
@@ -1084,6 +1096,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Read',
                         arguments: { file: '/test.txt' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -1180,6 +1193,7 @@ describe('reducer', () => {
                     'tool-deny': {
                         tool: 'Write',
                         arguments: { file: '/secure.txt', content: 'hack' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'denied',
@@ -1188,6 +1202,7 @@ describe('reducer', () => {
                     'tool-cancel': {
                         tool: 'Delete',
                         arguments: { file: '/important.txt' },
+                        allowedTools: undefined,
                         createdAt: 1500,
                         completedAt: 2500,
                         status: 'canceled',
@@ -1322,6 +1337,7 @@ describe('reducer', () => {
                     'tool-2': {
                         tool: 'Read',
                         arguments: { file: 'test.txt' },
+                        allowedTools: undefined,
                         createdAt: 500,
                         completedAt: 1000,
                         status: 'approved'
@@ -1485,6 +1501,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -1522,6 +1539,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 4000,
                         status: 'denied',
@@ -1574,6 +1592,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 1500,
                         status: 'approved'
@@ -1660,6 +1679,7 @@ describe('reducer', () => {
                         [`perm-${i}`]: {
                             tool: 'Test',
                             arguments: { index: i },
+                            allowedTools: undefined,
                             createdAt: i * 1000 + 100,
                             completedAt: i * 1000 + 200,
                             status: 'approved'
@@ -1855,6 +1875,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -1947,6 +1968,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -2012,6 +2034,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -2069,6 +2092,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'rm -rf /' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'denied',
@@ -2128,6 +2152,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'sleep 3600' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'canceled',
@@ -2178,6 +2203,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo test' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
@@ -2212,6 +2238,7 @@ describe('reducer', () => {
                     'tool-2': {
                         tool: 'Bash',
                         arguments: { command: 'echo denied' },
+                        allowedTools: undefined,
                         createdAt: 3000,
                         completedAt: 4000,
                         status: 'denied',
@@ -2292,6 +2319,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo success' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 1400,
                         status: 'approved'
@@ -2365,6 +2393,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'rm important.txt' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 1400,
                         status: 'denied',
@@ -2433,6 +2462,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'cat /nonexistent' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 1400,
                         status: 'approved'
@@ -2494,6 +2524,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'sudo rm -rf /' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 1400,
                         status: 'denied',
@@ -2573,6 +2604,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1000,
                         completedAt: 1400,
                         status: 'approved'
@@ -2786,6 +2818,7 @@ describe('reducer', () => {
                     'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
+                        allowedTools: undefined,
                         createdAt: 1500,
                         completedAt: 1800,
                         status: 'approved'

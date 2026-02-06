@@ -74,6 +74,7 @@ describe('Phase 0 permission skipping issue', () => {
                 'tool2': {
                     tool: 'Write',
                     arguments: { file_path: '/test.txt', content: 'hello' },
+                    allowedTools: undefined,
                     status: 'approved',
                     createdAt: 1900,
                     completedAt: 1950
@@ -82,6 +83,7 @@ describe('Phase 0 permission skipping issue', () => {
                 'tool3': {
                     tool: 'Read',
                     arguments: { file_path: '/test.txt' },
+                    allowedTools: undefined,
                     status: 'denied',
                     reason: 'Access denied',
                     createdAt: 2900,
@@ -185,6 +187,7 @@ describe('Phase 0 permission skipping issue', () => {
                 'tool1': {
                     tool: 'Write',
                     arguments: { file_path: '/test.txt', content: 'hello' },
+                    allowedTools: undefined,
                     status: 'approved',
                     createdAt: 900,
                     completedAt: 950

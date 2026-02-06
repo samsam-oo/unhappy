@@ -33,17 +33,28 @@ export const AgentStateSchema = z.object({
         arguments: z.any(),
         createdAt: z.number().nullish()
     })).nullish(),
-    completedRequests: z.record(z.string(), z.object({
-        tool: z.string(),
-        arguments: z.any(),
-        createdAt: z.number().nullish(),
-        completedAt: z.number().nullish(),
-        status: z.enum(['canceled', 'denied', 'approved']),
-        reason: z.string().nullish(),
-        mode: z.string().nullish(),
-        allowedTools: z.array(z.string()).nullish(),
-        decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish()
-    })).nullish()
+    completedRequests: z.record(
+        z.string(),
+        z.object({
+            tool: z.string(),
+            arguments: z.any(),
+            createdAt: z.number().nullish(),
+            completedAt: z.number().nullish(),
+            status: z.enum(['canceled', 'denied', 'approved']),
+            reason: z.string().nullish(),
+            mode: z.string().nullish(),
+            // App/UI uses `allowedTools`, but some producers (CLI/server) send `allowTools`.
+            // Accept both and normalize to `allowedTools` so "Yes (this tool)" works reliably.
+            allowedTools: z.array(z.string()).nullish(),
+            allowTools: z.array(z.string()).nullish(),
+            decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish()
+        })
+            .passthrough()
+            .transform(({ allowTools, ...rest }) => ({
+                ...rest,
+                allowedTools: rest.allowedTools ?? allowTools
+            }))
+    ).nullish()
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
