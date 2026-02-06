@@ -66,14 +66,8 @@ export const knownTools = {
         }).partial().passthrough(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.command === 'string') {
-                const cmd = opts.tool.input.command;
-                // Extract just the command name for common commands
-                const firstWord = cmd.split(' ')[0];
-                if (['cd', 'ls', 'pwd', 'mkdir', 'rm', 'cp', 'mv', 'npm', 'yarn', 'git'].includes(firstWord)) {
-                    return t('tools.desc.terminalCmd', { cmd: firstWord });
-                }
-                // For other commands, show truncated version
-                const truncated = cmd.length > 20 ? cmd.substring(0, 20) + '...' : cmd;
+                const cmd = opts.tool.input.command.trim();
+                const truncated = cmd.length > 32 ? cmd.substring(0, 32) + '...' : cmd;
                 return t('tools.desc.terminalCmd', { cmd: truncated });
             }
             return t('tools.names.terminal');
@@ -512,6 +506,31 @@ export const knownTools = {
                     const basename = path.split('/').pop() || path;
                     return t('tools.desc.writingFile', { file: basename });
                 }
+            }
+            // For regular shell commands, show a short command preview.
+            let cmd: string | null = null;
+            if (opts.tool.input?.parsed_cmd && Array.isArray(opts.tool.input.parsed_cmd) && opts.tool.input.parsed_cmd.length > 0) {
+                const parsedCmd = opts.tool.input.parsed_cmd[0];
+                if (typeof parsedCmd?.cmd === 'string' && parsedCmd.cmd.trim()) {
+                    cmd = parsedCmd.cmd.trim();
+                }
+            }
+            if (!cmd && opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
+                const cmdArray = opts.tool.input.command;
+                if (
+                    cmdArray.length >= 3 &&
+                    (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') &&
+                    cmdArray[1] === '-lc' &&
+                    typeof cmdArray[2] === 'string'
+                ) {
+                    cmd = cmdArray[2].trim();
+                } else {
+                    cmd = cmdArray.join(' ').trim();
+                }
+            }
+            if (cmd) {
+                const truncated = cmd.length > 32 ? cmd.substring(0, 32) + '...' : cmd;
+                return t('tools.desc.terminalCmd', { cmd: truncated });
             }
             return t('tools.names.terminal');
         }

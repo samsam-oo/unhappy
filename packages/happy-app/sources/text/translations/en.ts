@@ -528,7 +528,7 @@ export const en: TranslationStructure = {
             otherPlaceholder: 'Type your answer...',
         },
         desc: {
-            terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
+            terminalCmd: ({ cmd }: { cmd: string }) => `Terminal \u2022 ${cmd}`,
             searchPattern: ({ pattern }: { pattern: string }) => `Search(pattern: ${pattern})`,
             searchPath: ({ basename }: { basename: string }) => `Search(path: ${basename})`,
             fetchUrlHost: ({ host }: { host: string }) => `Fetch URL(url: ${host})`,

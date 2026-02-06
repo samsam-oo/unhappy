@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { storage } from '@/sync/storage';
@@ -165,49 +165,45 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             paddingHorizontal: 12,
             paddingVertical: 6,
             justifyContent: 'center',
-            alignItems: 'flex-start',
-        },
-        card: {
-            alignSelf: 'flex-start',
-            backgroundColor: theme.colors.surfaceHighest,
-            borderRadius: theme.borderRadius.lg,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: theme.colors.divider,
-            paddingHorizontal: 8,
-            paddingVertical: 6,
-            ...Platform.select({
-                web: {
-                    width: 'fit-content' as any,
-                },
-                default: {},
-            }),
+            alignItems: Platform.select({ web: 'flex-start', default: 'stretch' }) as any,
         },
         buttonContainer: {
             flexDirection: 'column',
-            gap: 2,
-            alignItems: 'flex-start',
+            gap: Platform.select({ web: 6, default: 8 }),
+            alignItems: Platform.select({ web: 'flex-start', default: 'stretch' }) as any,
         },
-        button: {
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            borderRadius: theme.borderRadius.md,
-            backgroundColor: 'transparent',
-            borderLeftWidth: 2,
-            borderLeftColor: 'transparent',
-            alignItems: 'flex-start',
-            justifyContent: 'center',
-            minHeight: 28,
-            alignSelf: 'flex-start',
-            maxWidth: '100%',
+        optionItem: {
+            backgroundColor: theme.colors.surfaceHighest,
+            borderRadius: Platform.select({ web: 8, default: 10 }),
+            paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+            paddingVertical: Platform.select({ web: 10, default: 12 }),
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+            ...Platform.select({
+                // On desktop/web, avoid full-width stretched buttons: keep them compact like option prompts.
+                web: {
+                    width: 'fit-content' as any,
+                    maxWidth: 360,
+                    alignSelf: 'flex-start',
+                },
+                default: {
+                    width: '100%',
+                    alignSelf: 'stretch',
+                },
+            }),
         },
-        buttonSelected: {
+        optionItemSelected: {
             backgroundColor: theme.colors.surfacePressed,
-            borderLeftColor: theme.colors.text,
+            borderColor: theme.colors.textSecondary,
         },
-        buttonInactive: {
+        optionItemInactive: {
             opacity: 0.35,
         },
-        buttonContent: {
+        optionItemPressed: {
+            opacity: 0.7,
+            backgroundColor: theme.colors.surfaceHigh,
+        },
+        optionRow: {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 8,
@@ -260,63 +256,59 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     : styles.dotDeny;
 
         return (
-            <TouchableOpacity
-                style={[
-                    styles.button,
-                    props.isSelected && styles.buttonSelected,
-                    props.isInactive && styles.buttonInactive,
-                ]}
+            <Pressable
                 onPress={props.onPress}
                 disabled={props.disabled}
-                activeOpacity={props.disabled ? 1 : 0.6}
+                style={({ pressed }) => [
+                    styles.optionItem,
+                    pressed && !props.disabled && styles.optionItemPressed,
+                    props.isSelected && styles.optionItemSelected,
+                    props.isInactive && styles.optionItemInactive,
+                ]}
             >
-                <View style={styles.buttonContent}>
+                <View style={styles.optionRow}>
                     <View style={[styles.dot, dotStyle]} />
                     <Text
                         style={[
                             styles.buttonText,
                             props.isSelected && styles.buttonTextSelected,
                         ]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
                     >
                         {props.label}
                     </Text>
                 </View>
-            </TouchableOpacity>
+            </Pressable>
         );
     }
 
     if (isCodex) {
         return (
             <View style={styles.container}>
-                <View style={styles.card}>
-                    <View style={styles.buttonContainer}>
-                        <OptionButton
-                            label={t('common.yes')}
-                            kind="allow"
-                            isSelected={isCodexApproved}
-                            isInactive={isCodexAborted || isCodexApprovedForSession}
-                            onPress={handleCodexApprove}
-                            disabled={!isPending || loadingButton !== null || loadingForSession}
-                        />
-                        <OptionButton
-                            label={t('codex.permissions.yesForSession')}
-                            kind="allowAll"
-                            isSelected={isCodexApprovedForSession}
-                            isInactive={isCodexAborted || isCodexApproved}
-                            onPress={handleCodexApproveForSession}
-                            disabled={!isPending || loadingButton !== null || loadingForSession}
-                        />
-                        <OptionButton
-                            label={t('codex.permissions.stopAndExplain')}
-                            kind="deny"
-                            isSelected={isCodexAborted}
-                            isInactive={isCodexApproved || isCodexApprovedForSession}
-                            onPress={handleCodexAbort}
-                            disabled={!isPending || loadingButton !== null || loadingForSession}
-                        />
-                    </View>
+                <View style={styles.buttonContainer}>
+                    <OptionButton
+                        label={t('common.yes')}
+                        kind="allow"
+                        isSelected={isCodexApproved}
+                        isInactive={isCodexAborted || isCodexApprovedForSession}
+                        onPress={handleCodexApprove}
+                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                    />
+                    <OptionButton
+                        label={t('codex.permissions.yesForSession')}
+                        kind="allowAll"
+                        isSelected={isCodexApprovedForSession}
+                        isInactive={isCodexAborted || isCodexApproved}
+                        onPress={handleCodexApproveForSession}
+                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                    />
+                    <OptionButton
+                        label={t('codex.permissions.stopAndExplain')}
+                        kind="deny"
+                        isSelected={isCodexAborted}
+                        isInactive={isCodexApproved || isCodexApprovedForSession}
+                        onPress={handleCodexAbort}
+                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                    />
                 </View>
             </View>
         );
@@ -324,48 +316,46 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     return (
         <View style={styles.container}>
-            <View style={styles.card}>
-                <View style={styles.buttonContainer}>
+            <View style={styles.buttonContainer}>
+                <OptionButton
+                    label={t('common.yes')}
+                    kind="allow"
+                    isSelected={isApprovedViaAllow}
+                    isInactive={isDenied || isApprovedViaAllEdits || isApprovedForSession}
+                    onPress={handleApprove}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                />
+
+                {(toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit' || toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
                     <OptionButton
-                        label={t('common.yes')}
-                        kind="allow"
-                        isSelected={isApprovedViaAllow}
-                        isInactive={isDenied || isApprovedViaAllEdits || isApprovedForSession}
-                        onPress={handleApprove}
+                        label={t('claude.permissions.yesAllowAllEdits')}
+                        kind="allowAll"
+                        isSelected={isApprovedViaAllEdits}
+                        isInactive={isDenied || isApprovedViaAllow || isApprovedForSession}
+                        onPress={handleApproveAllEdits}
                         disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
                     />
+                )}
 
-                    {(toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit' || toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
-                        <OptionButton
-                            label={t('claude.permissions.yesAllowAllEdits')}
-                            kind="allowAll"
-                            isSelected={isApprovedViaAllEdits}
-                            isInactive={isDenied || isApprovedViaAllow || isApprovedForSession}
-                            onPress={handleApproveAllEdits}
-                            disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
-                        />
-                    )}
-
-                    {toolName && toolName !== 'Edit' && toolName !== 'MultiEdit' && toolName !== 'Write' && toolName !== 'NotebookEdit' && toolName !== 'exit_plan_mode' && toolName !== 'ExitPlanMode' && (
-                        <OptionButton
-                            label={t('claude.permissions.yesForTool')}
-                            kind="allowAll"
-                            isSelected={isApprovedForSession}
-                            isInactive={isDenied || isApprovedViaAllow || isApprovedViaAllEdits}
-                            onPress={handleApproveForSession}
-                            disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
-                        />
-                    )}
-
+                {toolName && toolName !== 'Edit' && toolName !== 'MultiEdit' && toolName !== 'Write' && toolName !== 'NotebookEdit' && toolName !== 'exit_plan_mode' && toolName !== 'ExitPlanMode' && (
                     <OptionButton
-                        label={t('claude.permissions.noTellClaude')}
-                        kind="deny"
-                        isSelected={isDenied}
-                        isInactive={isApproved}
-                        onPress={handleDeny}
+                        label={t('claude.permissions.yesForTool')}
+                        kind="allowAll"
+                        isSelected={isApprovedForSession}
+                        isInactive={isDenied || isApprovedViaAllow || isApprovedViaAllEdits}
+                        onPress={handleApproveForSession}
                         disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
                     />
-                </View>
+                )}
+
+                <OptionButton
+                    label={t('claude.permissions.noTellClaude')}
+                    kind="deny"
+                    isSelected={isDenied}
+                    isInactive={isApproved}
+                    onPress={handleDeny}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                />
             </View>
         </View>
     );

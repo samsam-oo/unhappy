@@ -36,7 +36,18 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
-    const [chatExpanded, setChatExpanded] = React.useState(false);
+    const isShellLikeTool = tool.name === 'Bash' || tool.name === 'CodexBash';
+    const isPermissionPending = tool.permission?.status === 'pending';
+    const [chatExpanded, setChatExpanded] = React.useState(() => {
+        // If we're actively asking the user for consent (pending permission), keep the preview open.
+        return props.variant === 'chat' && isShellLikeTool && isPermissionPending;
+    });
+
+    React.useEffect(() => {
+        if (props.variant === 'chat' && isShellLikeTool && isPermissionPending) {
+            setChatExpanded(true);
+        }
+    }, [props.variant, isShellLikeTool, isPermissionPending]);
 
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
@@ -171,7 +182,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     // Users can tap to open the full tool details screen.
     if (isChatVariant && !showExpandedInChat) {
         // Build a nice, short label. Prefer the tool's "description" line when available.
-        // Example: "터미널(cmd: git)" feels closer to the Codex-style activity line than just "터미널".
+        // Example: "터미널 • git status" feels closer to an activity line than just "터미널".
         let chatLabel = toolTitle;
         if (knownTool && typeof knownTool.extractDescription === 'function') {
             const desc = knownTool.extractDescription({ tool, metadata: props.metadata });
@@ -182,8 +193,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             chatLabel = description;
         }
 
-        // Optional collapse/expand preview for shell commands (command blocks should be closed by default).
-        const isShellLike = tool.name === 'Bash' || tool.name === 'CodexBash';
+        // Optional collapse/expand preview for shell commands.
+        // If we're asking for consent (pending permission), force the preview open and hide the collapse icon.
+        const isShellLike = isShellLikeTool;
 
         let command: string | null = null;
         let stdout: string | null = null;
@@ -224,7 +236,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             }
         }
 
-        const canToggleCollapse = isShellLike && !!command;
+        const canShowPreview = isShellLike && !!command;
+        const forceExpanded = canShowPreview && isPermissionPending;
+        const expanded = chatExpanded || forceExpanded;
+        const canToggleCollapse = canShowPreview && !forceExpanded;
 
         const toggleCollapse = React.useCallback(() => {
             // Keep web deterministic; animate native transitions lightly.
@@ -265,7 +280,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             <View style={styles.chatHeaderRight}>
                                 {canToggleCollapse ? (
                                     <Ionicons
-                                        name={chatExpanded ? 'chevron-up' : 'chevron-down'}
+                                        name={expanded ? 'chevron-up' : 'chevron-down'}
                                         size={16}
                                         color={theme.colors.textSecondary}
                                     />
@@ -273,18 +288,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 {statusIcon}
                             </View>
                         </View>
-                        {collapsedErrorLine && !chatExpanded ? (
+                        {collapsedErrorLine && !expanded ? (
                             <Text style={styles.chatErrorLine} numberOfLines={1}>
                                 {collapsedErrorLine}
                             </Text>
                         ) : null}
 
-                        {canToggleCollapse && !chatExpanded ? (
-                            <View style={styles.chatCommandInline}>
-                                <Text style={styles.chatCommandPrompt}>$</Text>
-                                <Text style={styles.chatCommandInlineText} numberOfLines={1}>{command}</Text>
-                            </View>
-                        ) : null}
                     </TouchableOpacity>
                 ) : (
                     <View style={styles.chatStatic}>
@@ -301,7 +310,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             <View style={styles.chatHeaderRight}>
                                 {canToggleCollapse ? (
                                     <Ionicons
-                                        name={chatExpanded ? 'chevron-up' : 'chevron-down'}
+                                        name={expanded ? 'chevron-up' : 'chevron-down'}
                                         size={16}
                                         color={theme.colors.textSecondary}
                                     />
@@ -309,22 +318,16 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 {statusIcon}
                             </View>
                         </View>
-                        {collapsedErrorLine && !chatExpanded ? (
+                        {collapsedErrorLine && !expanded ? (
                             <Text style={styles.chatErrorLine} numberOfLines={1}>
                                 {collapsedErrorLine}
                             </Text>
                         ) : null}
 
-                        {canToggleCollapse && !chatExpanded ? (
-                            <View style={styles.chatCommandInline}>
-                                <Text style={styles.chatCommandPrompt}>$</Text>
-                                <Text style={styles.chatCommandInlineText} numberOfLines={1}>{command}</Text>
-                            </View>
-                        ) : null}
                     </View>
                 )}
 
-                {canToggleCollapse && chatExpanded ? (
+                {canShowPreview && expanded ? (
                     <View style={styles.chatPreview}>
                         <CommandView
                             command={command!}
@@ -483,14 +486,18 @@ const styles = StyleSheet.create((theme) => ({
     },
 	    chatContainer: {
 	        marginVertical: 4,
+            width: '100%',
+            alignSelf: 'stretch',
 	    },
 	    chatPressable: {
-	        alignSelf: 'flex-start',
+	        alignSelf: 'stretch',
+            width: '100%',
 	        maxWidth: '100%',
 	        paddingVertical: 4,
 	    },
 	    chatStatic: {
-	        alignSelf: 'flex-start',
+	        alignSelf: 'stretch',
+            width: '100%',
 	        maxWidth: '100%',
 	        paddingVertical: 4,
 	    },
@@ -524,31 +531,6 @@ const styles = StyleSheet.create((theme) => ({
 	        color: theme.colors.textSecondary,
 	        fontWeight: '500',
 	    },
-	    chatCommandInline: {
-	        marginTop: 6,
-	        marginLeft: 14, // align after dot
-	        flexDirection: 'row',
-	        alignItems: 'baseline',
-	        gap: 6,
-	        paddingLeft: 10,
-	        borderLeftWidth: 2,
-	        borderLeftColor: theme.colors.divider,
-	        maxWidth: '100%',
-	    },
-	    chatCommandPrompt: {
-	        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-	        fontSize: 12,
-	        color: theme.colors.textSecondary,
-	        opacity: 0.75,
-	    },
-	    chatCommandInlineText: {
-	        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-	        fontSize: 12,
-	        color: theme.colors.text,
-	        opacity: 0.9,
-	        flexShrink: 1,
-	        minWidth: 0,
-	    },
 	    chatErrorLine: {
 	        marginTop: 6,
 	        fontSize: 12,
@@ -562,6 +544,7 @@ const styles = StyleSheet.create((theme) => ({
 	        paddingLeft: 10,
 	        borderLeftWidth: 2,
 	        borderLeftColor: theme.colors.divider,
+            flex: 1,
 	    },
     chatError: {
         marginTop: 4,

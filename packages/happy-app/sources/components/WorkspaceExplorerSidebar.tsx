@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FlatList, Platform, Pressable, View } from 'react-native';
+import { ActivityIndicator, FlatList, Platform, Pressable, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePathname, useRouter } from 'expo-router';
@@ -10,6 +10,8 @@ import { useAllSessions, useProjects } from '@/sync/storage';
 import type { Project } from '@/sync/projectManager';
 import type { Session } from '@/sync/storageTypes';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { t } from '@/text';
+import { useSessionStatus } from '@/utils/sessionUtils';
 
 const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
 
@@ -46,13 +48,15 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 12,
-        paddingTop: 12,
-        paddingBottom: 8,
+        // Keep the sidebar compact but avoid "cramped" headers.
+        paddingVertical: 8,
+        minHeight: 36,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.chrome.panelBorder,
     },
     sectionTitle: {
         fontSize: 11,
+        lineHeight: 14,
         fontWeight: '700',
         color: theme.colors.groupped.sectionTitle,
         letterSpacing: 0.7,
@@ -76,13 +80,16 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 
     list: {
-        paddingVertical: 6,
+        // Avoid a "double padding" feel: the header already provides vertical rhythm.
+        paddingTop: 4,
+        paddingBottom: 6,
     },
 
     row: {
-        minHeight: 30,
+        // Slightly tighter rows for a more compact sidebar density.
+        minHeight: 28,
         paddingHorizontal: 8,
-        paddingVertical: 6,
+        paddingVertical: 5,
         marginHorizontal: 6,
         borderRadius: 6,
         flexDirection: 'row',
@@ -98,8 +105,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     selectionBar: {
         position: 'absolute',
         left: 0,
-        top: 6,
-        bottom: 6,
+        top: 5,
+        bottom: 5,
         width: 2,
         backgroundColor: theme.colors.chrome.accent,
         borderTopLeftRadius: 2,
@@ -110,6 +117,18 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: 16,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    projectActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 2,
+    },
+    rowActionButton: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 6,
     },
     icon: {
         width: 18,
@@ -129,7 +148,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     subtitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 2,
+        marginTop: 1,
         gap: 6,
     },
     subtitle: {
@@ -148,6 +167,60 @@ type Row =
     | { type: 'session'; session: Session }
     | { type: 'section'; id: 'playground'; title: string }
     | { type: 'action'; id: 'new-playground'; title: string };
+
+const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSessionRow(props: {
+    session: Session;
+    selected: boolean;
+}) {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
+    const navigateToSession = useNavigateToSession();
+
+    const sessionStatus = useSessionStatus(props.session);
+    const sessionTitle = props.session.metadata?.summary?.text?.trim() || 'Session';
+
+    const { iconName, iconColor } = React.useMemo(() => {
+        switch (sessionStatus.state) {
+            case 'thinking':
+                return { iconName: 'sparkles-outline', iconColor: sessionStatus.statusDotColor };
+            case 'permission_required':
+                return { iconName: 'alert-circle-outline', iconColor: sessionStatus.statusDotColor };
+            case 'waiting':
+                // "Waiting for your message" feels closer to chat than terminal.
+                return { iconName: 'chatbubble-outline', iconColor: sessionStatus.statusDotColor };
+            case 'disconnected':
+                return { iconName: 'cloud-outline', iconColor: sessionStatus.statusDotColor };
+            default:
+                return { iconName: 'terminal-outline', iconColor: theme.colors.textSecondary };
+        }
+    }, [sessionStatus.state, sessionStatus.statusDotColor, theme.colors.textSecondary]);
+
+    return (
+        <Pressable
+            onPress={() => navigateToSession(props.session.id)}
+            style={({ hovered, pressed }: any) => [
+                styles.row,
+                styles.childIndent,
+                props.selected && styles.rowActive,
+                (Platform.OS === 'web' && (hovered || pressed) && !props.selected) && styles.rowHover,
+            ]}
+        >
+            {props.selected && <View style={styles.selectionBar} />}
+            <View style={styles.chevron} />
+            <View style={styles.icon}>
+                {sessionStatus.state === 'thinking'
+                    ? <ActivityIndicator size={14} color={sessionStatus.statusDotColor} />
+                    : <Ionicons name={iconName} size={18} color={iconColor} />
+                }
+            </View>
+            <View style={styles.textBlock}>
+                <Text style={styles.title} numberOfLines={1}>
+                    {sessionTitle}
+                </Text>
+            </View>
+        </Pressable>
+    );
+});
 
 export function WorkspaceExplorerSidebar() {
     const styles = stylesheet;
@@ -285,7 +358,9 @@ export function WorkspaceExplorerSidebar() {
                                     {
                                         borderTopWidth: StyleSheet.hairlineWidth,
                                         borderTopColor: theme.colors.chrome.panelBorder,
-                                        marginBottom: 6,
+                                        marginTop: 8,
+                                        // Keep the break between groups, but avoid an extra "loose" feeling.
+                                        marginBottom: 4,
                                     },
                                 ]}
                             >
@@ -346,14 +421,6 @@ export function WorkspaceExplorerSidebar() {
                                     (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
                                 ]}
                             >
-                                <View style={styles.chevron}>
-                                    <Ionicons
-                                        name="chevron-forward"
-                                        size={16}
-                                        color={theme.colors.textSecondary}
-                                        style={{ transform: [{ rotate: row.expanded ? '90deg' : '0deg' }] }}
-                                    />
-                                </View>
                                 <View style={styles.icon}>
                                     <Octicons name="file-directory" size={16} color={theme.colors.textSecondary} />
                                 </View>
@@ -371,35 +438,38 @@ export function WorkspaceExplorerSidebar() {
                                         </Text>
                                     </View>
                                 </View>
+                                <View style={styles.projectActions}>
+                                    <Pressable
+                                        hitSlop={10}
+                                        onPress={(e: any) => {
+                                            e?.stopPropagation?.();
+                                            router.push({
+                                                pathname: '/new',
+                                                params: { machineId: row.project.key.machineId, path: row.project.key.path },
+                                            });
+                                        }}
+                                        style={({ hovered, pressed }: any) => [
+                                            styles.rowActionButton,
+                                            (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
+                                        ]}
+                                        accessibilityLabel={t('newSession.startNewSessionInFolder')}
+                                    >
+                                        <Ionicons name="add" size={18} color={theme.colors.textSecondary} />
+                                    </Pressable>
+                                    <View style={styles.chevron}>
+                                        <Ionicons
+                                            name={row.expanded ? 'chevron-down' : 'chevron-forward'}
+                                            size={16}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    </View>
+                                </View>
                             </Pressable>
                         );
                     }
 
                     const isSelected = selectedSessionId === row.session.id;
-                    const sessionTitle = row.session.metadata?.summary?.text?.trim() || 'Session';
-
-                    return (
-                        <Pressable
-                            onPress={() => navigateToSession(row.session.id)}
-                            style={({ hovered, pressed }: any) => [
-                                styles.row,
-                                styles.childIndent,
-                                isSelected && styles.rowActive,
-                                (Platform.OS === 'web' && (hovered || pressed) && !isSelected) && styles.rowHover,
-                            ]}
-                        >
-                            {isSelected && <View style={styles.selectionBar} />}
-                            <View style={styles.chevron} />
-                            <View style={styles.icon}>
-                                <Ionicons name="terminal-outline" size={18} color={theme.colors.textSecondary} />
-                            </View>
-                            <View style={styles.textBlock}>
-                                <Text style={styles.title} numberOfLines={1}>
-                                    {sessionTitle}
-                                </Text>
-                            </View>
-                        </Pressable>
-                    );
+                    return <WorkspaceExplorerSessionRow session={row.session} selected={isSelected} />;
                 }}
             />
         </View>

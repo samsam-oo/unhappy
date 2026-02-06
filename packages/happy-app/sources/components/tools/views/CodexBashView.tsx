@@ -89,13 +89,14 @@ export const CodexBashView = React.memo<CodexBashViewProps>(({ tool, metadata })
         const commandDisplay = commandStr || (command && Array.isArray(command) ? command.join(' ') : '');
         
         return (
-            <ToolSectionView>
+            <ToolSectionView fullWidth>
                 <CommandView 
                     command={commandDisplay}
                     stdout={null}
                     stderr={null}
                     error={state === 'error' && typeof result === 'string' ? result : null}
                     hideEmptyOutput
+                    fullWidth
                 />
             </ToolSectionView>
         );

@@ -32,7 +32,7 @@ export const BashView = React.memo((props: { tool: ToolCall, metadata: Metadata 
 
     return (
         <>
-            <ToolSectionView>
+            <ToolSectionView fullWidth>
                 <CommandView 
                     command={input.command}
                     // Don't show output in compact view
@@ -40,6 +40,7 @@ export const BashView = React.memo((props: { tool: ToolCall, metadata: Metadata 
                     stderr={null}
                     error={error}
                     hideEmptyOutput
+                    fullWidth
                 />
             </ToolSectionView>
         </>

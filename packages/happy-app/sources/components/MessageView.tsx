@@ -1,16 +1,15 @@
-import * as React from "react";
-import { View, Text } from "react-native";
-import { StyleSheet } from 'react-native-unistyles';
-import { MarkdownView } from "./markdown/MarkdownView";
-import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
-import { Metadata } from "@/sync/storageTypes";
-import { layout } from "./layout";
-import { ToolView } from "./tools/ToolView";
-import { AgentEvent } from "@/sync/typesRaw";
-import { sync } from '@/sync/sync';
-import { Option } from './markdown/MarkdownView';
 import { useSetting } from "@/sync/storage";
+import { Metadata } from "@/sync/storageTypes";
+import { sync } from '@/sync/sync';
+import { AgentTextMessage, Message, ToolCallMessage, UserTextMessage } from "@/sync/typesMessage";
+import { AgentEvent } from "@/sync/typesRaw";
+import { t } from '@/text';
+import * as React from "react";
+import { Text, View } from "react-native";
+import { StyleSheet } from 'react-native-unistyles';
+import { layout } from "./layout";
+import { MarkdownView, Option } from "./markdown/MarkdownView";
+import { ToolView } from "./tools/ToolView";
 
 export const MessageView = (props: {
   message: Message;
@@ -194,7 +193,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.userMessageBackground,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 16,
     marginBottom: 8,
     maxWidth: '100%',
     borderWidth: StyleSheet.hairlineWidth,

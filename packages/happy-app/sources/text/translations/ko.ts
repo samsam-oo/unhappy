@@ -506,7 +506,7 @@ export const ko: TranslationStructure = {
             otherPlaceholder: '답변을 입력하세요...',
         },
         desc: {
-            terminalCmd: ({ cmd }: { cmd: string }) => `터미널(cmd: ${cmd})`,
+            terminalCmd: ({ cmd }: { cmd: string }) => `터미널 \u2022 ${cmd}`,
             searchPattern: ({ pattern }: { pattern: string }) => `검색(pattern: ${pattern})`,
             searchPath: ({ basename }: { basename: string }) => `검색(path: ${basename})`,
             fetchUrlHost: ({ host }: { host: string }) => `URL 가져오기(url: ${host})`,

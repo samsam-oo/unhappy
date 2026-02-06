@@ -1,19 +1,18 @@
-import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
-import { Link } from 'expo-router';
+import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
+import { storeTempText } from '@/sync/persistence';
+import { useLocalSetting } from '@/sync/storage';
+import { t } from '@/text';
+import * as Clipboard from 'expo-clipboard';
+import { Link, useRouter } from 'expo-router';
 import * as React from 'react';
-import { Pressable, ScrollView, View, Platform } from 'react-native';
+import { Platform, Pressable, ScrollView, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
-import { Text } from '../StyledText';
-import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
-import { Modal } from '@/modal';
-import { useLocalSetting } from '@/sync/storage';
-import { storeTempText } from '@/sync/persistence';
-import { useRouter } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
+import { Text } from '../StyledText';
 import { MermaidRenderer } from './MermaidRenderer';
-import { t } from '@/text';
+import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 
 // Option type for callback
 export type Option = {
@@ -477,7 +476,7 @@ const style = StyleSheet.create((theme) => ({
     },
     optionItem: {
         backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: Platform.select({ web: 6, default: 8 }),
+        borderRadius: Platform.select({ web: 14, default: 16 }),
         paddingHorizontal: Platform.select({ web: 12, default: 16 }),
         paddingVertical: Platform.select({ web: 10, default: 12 }),
         borderWidth: 1,
