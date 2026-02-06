@@ -6,9 +6,41 @@ import { machineBash, sessionKill, sessionDelete } from '@/sync/ops';
 
 const WORKTREE_SEGMENT_POSIX = '/.unhappy/worktree/';
 const WORKTREE_SEGMENT_WIN = '\\.unhappy\\worktree\\';
+const SAFE_CWD = '/'; // Bypasses daemon path validation; use `git -C <path>` instead of relying on cwd.
 
 function bashQuote(value: string): string {
     return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function buildWorktreePath(basePath: string, branchName: string): string {
+    // Prefer backslashes if basePath already looks like a Windows path.
+    if (basePath.includes('\\')) return `${basePath}\\.unhappy\\worktree\\${branchName}`;
+    return `${basePath}/.unhappy/worktree/${branchName}`;
+}
+
+type BashResultLike = {
+    success?: boolean;
+    stdout?: string;
+    stderr?: string;
+    exitCode?: number;
+    // Some daemon responses (e.g. validatePath failures) may return `error` without stdout/stderr.
+    error?: string;
+};
+
+function formatBashFailure(result: BashResultLike, fallback: string): string {
+    const stderr = (typeof result?.stderr === 'string' ? result.stderr : '').trim();
+    const stdout = (typeof result?.stdout === 'string' ? result.stdout : '').trim();
+    const error = (typeof result?.error === 'string' ? result.error : '').trim();
+    const exitCode =
+        typeof result?.exitCode === 'number' && Number.isFinite(result.exitCode) ? result.exitCode : null;
+
+    const parts: string[] = [];
+    if (error) parts.push(error);
+    if (stderr) parts.push(stderr);
+    if (stdout) parts.push(stdout);
+    if (exitCode !== null && exitCode !== 0) parts.push(`Exit code: ${exitCode}`);
+
+    return (parts.join('\n').trim() || fallback).trim();
 }
 
 export interface WorktreeInfo {
@@ -19,6 +51,13 @@ export interface WorktreeInfo {
 
 export interface FinishResult {
     success: boolean;
+    error?: string;
+}
+
+export interface WorktreeStatus {
+    success: boolean;
+    dirty: boolean;
+    statusPorcelain?: string;
     error?: string;
 }
 
@@ -43,12 +82,65 @@ export function extractWorktreeInfo(sessionPath: string): WorktreeInfo | null {
     };
 }
 
+export async function getWorktreeStatus(machineId: string, worktreePath: string): Promise<WorktreeStatus> {
+    const statusCheck = await machineBash(machineId, `git -C ${bashQuote(worktreePath)} status --porcelain`, SAFE_CWD);
+    if (!statusCheck.success) {
+        return {
+            success: false,
+            dirty: false,
+            error: formatBashFailure(statusCheck as unknown as BashResultLike, 'Failed to get git status'),
+        };
+    }
+
+    const out = (statusCheck.stdout || '').trim();
+    return {
+        success: true,
+        dirty: Boolean(out),
+        statusPorcelain: statusCheck.stdout,
+    };
+}
+
+export async function commitWorktreeChanges(
+    machineId: string,
+    worktreePath: string,
+    message: string
+): Promise<FinishResult> {
+    const trimmed = message.trim();
+    if (!trimmed) return { success: false, error: 'Commit message is required.' };
+
+    const status = await getWorktreeStatus(machineId, worktreePath);
+    if (!status.success) return { success: false, error: status.error || 'Failed to get git status' };
+    if (!status.dirty) return { success: false, error: 'No changes to commit.' };
+
+    const addResult = await machineBash(machineId, `git -C ${bashQuote(worktreePath)} add -A`, SAFE_CWD);
+    if (!addResult.success) {
+        return {
+            success: false,
+            error: `Failed to stage changes:\n${formatBashFailure(addResult as unknown as BashResultLike, 'git add failed')}`,
+        };
+    }
+
+    const commitResult = await machineBash(
+        machineId,
+        `git -C ${bashQuote(worktreePath)} commit -m ${bashQuote(trimmed)}`,
+        SAFE_CWD
+    );
+    if (!commitResult.success) {
+        return {
+            success: false,
+            error: `Failed to commit:\n${formatBashFailure(commitResult as unknown as BashResultLike, 'git commit failed')}`,
+        };
+    }
+
+    return { success: true };
+}
+
 export async function resolveMainBranch(machineId: string, basePath: string): Promise<string> {
     // Try symbolic ref first (most reliable)
     const symbolicRef = await machineBash(
         machineId,
-        'git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null',
-        basePath
+        `git -C ${bashQuote(basePath)} symbolic-ref refs/remotes/origin/HEAD 2>/dev/null`,
+        SAFE_CWD
     );
     if (symbolicRef.success && symbolicRef.stdout.trim()) {
         const branch = symbolicRef.stdout.trim().replace(/^refs\/remotes\/origin\//, '');
@@ -56,11 +148,19 @@ export async function resolveMainBranch(machineId: string, basePath: string): Pr
     }
 
     // Fallback: check if origin/main exists
-    const mainCheck = await machineBash(machineId, 'git rev-parse --verify origin/main 2>/dev/null', basePath);
+    const mainCheck = await machineBash(
+        machineId,
+        `git -C ${bashQuote(basePath)} rev-parse --verify origin/main 2>/dev/null`,
+        SAFE_CWD
+    );
     if (mainCheck.success) return 'main';
 
     // Fallback: check if origin/master exists
-    const masterCheck = await machineBash(machineId, 'git rev-parse --verify origin/master 2>/dev/null', basePath);
+    const masterCheck = await machineBash(
+        machineId,
+        `git -C ${bashQuote(basePath)} rev-parse --verify origin/master 2>/dev/null`,
+        SAFE_CWD
+    );
     if (masterCheck.success) return 'master';
 
     return 'main';
@@ -77,44 +177,67 @@ export async function mergeWorktreeBranch(
     mainBranch: string,
     options?: MergeOptions
 ): Promise<FinishResult> {
-    const worktreePath = `${basePath}/.unhappy/worktree/${branchName}`;
+    const worktreePath = buildWorktreePath(basePath, branchName);
 
     // Step 1: Check for uncommitted changes in the worktree
-    const statusCheck = await machineBash(machineId, 'git status --porcelain', worktreePath);
-    if (statusCheck.success && statusCheck.stdout.trim()) {
+    const status = await getWorktreeStatus(machineId, worktreePath);
+    if (!status.success) {
+        return { success: false, error: status.error || 'Failed to get git status' };
+    }
+    if (status.dirty) {
         return { success: false, error: 'Worktree has uncommitted changes. Please commit or stash before merging.' };
     }
 
     // Step 2: Fetch latest
-    const fetchResult = await machineBash(machineId, 'git fetch origin', basePath);
+    const fetchResult = await machineBash(machineId, `git -C ${bashQuote(basePath)} fetch origin`, SAFE_CWD);
     if (!fetchResult.success) {
-        return { success: false, error: `Failed to fetch: ${fetchResult.stderr}` };
+        return {
+            success: false,
+            error: `Failed to fetch:\n${formatBashFailure(fetchResult as unknown as BashResultLike, 'git fetch failed')}`,
+        };
     }
 
     // Step 3: Checkout main branch
-    const checkoutResult = await machineBash(machineId, `git checkout ${bashQuote(mainBranch)}`, basePath);
+    const checkoutResult = await machineBash(
+        machineId,
+        `git -C ${bashQuote(basePath)} checkout ${bashQuote(mainBranch)}`,
+        SAFE_CWD
+    );
     if (!checkoutResult.success) {
-        return { success: false, error: `Failed to checkout ${mainBranch}: ${checkoutResult.stderr}` };
+        return {
+            success: false,
+            error: `Failed to checkout ${mainBranch}:\n${formatBashFailure(checkoutResult as unknown as BashResultLike, 'git checkout failed')}`,
+        };
     }
 
     // Step 4: Pull latest (non-fatal)
-    await machineBash(machineId, 'git pull --ff-only', basePath);
+    await machineBash(machineId, `git -C ${bashQuote(basePath)} pull --ff-only`, SAFE_CWD);
 
     // Step 5: Merge
-    const mergeResult = await machineBash(machineId, `git merge ${bashQuote(branchName)} --no-edit`, basePath);
+    const mergeResult = await machineBash(
+        machineId,
+        `git -C ${bashQuote(basePath)} merge ${bashQuote(branchName)} --no-edit`,
+        SAFE_CWD
+    );
     if (!mergeResult.success) {
-        await machineBash(machineId, 'git merge --abort', basePath);
+        await machineBash(machineId, `git -C ${bashQuote(basePath)} merge --abort`, SAFE_CWD);
         return {
             success: false,
-            error: `Merge conflict detected. The merge has been aborted.\n\n${mergeResult.stderr}`,
+            error: `Merge failed (possible conflict). The merge has been aborted.\n\n${formatBashFailure(
+                mergeResult as unknown as BashResultLike,
+                'git merge failed'
+            )}`,
         };
     }
 
     // Step 6: Optionally push
     if (options?.push) {
-        const pushResult = await machineBash(machineId, 'git push', basePath);
+        const pushResult = await machineBash(machineId, `git -C ${bashQuote(basePath)} push`, SAFE_CWD);
         if (!pushResult.success) {
-            return { success: false, error: `Merge succeeded locally but push failed: ${pushResult.stderr}` };
+            return {
+                success: false,
+                error: `Merge succeeded locally but push failed:\n${formatBashFailure(pushResult as unknown as BashResultLike, 'git push failed')}`,
+            };
         }
     }
 
@@ -127,19 +250,52 @@ export async function createPullRequest(
     branchName: string,
     mainBranch: string
 ): Promise<FinishResult & { prUrl?: string }> {
-    const worktreePath = `${basePath}/.unhappy/worktree/${branchName}`;
+    const worktreePath = buildWorktreePath(basePath, branchName);
+
+    // Guard: don't allow "empty push" from dirty working tree.
+    const status = await getWorktreeStatus(machineId, worktreePath);
+    if (!status.success) return { success: false, error: status.error || 'Failed to get git status' };
+    if (status.dirty) {
+        return { success: false, error: 'Worktree has uncommitted changes. Please commit or stash before pushing.' };
+    }
+
+    // Guard: require at least one commit ahead of mainBranch to avoid empty PRs.
+    // Use basePath for branch graph queries (more stable) and best-effort fetch.
+    await machineBash(machineId, `git -C ${bashQuote(basePath)} fetch origin`, SAFE_CWD);
+    const aheadResult = await machineBash(
+        machineId,
+        `git -C ${bashQuote(basePath)} rev-list --count ${bashQuote(`${mainBranch}..${branchName}`)}`,
+        SAFE_CWD
+    );
+    if (aheadResult.success) {
+        const ahead = Number.parseInt((aheadResult.stdout || '').trim(), 10);
+        if (Number.isFinite(ahead) && ahead <= 0) {
+            return { success: false, error: 'No commits to push. Commit your changes first.' };
+        }
+    }
 
     // Step 1: Push branch to remote
-    const pushResult = await machineBash(machineId, `git push -u origin ${bashQuote(branchName)}`, worktreePath);
+    const pushResult = await machineBash(
+        machineId,
+        `git -C ${bashQuote(worktreePath)} push -u origin ${bashQuote(branchName)}`,
+        SAFE_CWD
+    );
     if (!pushResult.success) {
-        return { success: false, error: `Failed to push branch: ${pushResult.stderr}` };
+        return {
+            success: false,
+            error: `Failed to push branch:\n${formatBashFailure(pushResult as unknown as BashResultLike, 'git push failed')}`,
+        };
     }
 
     // Step 2: Check if gh CLI is available
-    const ghCheck = await machineBash(machineId, 'which gh', basePath);
+    const ghCheck = await machineBash(machineId, 'command -v gh', SAFE_CWD);
     if (!ghCheck.success || !ghCheck.stdout.trim()) {
         // Fallback: construct GitHub comparison URL
-        const remoteUrl = await machineBash(machineId, 'git remote get-url origin', basePath);
+        const remoteUrl = await machineBash(
+            machineId,
+            `git -C ${bashQuote(basePath)} remote get-url origin`,
+            SAFE_CWD
+        );
         if (remoteUrl.success) {
             const url = remoteUrl.stdout.trim();
             const match = url.match(/github\.com[:/]([^/]+\/[^/.]+)/);
@@ -155,26 +311,40 @@ export async function createPullRequest(
         };
     }
 
+    // Resolve repo slug so gh can run without relying on cwd validation.
+    const remoteUrl = await machineBash(machineId, `git -C ${bashQuote(basePath)} remote get-url origin`, SAFE_CWD);
+    const remote = remoteUrl.success ? remoteUrl.stdout.trim() : '';
+    const repoMatch = remote.match(/github\.com[:/]([^/]+\/[^/.]+)/);
+    const repoSlug = repoMatch?.[1];
+
     // Step 3: Create PR via gh CLI
     const prResult = await machineBash(
         machineId,
-        `gh pr create --base ${bashQuote(mainBranch)} --head ${bashQuote(branchName)} --fill`,
-        worktreePath
+        repoSlug
+            ? `gh pr create --repo ${bashQuote(repoSlug)} --base ${bashQuote(mainBranch)} --head ${bashQuote(branchName)} --fill`
+            : `gh pr create --base ${bashQuote(mainBranch)} --head ${bashQuote(branchName)} --fill`,
+        SAFE_CWD
     );
 
     if (!prResult.success) {
         // Check if PR already exists
-        if (prResult.stderr.includes('already exists')) {
+        const prErr = `${(prResult as unknown as BashResultLike)?.stderr || ''}\n${(prResult as unknown as BashResultLike)?.error || ''}`;
+        if (prErr.includes('already exists')) {
             const viewResult = await machineBash(
                 machineId,
-                `gh pr view ${bashQuote(branchName)} --json url --jq .url`,
-                worktreePath
+                repoSlug
+                    ? `gh pr view ${bashQuote(branchName)} --repo ${bashQuote(repoSlug)} --json url --jq .url`
+                    : `gh pr view ${bashQuote(branchName)} --json url --jq .url`,
+                SAFE_CWD
             );
             if (viewResult.success && viewResult.stdout.trim()) {
                 return { success: true, prUrl: viewResult.stdout.trim() };
             }
         }
-        return { success: false, error: `Failed to create PR: ${prResult.stderr}` };
+        return {
+            success: false,
+            error: `Failed to create PR:\n${formatBashFailure(prResult as unknown as BashResultLike, 'gh pr create failed')}`,
+        };
     }
 
     const prUrl = prResult.stdout.trim().split('\n').pop()?.trim();
@@ -197,21 +367,24 @@ export async function deleteWorktree(
     }
 
     // Step 2: Remove the git worktree
-    const worktreeDir = `.unhappy/worktree/${branchName}`;
+    const worktreeDirAbs = buildWorktreePath(basePath, branchName);
     const removeResult = await machineBash(
         machineId,
-        `git worktree remove ${bashQuote(worktreeDir)} --force`,
-        basePath
+        `git -C ${bashQuote(basePath)} worktree remove ${bashQuote(worktreeDirAbs)} --force`,
+        SAFE_CWD
     );
     if (!removeResult.success) {
-        return { success: false, error: `Failed to remove worktree: ${removeResult.stderr}` };
+        return {
+            success: false,
+            error: `Failed to remove worktree:\n${formatBashFailure(removeResult as unknown as BashResultLike, 'git worktree remove failed')}`,
+        };
     }
 
     // Step 3: Delete the local branch (non-fatal)
-    await machineBash(machineId, `git branch -D ${bashQuote(branchName)}`, basePath);
+    await machineBash(machineId, `git -C ${bashQuote(basePath)} branch -D ${bashQuote(branchName)}`, SAFE_CWD);
 
     // Step 4: Delete remote branch (non-fatal)
-    await machineBash(machineId, `git push origin --delete ${bashQuote(branchName)}`, basePath);
+    await machineBash(machineId, `git -C ${bashQuote(basePath)} push origin --delete ${bashQuote(branchName)}`, SAFE_CWD);
 
     // Step 5: Delete sessions from server (best-effort)
     for (const sessionId of sessionIds) {
@@ -223,7 +396,7 @@ export async function deleteWorktree(
     }
 
     // Step 6: Prune worktree list
-    await machineBash(machineId, 'git worktree prune', basePath);
+    await machineBash(machineId, `git -C ${bashQuote(basePath)} worktree prune`, SAFE_CWD);
 
     return { success: true };
 }
