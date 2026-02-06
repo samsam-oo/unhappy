@@ -1,10 +1,21 @@
 import * as React from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+    useWindowDimensions,
+} from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@/icons/vector-icons';
 import { useSettings } from '@/sync/storage';
 import { generateCommitMessageWithAI } from '@/utils/aiCommitMessage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
     title: string;
@@ -24,11 +35,30 @@ type Props = {
 export function CommitMessageModal(props: Props) {
     const { theme } = useUnistyles();
     const settings = useSettings();
+    const insets = useSafeAreaInsets();
+    const window = useWindowDimensions();
     const [value, setValue] = React.useState(props.defaultValue || '');
     const [generating, setGenerating] = React.useState(false);
     const [generateError, setGenerateError] = React.useState<string | null>(null);
     const inputRef = React.useRef<TextInput>(null);
     const resolvedRef = React.useRef(false);
+
+    const layout = React.useMemo(() => {
+        // Keep the modal usable on small devices (e.g. 320pt wide screens) and on mobile web.
+        const horizontalGutter = 16;
+        const maxWidth = Platform.OS === 'web' ? 560 : 420;
+        const width = Math.max(280, Math.min(maxWidth, window.width - horizontalGutter * 2));
+
+        // Constrain height so the modal doesn't get clipped when the keyboard is up.
+        const verticalGutter = 24;
+        const availableHeight = window.height - insets.top - insets.bottom - verticalGutter;
+        const maxHeight = Math.max(360, Math.min(740, availableHeight));
+
+        // Leave room for title/hint/errors + bottom buttons.
+        const inputMaxHeight = Math.max(140, Math.min(360, maxHeight - 240));
+
+        return { width, maxHeight, inputMaxHeight };
+    }, [window.width, window.height, insets.top, insets.bottom]);
 
     React.useEffect(() => {
         const timer = setTimeout(() => inputRef.current?.focus(), 100);
@@ -104,8 +134,8 @@ export function CommitMessageModal(props: Props) {
         container: {
             backgroundColor: theme.colors.surface,
             borderRadius: 16,
-            width: Platform.OS === 'web' ? 520 : 340,
-            maxWidth: Platform.OS === 'web' ? 560 : 360,
+            width: layout.width,
+            maxHeight: layout.maxHeight,
             overflow: 'hidden',
             shadowColor: theme.colors.shadow.color,
             shadowOffset: { width: 0, height: 8 },
@@ -113,7 +143,10 @@ export function CommitMessageModal(props: Props) {
             shadowRadius: 18,
             elevation: 10,
         },
-        content: {
+        scroll: {
+            flexGrow: 0,
+        },
+        scrollContent: {
             paddingHorizontal: 18,
             paddingTop: 18,
             paddingBottom: 14,
@@ -154,7 +187,7 @@ export function CommitMessageModal(props: Props) {
         input: {
             width: '100%',
             minHeight: 170,
-            maxHeight: 320,
+            maxHeight: layout.inputMaxHeight,
             borderWidth: 1,
             borderColor: theme.colors.divider,
             borderRadius: 12,
@@ -207,7 +240,11 @@ export function CommitMessageModal(props: Props) {
 
     return (
         <View style={styles.container}>
-            <View style={styles.content}>
+            <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+            >
                 <View style={styles.titleRow}>
                     <Text style={[styles.title, Typography.default('semiBold')]} numberOfLines={1}>
                         {props.title}
@@ -256,7 +293,7 @@ export function CommitMessageModal(props: Props) {
                 {generateError ? (
                     <Text style={[styles.error, Typography.default()]}>{generateError}</Text>
                 ) : null}
-            </View>
+            </ScrollView>
 
             <View style={styles.buttonContainer}>
                 <Pressable

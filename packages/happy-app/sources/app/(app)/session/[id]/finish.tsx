@@ -6,7 +6,6 @@ import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Switch } from '@/components/Switch';
 import { useSession, useIsDataReady, useProjects } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { useUnistyles } from 'react-native-unistyles';
@@ -15,6 +14,7 @@ import { t } from '@/text';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
 import { promptCommitMessage } from '@/utils/promptCommitMessage';
+import { MergeConfirmModal } from '@/components/MergeConfirmModal';
 import {
     extractWorktreeInfo,
     resolveMainBranch,
@@ -33,7 +33,7 @@ function FinishSessionContent({ session }: { session: Session }) {
 
     const worktreeInfo = extractWorktreeInfo(session.metadata?.path || '');
     const [mainBranch, setMainBranch] = useState<string | null>(null);
-    const [pushAfterMerge, setPushAfterMerge] = useState(false);
+    const pushAfterMergeRef = React.useRef(false);
     const [worktreeDirty, setWorktreeDirty] = useState(false);
     const [checkingStatus, setCheckingStatus] = useState(false);
 
@@ -81,6 +81,7 @@ function FinishSessionContent({ session }: { session: Session }) {
     // Merge action
     const [merging, performMerge] = useHappyAction(async () => {
         if (!worktreeInfo || !machineId || !mainBranch) return;
+        const pushAfterMerge = pushAfterMergeRef.current;
         const result = await mergeWorktreeBranch(
             machineId,
             worktreeInfo.basePath,
@@ -100,21 +101,25 @@ function FinishSessionContent({ session }: { session: Session }) {
 
     const handleMerge = useCallback(() => {
         if (!worktreeInfo || !mainBranch) return;
-        Modal.alert(
-            t('finishSession.mergeConfirmTitle'),
-            t('finishSession.mergeConfirmMessage', {
-                branch: worktreeInfo.branchName,
-                target: mainBranch,
-            }),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('finishSession.merge'),
-                    style: 'destructive',
-                    onPress: performMerge,
+        Modal.show({
+            component: MergeConfirmModal,
+            props: {
+                title: t('finishSession.mergeConfirmTitle'),
+                message: t('finishSession.mergeConfirmMessage', {
+                    branch: worktreeInfo.branchName,
+                    target: mainBranch,
+                }),
+                pushLabel: t('finishSession.pushAfterMerge'),
+                defaultPush: pushAfterMergeRef.current,
+                confirmText: t('finishSession.merge'),
+                cancelText: t('common.cancel'),
+                onResolve: (value: { push: boolean } | null) => {
+                    if (!value) return;
+                    pushAfterMergeRef.current = value.push;
+                    performMerge();
                 },
-            ]
-        );
+            },
+        });
     }, [worktreeInfo, mainBranch, performMerge]);
 
     // PR action
@@ -302,18 +307,6 @@ function FinishSessionContent({ session }: { session: Session }) {
                     onPress={handleMerge}
                     loading={merging}
                     disabled={isLoading || worktreeDirty || merging || creatingPR || deleting}
-                />
-                <Item
-                    title={t('finishSession.pushAfterMerge')}
-                    icon={<Ionicons name="cloud-upload-outline" size={29} color="#007AFF" />}
-                    showChevron={false}
-                    rightElement={
-                        <Switch
-                            value={pushAfterMerge}
-                            onValueChange={setPushAfterMerge}
-                            disabled={isLoading || worktreeDirty || merging || creatingPR || deleting}
-                        />
-                    }
                 />
                 <Item
                     title={t('finishSession.createPR')}
