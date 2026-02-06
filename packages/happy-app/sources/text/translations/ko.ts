@@ -750,22 +750,22 @@ export const ko: TranslationStructure = {
         unknownTime: '알 수 없는 시간',
     },
 
-    codex: {
-        // Codex permission dialog buttons
-        permissions: {
-            yesForSession: '예, 그리고 이 세션에서는 다시 묻지 않기',
-            stopAndExplain: '중지하고, 무엇을 해야 하는지 설명하기',
-        },
-    },
+	    codex: {
+	        // Codex permission dialog buttons
+	        permissions: {
+	            yesForSession: '예 (이 세션)',
+	            stopAndExplain: '중지하고 설명',
+	        },
+	    },
 
-    claude: {
-        // Claude permission dialog buttons
-        permissions: {
-            yesAllowAllEdits: '예, 이 세션 동안 모든 수정을 허용',
-            yesForTool: '예, 이 도구에 대해 다시 묻지 않기',
-            noTellClaude: '아니오, 피드백 제공하기',
-        },
-    },
+	    claude: {
+	        // Claude permission dialog buttons
+	        permissions: {
+	            yesAllowAllEdits: '예 (이번 세션만)',
+	            yesForTool: '예 (이 툴에 대해서만)',
+	            noTellClaude: '아니오 (메시지 보내기)',
+	        },
+	    },
 
     textSelection: {
         // Text selection screen
@@ -918,4 +918,3 @@ export const ko: TranslationStructure = {
         },
     },
 } as const;
-

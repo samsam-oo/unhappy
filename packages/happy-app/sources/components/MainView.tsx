@@ -300,7 +300,14 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     return (
         <>
             <View style={styles.phoneContainer}>
-                <View style={{ backgroundColor: theme.colors.groupped.background }}>
+                <View
+                    style={{
+                        backgroundColor:
+                            activeTab === 'sessions'
+                                ? theme.colors.chrome.sidebarBackground
+                                : theme.colors.groupped.background,
+                    }}
+                >
                     <Header
                         title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
                         headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}

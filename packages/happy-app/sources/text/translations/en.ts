@@ -768,17 +768,17 @@ export const en: TranslationStructure = {
     codex: {
         // Codex permission dialog buttons
         permissions: {
-            yesForSession: "Yes, and don't ask for a session",
-            stopAndExplain: 'Stop, and explain what to do',
+            yesForSession: 'Yes (this session)',
+            stopAndExplain: 'Stop and explain',
         }
     },
 
     claude: {
         // Claude permission dialog buttons
         permissions: {
-            yesAllowAllEdits: 'Yes, allow all edits during this session',
-            yesForTool: "Yes, don't ask again for this tool",
-            noTellClaude: 'No, and provide feedback',
+            yesAllowAllEdits: 'Yes (all edits)',
+            yesForTool: 'Yes (this tool)',
+            noTellClaude: 'No (feedback)',
         }
     },
 

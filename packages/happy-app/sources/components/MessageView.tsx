@@ -166,6 +166,7 @@ function ToolCallBlock(props: {
         messages={props.message.children}
         sessionId={props.sessionId}
         messageId={props.message.id}
+        variant="chat"
       />
     </View>
   );

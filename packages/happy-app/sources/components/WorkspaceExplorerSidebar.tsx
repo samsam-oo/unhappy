@@ -1,0 +1,395 @@
+import * as React from 'react';
+import { FlatList, Platform, Pressable, View } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePathname, useRouter } from 'expo-router';
+import { Text } from '@/components/StyledText';
+import { Ionicons, Octicons } from '@/icons/vector-icons';
+import { Typography } from '@/constants/Typography';
+import { useAllSessions, useProjects } from '@/sync/storage';
+import type { Project } from '@/sync/projectManager';
+import type { Session } from '@/sync/storageTypes';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+
+const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
+
+function safeParseJson<T>(value: string | null): T | null {
+    if (!value) return null;
+    try {
+        return JSON.parse(value) as T;
+    } catch {
+        return null;
+    }
+}
+
+function getProjectStableId(project: Project): string {
+    return `${project.key.machineId}:${project.key.path}`;
+}
+
+function getBasename(path: string): string {
+    const parts = path.split('/').filter(Boolean);
+    return parts[parts.length - 1] || path || 'Workspace';
+}
+
+function getSelectedSessionIdFromPathname(pathname: string): string | null {
+    const match = pathname.match(/^\/session\/([^\/\?]+)(?:\/|$)/);
+    return match?.[1] ?? null;
+}
+
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.chrome.sidebarBackground,
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 12,
+        paddingTop: 12,
+        paddingBottom: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.chrome.panelBorder,
+    },
+    sectionTitle: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: theme.colors.groupped.sectionTitle,
+        letterSpacing: 0.7,
+        textTransform: 'uppercase',
+        ...Typography.default('semiBold'),
+    },
+    headerButtons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    headerButton: {
+        width: 28,
+        height: 28,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 6,
+    },
+    headerButtonHover: {
+        backgroundColor: theme.colors.chrome.listHoverBackground,
+    },
+
+    list: {
+        paddingVertical: 6,
+    },
+
+    row: {
+        minHeight: 30,
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        marginHorizontal: 6,
+        borderRadius: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    rowHover: {
+        backgroundColor: theme.colors.chrome.listHoverBackground,
+    },
+    rowActive: {
+        backgroundColor: theme.colors.chrome.listActiveBackground,
+    },
+    selectionBar: {
+        position: 'absolute',
+        left: 0,
+        top: 6,
+        bottom: 6,
+        width: 2,
+        backgroundColor: theme.colors.chrome.accent,
+        borderTopLeftRadius: 2,
+        borderBottomLeftRadius: 2,
+    },
+
+    chevron: {
+        width: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    icon: {
+        width: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    textBlock: {
+        flex: 1,
+        minWidth: 0,
+        flexDirection: 'column',
+    },
+    title: {
+        fontSize: 13,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    subtitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 2,
+        gap: 6,
+    },
+    subtitle: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+
+    childIndent: {
+        paddingLeft: 22,
+    },
+}));
+
+type Row =
+    | { type: 'project'; project: Project; expanded: boolean }
+    | { type: 'session'; session: Session; projectStableId: string }
+    | { type: 'section'; id: 'playground'; title: string }
+    | { type: 'action'; id: 'new-playground'; title: string };
+
+export function WorkspaceExplorerSidebar() {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
+    const insets = useSafeAreaInsets();
+    const router = useRouter();
+    const pathname = usePathname();
+    const navigateToSession = useNavigateToSession();
+
+    const projects = useProjects();
+    const sessions = useAllSessions();
+
+    const selectedSessionId = React.useMemo(() => getSelectedSessionIdFromPathname(pathname), [pathname]);
+
+    const sessionById = React.useMemo(() => {
+        const map = new Map<string, Session>();
+        for (const s of sessions) map.set(s.id, s);
+        return map;
+    }, [sessions]);
+
+    const initialExpanded = React.useMemo(() => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            const stored = safeParseJson<Record<string, boolean>>(
+                window.localStorage.getItem(LOCAL_STORAGE_KEY)
+            );
+            if (stored && typeof stored === 'object') return stored;
+        }
+        return {} as Record<string, boolean>;
+    }, []);
+
+    const [expanded, setExpanded] = React.useState<Record<string, boolean>>(initialExpanded);
+
+    React.useEffect(() => {
+        if (!selectedSessionId) return;
+        const s = sessionById.get(selectedSessionId);
+        const machineId = s?.metadata?.machineId;
+        const path = s?.metadata?.path;
+        if (!machineId || !path) return;
+        const stableId = `${machineId}:${path}`;
+        setExpanded((prev) => (prev[stableId] === false ? { ...prev, [stableId]: true } : prev));
+    }, [selectedSessionId, sessionById]);
+
+    React.useEffect(() => {
+        if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(expanded));
+        } catch {
+            // ignore
+        }
+    }, [expanded]);
+
+    const toggleProject = React.useCallback((projectStableId: string) => {
+        setExpanded((prev) => ({ ...prev, [projectStableId]: !(prev[projectStableId] ?? true) }));
+    }, []);
+
+    const rows: Row[] = React.useMemo(() => {
+        const out: Row[] = [];
+
+        for (const project of projects) {
+            const stableId = getProjectStableId(project);
+            const isExpanded = expanded[stableId] ?? true;
+            out.push({ type: 'project', project, expanded: isExpanded });
+
+            if (isExpanded) {
+                const projectSessionIds = project.sessionIds || [];
+                const projectSessions: Session[] = projectSessionIds
+                    .map((id) => sessionById.get(id))
+                    .filter(Boolean) as Session[];
+                projectSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+
+                for (const s of projectSessions) {
+                    out.push({ type: 'session', session: s, projectStableId: stableId });
+                }
+            }
+        }
+
+        out.push({ type: 'section', id: 'playground', title: 'Playground' });
+        out.push({ type: 'action', id: 'new-playground', title: 'New Playground' });
+        return out;
+    }, [projects, expanded, sessionById]);
+
+    return (
+        <View style={styles.container}>
+            <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Workspaces</Text>
+                <View style={styles.headerButtons}>
+                    <Pressable
+                        onPress={() => router.push('/new')}
+                        hitSlop={10}
+                        style={({ hovered, pressed }: any) => [
+                            styles.headerButton,
+                            (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
+                        ]}
+                        accessibilityLabel="New session"
+                    >
+                        <Ionicons name="add" size={18} color={theme.colors.header.tint} />
+                    </Pressable>
+                </View>
+            </View>
+
+            <FlatList
+                data={rows}
+                keyExtractor={(row) => {
+                    switch (row.type) {
+                        case 'project':
+                            return `p:${getProjectStableId(row.project)}`;
+                        case 'session':
+                            return `s:${row.session.id}`;
+                        case 'section':
+                            return `sec:${row.id}`;
+                        case 'action':
+                            return `a:${row.id}`;
+                    }
+                }}
+                contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 16 }]}
+                renderItem={({ item: row }) => {
+                    if (row.type === 'section') {
+                        return (
+                            <View
+                                style={[
+                                    styles.sectionHeader,
+                                    {
+                                        borderTopWidth: StyleSheet.hairlineWidth,
+                                        borderTopColor: theme.colors.chrome.panelBorder,
+                                        marginBottom: 6,
+                                    },
+                                ]}
+                            >
+                                <Text style={styles.sectionTitle}>{row.title}</Text>
+                                <View style={styles.headerButtons}>
+                                    <Pressable
+                                        onPress={() => router.push('/new')}
+                                        hitSlop={10}
+                                        style={({ hovered, pressed }: any) => [
+                                            styles.headerButton,
+                                            (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
+                                        ]}
+                                        accessibilityLabel="New playground"
+                                    >
+                                        <Ionicons name="add" size={18} color={theme.colors.header.tint} />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        );
+                    }
+
+                    if (row.type === 'action') {
+                        return (
+                            <Pressable
+                                onPress={() => router.push('/new')}
+                                style={({ hovered, pressed }: any) => [
+                                    styles.row,
+                                    (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
+                                ]}
+                            >
+                                <View style={styles.chevron} />
+                                <View style={styles.icon}>
+                                    <Ionicons name="add-circle-outline" size={18} color={theme.colors.textSecondary} />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text style={styles.title} numberOfLines={1}>
+                                        {row.title}
+                                    </Text>
+                                </View>
+                            </Pressable>
+                        );
+                    }
+
+                    if (row.type === 'project') {
+                        const stableId = getProjectStableId(row.project);
+                        const title = getBasename(row.project.key.path);
+                        const branch = row.project.gitStatus?.branch;
+                        const machineName =
+                            row.project.machineMetadata?.displayName ||
+                            row.project.machineMetadata?.host ||
+                            row.project.key.machineId;
+
+                        return (
+                            <Pressable
+                                onPress={() => toggleProject(stableId)}
+                                style={({ hovered, pressed }: any) => [
+                                    styles.row,
+                                    (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
+                                ]}
+                            >
+                                <View style={styles.chevron}>
+                                    <Ionicons
+                                        name="chevron-forward"
+                                        size={16}
+                                        color={theme.colors.textSecondary}
+                                        style={{ transform: [{ rotate: row.expanded ? '90deg' : '0deg' }] }}
+                                    />
+                                </View>
+                                <View style={styles.icon}>
+                                    <Octicons name="file-directory" size={16} color={theme.colors.textSecondary} />
+                                </View>
+                                <View style={styles.textBlock}>
+                                    <Text style={styles.title} numberOfLines={1}>
+                                        {title}
+                                    </Text>
+                                    <View style={styles.subtitleRow}>
+                                        <Octicons name="git-branch" size={12} color={theme.colors.textSecondary} />
+                                        <Text style={styles.subtitle} numberOfLines={1}>
+                                            {branch || 'detached'}
+                                        </Text>
+                                        <Text style={styles.subtitle} numberOfLines={1}>
+                                            {machineName}
+                                        </Text>
+                                    </View>
+                                </View>
+                            </Pressable>
+                        );
+                    }
+
+                    const isSelected = selectedSessionId === row.session.id;
+                    const sessionTitle = row.session.metadata?.summary?.text?.trim() || 'Session';
+
+                    return (
+                        <Pressable
+                            onPress={() => navigateToSession(row.session.id)}
+                            style={({ hovered, pressed }: any) => [
+                                styles.row,
+                                styles.childIndent,
+                                isSelected && styles.rowActive,
+                                (Platform.OS === 'web' && (hovered || pressed) && !isSelected) && styles.rowHover,
+                            ]}
+                        >
+                            {isSelected && <View style={styles.selectionBar} />}
+                            <View style={styles.chevron} />
+                            <View style={styles.icon}>
+                                <Ionicons name="terminal-outline" size={18} color={theme.colors.textSecondary} />
+                            </View>
+                            <View style={styles.textBlock}>
+                                <Text style={styles.title} numberOfLines={1}>
+                                    {sessionTitle}
+                                </Text>
+                            </View>
+                        </Pressable>
+                    );
+                }}
+            />
+        </View>
+    );
+}
+

@@ -11,8 +11,9 @@ export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
     const { theme } = useUnistyles();
     const isTablet = useIsTablet();
-    const showPermanentDrawer = auth.isAuthenticated && isTablet;
     const { width: windowWidth } = useWindowDimensions();
+
+    const showPermanentDrawer = auth.isAuthenticated && isTablet;
 
     // Calculate drawer width only when needed
     const drawerWidth = React.useMemo(() => {
@@ -35,7 +36,7 @@ export const SidebarNavigator = React.memo(() => {
                 },
             };
         }
-        
+
         // When drawer is permanent
         return {
             lazy: false,

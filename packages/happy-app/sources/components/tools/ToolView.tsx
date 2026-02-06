@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { Text, View, TouchableOpacity, ActivityIndicator, Platform, LayoutAnimation, UIManager } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons, Octicons } from '@/icons/vector-icons';
 import { getToolViewComponent } from './views/_all';
@@ -11,10 +11,16 @@ import { ToolError } from './ToolError';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
-import { PermissionFooter } from './PermissionFooter';
+import { PermissionFooter } from '@/components/tools/PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
+import { CommandView } from '../CommandView';
+
+// Enable LayoutAnimation on Android once for this module.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -23,12 +29,14 @@ interface ToolViewProps {
     onPress?: () => void;
     sessionId?: string;
     messageId?: string;
+    variant?: 'default' | 'chat';
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
+    const [chatExpanded, setChatExpanded] = React.useState(false);
 
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
@@ -58,6 +66,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     if (!knownTool && isGemini) {
         minimal = true;
     }
+
+    const isChatVariant = props.variant === 'chat';
+    const showExpandedInChat = tool.name === 'AskUserQuestion';
 
     // Extract status first to potentially use as title
     if (knownTool && typeof knownTool.extractStatus === 'function') {
@@ -149,6 +160,201 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 statusIcon = <Ionicons name="alert-circle-outline" size={20} color={theme.colors.warning} />;
                 break;
         }
+    }
+
+    // In chat, hide unknown Gemini internal tools completely.
+    if (isChatVariant && isGemini && !knownTool && minimal) {
+        return null;
+    }
+
+    // Chat-variant: keep the conversation readable by collapsing most tool cards to a single-line summary.
+    // Users can tap to open the full tool details screen.
+    if (isChatVariant && !showExpandedInChat) {
+        // Build a nice, short label. Prefer the tool's "description" line when available.
+        // Example: "터미널(cmd: git)" feels closer to the Codex-style activity line than just "터미널".
+        let chatLabel = toolTitle;
+        if (knownTool && typeof knownTool.extractDescription === 'function') {
+            const desc = knownTool.extractDescription({ tool, metadata: props.metadata });
+            if (typeof desc === 'string' && desc.trim()) {
+                chatLabel = desc;
+            }
+        } else if (description && description.trim()) {
+            chatLabel = description;
+        }
+
+        // Optional collapse/expand preview for shell commands (command blocks should be closed by default).
+        const isShellLike = tool.name === 'Bash' || tool.name === 'CodexBash';
+
+        let command: string | null = null;
+        let stdout: string | null = null;
+        let stderr: string | null = null;
+        let error: string | null = null;
+
+        if (isShellLike) {
+            if (tool.name === 'Bash') {
+                if (typeof tool.input?.command === 'string') {
+                    command = tool.input.command;
+                }
+                if (tool.state === 'completed' && tool.result) {
+                    if (typeof tool.result === 'string') {
+                        stdout = tool.result;
+                    } else {
+                        const parsed = knownTools.Bash.result.safeParse(tool.result);
+                        if (parsed.success) {
+                            stdout = parsed.data.stdout ?? null;
+                            stderr = parsed.data.stderr ?? null;
+                        } else {
+                            stdout = JSON.stringify(tool.result);
+                        }
+                    }
+                } else if (tool.state === 'error' && typeof tool.result === 'string') {
+                    error = tool.result;
+                }
+            } else if (tool.name === 'CodexBash') {
+                // Prefer parsed_cmd[0].cmd (it is already de-wrapped from "bash -lc").
+                const parsedCmd = tool.input?.parsed_cmd;
+                if (Array.isArray(parsedCmd) && parsedCmd.length > 0 && typeof parsedCmd[0]?.cmd === 'string') {
+                    command = parsedCmd[0].cmd;
+                } else if (Array.isArray(tool.input?.command)) {
+                    command = tool.input.command.join(' ');
+                }
+                if (tool.state === 'error' && typeof tool.result === 'string') {
+                    error = tool.result;
+                }
+            }
+        }
+
+        const canToggleCollapse = isShellLike && !!command;
+
+        const toggleCollapse = React.useCallback(() => {
+            // Keep web deterministic; animate native transitions lightly.
+            if (Platform.OS !== 'web') {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            }
+            setChatExpanded(v => !v);
+        }, []);
+
+        // For command tools: tap toggles collapse, long-press opens full tool details.
+        const onChatPress = canToggleCollapse ? toggleCollapse : handlePress;
+        const onChatLongPress = canToggleCollapse ? handlePress : undefined;
+
+        const collapsedErrorLine =
+            tool.state === 'error' && tool.result
+                ? String(tool.result).split('\n')[0].trim()
+                : null;
+
+        return (
+            <View style={styles.chatContainer}>
+                {isPressable ? (
+                    <TouchableOpacity
+                        style={styles.chatPressable}
+                        onPress={onChatPress}
+                        onLongPress={onChatLongPress}
+                        activeOpacity={0.85}
+                    >
+                        <View style={styles.chatHeaderRow}>
+                            <View style={styles.chatHeaderLeft}>
+                                <View style={styles.chatIconDot} />
+                                <Text style={styles.chatLabel} numberOfLines={1}>{chatLabel}</Text>
+                            </View>
+                            {tool.state === 'running' && (
+                                <View style={styles.elapsedContainer}>
+                                    <ElapsedView from={tool.createdAt} />
+                                </View>
+                            )}
+                            <View style={styles.chatHeaderRight}>
+                                {canToggleCollapse ? (
+                                    <Ionicons
+                                        name={chatExpanded ? 'chevron-up' : 'chevron-down'}
+                                        size={16}
+                                        color={theme.colors.textSecondary}
+                                    />
+                                ) : null}
+                                {statusIcon}
+                            </View>
+                        </View>
+                        {collapsedErrorLine && !chatExpanded ? (
+                            <Text style={styles.chatErrorLine} numberOfLines={1}>
+                                {collapsedErrorLine}
+                            </Text>
+                        ) : null}
+
+                        {canToggleCollapse && !chatExpanded ? (
+                            <View style={styles.chatCommandInline}>
+                                <Text style={styles.chatCommandPrompt}>$</Text>
+                                <Text style={styles.chatCommandInlineText} numberOfLines={1}>{command}</Text>
+                            </View>
+                        ) : null}
+                    </TouchableOpacity>
+                ) : (
+                    <View style={styles.chatStatic}>
+                        <View style={styles.chatHeaderRow}>
+                            <View style={styles.chatHeaderLeft}>
+                                <View style={styles.chatIconDot} />
+                                <Text style={styles.chatLabel} numberOfLines={1}>{chatLabel}</Text>
+                            </View>
+                            {tool.state === 'running' && (
+                                <View style={styles.elapsedContainer}>
+                                    <ElapsedView from={tool.createdAt} />
+                                </View>
+                            )}
+                            <View style={styles.chatHeaderRight}>
+                                {canToggleCollapse ? (
+                                    <Ionicons
+                                        name={chatExpanded ? 'chevron-up' : 'chevron-down'}
+                                        size={16}
+                                        color={theme.colors.textSecondary}
+                                    />
+                                ) : null}
+                                {statusIcon}
+                            </View>
+                        </View>
+                        {collapsedErrorLine && !chatExpanded ? (
+                            <Text style={styles.chatErrorLine} numberOfLines={1}>
+                                {collapsedErrorLine}
+                            </Text>
+                        ) : null}
+
+                        {canToggleCollapse && !chatExpanded ? (
+                            <View style={styles.chatCommandInline}>
+                                <Text style={styles.chatCommandPrompt}>$</Text>
+                                <Text style={styles.chatCommandInlineText} numberOfLines={1}>{command}</Text>
+                            </View>
+                        ) : null}
+                    </View>
+                )}
+
+                {canToggleCollapse && chatExpanded ? (
+                    <View style={styles.chatPreview}>
+                        <CommandView
+                            command={command!}
+                            stdout={stdout}
+                            stderr={stderr}
+                            error={error}
+                            maxHeight={240}
+                            fullWidth
+                            hideEmptyOutput
+                            variant="plain"
+                        />
+                    </View>
+                ) : null}
+
+                {/* Keep errors visible even in compact mode */}
+                {tool.state === 'error' && tool.result &&
+                    !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
+                    !hideDefaultError && (
+                        <View style={styles.chatError}>
+                            <ToolError message={String(tool.result)} />
+                        </View>
+                    )}
+
+                {/* Permission footer - always renders when permission exists to maintain consistent height */}
+                {/* AskUserQuestion has its own Submit button UI - no permission footer needed */}
+                {tool.permission && sessionId && tool.name !== 'AskUserQuestion' && (
+                    <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
+                )}
+            </View>
+        );
     }
 
     return (
@@ -274,6 +480,91 @@ const styles = StyleSheet.create((theme) => ({
         borderRadius: 8,
         marginVertical: 4,
         overflow: 'hidden'
+    },
+	    chatContainer: {
+	        marginVertical: 4,
+	    },
+	    chatPressable: {
+	        alignSelf: 'flex-start',
+	        maxWidth: '100%',
+	        paddingVertical: 4,
+	    },
+	    chatStatic: {
+	        alignSelf: 'flex-start',
+	        maxWidth: '100%',
+	        paddingVertical: 4,
+	    },
+	    chatHeaderRow: {
+	        flexDirection: 'row',
+	        alignItems: 'center',
+	        gap: 8,
+	    },
+    chatHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        flex: 1,
+        minWidth: 0,
+    },
+    chatHeaderRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    chatIconDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 999,
+        backgroundColor: theme.colors.textSecondary,
+        opacity: 0.55,
+    },
+	    chatLabel: {
+	        flex: 1,
+	        fontSize: 12,
+	        color: theme.colors.textSecondary,
+	        fontWeight: '500',
+	    },
+	    chatCommandInline: {
+	        marginTop: 6,
+	        marginLeft: 14, // align after dot
+	        flexDirection: 'row',
+	        alignItems: 'baseline',
+	        gap: 6,
+	        paddingLeft: 10,
+	        borderLeftWidth: 2,
+	        borderLeftColor: theme.colors.divider,
+	        maxWidth: '100%',
+	    },
+	    chatCommandPrompt: {
+	        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+	        fontSize: 12,
+	        color: theme.colors.textSecondary,
+	        opacity: 0.75,
+	    },
+	    chatCommandInlineText: {
+	        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+	        fontSize: 12,
+	        color: theme.colors.text,
+	        opacity: 0.9,
+	        flexShrink: 1,
+	        minWidth: 0,
+	    },
+	    chatErrorLine: {
+	        marginTop: 6,
+	        fontSize: 12,
+	        color: theme.colors.warning,
+	        opacity: 0.9,
+	    },
+	    chatPreview: {
+	        marginTop: 8,
+	        marginBottom: 6,
+	        marginLeft: 14, // align after dot
+	        paddingLeft: 10,
+	        borderLeftWidth: 2,
+	        borderLeftColor: theme.colors.divider,
+	    },
+    chatError: {
+        marginTop: 4,
     },
     header: {
         flexDirection: 'row',
