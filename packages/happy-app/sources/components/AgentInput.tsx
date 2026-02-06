@@ -60,7 +60,6 @@ interface AgentInputProps {
         cacheRead: number;
         contextSize: number;
     };
-    alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
     agentType?: 'claude' | 'codex' | 'gemini';
     onAgentClick?: () => void;
@@ -288,7 +287,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
+const getContextWarning = (contextSize: number, theme: Theme) => {
     const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
@@ -296,11 +295,9 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
         return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
     } else if (percentageRemaining <= 10) {
         return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
-    } else if (alwaysShow) {
-        // Show context remaining in neutral color when not near limit
-        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
     }
-    return null; // No display needed
+    // Always show context remaining in a neutral color when not near limit.
+    return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.textSecondary };
 };
 
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
@@ -326,10 +323,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return getBuiltInProfile(props.profileId);
     }, [profiles, props.profileId]);
 
-    // Calculate context warning
-    const contextWarning = props.usageData?.contextSize
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
-        : null;
+    // Calculate context warning (always shown when contextSize is known)
+    const contextSize = props.usageData?.contextSize;
+    const contextWarning = typeof contextSize === 'number' ? getContextWarning(contextSize, theme) : null;
 
     const agentInputEnterToSend = useSetting('agentInputEnterToSend');
 

@@ -27,7 +27,6 @@ export default function AppearanceSettingsScreen() {
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
     const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
     const [wrapLinesInDiffs, setWrapLinesInDiffs] = useSettingMutable('wrapLinesInDiffs');
-    const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
     const [compactSessionView, setCompactSessionView] = useSettingMutable('compactSessionView');
@@ -184,17 +183,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={wrapLinesInDiffs}
                             onValueChange={setWrapLinesInDiffs}
-                        />
-                    }
-                />
-                <Item
-                    title={t('settingsAppearance.alwaysShowContextSize')}
-                    subtitle={t('settingsAppearance.alwaysShowContextSizeDescription')}
-                    icon={<Ionicons name="analytics-outline" size={29} color="#5856D6" />}
-                    rightElement={
-                        <Switch
-                            value={alwaysShowContextSize}
-                            onValueChange={setAlwaysShowContextSize}
                         />
                     }
                 />

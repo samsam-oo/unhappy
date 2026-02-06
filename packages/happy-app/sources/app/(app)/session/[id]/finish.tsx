@@ -14,12 +14,15 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { promptCommitMessage } from '@/utils/promptCommitMessage';
 import {
     extractWorktreeInfo,
     resolveMainBranch,
     mergeWorktreeBranch,
     createPullRequest,
     deleteWorktree,
+    getWorktreeStatus,
+    commitWorktreeChanges,
 } from '@/utils/finishWorktree';
 import type { Session } from '@/sync/storageTypes';
 import * as Clipboard from 'expo-clipboard';
@@ -31,8 +34,21 @@ function FinishSessionContent({ session }: { session: Session }) {
     const worktreeInfo = extractWorktreeInfo(session.metadata?.path || '');
     const [mainBranch, setMainBranch] = useState<string | null>(null);
     const [pushAfterMerge, setPushAfterMerge] = useState(false);
+    const [worktreeDirty, setWorktreeDirty] = useState(false);
+    const [checkingStatus, setCheckingStatus] = useState(false);
 
     const machineId = session.metadata?.machineId;
+
+    const refreshWorktreeStatus = useCallback(async () => {
+        if (!worktreeInfo || !machineId) return;
+        setCheckingStatus(true);
+        try {
+            const status = await getWorktreeStatus(machineId, worktreeInfo.worktreePath);
+            if (status.success) setWorktreeDirty(status.dirty);
+        } finally {
+            setCheckingStatus(false);
+        }
+    }, [worktreeInfo, machineId]);
 
     // Resolve main branch on mount
     useEffect(() => {
@@ -43,6 +59,11 @@ function FinishSessionContent({ session }: { session: Session }) {
         });
         return () => { cancelled = true; };
     }, [worktreeInfo, machineId]);
+
+    // Refresh worktree status on mount
+    useEffect(() => {
+        refreshWorktreeStatus();
+    }, [refreshWorktreeStatus]);
 
     // Find all session IDs belonging to this worktree
     const projects = useProjects();
@@ -161,6 +182,37 @@ function FinishSessionContent({ session }: { session: Session }) {
         );
     }, [worktreeInfo, performDelete]);
 
+    // Commit action
+    const commitMessageRef = React.useRef<string>('');
+    const [committing, performCommit] = useHappyAction(async () => {
+        if (!worktreeInfo || !machineId) return;
+        const message = commitMessageRef.current;
+        commitMessageRef.current = '';
+
+        const result = await commitWorktreeChanges(machineId, worktreeInfo.worktreePath, message);
+        if (!result.success) throw new HappyError(result.error || t('finishSession.commitMessageRequired'), false);
+
+        Modal.alert(t('finishSession.commitSuccess'), t('finishSession.commitSuccessMessage'));
+        await refreshWorktreeStatus();
+    });
+
+    const handleCommit = useCallback(async () => {
+        if (!worktreeInfo) return;
+        const message = await promptCommitMessage({
+            sessionId: session.id,
+            agentFlavor: session.metadata?.flavor ?? null,
+            machineId,
+            repoPath: worktreeInfo.worktreePath
+        });
+        if (message == null) return;
+        if (!message.trim()) {
+            Modal.alert(t('common.error'), t('finishSession.commitMessageRequired'));
+            return;
+        }
+        commitMessageRef.current = message.trim();
+        performCommit();
+    }, [worktreeInfo, performCommit]);
+
     // Not a worktree session
     if (!worktreeInfo) {
         return (
@@ -217,18 +269,39 @@ function FinishSessionContent({ session }: { session: Session }) {
                             }
                         </Text>
                     </View>
+                    {worktreeDirty && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+                            <Ionicons name="warning-outline" size={16} color="#FF9500" />
+                            <Text style={{
+                                marginLeft: 6,
+                                fontSize: 13,
+                                color: '#FF9500',
+                                ...Typography.default('semiBold')
+                            }}>
+                                {t('finishSession.uncommittedWarning')}
+                            </Text>
+                        </View>
+                    )}
                 </View>
             </View>
 
             {/* Actions */}
             <ItemGroup title={t('finishSession.actions')}>
                 <Item
+                    title={t('finishSession.commitChanges')}
+                    subtitle={t('finishSession.commitChangesSubtitle')}
+                    icon={<Octicons name="git-commit" size={22} color="#007AFF" />}
+                    onPress={handleCommit}
+                    loading={committing || checkingStatus}
+                    disabled={isLoading || committing || merging || creatingPR || deleting || !worktreeDirty}
+                />
+                <Item
                     title={isLoading ? t('finishSession.merge') : t('finishSession.mergeInto', { branch: mainBranch })}
                     subtitle={isLoading ? '' : t('finishSession.mergeSubtitle', { branch: mainBranch })}
                     icon={<Octicons name="git-merge" size={22} color="#34C759" />}
                     onPress={handleMerge}
                     loading={merging}
-                    disabled={isLoading || merging || creatingPR || deleting}
+                    disabled={isLoading || worktreeDirty || merging || creatingPR || deleting}
                 />
                 <Item
                     title={t('finishSession.pushAfterMerge')}
@@ -238,6 +311,7 @@ function FinishSessionContent({ session }: { session: Session }) {
                         <Switch
                             value={pushAfterMerge}
                             onValueChange={setPushAfterMerge}
+                            disabled={isLoading || worktreeDirty || merging || creatingPR || deleting}
                         />
                     }
                 />
@@ -247,7 +321,7 @@ function FinishSessionContent({ session }: { session: Session }) {
                     icon={<Octicons name="git-pull-request" size={22} color="#A855F7" />}
                     onPress={performCreatePR}
                     loading={creatingPR}
-                    disabled={isLoading || merging || creatingPR || deleting}
+                    disabled={isLoading || worktreeDirty || merging || creatingPR || deleting}
                 />
             </ItemGroup>
 
