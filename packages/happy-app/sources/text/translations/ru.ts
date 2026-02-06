@@ -46,6 +46,8 @@ export const ru: TranslationStructure = {
         authenticate: 'Авторизация',
         save: 'Сохранить',
         saveAs: 'Сохранить как',
+        open: 'Открыть',
+        commit: 'Коммит',
         error: 'Ошибка',
         success: 'Успешно',
         ok: 'ОК',
@@ -153,8 +155,6 @@ export const ru: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Отображать номера строк в различиях представлений инструментов',
         wrapLinesInDiffs: 'Перенос строк в различиях',
         wrapLinesInDiffsDescription: 'Переносить длинные строки вместо горизонтальной прокрутки в представлениях различий',
-        alwaysShowContextSize: 'Всегда показывать размер контекста',
-        alwaysShowContextSizeDescription: 'Отображать использование контекста даже когда не близко к лимиту',
         avatarStyle: 'Стиль аватара',
         avatarStyleDescription: 'Выберите внешний вид аватара сессии',
         avatarOptions: {

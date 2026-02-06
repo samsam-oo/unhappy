@@ -60,6 +60,8 @@ export const it: TranslationStructure = {
         delete: 'Elimina',
         optional: 'opzionale',
         saveAs: 'Salva con nome',
+        open: 'Apri',
+        commit: 'Commit',
     },
 
     profile: {
@@ -244,8 +246,6 @@ export const it: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostra i numeri di riga nei diff delle viste strumenti',
         wrapLinesInDiffs: 'A capo nelle differenze',
         wrapLinesInDiffsDescription: 'A capo delle righe lunghe invece dello scorrimento orizzontale nelle viste diff',
-        alwaysShowContextSize: 'Mostra sempre dimensione contesto',
-        alwaysShowContextSizeDescription: 'Mostra l\'uso del contesto anche quando non è vicino al limite',
         avatarStyle: 'Stile avatar',
         avatarStyleDescription: 'Scegli l\'aspetto dell\'avatar di sessione',
         avatarOptions: {

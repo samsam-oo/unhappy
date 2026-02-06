@@ -35,6 +35,8 @@ export const ca: TranslationStructure = {
         authenticate: 'Autentica',
         save: 'Desa',
         saveAs: 'Desa com a',
+        open: 'Obre',
+        commit: 'Commit',
         error: 'Error',
         success: 'Èxit',
         ok: 'D\'acord',
@@ -171,8 +173,6 @@ export const ca: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostra els números de línia a les diferències de vistes d\'eines',
         wrapLinesInDiffs: 'Ajusta les línies a les diferències',
         wrapLinesInDiffsDescription: 'Ajusta les línies llargues en lloc de desplaçament horitzontal a les vistes de diferències',
-        alwaysShowContextSize: 'Mostra sempre la mida del context',
-        alwaysShowContextSizeDescription: 'Mostra l\'ús del context fins i tot quan no estigui prop del límit',
         avatarStyle: 'Estil d\'avatar',
         avatarStyleDescription: 'Tria l\'aparença de l\'avatar de la sessió',
         avatarOptions: {

@@ -63,6 +63,8 @@ export const ja: TranslationStructure = {
         delete: '削除',
         optional: '任意',
         saveAs: '名前を付けて保存',
+        open: '開く',
+        commit: 'コミット',
     },
 
     profile: {
@@ -247,8 +249,6 @@ export const ja: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'ツールビューの差分に行番号を表示',
         wrapLinesInDiffs: '差分で行を折り返し',
         wrapLinesInDiffsDescription: '差分表示で水平スクロールの代わりに長い行を折り返す',
-        alwaysShowContextSize: '常にコンテキストサイズを表示',
-        alwaysShowContextSizeDescription: '上限に近づいていなくてもコンテキスト使用量を表示',
         avatarStyle: 'アバタースタイル',
         avatarStyleDescription: 'セッションアバターの外観を選択',
         avatarOptions: {

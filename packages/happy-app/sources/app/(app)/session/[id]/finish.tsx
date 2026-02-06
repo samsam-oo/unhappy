@@ -14,6 +14,7 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { promptCommitMessage } from '@/utils/promptCommitMessage';
 import {
     extractWorktreeInfo,
     resolveMainBranch,
@@ -197,11 +198,12 @@ function FinishSessionContent({ session }: { session: Session }) {
 
     const handleCommit = useCallback(async () => {
         if (!worktreeInfo) return;
-        const message = await Modal.prompt(
-            t('finishSession.commitMessageTitle'),
-            t('finishSession.commitMessagePrompt'),
-            { confirmText: t('finishSession.commitConfirm') }
-        );
+        const message = await promptCommitMessage({
+            sessionId: session.id,
+            agentFlavor: session.metadata?.flavor ?? null,
+            machineId,
+            repoPath: worktreeInfo.worktreePath
+        });
         if (message == null) return;
         if (!message.trim()) {
             Modal.alert(t('common.error'), t('finishSession.commitMessageRequired'));
@@ -209,7 +211,7 @@ function FinishSessionContent({ session }: { session: Session }) {
         }
         commitMessageRef.current = message.trim();
         performCommit();
-    }, [worktreeInfo, performCommit]);
+    }, [worktreeInfo, session.id, session.metadata?.flavor, machineId, performCommit]);
 
     // Not a worktree session
     if (!worktreeInfo) {

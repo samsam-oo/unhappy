@@ -35,6 +35,8 @@ export const pt: TranslationStructure = {
         authenticate: 'Autenticar',
         save: 'Salvar',
         saveAs: 'Salvar como',
+        open: 'Abrir',
+        commit: 'Commit',
         error: 'Erro',
         success: 'Sucesso',
         ok: 'OK',
@@ -171,8 +173,6 @@ export const pt: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Exibir números de linha nos diffs das visualizações de ferramentas',
         wrapLinesInDiffs: 'Quebrar linhas nos diffs',
         wrapLinesInDiffsDescription: 'Quebrar linhas longas ao invés de rolagem horizontal nas visualizações de diffs',
-        alwaysShowContextSize: 'Sempre mostrar tamanho do contexto',
-        alwaysShowContextSizeDescription: 'Exibir uso do contexto mesmo quando não estiver próximo do limite',
         avatarStyle: 'Estilo do avatar',
         avatarStyleDescription: 'Escolha a aparência do avatar da sessão',
         avatarOptions: {

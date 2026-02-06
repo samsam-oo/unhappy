@@ -28,6 +28,8 @@ export const ko: TranslationStructure = {
         authenticate: '인증',
         save: '저장',
         saveAs: '다른 이름으로 저장',
+        open: '열기',
+        commit: '커밋',
         error: '오류',
         success: '성공',
         ok: '확인',
@@ -164,8 +166,6 @@ export const ko: TranslationStructure = {
         showLineNumbersInToolViewsDescription: '도구 뷰 diff에 줄 번호를 표시',
         wrapLinesInDiffs: 'diff 줄 바꿈',
         wrapLinesInDiffsDescription: 'diff 뷰에서 긴 줄을 가로 스크롤 대신 줄 바꿈',
-        alwaysShowContextSize: '컨텍스트 크기 항상 표시',
-        alwaysShowContextSizeDescription: '한도에 가깝지 않아도 컨텍스트 사용량 표시',
         avatarStyle: '아바타 스타일',
         avatarStyleDescription: '세션 아바타 모양을 선택',
         avatarOptions: {

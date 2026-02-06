@@ -184,7 +184,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : 'default');
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
-    const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
 
     // Use draft hook for auto-saving message drafts
@@ -329,7 +328,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 cacheRead: session.latestUsage.cacheRead,
                 contextSize: session.latestUsage.contextSize
             } : undefined}
-            alwaysShowContextSize={alwaysShowContextSize}
         />
     );
 

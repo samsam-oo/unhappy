@@ -35,6 +35,8 @@ export const en = {
         authenticate: 'Authenticate',
         save: 'Save',
         saveAs: 'Save As',
+        open: 'Open',
+        commit: 'Commit',
         error: 'Error',
         success: 'Success',
         ok: 'OK',
@@ -170,8 +172,6 @@ export const en = {
         showLineNumbersInToolViewsDescription: 'Display line numbers in tool view diffs',
         wrapLinesInDiffs: 'Wrap Lines in Diffs',
         wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views',
-        alwaysShowContextSize: 'Always Show Context Size',
-        alwaysShowContextSizeDescription: 'Display context usage even when not near limit',
         avatarStyle: 'Avatar Style',
         avatarStyleDescription: 'Choose session avatar appearance',
         avatarOptions: {

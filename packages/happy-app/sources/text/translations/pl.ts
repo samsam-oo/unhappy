@@ -46,6 +46,8 @@ export const pl: TranslationStructure = {
         authenticate: 'Uwierzytelnij',
         save: 'Zapisz',
         saveAs: 'Zapisz jako',
+        open: 'Otwórz',
+        commit: 'Zatwierdź',
         error: 'Błąd',
         success: 'Sukces',
         ok: 'OK',
@@ -182,8 +184,6 @@ export const pl: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Wyświetlaj numery linii w różnicach widoków narzędzi',
         wrapLinesInDiffs: 'Zawijanie linii w różnicach',
         wrapLinesInDiffsDescription: 'Zawijaj długie linie zamiast przewijania poziomego w widokach różnic',
-        alwaysShowContextSize: 'Zawsze pokazuj rozmiar kontekstu',
-        alwaysShowContextSizeDescription: 'Wyświetlaj użycie kontekstu nawet gdy nie jest blisko limitu',
         avatarStyle: 'Styl awatara',
         avatarStyleDescription: 'Wybierz wygląd awatara sesji',
         avatarOptions: {

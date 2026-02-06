@@ -37,6 +37,8 @@ export const zhHant: TranslationStructure = {
         authenticate: '驗證',
         save: '儲存',
         saveAs: '另存為',
+        open: '打開',
+        commit: '提交',
         error: '錯誤',
         success: '成功',
         ok: '確定',
@@ -172,8 +174,6 @@ export const zhHant: TranslationStructure = {
         showLineNumbersInToolViewsDescription: '在工具檢視差異中顯示行號',
         wrapLinesInDiffs: '在差異中換行',
         wrapLinesInDiffsDescription: '在差異檢視中換行顯示長行而不是水平捲動',
-        alwaysShowContextSize: '始終顯示上下文大小',
-        alwaysShowContextSizeDescription: '即使未接近限制時也顯示上下文使用情況',
         avatarStyle: '頭像風格',
         avatarStyleDescription: '選擇工作階段頭像外觀',
         avatarOptions: {

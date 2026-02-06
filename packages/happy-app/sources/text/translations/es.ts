@@ -35,6 +35,8 @@ export const es: TranslationStructure = {
         authenticate: 'Autenticar',
         save: 'Guardar',
         saveAs: 'Guardar como',
+        open: 'Abrir',
+        commit: 'Commit',
         error: 'Error',
         success: 'Éxito',
         ok: 'OK',
@@ -171,8 +173,6 @@ export const es: TranslationStructure = {
         showLineNumbersInToolViewsDescription: 'Mostrar números de línea en diferencias de vistas de herramientas',
         wrapLinesInDiffs: 'Ajustar líneas en diferencias',
         wrapLinesInDiffsDescription: 'Ajustar líneas largas en lugar de desplazamiento horizontal en vistas de diferencias',
-        alwaysShowContextSize: 'Mostrar siempre tamaño del contexto',
-        alwaysShowContextSizeDescription: 'Mostrar uso del contexto incluso cuando no esté cerca del límite',
         avatarStyle: 'Estilo de avatar',
         avatarStyleDescription: 'Elige la apariencia del avatar de sesión',
         avatarOptions: {
