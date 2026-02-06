@@ -12,7 +12,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, setCurrentViewedSessionId, getCurrentViewedSessionId } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -42,6 +42,17 @@ export const SessionView = React.memo((props: { id: string }) => {
     const headerHeight = useHeaderHeight();
     const realtimeStatus = useRealtimeStatus();
     const isTablet = useIsTablet();
+
+    // Track current viewed session and clear unread state
+    React.useEffect(() => {
+        setCurrentViewedSessionId(sessionId);
+        storage.getState().markSessionRead(sessionId);
+        return () => {
+            if (getCurrentViewedSessionId() === sessionId) {
+                setCurrentViewedSessionId(null);
+            }
+        };
+    }, [sessionId]);
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
