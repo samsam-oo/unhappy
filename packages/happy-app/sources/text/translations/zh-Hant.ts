@@ -889,6 +889,39 @@ export const zhHant: TranslationStructure = {
         friendAcceptedGeneric: '好友請求已接受',
     },
 
+    finishSession: {
+        title: '完成工作階段',
+        subtitle: '合併、建立 PR 或清理工作樹',
+        branchName: '分支',
+        basePath: '基礎儲存庫',
+        uncommittedWarning: '此工作樹有未提交的變更',
+        actions: '操作',
+        mergeInto: ({ branch }: { branch: string }) => `合併到 ${branch}`,
+        mergeSubtitle: ({ branch }: { branch: string }) => `將此分支合併到 ${branch}`,
+        mergeConfirmTitle: '合併分支',
+        mergeConfirmMessage: ({ branch, target }: { branch: string; target: string }) =>
+            `將 '${branch}' 合併到 '${target}'？`,
+        merge: '合併',
+        pushAfterMerge: '合併後推送',
+        mergeSuccess: '合併完成',
+        mergeSuccessMessage: '分支已成功合併。',
+        mergeAndPushSuccessMessage: '分支已成功合併並推送。',
+        createPR: '建立 Pull Request',
+        createPRSubtitle: '推送分支並在 GitHub 上建立 PR',
+        prCreated: 'Pull Request 已建立',
+        copyUrl: '複製 URL',
+        dangerZone: '危險區域',
+        deleteWorktree: '刪除工作樹',
+        deleteWorktreeSubtitle: '移除工作樹、刪除分支並清理',
+        deleteConfirmTitle: '刪除工作樹',
+        deleteConfirmMessage: ({ branch }: { branch: string }) =>
+            `將移除 '${branch}' 工作樹並刪除分支。此操作無法復原。`,
+        deleteSuccess: '工作樹已刪除',
+        deleteSuccessMessage: '工作樹和分支已被移除。',
+        notAWorktree: '此工作階段不是工作樹工作階段。',
+        resolvingBranch: '正在解析主分支...',
+    },
+
     profiles: {
         // Profile management feature
         title: '設定檔',

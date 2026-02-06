@@ -911,6 +911,39 @@ export const ru: TranslationStructure = {
         friendAcceptedGeneric: 'Запрос в друзья принят',
     },
 
+    finishSession: {
+        title: 'Завершить сессию',
+        subtitle: 'Слить, создать PR или очистить рабочее дерево',
+        branchName: 'Ветка',
+        basePath: 'Базовый репозиторий',
+        uncommittedWarning: 'В этом рабочем дереве есть незакоммиченные изменения',
+        actions: 'Действия',
+        mergeInto: ({ branch }: { branch: string }) => `Слить в ${branch}`,
+        mergeSubtitle: ({ branch }: { branch: string }) => `Слить эту ветку в ${branch}`,
+        mergeConfirmTitle: 'Слияние ветки',
+        mergeConfirmMessage: ({ branch, target }: { branch: string; target: string }) =>
+            `Слить '${branch}' в '${target}'?`,
+        merge: 'Слить',
+        pushAfterMerge: 'Отправить после слияния',
+        mergeSuccess: 'Слияние завершено',
+        mergeSuccessMessage: 'Ветка успешно слита.',
+        mergeAndPushSuccessMessage: 'Ветка успешно слита и отправлена.',
+        createPR: 'Создать Pull Request',
+        createPRSubtitle: 'Отправить ветку и открыть PR на GitHub',
+        prCreated: 'Pull Request создан',
+        copyUrl: 'Копировать URL',
+        dangerZone: 'Опасная зона',
+        deleteWorktree: 'Удалить рабочее дерево',
+        deleteWorktreeSubtitle: 'Удалить рабочее дерево, ветку и очистить',
+        deleteConfirmTitle: 'Удалить рабочее дерево',
+        deleteConfirmMessage: ({ branch }: { branch: string }) =>
+            `Рабочее дерево '${branch}' будет удалено вместе с веткой. Это действие необратимо.`,
+        deleteSuccess: 'Рабочее дерево удалено',
+        deleteSuccessMessage: 'Рабочее дерево и ветка были удалены.',
+        notAWorktree: 'Эта сессия не является сессией рабочего дерева.',
+        resolvingBranch: 'Определение основной ветки...',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Профили',

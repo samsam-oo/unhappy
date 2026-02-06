@@ -912,6 +912,39 @@ export const pl: TranslationStructure = {
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
     },
 
+    finishSession: {
+        title: 'Zakończ sesję',
+        subtitle: 'Scal, utwórz PR lub wyczyść worktree',
+        branchName: 'Gałąź',
+        basePath: 'Bazowe repozytorium',
+        uncommittedWarning: 'Ten worktree ma niezatwierdzone zmiany',
+        actions: 'Akcje',
+        mergeInto: ({ branch }: { branch: string }) => `Scal do ${branch}`,
+        mergeSubtitle: ({ branch }: { branch: string }) => `Scal tę gałąź do ${branch}`,
+        mergeConfirmTitle: 'Scalanie gałęzi',
+        mergeConfirmMessage: ({ branch, target }: { branch: string; target: string }) =>
+            `Scalić '${branch}' do '${target}'?`,
+        merge: 'Scal',
+        pushAfterMerge: 'Wypchnij po scaleniu',
+        mergeSuccess: 'Scalanie zakończone',
+        mergeSuccessMessage: 'Gałąź została pomyślnie scalona.',
+        mergeAndPushSuccessMessage: 'Gałąź została pomyślnie scalona i wypchnięta.',
+        createPR: 'Utwórz Pull Request',
+        createPRSubtitle: 'Wypchnij gałąź i otwórz PR na GitHubie',
+        prCreated: 'Pull Request utworzony',
+        copyUrl: 'Kopiuj URL',
+        dangerZone: 'Strefa zagrożenia',
+        deleteWorktree: 'Usuń worktree',
+        deleteWorktreeSubtitle: 'Usuń worktree, gałąź i wyczyść',
+        deleteConfirmTitle: 'Usuń worktree',
+        deleteConfirmMessage: ({ branch }: { branch: string }) =>
+            `Worktree '${branch}' zostanie usunięty wraz z gałęzią. Tej operacji nie można cofnąć.`,
+        deleteSuccess: 'Worktree usunięty',
+        deleteSuccessMessage: 'Worktree i gałąź zostały usunięte.',
+        notAWorktree: 'Ta sesja nie jest sesją worktree.',
+        resolvingBranch: 'Rozpoznawanie głównej gałęzi...',
+    },
+
     profiles: {
         // Profile management feature
         title: 'Profile',
