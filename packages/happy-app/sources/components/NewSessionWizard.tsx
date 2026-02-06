@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, TextInput, Platform } from 'react-na
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';

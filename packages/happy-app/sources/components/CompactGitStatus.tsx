@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
 import { StyleSheet } from 'react-native-unistyles';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {

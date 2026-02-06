@@ -4,7 +4,7 @@ import { t } from '@/text';
 import { useRoute } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Octicons } from '@expo/vector-icons';
+import { Octicons } from '@/icons/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';

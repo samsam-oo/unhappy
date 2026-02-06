@@ -9,7 +9,7 @@ import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@/icons/vector-icons';
 
 export const ZenHeader = React.memo(() => {
     const isTablet = useIsTablet();

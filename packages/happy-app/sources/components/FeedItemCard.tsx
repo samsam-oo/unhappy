@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { FeedItem } from '@/sync/feedTypes';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { t } from '@/text';
 import { useRouter } from 'expo-router';
 import { useUser } from '@/sync/storage';

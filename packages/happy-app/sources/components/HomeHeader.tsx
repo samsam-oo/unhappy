@@ -4,7 +4,7 @@ import { useSocketStatus } from '@/sync/storage';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { useRouter, useSegments } from 'expo-router';
 import { getServerInfo } from '@/sync/serverConfig';
 import { Image } from 'expo-image';

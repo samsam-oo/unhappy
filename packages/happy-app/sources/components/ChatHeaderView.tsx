@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { Avatar } from '@/components/Avatar';
 import { Typography } from '@/constants/Typography';

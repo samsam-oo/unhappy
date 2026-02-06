@@ -15,7 +15,7 @@ import { useHappyAction } from '@/hooks/useHappyAction';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { trackFriendsConnect } from '@/track';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 
 export default function UserProfileScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();

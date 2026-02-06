@@ -1,4 +1,4 @@
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@/icons/vector-icons';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage, Pressable } from 'react-native';
 import { Image } from 'expo-image';

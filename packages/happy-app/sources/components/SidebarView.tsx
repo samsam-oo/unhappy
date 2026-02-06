@@ -14,7 +14,7 @@ import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { isRunningOnMac } from '@/utils/platform';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({

@@ -3,7 +3,7 @@ import { View, TextInput, Text, TouchableOpacity } from 'react-native';
 import { RoundButton } from './RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { trackConnectAttempt } from '@/track';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { t } from '@/text';
 import { useUnistyles } from 'react-native-unistyles';
 

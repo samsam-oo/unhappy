@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { layout } from '@/components/layout';
 import { useIsTablet } from '@/utils/responsive';
 import { Header } from './navigation/Header';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { Image } from 'expo-image';
 import { FeedItemCard } from './FeedItemCard';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';

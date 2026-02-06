@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, Pressable, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@/icons/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { hapticsLight } from './haptics';
 

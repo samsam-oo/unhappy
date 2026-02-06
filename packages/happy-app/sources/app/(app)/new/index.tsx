@@ -3,7 +3,7 @@ import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextI
 import Constants from 'expo-constants';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@/icons/vector-icons';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useRouter, useLocalSearchParams } from 'expo-router';
