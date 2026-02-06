@@ -26,6 +26,18 @@ import { FeedItem } from "./feedTypes";
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const REALTIME_MODE_DEBOUNCE_MS = 150;
 
+// Track which session the user is currently viewing.
+// Used by applySessions to avoid marking the active session as unread.
+let _currentViewedSessionId: string | null = null;
+
+export function setCurrentViewedSessionId(sessionId: string | null) {
+    _currentViewedSessionId = sessionId;
+}
+
+export function getCurrentViewedSessionId(): string | null {
+    return _currentViewedSessionId;
+}
+
 /**
  * Centralized session online state resolver
  * Returns either "online" (string) or a timestamp (number) for last seen
@@ -118,6 +130,7 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
+    markSessionRead: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -317,11 +330,23 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+
+                // Detect thinking -> not-thinking transition for unread marking
+                const previousSession = state.sessions[session.id];
+                const wasThinking = previousSession?.thinking === true;
+                const isNowNotThinking = session.thinking === false;
+                const isCurrentlyViewed = _currentViewedSessionId === session.id;
+                let unread = previousSession?.unread ?? false;
+                if (wasThinking && isNowNotThinking && !isCurrentlyViewed) {
+                    unread = true;
+                }
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    unread,
                 };
             });
 
@@ -825,6 +850,17 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions
+            };
+        }),
+        markSessionRead: (sessionId: string) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session || !session.unread) return state;
+            return {
+                ...state,
+                sessions: {
+                    ...state.sessions,
+                    [sessionId]: { ...session, unread: false }
+                }
             };
         }),
         // Project management methods

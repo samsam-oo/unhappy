@@ -317,6 +317,17 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
                     ? <ActivityIndicator size={14} color={sessionStatus.statusDotColor} />
                     : <Ionicons name={iconName} size={18} color={iconColor} />
                 }
+                {props.session.unread && sessionStatus.state !== 'thinking' && (
+                    <View style={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -2,
+                        width: 7,
+                        height: 7,
+                        borderRadius: 3.5,
+                        backgroundColor: theme.colors.chrome.accent,
+                    }} />
+                )}
             </View>
             <View style={styles.textBlock}>
                 <Text style={styles.title} numberOfLines={1}>
