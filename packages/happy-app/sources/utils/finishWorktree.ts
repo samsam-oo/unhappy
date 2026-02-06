@@ -170,6 +170,23 @@ export interface MergeOptions {
     push?: boolean;
 }
 
+function isNonFastForwardPushFailure(result: BashResultLike): boolean {
+    const stderr = (typeof result?.stderr === 'string' ? result.stderr : '').toLowerCase();
+    const stdout = (typeof result?.stdout === 'string' ? result.stdout : '').toLowerCase();
+    const msg = `${stderr}\n${stdout}`;
+
+    // Common git messages when remote has new commits:
+    // - "[rejected] ... (non-fast-forward)"
+    // - "fetch first"
+    // - "Updates were rejected because the remote contains work that you do not have locally"
+    return (
+        msg.includes('non-fast-forward') ||
+        msg.includes('fetch first') ||
+        msg.includes('remote contains work that you do not have locally') ||
+        msg.includes('rejected') // paired with above usually; harmless extra signal
+    );
+}
+
 export async function mergeWorktreeBranch(
     machineId: string,
     basePath: string,
@@ -234,6 +251,17 @@ export async function mergeWorktreeBranch(
     if (options?.push) {
         const pushResult = await machineBash(machineId, `git -C ${bashQuote(basePath)} push`, SAFE_CWD);
         if (!pushResult.success) {
+            // Most "push conflicts" are actually non-fast-forward rejections (remote main moved).
+            if (isNonFastForwardPushFailure(pushResult as unknown as BashResultLike)) {
+                return {
+                    success: false,
+                    error:
+                        `Push was rejected because '${mainBranch}' changed on the remote (non-fast-forward).\n\n` +
+                        `Please update your local '${mainBranch}' (e.g. fetch/pull), resolve any conflicts if prompted, then push again.\n\n` +
+                        `${formatBashFailure(pushResult as unknown as BashResultLike, 'git push failed')}`,
+                };
+            }
+
             return {
                 success: false,
                 error: `Merge succeeded locally but push failed:\n${formatBashFailure(pushResult as unknown as BashResultLike, 'git push failed')}`,
