@@ -5,17 +5,17 @@ WORKDIR /repo
 
 COPY package.json yarn.lock ./
 
-RUN mkdir -p packages/happy-app packages/happy-server packages/happy-cli
+RUN mkdir -p packages/unhappy-app packages/unhappy-server packages/unhappy-cli
 
-COPY packages/happy-app/package.json packages/happy-app/
-COPY packages/happy-server/package.json packages/happy-server/
-COPY packages/happy-cli/package.json packages/happy-cli/
+COPY packages/unhappy-app/package.json packages/unhappy-app/
+COPY packages/unhappy-server/package.json packages/unhappy-server/
+COPY packages/unhappy-cli/package.json packages/unhappy-cli/
 
 # Workspace postinstall requirements
-COPY packages/happy-app/patches packages/happy-app/patches
-COPY packages/happy-server/prisma packages/happy-server/prisma
-COPY packages/happy-cli/scripts packages/happy-cli/scripts
-COPY packages/happy-cli/tools packages/happy-cli/tools
+COPY packages/unhappy-app/patches packages/unhappy-app/patches
+COPY packages/unhappy-server/prisma packages/unhappy-server/prisma
+COPY packages/unhappy-cli/scripts packages/unhappy-cli/scripts
+COPY packages/unhappy-cli/tools packages/unhappy-cli/tools
 
 RUN yarn install --frozen-lockfile --ignore-engines
 
@@ -24,22 +24,22 @@ FROM deps AS builder
 
 ARG POSTHOG_API_KEY=""
 ARG REVENUE_CAT_STRIPE=""
-ARG EXPO_PUBLIC_HAPPY_SERVER_URL=""
+ARG EXPO_PUBLIC_UNHAPPY_SERVER_URL=""
 
 ENV NODE_ENV=production
 ENV APP_ENV=production
 ENV EXPO_PUBLIC_POSTHOG_API_KEY=$POSTHOG_API_KEY
 ENV EXPO_PUBLIC_REVENUE_CAT_STRIPE=$REVENUE_CAT_STRIPE
-ENV EXPO_PUBLIC_HAPPY_SERVER_URL=$EXPO_PUBLIC_HAPPY_SERVER_URL
+ENV EXPO_PUBLIC_UNHAPPY_SERVER_URL=$EXPO_PUBLIC_UNHAPPY_SERVER_URL
 
-COPY packages/happy-app ./packages/happy-app
+COPY packages/unhappy-app ./packages/unhappy-app
 
-RUN yarn workspace happy-app expo export --platform web --output-dir dist
+RUN yarn workspace unhappy-app expo export --platform web --output-dir dist
 
 # Stage 3: runtime with Nginx
 FROM nginx:alpine AS runner
 
-COPY --from=builder /repo/packages/happy-app/dist /usr/share/nginx/html
+COPY --from=builder /repo/packages/unhappy-app/dist /usr/share/nginx/html
 
 # Remove default nginx configuration
 RUN rm /etc/nginx/conf.d/default.conf

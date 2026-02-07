@@ -1,12 +1,12 @@
 # CLI Architecture
 
-This document describes the Happy CLI (`packages/happy-cli`) and its daemon. The CLI is both an interactive tool and a background session manager that keeps machine state in sync with the server.
+This document describes the Unhappy CLI (`packages/unhappy-cli`) and its daemon. The CLI is both an interactive tool and a background session manager that keeps machine state in sync with the server.
 
 ## System overview
 
 ```mermaid
 graph TB
-    subgraph "Happy CLI"
+    subgraph "Unhappy CLI"
         Entry[src/index.ts]
         API[API Client]
         Daemon[Daemon Process]
@@ -373,9 +373,9 @@ RPC is used to send commands over the Socket.IO connection:
 This mechanism allows the server and mobile clients to drive local actions without exposing a broad REST surface.
 
 ## Implementation references
-- CLI entry: `packages/happy-cli/src/index.ts`
-- Daemon: `packages/happy-cli/src/daemon`
-- Control server/client: `packages/happy-cli/src/daemon/controlServer.ts`, `packages/happy-cli/src/daemon/controlClient.ts`
-- API clients: `packages/happy-cli/src/api`
-- Persistence: `packages/happy-cli/src/persistence.ts`
-- Config: `packages/happy-cli/src/configuration.ts`
+- CLI entry: `packages/unhappy-cli/src/index.ts`
+- Daemon: `packages/unhappy-cli/src/daemon`
+- Control server/client: `packages/unhappy-cli/src/daemon/controlServer.ts`, `packages/unhappy-cli/src/daemon/controlClient.ts`
+- API clients: `packages/unhappy-cli/src/api`
+- Persistence: `packages/unhappy-cli/src/persistence.ts`
+- Config: `packages/unhappy-cli/src/configuration.ts`

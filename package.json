@@ -3,9 +3,9 @@
     "private": true,
     "workspaces": {
         "packages": [
-            "packages/happy-app",
-            "packages/happy-cli",
-            "packages/happy-server"
+            "packages/unhappy-app",
+            "packages/unhappy-cli",
+            "packages/unhappy-server"
         ],
         "nohoist": [
             "**/zod",

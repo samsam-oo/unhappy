@@ -1,4 +1,4 @@
-<div align="center"><img src="/.github/logotype-dark.png" width="400" title="Happy Coder" alt="Happy Coder"/></div>
+<div align="center"><img src="/.github/logotype-dark.png" width="400" title="Unhappy Coder" alt="Unhappy Coder"/></div>
 
 <h1 align="center">
   Mobile and Web Client for Claude Code & Codex
@@ -30,34 +30,34 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g happy-coder
+npm install -g unhappy-coder
 ```
 
 <h3 align="center">
-Step 3: Start using `happy` instead of `claude` or `codex`
+Step 3: Start using `unhappy` instead of `claude` or `codex`
 </h3>
 
 ```bash
 
 # Instead of: claude
-# Use: happy
+# Use: unhappy
 
-happy
+unhappy
 
 # Instead of: codex
-# Use: happy codex
+# Use: unhappy codex
 
-happy codex
+unhappy codex
 
 ```
 
-<div align="center"><img src="/.github/mascot.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
+<div align="center"><img src="/.github/mascot.png" width="200" title="Unhappy Coder" alt="Unhappy Coder"/></div>
 
 ## How does it work?
 
-On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
+On your computer, run `unhappy` instead of `claude` or `unhappy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
 
-## 🔥 Why Happy Coder?
+## 🔥 Why Unhappy Coder?
 
 - 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
 - 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors  
@@ -67,19 +67,19 @@ On your computer, run `happy` instead of `claude` or `happy codex` instead of `c
 
 ## 📦 Project Components
 
-- **[Happy App](https://github.com/slopus/happy/tree/main/packages/happy-app)** - Web UI + mobile client (Expo)
-- **[Happy CLI](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code and Codex
-- **[Happy Server](https://github.com/slopus/happy/tree/main/packages/happy-server)** - Backend server for encrypted sync
+- **[Unhappy App](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-app)** - Web UI + mobile client (Expo)
+- **[Unhappy CLI](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-cli)** - Command-line interface for Claude Code and Codex
+- **[Unhappy Server](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-server)** - Backend server for encrypted sync
 
 ## 🏠 Who We Are
 
-We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are progressing on our pet projects during lunch breaks. Happy Coder was born from the frustration of not being able to peek at our AI coding tools building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
+We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are progressing on our pet projects during lunch breaks. Unhappy Coder was born from the frustration of not being able to peek at our AI coding tools building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
 
 ## 📚 Documentation & Contributing
 
-- **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
+- **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Unhappy Coder effectively
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development setup including iOS, Android, and macOS desktop variant builds
-- **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
+- **[Edit docs at github.com/samsam-oo/samsam-oo.github.io](https://github.com/samsam-oo/samsam-oo.github.io)** - Help improve our documentation and guides
 
 ## License
 
