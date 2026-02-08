@@ -9,7 +9,10 @@ const DEFAULT_SERVER_URL = 'https://api.unhappy.im';
 export function getServerUrl(): string {
   return (
     serverConfigStorage.getString(SERVER_KEY) ||
+    // Support a few historical env var names.
     process.env.EXPO_PUBLIC_HAPPY_SERVER_URL ||
+    process.env.EXPO_PUBLIC_UNHAPPY_SERVER_URL ||
+    process.env.EXPO_PUBLIC_SERVER_URL ||
     DEFAULT_SERVER_URL
   );
 }

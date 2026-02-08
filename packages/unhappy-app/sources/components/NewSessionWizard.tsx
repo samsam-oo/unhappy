@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, Platform } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, View, Text, Pressable, ScrollView, TextInput, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -8,12 +8,14 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
+import { useAllMachines, useSetting, storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariables } from '@/sync/settings';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
+import { machineListDirectory } from '@/sync/ops';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -161,6 +163,46 @@ const stylesheet = StyleSheet.create((theme) => ({
         ...Typography.default(),
     },
 }));
+
+type RemoteDirectoryEntry = {
+    name: string;
+    type: 'file' | 'directory' | 'other';
+    size?: number;
+    modified?: number;
+};
+
+function normalizeRemotePath(path: string): string {
+    const trimmed = (path || '').trim();
+    if (!trimmed) return '/';
+    if (trimmed === '/') return '/';
+    // Remove trailing slashes (except root)
+    return trimmed.replace(/\/+$/, '');
+}
+
+function joinRemotePath(base: string, childName: string): string {
+    const b = normalizeRemotePath(base);
+    const c = (childName || '').replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!c) return b;
+    return b === '/' ? `/${c}` : `${b}/${c}`;
+}
+
+function parentRemotePath(path: string): string {
+    const p = normalizeRemotePath(path);
+    if (p === '/') return '/';
+    const idx = p.lastIndexOf('/');
+    if (idx <= 0) return '/';
+    return p.slice(0, idx);
+}
+
+function remotePathRelativeToRoot(path: string, root: string): string {
+    const p = normalizeRemotePath(path);
+    const r = normalizeRemotePath(root);
+    if (!r) return p;
+    if (p === r) return '.';
+    const prefix = r === '/' ? '/' : `${r}/`;
+    if (p.startsWith(prefix)) return p.slice(prefix.length);
+    return p;
+}
 
 type WizardStep = 'profile' | 'profileConfig' | 'sessionType' | 'agent' | 'options' | 'machine' | 'path' | 'prompt';
 
@@ -530,7 +572,6 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const styles = stylesheet;
     const router = useRouter();
     const machines = useAllMachines();
-    const sessions = useSessions();
     const experimentsEnabled = useSetting('experiments');
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
@@ -692,6 +733,23 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
         return '/home';
     });
+    const selectedMachine = useMemo(() => {
+        return machines.find(m => m.id === selectedMachineId);
+    }, [machines, selectedMachineId]);
+
+    // Remote "file explorer" state (directory picker for the selected machine)
+    const [browseRoot, setBrowseRoot] = useState<string>('');
+    const [browsePath, setBrowsePath] = useState<string>(() => {
+        if (machines.length > 0 && selectedMachineId) {
+            const machine = machines.find(m => m.id === selectedMachineId);
+            return machine?.metadata?.homeDir || '/home';
+        }
+        return '/home';
+    });
+    const [browseEntries, setBrowseEntries] = useState<RemoteDirectoryEntry[]>([]);
+    const [browseError, setBrowseError] = useState<string | null>(null);
+    const [isBrowsing, setIsBrowsing] = useState(false);
+    const [browseReloadToken, setBrowseReloadToken] = useState(0);
     const [prompt, setPrompt] = useState<string>(initialPrompt);
     const [customPath, setCustomPath] = useState<string>('');
     const [showCustomPathInput, setShowCustomPathInput] = useState<boolean>(false);
@@ -820,49 +878,71 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         };
     }, [allProfiles]);
 
-    // Get recent paths for the selected machine
-    const recentPaths = useMemo(() => {
-        if (!selectedMachineId) return [];
+    // Keep the file explorer in sync with the selected machine.
+    useEffect(() => {
+        if (!selectedMachineId) return;
+        const machine = machines.find(m => m.id === selectedMachineId);
+        const homeDir = machine?.metadata?.homeDir || '/home';
+        setBrowsePath(homeDir);
+        setBrowseRoot(homeDir);
+        setBrowseEntries([]);
+        setBrowseError(null);
+        // Force reload (helps when the machine selection changes).
+        setBrowseReloadToken(x => x + 1);
+    }, [selectedMachineId, machines]);
 
-        const paths: string[] = [];
-        const pathSet = new Set<string>();
+    useEffect(() => {
+        if (currentStep !== 'path') return;
+        if (!selectedMachineId) return;
 
-        // First, add paths from recentMachinePaths (these are the most recent)
-        recentMachinePaths.forEach(entry => {
-            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path)) {
-                paths.push(entry.path);
-                pathSet.add(entry.path);
-            }
-        });
-
-        // Then add paths from sessions if we need more
-        if (sessions) {
-            const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
-
-            sessions.forEach(item => {
-                if (typeof item === 'string') return; // Skip section headers
-
-                const session = item as any;
-                if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
-                    const path = session.metadata.path;
-                    if (!pathSet.has(path)) {
-                        pathSet.add(path);
-                        pathsWithTimestamps.push({
-                            path,
-                            timestamp: session.updatedAt || session.createdAt
-                        });
-                    }
-                }
-            });
-
-            // Sort session paths by most recent first and add them
-            pathsWithTimestamps
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .forEach(item => paths.push(item.path));
+        if (!selectedMachine || !isMachineOnline(selectedMachine)) {
+            setBrowseEntries([]);
+            setBrowseError('Machine is offline');
+            setIsBrowsing(false);
+            return;
         }
 
-        return paths;
-    }, [sessions, selectedMachineId, recentMachinePaths]);
+        let cancelled = false;
+        const run = async () => {
+            setIsBrowsing(true);
+            setBrowseError(null);
+
+            const root = normalizeRemotePath(browseRoot || '/');
+            const target = normalizeRemotePath(browsePath || selectedPath || root || '/');
+
+            let response = await machineListDirectory(selectedMachineId, target);
+            if (cancelled) return;
+
+            if (!response.success && root && normalizeRemotePath(target) !== normalizeRemotePath(root)) {
+                const fallback = normalizeRemotePath(root);
+                setBrowsePath(fallback);
+                response = await machineListDirectory(selectedMachineId, fallback);
+                if (cancelled) return;
+            }
+
+            if (!response.success) {
+                setBrowseEntries([]);
+                setBrowseError(response.error || 'Failed to list directory');
+                return;
+            }
+
+            const directories = (response.entries || [])
+                .filter((e): e is RemoteDirectoryEntry => !!e && e.type === 'directory' && typeof e.name === 'string')
+                .filter(e => e.name !== '.' && e.name !== '..')
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            setBrowseEntries(directories);
+            setBrowseError(null);
+        };
+
+        run().finally(() => {
+            if (!cancelled) setIsBrowsing(false);
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [currentStep, selectedMachineId, selectedMachine, browsePath, selectedPath, browseRoot, browseReloadToken]);
 
     const currentStepIndex = steps.indexOf(currentStep);
     const isFirstStep = currentStepIndex === 0;
@@ -1694,6 +1774,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                         // Update path when machine changes
                                         const homeDir = machine.metadata?.homeDir || '/home';
                                         setSelectedPath(homeDir);
+                                        setBrowsePath(homeDir);
                                     }}
                                     showChevron={false}
                                     selected={selectedMachineId === machine.id}
@@ -1712,39 +1793,187 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                             Choose the directory to work in
                         </Text>
 
-                        {/* Recent Paths */}
-                        {recentPaths.length > 0 && (
-                            <ItemGroup title="Recent Paths">
-                                {recentPaths.map((path, index) => (
-                                    <Item
-                                        key={path}
-                                        title={path}
-                                        subtitle="Recently used"
-                                        leftElement={
-                                            <Ionicons
-                                                name="time-outline"
-                                                size={24}
-                                                color={theme.colors.textSecondary}
-                                            />
-                                        }
-                                        rightElement={selectedPath === path && !showCustomPathInput ? (
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.button.primary.background}
-                                            />
-                                        ) : null}
-                                        onPress={() => {
-                                            setSelectedPath(path);
-                                            setShowCustomPathInput(false);
-                                        }}
-                                        showChevron={false}
-                                        selected={selectedPath === path && !showCustomPathInput}
-                                        showDivider={index < recentPaths.length - 1}
-                                    />
-                                ))}
-                            </ItemGroup>
-                        )}
+                        {/* File Explorer */}
+                        <ItemGroup
+                            title={(() => {
+                                const root = normalizeRemotePath(browseRoot || '/');
+                                const current = normalizeRemotePath(browsePath);
+                                const canGoUp = current !== root && current !== '/';
+                                const accent = theme.colors.chrome?.accent ?? theme.colors.textLink;
+                                const parent = parentRemotePath(current);
+                                const clampedParent =
+                                    root && root !== '/' && !parent.startsWith(root) ? root : parent;
+
+                                return (
+                                    <View style={{ gap: 8 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <Text style={{
+                                                ...Typography.default('regular'),
+                                                color: theme.colors.groupped.sectionTitle,
+                                                fontSize: Platform.select({ ios: 13, web: 12, default: 13 }),
+                                                lineHeight: Platform.select({ ios: 18, default: 20 }),
+                                                letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+                                                textTransform: 'uppercase',
+                                                fontWeight: Platform.select({ ios: 'normal', default: '500' }) as any,
+                                            }}>
+                                                File Explorer
+                                            </Text>
+
+                                            <Pressable
+                                                accessibilityLabel="새로 고침"
+                                                onPress={() => setBrowseReloadToken(x => x + 1)}
+                                                style={({ pressed }) => ({
+                                                    opacity: pressed ? 0.8 : 1,
+                                                    paddingHorizontal: 10,
+                                                    paddingVertical: 7,
+                                                    borderRadius: 10,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.divider,
+                                                    backgroundColor: pressed ? theme.colors.surfacePressedOverlay : theme.colors.surfaceHigh,
+                                                })}
+                                            >
+                                                <Ionicons
+                                                    name="refresh-outline"
+                                                    size={18}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+                                        </View>
+
+	                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+	                                            <Pressable
+	                                                accessibilityLabel="상위 폴더로"
+	                                                disabled={!canGoUp}
+	                                                onPress={() => setBrowsePath(clampedParent)}
+                                                style={({ pressed }) => ({
+                                                    opacity: !canGoUp ? 0.35 : (pressed ? 0.8 : 1),
+                                                    width: 34,
+                                                    height: 34,
+                                                    borderRadius: 10,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.divider,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    backgroundColor: pressed ? theme.colors.surfacePressedOverlay : theme.colors.surfaceHigh,
+                                                })}
+                                            >
+                                                <Ionicons
+                                                    name="chevron-back-outline"
+                                                    size={18}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+
+	                                            {(() => {
+	                                                const rel = remotePathRelativeToRoot(current, root);
+	                                                const label = rel === '.' ? '/' : `/${rel}`;
+	                                                return (
+	                                                    <Text
+	                                                        style={{
+	                                                            ...Typography.default('regular'),
+	                                                            fontSize: 13,
+	                                                            color: theme.colors.textSecondary,
+	                                                            flex: 1,
+	                                                        }}
+	                                                        numberOfLines={1}
+	                                                        ellipsizeMode="middle"
+	                                                    >
+	                                                        {label}
+	                                                    </Text>
+	                                                );
+	                                            })()}
+	                                        </View>
+	                                    </View>
+	                                );
+	                            })()}
+	                        >
+	                            {browseError && (
+	                                <Item
+	                                    title="Unable to load folders"
+	                                    subtitle={browseError}
+                                    subtitleLines={2}
+                                    leftElement={
+                                        <Ionicons
+                                            name="alert-circle-outline"
+                                            size={24}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    }
+                                    showChevron={false}
+                                    disabled={true}
+                                />
+                            )}
+
+                            {isBrowsing && (
+                                <Item
+                                    title="Loading..."
+                                    subtitle="Fetching folders from machine"
+                                    leftElement={<ActivityIndicator />}
+                                    showChevron={false}
+                                    disabled={true}
+                                />
+                            )}
+
+                            {!isBrowsing && !browseError && browseEntries.length === 0 && (
+                                <Item
+                                    title="No folders"
+                                    subtitle="This directory is empty"
+                                    leftElement={
+                                        <Ionicons
+                                            name="folder-outline"
+                                            size={24}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    }
+                                    showChevron={false}
+                                    disabled={true}
+                                />
+                            )}
+
+	                            {!browseError && browseEntries.map((entry) => (
+	                                <Item
+	                                    key={`${browsePath}:${entry.name}`}
+	                                    title={entry.name}
+	                                    subtitle={remotePathRelativeToRoot(joinRemotePath(browsePath, entry.name), browseRoot || browsePath)}
+	                                    subtitleLines={1}
+                                    leftElement={
+                                        <Ionicons
+                                            name="folder-outline"
+                                            size={24}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    }
+                                    onPress={() => setBrowsePath(joinRemotePath(browsePath, entry.name))}
+                                    onLongPress={() => {
+                                        const next = joinRemotePath(browsePath, entry.name);
+                                        setSelectedPath(next);
+                                        setShowCustomPathInput(false);
+	                                    }}
+	                                />
+	                            ))}
+
+	                            <Item
+	                                title="이 폴더로 선택"
+	                                subtitle={remotePathRelativeToRoot(browsePath, browseRoot || browsePath)}
+	                                subtitleLines={1}
+	                                rightElement={
+	                                    <Ionicons
+	                                        name="checkmark-circle"
+	                                        size={22}
+	                                        color={theme.colors.chrome?.accent ?? theme.colors.textLink}
+	                                    />
+	                                }
+	                                onPress={() => {
+	                                    setSelectedPath(browsePath);
+	                                    setShowCustomPathInput(false);
+	                                    setCurrentStep('prompt');
+	                                }}
+	                                showChevron={false}
+	                                pressableStyle={{
+	                                    backgroundColor: theme.colors.surfaceSelected,
+	                                }}
+	                            />
+	                        </ItemGroup>
 
                         {/* Common Directories */}
                         <ItemGroup title="Common Directories">
@@ -1778,6 +2007,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                         ) : null}
                                         onPress={() => {
                                             setSelectedPath(option.value);
+                                            setBrowsePath(option.value);
                                             setShowCustomPathInput(false);
                                         }}
                                         showChevron={false}

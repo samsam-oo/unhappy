@@ -1,17 +1,18 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, View, Text, ScrollView, Pressable } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { Typography } from '@/constants/Typography';
-import { useMachine, useSessions, useSetting } from '@/sync/storage';
+import { useMachine, useSetting } from '@/sync/storage';
 import { Ionicons } from '@/icons/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
-import { joinBasePath, pathRelativeToBase } from '@/utils/basePathUtils';
+import { joinPathSegment, parentDir, pathRelativeToBase } from '@/utils/basePathUtils';
+import { machineBash, machineListDirectory } from '@/sync/ops';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -65,12 +66,14 @@ export default function PathPickerScreen() {
     const router = useRouter();
     const navigation = useNavigation();
     const params = useLocalSearchParams<{ machineId?: string; selectedPath?: string }>();
-    const sessions = useSessions();
-    const inputRef = useRef<MultiTextInputHandle>(null);
-    const recentMachinePaths = useSetting('recentMachinePaths');
     const projectBasePaths = useSetting('projectBasePaths');
 
-    const [customPath, setCustomPath] = useState('');
+    const [browseRootAbs, setBrowseRootAbs] = useState('');
+    const [browseAbsPath, setBrowseAbsPath] = useState('');
+    const [browseEntries, setBrowseEntries] = useState<Array<{ name: string; type: 'file' | 'directory' | 'other' }>>([]);
+    const [browseError, setBrowseError] = useState<string | null>(null);
+    const [isBrowsing, setIsBrowsing] = useState(false);
+    const [browseReloadToken, setBrowseReloadToken] = useState(0);
 
     const machineId = typeof params.machineId === 'string' ? params.machineId : '';
     const machine = useMachine(machineId);
@@ -82,69 +85,101 @@ export default function PathPickerScreen() {
     }, [machine?.metadata?.homeDir, machineId, projectBasePaths]);
 
     // Initialize input from selectedPath (which may be absolute) after baseRoot is known
-    React.useEffect(() => {
+    useEffect(() => {
         const selected = (params.selectedPath || '').trim();
         if (!selected) {
-            setCustomPath('.');
             return;
         }
         if (!baseRoot) {
-            setCustomPath(selected);
+            setBrowseAbsPath(selected);
             return;
         }
-        setCustomPath(pathRelativeToBase(selected, baseRoot));
+        setBrowseAbsPath(selected);
     }, [baseRoot, params.selectedPath]);
 
-    // Get recent paths for this machine - prioritize from settings, then fall back to sessions
-    const recentPaths = useMemo(() => {
-        if (!machineId) return [];
+    const ensureBrowseRoot = useCallback(async (): Promise<string> => {
+        const fromBase = (baseRoot || '').trim();
+        if (fromBase) {
+            if (fromBase !== browseRootAbs) setBrowseRootAbs(fromBase);
+            return fromBase;
+        }
+        if (!machineId) return '';
+        const result = await machineBash(machineId, 'pwd', '/');
+        if (!result.success) return '';
+        const root = (result.stdout || '').split('\n')[0]?.trim() || '';
+        if (root && root !== browseRootAbs) setBrowseRootAbs(root);
+        return root;
+    }, [baseRoot, browseRootAbs, machineId]);
 
-        const paths: string[] = [];
-        const pathSet = new Set<string>();
+    useEffect(() => {
+        if (!machineId) return;
+        const initial = (baseRoot || machine?.metadata?.homeDir || '').trim();
+        if (!initial) return;
+        setBrowseRootAbs(initial);
+        setBrowseAbsPath(initial);
+        setBrowseEntries([]);
+        setBrowseError(null);
+        setBrowseReloadToken(x => x + 1);
+    }, [baseRoot, machine?.metadata?.homeDir, machineId]);
 
-        // First, add paths from recentMachinePaths (these are the most recent)
-        recentMachinePaths.forEach(entry => {
-            if (entry.machineId === machineId && !pathSet.has(entry.path)) {
-                paths.push(entry.path);
-                pathSet.add(entry.path);
+    useEffect(() => {
+        if (!machineId || !machine) return;
+        if (!isMachineOnline(machine)) {
+            setBrowseEntries([]);
+            setBrowseError('Machine is offline');
+            setIsBrowsing(false);
+            return;
+        }
+        if (!browseAbsPath) return;
+
+        let cancelled = false;
+        const run = async () => {
+            setIsBrowsing(true);
+            setBrowseError(null);
+
+            const root = await ensureBrowseRoot();
+            if (cancelled) return;
+
+            const target = browseAbsPath || root;
+            if (!target) return;
+
+            let response = await machineListDirectory(machineId, target);
+            if (cancelled) return;
+
+            if (!response.success && root && target !== root) {
+                setBrowseAbsPath(root);
+                response = await machineListDirectory(machineId, root);
+                if (cancelled) return;
             }
+
+            if (!response.success) {
+                setBrowseEntries([]);
+                setBrowseError(response.error || 'Failed to list directory');
+                return;
+            }
+
+            const directories = (response.entries || [])
+                .filter((e) => !!e && e.type === 'directory' && typeof e.name === 'string')
+                .filter((e) => e.name !== '.' && e.name !== '..')
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((e) => ({ name: e.name, type: e.type as 'directory' }));
+
+            setBrowseEntries(directories);
+            setBrowseError(null);
+        };
+
+        run().finally(() => {
+            if (!cancelled) setIsBrowsing(false);
         });
 
-        // Then add paths from sessions if we need more
-        if (sessions) {
-            const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
-
-            sessions.forEach(item => {
-                if (typeof item === 'string') return; // Skip section headers
-
-                const session = item as any;
-                if (session.metadata?.machineId === machineId && session.metadata?.path) {
-                    const path = session.metadata.path;
-                    if (!pathSet.has(path)) {
-                        pathSet.add(path);
-                        pathsWithTimestamps.push({
-                            path,
-                            timestamp: session.updatedAt || session.createdAt
-                        });
-                    }
-                }
-            });
-
-            // Sort session paths by most recent first and add them
-            pathsWithTimestamps
-                .sort((a, b) => b.timestamp - a.timestamp)
-                .forEach(item => paths.push(item.path));
-        }
-
-        return paths;
-    }, [sessions, machineId, recentMachinePaths]);
+        return () => {
+            cancelled = true;
+        };
+    }, [browseAbsPath, browseReloadToken, ensureBrowseRoot, machine, machineId]);
 
 
-    const handleSelectPath = React.useCallback(() => {
-        const raw = customPath.trim();
-        const rel = raw || '.';
-        const pathToUse = joinBasePath(baseRoot, rel);
-        // Pass path back via navigation params (main's pattern, received by new/index.tsx)
+    const commitPathAndExit = useCallback((absPath: string) => {
+        const pathToUse = absPath;
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
@@ -154,7 +189,12 @@ export default function PathPickerScreen() {
             } as never);
         }
         router.back();
-    }, [baseRoot, customPath, router, navigation]);
+    }, [router, navigation]);
+
+    const handleSelectPath = useCallback(() => {
+        if (!browseAbsPath) return;
+        commitPathAndExit(browseAbsPath);
+    }, [browseAbsPath, commitPathAndExit]);
 
     if (!machine) {
         return (
@@ -163,16 +203,16 @@ export default function PathPickerScreen() {
                     options={{
                         headerShown: true,
                         headerTitle: 'Select Path',
-                        headerBackTitle: t('common.back'),
-                        headerRight: () => (
-                            <Pressable
-                                onPress={handleSelectPath}
-                                disabled={!baseRoot}
-                                style={({ pressed }) => ({
-                                    marginRight: 16,
-                                    opacity: pressed ? 0.7 : 1,
-                                    padding: 4,
-                                })}
+                    headerBackTitle: t('common.back'),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={handleSelectPath}
+                            disabled={!browseAbsPath}
+                            style={({ pressed }) => ({
+                                marginRight: 16,
+                                opacity: pressed ? 0.7 : 1,
+                                padding: 4,
+                            })}
                             >
                                 <Ionicons
                                     name="checkmark"
@@ -204,7 +244,7 @@ export default function PathPickerScreen() {
                     headerRight: () => (
                         <Pressable
                             onPress={handleSelectPath}
-                            disabled={!baseRoot}
+                            disabled={!browseAbsPath}
                             style={({ pressed }) => ({
                                 opacity: pressed ? 0.7 : 1,
                                 padding: 4,
@@ -226,90 +266,188 @@ export default function PathPickerScreen() {
                     keyboardShouldPersistTaps="handled"
                 >
                     <View style={styles.contentWrapper}>
-                        <ItemGroup title="Enter Path">
-                            <View style={styles.pathInputContainer}>
-                                <View style={[styles.pathInput, { paddingVertical: 8 }]}>
-                                    <MultiTextInput
-                                        ref={inputRef}
-                                        value={customPath}
-                                        onChangeText={setCustomPath}
-                                        placeholder="Enter project folder (relative to base path)"
-                                        maxHeight={76}
-                                        paddingTop={8}
-                                        paddingBottom={8}
-                                        // onSubmitEditing={handleSelectPath}
-                                        // blurOnSubmit={true}
-                                        // returnKeyType="done"
-                                    />
-                                </View>
-                            </View>
-                        </ItemGroup>
+                        <ItemGroup
+                            title={(() => {
+                                const root = (browseRootAbs || baseRoot || '').trim();
+                                const current = (browseAbsPath || '').trim();
+                                const canGoUp = !!current && ((root && current !== root) || (!root && current !== '/'));
+                                const accent = theme.colors.chrome?.accent ?? theme.colors.textLink;
 
-                        {recentPaths.length > 0 && (
-                            <ItemGroup title="Recent Paths">
-                                {recentPaths.map((path, index) => {
-                                    const display = baseRoot ? pathRelativeToBase(path, baseRoot) : path;
-                                    const isSelected = customPath.trim() === display;
-                                    const isLast = index === recentPaths.length - 1;
+                                const parent = current ? parentDir(current) : '';
+                                const clamped =
+                                    root && parent && pathRelativeToBase(parent, root) === parent ? root : parent;
 
-                                    return (
-                                        <Item
-                                            key={path}
-                                            title={display}
-                                            leftElement={
+                                return (
+                                    <View style={{ gap: 8 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <Text style={{
+                                                ...Typography.default('regular'),
+                                                color: theme.colors.groupped.sectionTitle,
+                                                fontSize: 13,
+                                                lineHeight: 20,
+                                                letterSpacing: 0.1,
+                                                textTransform: 'uppercase',
+                                                fontWeight: '500',
+                                            }}>
+                                                File Explorer
+                                            </Text>
+
+                                            <Pressable
+                                                accessibilityLabel="새로 고침"
+                                                onPress={() => setBrowseReloadToken(x => x + 1)}
+                                                style={({ pressed }) => ({
+                                                    opacity: pressed ? 0.8 : 1,
+                                                    paddingHorizontal: 10,
+                                                    paddingVertical: 7,
+                                                    borderRadius: 10,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.divider,
+                                                    backgroundColor: pressed ? theme.colors.surfacePressedOverlay : theme.colors.surfaceHigh,
+                                                })}
+                                            >
                                                 <Ionicons
-                                                    name="folder-outline"
-                                                    size={18}
+                                                    name="refresh-outline"
+                                                    size={16}
                                                     color={theme.colors.textSecondary}
                                                 />
-                                            }
-                                            onPress={() => {
-                                                setCustomPath(display);
-                                                setTimeout(() => inputRef.current?.focus(), 50);
-                                            }}
-                                            selected={isSelected}
-                                            showChevron={false}
-                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            showDivider={!isLast}
+                                            </Pressable>
+                                        </View>
+
+	                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+	                                            <Pressable
+	                                                accessibilityLabel="상위 폴더로"
+	                                                disabled={!canGoUp}
+	                                                onPress={() => setBrowseAbsPath(clamped)}
+                                                style={({ pressed }) => ({
+                                                    opacity: !canGoUp ? 0.35 : (pressed ? 0.8 : 1),
+                                                    width: 34,
+                                                    height: 34,
+                                                    borderRadius: 10,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.divider,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    backgroundColor: pressed ? theme.colors.surfacePressedOverlay : theme.colors.surfaceHigh,
+                                                })}
+                                            >
+                                                <Ionicons
+                                                    name="chevron-back-outline"
+                                                    size={16}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                            </Pressable>
+
+	                                            {(() => {
+	                                                const rel = baseRoot ? pathRelativeToBase(browseAbsPath, baseRoot) : (browseAbsPath || '.');
+	                                                const label = rel === '.' ? '/' : `/${rel}`;
+	                                                return (
+	                                                    <Text
+	                                                        style={{
+	                                                            ...Typography.default('regular'),
+	                                                            fontSize: 13,
+	                                                            color: theme.colors.textSecondary,
+	                                                            flex: 1,
+	                                                        }}
+	                                                        numberOfLines={1}
+	                                                        ellipsizeMode="middle"
+	                                                    >
+	                                                        {label}
+	                                                    </Text>
+	                                                );
+	                                            })()}
+	                                        </View>
+	                                    </View>
+	                                );
+	                            })()}
+	                        >
+	                            {browseError && (
+	                                <Item
+	                                    title="Unable to load folders"
+	                                    subtitle={browseError}
+                                    subtitleLines={2}
+                                    leftElement={
+                                        <Ionicons
+                                            name="alert-circle-outline"
+                                            size={18}
+                                            color={theme.colors.textSecondary}
                                         />
-                                    );
-                                })}
-                            </ItemGroup>
-                        )}
+                                    }
+                                    showChevron={false}
+                                    disabled={true}
+                                />
+                            )}
 
-                        {recentPaths.length === 0 && (
-                            <ItemGroup title="Suggested Paths">
-                                {(() => {
-                                    const suggested = ['.', 'projects', 'Documents', 'Desktop'];
-                                    return suggested.map((rel, index) => {
-                                        const isSelected = customPath.trim() === rel;
+                            {isBrowsing && (
+                                <Item
+                                    title="Loading..."
+                                    subtitle="Fetching folders from machine"
+                                    leftElement={<ActivityIndicator />}
+                                    showChevron={false}
+                                    disabled={true}
+                                />
+                            )}
 
-                                        return (
-                                            <Item
-                                                key={rel}
-                                                title={rel}
-                                                leftElement={
-                                                    <Ionicons
-                                                        name="folder-outline"
-                                                        size={18}
-                                                        color={theme.colors.textSecondary}
-                                                    />
-                                                }
-                                                onPress={() => {
-                                                    // Keep as relative input; commit will join with base.
-                                                    setCustomPath(rel);
-                                                    setTimeout(() => inputRef.current?.focus(), 50);
-                                                }}
-                                                selected={isSelected}
-                                                showChevron={false}
-                                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                                showDivider={index < 3}
-                                            />
-                                        );
-                                    });
-                                })()}
-                            </ItemGroup>
-                        )}
+                            {!isBrowsing && !browseError && browseEntries.length === 0 && (
+                                <Item
+                                    title="No folders"
+                                    subtitle="This directory is empty"
+                                    leftElement={
+                                        <Ionicons
+                                            name="folder-outline"
+                                            size={18}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    }
+                                    showChevron={false}
+                                    disabled={true}
+                                />
+                            )}
+
+	                            {!browseError && browseEntries.map((entry) => (
+	                                <Item
+	                                    key={`${browseAbsPath}:${entry.name}`}
+	                                    title={entry.name}
+                                    subtitle={(() => {
+                                        const abs = joinPathSegment(browseAbsPath, entry.name);
+                                        return baseRoot ? pathRelativeToBase(abs, baseRoot) : abs;
+                                    })()}
+                                    subtitleLines={1}
+                                    leftElement={
+                                        <Ionicons
+                                            name="folder-outline"
+                                            size={18}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    }
+                                    onPress={() => setBrowseAbsPath(joinPathSegment(browseAbsPath, entry.name))}
+                                    onLongPress={() => {
+                                        const abs = joinPathSegment(browseAbsPath, entry.name);
+                                        commitPathAndExit(abs);
+	                                    }}
+	                                />
+	                            ))}
+
+	                            <Item
+	                                title="이 폴더로 선택"
+	                                subtitle={baseRoot ? pathRelativeToBase(browseAbsPath, baseRoot) : (browseAbsPath || '.')}
+	                                subtitleLines={1}
+	                                rightElement={
+	                                    <Ionicons
+	                                        name="checkmark-circle"
+	                                        size={20}
+	                                        color={theme.colors.chrome?.accent ?? theme.colors.textLink}
+	                                    />
+	                                }
+	                                disabled={!browseAbsPath}
+	                                onPress={() => {
+	                                    if (browseAbsPath) commitPathAndExit(browseAbsPath);
+	                                }}
+	                                showChevron={false}
+	                                pressableStyle={{
+	                                    backgroundColor: theme.colors.surfaceSelected,
+	                                }}
+	                            />
+	                        </ItemGroup>
                     </View>
                 </ScrollView>
             </View>

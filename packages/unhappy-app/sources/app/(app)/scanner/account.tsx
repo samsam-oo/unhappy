@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ActivityIndicator, Linking, Platform, Pressable, View } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useRouter } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { Text } from '@/components/StyledText';
 import { useUnistyles } from 'react-native-unistyles';
 import { Modal } from '@/modal';
@@ -11,12 +12,24 @@ import { useConnectAccount } from '@/hooks/useConnectAccount';
 export default React.memo(function AccountScannerScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
+    const isFocused = useIsFocused();
     const { connectWithUrl, isLoading } = useConnectAccount({
         onSuccess: () => router.back(),
     });
 
     const [permission, requestPermission] = useCameraPermissions();
+    const [cameraEnabled, setCameraEnabled] = React.useState(true);
     const handlingRef = React.useRef(false);
+
+    React.useEffect(() => {
+        if (!isFocused) {
+            handlingRef.current = false;
+            setCameraEnabled(false);
+            return;
+        }
+        handlingRef.current = false;
+        setCameraEnabled(true);
+    }, [isFocused]);
 
     React.useEffect(() => {
         if (Platform.OS === 'web') return;
@@ -29,12 +42,17 @@ export default React.memo(function AccountScannerScreen() {
     const onBarcodeScanned = React.useCallback(async (result: BarcodeScanningResult) => {
         if (handlingRef.current || isLoading) return;
         handlingRef.current = true;
+        setCameraEnabled(false);
         try {
             const ok = await connectWithUrl(result.data);
-            if (!ok) handlingRef.current = false;
+            if (!ok) {
+                handlingRef.current = false;
+                setCameraEnabled(true);
+            }
         } catch (e) {
             console.error(e);
             handlingRef.current = false;
+            setCameraEnabled(true);
         }
     }, [connectWithUrl, isLoading]);
 
@@ -95,12 +113,17 @@ export default React.memo(function AccountScannerScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: 'black' }}>
-            <CameraView
-                style={{ flex: 1 }}
-                facing="back"
-                barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-                onBarcodeScanned={isLoading ? undefined : onBarcodeScanned}
-            />
+            {isFocused && cameraEnabled ? (
+                <CameraView
+                    style={{ flex: 1 }}
+                    facing="back"
+                    barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                    onBarcodeScanned={isLoading ? undefined : onBarcodeScanned}
+                    active={!isLoading}
+                />
+            ) : (
+                <View style={{ flex: 1 }} />
+            )}
 
             <View
                 pointerEvents="none"

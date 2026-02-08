@@ -21,6 +21,16 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
     const router = useRouter();
     const [isLoading, setIsLoading] = React.useState(false);
     const checkScannerPermissions = useCheckScannerPermissions();
+    const modernSubscriptionRef = React.useRef<{ remove: () => void } | null>(null);
+    const modernHandlingRef = React.useRef(false);
+
+    const cleanupModernSubscription = React.useCallback(() => {
+        try {
+            modernSubscriptionRef.current?.remove();
+        } finally {
+            modernSubscriptionRef.current = null;
+        }
+    }, []);
 
     const processAuthUrl = React.useCallback(async (url: string) => {
         const parsed = parseUnhappyQrData(url);
@@ -59,11 +69,34 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
         if (await checkScannerPermissions(needsCameraPermission)) {
             if (canUseModernScanner) {
                 try {
+                    // Scope the modern scanner subscription to the duration of the scanner session.
+                    cleanupModernSubscription();
+                    modernHandlingRef.current = false;
+                    modernSubscriptionRef.current = CameraView.onModernBarcodeScanned(async (event) => {
+                        if (modernHandlingRef.current) return;
+                        const parsed = parseUnhappyQrData(event.data);
+                        if (parsed?.kind !== 'account') return;
+
+                        modernHandlingRef.current = true;
+                        cleanupModernSubscription();
+                        // Dismiss scanner on Android is called automatically when barcode is scanned
+                        if (Platform.OS === 'ios') {
+                            try {
+                                await CameraView.dismissScanner();
+                            } catch {
+                                // Ignore
+                            }
+                        }
+                        await processAuthUrl(event.data);
+                    });
+
                     await CameraView.launchScanner({ barcodeTypes: ['qr'] });
                 } catch (e) {
                     console.error(e);
                     // Fall back to in-app camera view scanner.
                     router.push('/scanner/account');
+                } finally {
+                    cleanupModernSubscription();
                 }
             } else {
                 // iOS < 16 (or devices without modern scanner) need an in-app scanner UI.
@@ -72,30 +105,16 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
         } else {
             Modal.alert(t('common.error'), t('modals.cameraPermissionsRequiredToScanQr'), [{ text: t('common.ok') }]);
         }
-    }, [checkScannerPermissions, router]);
+    }, [checkScannerPermissions, cleanupModernSubscription, processAuthUrl, router]);
 
     const connectWithUrl = React.useCallback(async (url: string) => {
         return await processAuthUrl(url);
     }, [processAuthUrl]);
 
-    // Set up barcode scanner listener
     React.useEffect(() => {
-        if (CameraView.isModernBarcodeScannerAvailable) {
-            const subscription = CameraView.onModernBarcodeScanned(async (event) => {
-                const parsed = parseUnhappyQrData(event.data);
-                if (parsed?.kind === 'account') {
-                    // Dismiss scanner on Android is called automatically when barcode is scanned
-                    if (Platform.OS === 'ios') {
-                        await CameraView.dismissScanner();
-                    }
-                    await processAuthUrl(event.data);
-                }
-            });
-            return () => {
-                subscription.remove();
-            };
-        }
-    }, [processAuthUrl]);
+        // Ensure subscription is cleaned up if the hook unmounts mid-scan.
+        return () => cleanupModernSubscription();
+    }, [cleanupModernSubscription]);
 
     return {
         connectAccount,

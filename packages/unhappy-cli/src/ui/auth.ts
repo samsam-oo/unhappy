@@ -72,6 +72,16 @@ export async function doAuth(): Promise<Credentials | null> {
  * Display authentication method selector and return user choice
  */
 function selectAuthenticationMethod(): Promise<AuthMethod | null> {
+  // Non-interactive override for headless/CI environments or automation.
+  // This avoids Ink raw-mode issues when stdin is not a TTY.
+  const forced = (process.env.UNHAPPY_AUTH_METHOD || '').trim().toLowerCase();
+  if (forced === 'web' || forced === 'mobile') {
+    return Promise.resolve(forced as AuthMethod);
+  }
+  if (!process.stdin.isTTY || !process.stdout.isTTY || process.env.CI || process.env.HEADLESS) {
+    return Promise.resolve('web');
+  }
+
   return new Promise((resolve) => {
     let hasResolved = false;
 

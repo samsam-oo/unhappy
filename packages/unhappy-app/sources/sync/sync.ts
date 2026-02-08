@@ -88,9 +88,12 @@ class Sync {
         this.todosSync = new InvalidateSync(this.fetchTodos);
 
         const registerPushToken = async () => {
-            if (__DEV__) {
-                return;
-            }
+            // Push registration is skipped in dev by default to avoid noisy permission prompts
+            // and accidental token spam during local iteration.
+            //
+            // Set `EXPO_PUBLIC_ENABLE_PUSH_IN_DEV=1` to force-enable registration in dev builds.
+            const enablePushInDev = process.env.EXPO_PUBLIC_ENABLE_PUSH_IN_DEV === '1';
+            if (__DEV__ && !enablePushInDev) return;
             await this.registerPushToken();
         }
         this.pushTokenSync = new InvalidateSync(registerPushToken);

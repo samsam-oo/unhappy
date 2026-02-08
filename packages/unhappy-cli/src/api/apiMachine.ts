@@ -117,7 +117,12 @@ export class ApiMachineClient {
       logger: (msg, data) => logger.debug(msg, data),
     });
 
-    registerCommonHandlers(this.rpcHandlerManager, process.cwd());
+    // For machine-scoped RPCs, default to the user's home dir so clients can browse/select directories
+    // without being constrained by whatever `process.cwd()` happens to be when the daemon starts.
+    registerCommonHandlers(
+      this.rpcHandlerManager,
+      (this.machine?.metadata?.homeDir || process.cwd()).trim() || process.cwd(),
+    );
   }
 
   setRPCHandlers({

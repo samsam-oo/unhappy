@@ -235,8 +235,9 @@ export const lightTheme = {
 
         // Terminal/Command colors
         terminal: {
-            background: '#1E1E1E',
-            prompt: '#34C759',
+            // Keep terminal blocks consistent across platforms (PC-first).
+            background: '#0B0B0C',
+            prompt: '#32D74B',
             command: '#E0E0E0',
             stdout: '#E0E0E0',
             stderr: '#FFB86C',
@@ -266,23 +267,24 @@ export const darkTheme = {
         warningCritical: '#FF453A',
         warning: Platform.select({ web: '#9D9D9D', default: '#8E8E93' }),
         success: '#32D74B',
-        // Web: near-black base with subtle surface steps (easier on the eyes than pure #000 everywhere).
-        surface: Platform.select({ ios: '#18171C', web: '#101112', default: '#212121' }),
+        // PC-first dark palette: keep mobile aligned with web/desktop.
+        // Base: near-black with subtle surface steps (VS Code-ish).
+        surface: '#101112',
         surfaceRipple: 'rgba(255, 255, 255, 0.08)',
-        surfacePressed: Platform.select({ ios: '#2C2C2E', web: '#17181A', default: '#2C2C2E' }),
-        surfaceSelected: Platform.select({ ios: '#2C2C2E', web: '#1B1C1E', default: '#2C2C2E' }),
+        surfacePressed: '#17181A',
+        surfaceSelected: '#1B1C1E',
         surfacePressedOverlay: Platform.select({ ios: '#2C2C2E', default: 'transparent' }),
         // iOS dark theme is #1c1c1e for items, and #000 for the background
-        surfaceHigh: Platform.select({ ios: '#2C2C2E', web: '#141516', default: '#171717' }),
-        surfaceHighest: Platform.select({ ios: '#38383A', web: '#1B1C1E', default: '#292929' }),
-        divider: Platform.select({ ios: '#38383A', web: '#202023', default: '#292929' }),
+        surfaceHigh: '#141516',
+        surfaceHighest: '#1B1C1E',
+        divider: '#202023',
         chrome: {
-            editorBackground: Platform.select({ web: '#0B0B0C', default: '#1E1E1E' }),
-            sidebarBackground: Platform.select({ web: '#0F0F10', default: '#252526' }),
-            panelBorder: Platform.select({ web: '#202023', default: '#3C3C3C' }),
-            accent: Platform.select({ web: '#007ACC', default: '#0A84FF' }),
-            listHoverBackground: Platform.select({ web: '#141516', default: '#2A2D2E' }),
-            listActiveBackground: Platform.select({ web: '#1B1C1E', default: '#37373D' }),
+            editorBackground: '#0B0B0C',
+            sidebarBackground: '#0F0F10',
+            panelBorder: '#202023',
+            accent: '#007ACC',
+            listHoverBackground: '#141516',
+            listActiveBackground: '#1B1C1E',
         },
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
@@ -294,8 +296,8 @@ export const darkTheme = {
         //
 
         header: {
-            background: Platform.select({ ios: '#18171C', web: '#0F0F10', default: '#212121' }),
-            tint: Platform.select({ web: '#CCCCCC', default: '#ffffff' })
+            background: '#0F0F10',
+            tint: '#CCCCCC'
         },
         switch: {
             track: {
@@ -308,7 +310,7 @@ export const darkTheme = {
             },
         },
         groupped: {
-            background: Platform.select({ ios: '#1C1C1E', web: '#0B0B0C', default: '#1e1e1e' }),
+            background: '#0B0B0C',
             chevron: Platform.select({ ios: '#48484A', web: '#9D9D9D', default: '#CAC4D0' }),
             sectionTitle: Platform.select({ ios: '#8E8E93', web: '#9D9D9D', default: '#CAC4D0' }),
         },
@@ -336,7 +338,7 @@ export const darkTheme = {
             }
         },
         input: {
-            background: Platform.select({ ios: '#1C1C1E', web: '#141516', default: '#303030' }),
+            background: '#141516',
             text: Platform.select({ web: '#D4D4D4', default: '#FFFFFF' }),
             placeholder: Platform.select({ web: '#9D9D9D', default: '#8E8E93' }),
         },
@@ -455,7 +457,8 @@ export const darkTheme = {
 
         // Terminal/Command colors
         terminal: {
-            background: Platform.select({ web: '#0B0B0C', default: '#1E1E1E' }),
+            // Keep terminal blocks consistent across platforms (PC-first).
+            background: '#0B0B0C',
             prompt: '#32D74B',
             command: '#E0E0E0',
             stdout: '#E0E0E0',

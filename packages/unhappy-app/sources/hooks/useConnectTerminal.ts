@@ -29,6 +29,16 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
     const router = useRouter();
     const [isLoading, setIsLoading] = React.useState(false);
     const checkScannerPermissions = useCheckScannerPermissions();
+    const modernSubscriptionRef = React.useRef<{ remove: () => void } | null>(null);
+    const modernHandlingRef = React.useRef(false);
+
+    const cleanupModernSubscription = React.useCallback(() => {
+        try {
+            modernSubscriptionRef.current?.remove();
+        } finally {
+            modernSubscriptionRef.current = null;
+        }
+    }, []);
 
     const processAuthUrl = React.useCallback(async (url: string) => {
         qrDebug('processAuthUrl() called', getUnhappyQrDebugInfo(url));
@@ -78,12 +88,41 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             qrDebug('connectTerminal() permissions OK');
             if (canUseModernScanner) {
                 try {
+                    // Scope the modern scanner subscription to the duration of the scanner session.
+                    cleanupModernSubscription();
+                    modernHandlingRef.current = false;
+                    modernSubscriptionRef.current = CameraView.onModernBarcodeScanned(async (event) => {
+                        if (modernHandlingRef.current) return;
+                        qrDebug('onModernBarcodeScanned event', getUnhappyQrDebugInfo(event.data));
+                        const parsed = parseUnhappyQrData(event.data);
+                        if (parsed?.kind !== 'terminal') {
+                            qrDebug('onModernBarcodeScanned ignored', { parsedKind: parsed?.kind ?? null });
+                            return;
+                        }
+
+                        modernHandlingRef.current = true;
+                        cleanupModernSubscription();
+                        qrDebug('onModernBarcodeScanned accepted terminal QR');
+                        try {
+                            // Dismiss scanner on Android is called automatically when barcode is scanned
+                            if (Platform.OS === 'ios') {
+                                await CameraView.dismissScanner();
+                            }
+                        } catch (e) {
+                            // Best-effort; failing to dismiss shouldn't block processing.
+                            qrDebug('dismissScanner() threw', { message: (e as any)?.message });
+                        }
+                        await processAuthUrl(event.data);
+                    });
+
                     await CameraView.launchScanner({ barcodeTypes: ['qr'] });
                     qrDebug('connectTerminal() launchScanner() resolved');
                 } catch (e) {
                     qrDebug('connectTerminal() launchScanner() threw, falling back', { message: (e as any)?.message });
                     console.error(e);
                     router.push('/scanner/terminal');
+                } finally {
+                    cleanupModernSubscription();
                 }
             } else {
                 qrDebug('connectTerminal() modern scanner unavailable, routing to in-app scanner');
@@ -93,37 +132,17 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             qrDebug('connectTerminal() permissions denied/unavailable');
             Modal.alert(t('common.error'), t('modals.cameraPermissionsRequiredToConnectTerminal'), [{ text: t('common.ok') }]);
         }
-    }, [checkScannerPermissions, router]);
+    }, [checkScannerPermissions, cleanupModernSubscription, processAuthUrl, router]);
 
     const connectWithUrl = React.useCallback(async (url: string) => {
         qrDebug('connectWithUrl() called', getUnhappyQrDebugInfo(url));
         return await processAuthUrl(url);
     }, [processAuthUrl]);
 
-    // Set up barcode scanner listener
     React.useEffect(() => {
-        qrDebug('onModernBarcodeScanned effect setup', { modernAvailable: CameraView.isModernBarcodeScannerAvailable });
-        if (CameraView.isModernBarcodeScannerAvailable) {
-            const subscription = CameraView.onModernBarcodeScanned(async (event) => {
-                qrDebug('onModernBarcodeScanned event', getUnhappyQrDebugInfo(event.data));
-                const parsed = parseUnhappyQrData(event.data);
-                if (parsed?.kind === 'terminal') {
-                    qrDebug('onModernBarcodeScanned accepted terminal QR');
-                    // Dismiss scanner on Android is called automatically when barcode is scanned
-                    if (Platform.OS === 'ios') {
-                        await CameraView.dismissScanner();
-                    }
-                    await processAuthUrl(event.data);
-                } else {
-                    qrDebug('onModernBarcodeScanned ignored', { parsedKind: parsed?.kind ?? null });
-                }
-            });
-            return () => {
-                qrDebug('onModernBarcodeScanned effect cleanup');
-                subscription.remove();
-            };
-        }
-    }, [processAuthUrl]);
+        // Ensure subscription is cleaned up if the hook unmounts mid-scan.
+        return () => cleanupModernSubscription();
+    }, [cleanupModernSubscription]);
 
     return {
         connectTerminal,

@@ -425,6 +425,28 @@ export async function sessionListDirectory(sessionId: string, path: string): Pro
 }
 
 /**
+ * List directory contents on a machine (daemon scope).
+ *
+ * Note: On the daemon side, this is constrained by the daemon's working directory.
+ */
+export async function machineListDirectory(machineId: string, path: string): Promise<SessionListDirectoryResponse> {
+    try {
+        const request: SessionListDirectoryRequest = { path };
+        const response = await apiSocket.machineRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
+            machineId,
+            'listDirectory',
+            request
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
  * Get directory tree from the session
  */
 export async function sessionGetDirectoryTree(
@@ -436,6 +458,30 @@ export async function sessionGetDirectoryTree(
         const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
         const response = await apiSocket.sessionRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
             sessionId,
+            'getDirectoryTree',
+            request
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * Get directory tree from a machine (daemon scope).
+ */
+export async function machineGetDirectoryTree(
+    machineId: string,
+    path: string,
+    maxDepth: number
+): Promise<SessionGetDirectoryTreeResponse> {
+    try {
+        const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
+        const response = await apiSocket.machineRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
+            machineId,
             'getDirectoryTree',
             request
         );
