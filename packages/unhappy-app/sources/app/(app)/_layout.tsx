@@ -161,6 +161,24 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="scanner/account"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('navigation.linkNewDevice'),
+                    headerBackTitle: t('common.back'),
+                    presentation: 'modal',
+                }}
+            />
+            <Stack.Screen
+                name="scanner/terminal"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('navigation.connectTerminal'),
+                    headerBackTitle: t('common.back'),
+                    presentation: 'modal',
+                }}
+            />
+            <Stack.Screen
                 name="changelog"
                 options={{
                     headerShown: true,

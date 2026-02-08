@@ -204,7 +204,17 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
             callId: z.string(),
             output: z.any(),
             id: z.string()
-        })
+        }),
+        // Status/metrics/events that should not fail parsing (UI can safely ignore them).
+        z.object({ type: z.literal('token_count') }).passthrough(),
+        z.object({ type: z.literal('task_started') }).passthrough(),
+        z.object({ type: z.literal('task_complete') }).passthrough(),
+        z.object({ type: z.literal('turn_aborted') }).passthrough(),
+        z.object({ type: z.literal('terminal-output') }).passthrough(),
+        z.object({ type: z.literal('permission-request') }).passthrough(),
+        z.object({ type: z.literal('file-edit') }).passthrough(),
+        z.object({ type: z.literal('thinking') }).passthrough(),
+        z.object({ type: z.literal('tool-result') }).passthrough(),
     ])
 }), z.object({
     // ACP (Agent Communication Protocol) - unified format for all agent providers
@@ -565,6 +575,20 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             };
         }
         if (raw.content.type === 'codex') {
+            // Metrics/status events (token_count, task lifecycle, etc.) are not user-visible.
+            if (
+                raw.content.data.type === 'token_count' ||
+                raw.content.data.type === 'task_started' ||
+                raw.content.data.type === 'task_complete' ||
+                raw.content.data.type === 'turn_aborted' ||
+                raw.content.data.type === 'terminal-output' ||
+                raw.content.data.type === 'permission-request' ||
+                raw.content.data.type === 'file-edit' ||
+                raw.content.data.type === 'thinking' ||
+                raw.content.data.type === 'tool-result'
+            ) {
+                return null;
+            }
             if (raw.content.data.type === 'message') {
                 // Cast codex messages to agent text messages
                 return {

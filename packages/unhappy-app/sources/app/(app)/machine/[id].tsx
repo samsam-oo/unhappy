@@ -1,24 +1,23 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
-import { Ionicons, Octicons } from '@/icons/vector-icons';
-import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
-import { Modal } from '@/modal';
-import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { sync } from '@/sync/sync';
-import { useUnistyles, StyleSheet } from 'react-native-unistyles';
-import { t } from '@/text';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { Typography } from '@/constants/Typography';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { Ionicons, Octicons } from '@/icons/vector-icons';
+import { Modal } from '@/modal';
+import { machineSpawnNewSession, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { useMachine, useSessions } from '@/sync/storage';
+import type { Session } from '@/sync/storageTypes';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, Text, View } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {

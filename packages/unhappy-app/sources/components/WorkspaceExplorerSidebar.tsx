@@ -30,6 +30,56 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
 const WORKSPACE_ORDER_KEY = 'happy.workspaceExplorer.workspaceOrder.v1';
 
+const IS_WEB = Platform.OS === 'web';
+
+// This view is used both in the desktop sidebar and as the phone "Sessions" main screen.
+// Keep it readable/tappable on mobile while still reasonably dense on web.
+const UI_METRICS = {
+    sectionHeaderPaddingV: IS_WEB ? 8 : 10,
+    sectionHeaderMinHeight: IS_WEB ? 36 : 44,
+
+    rowMinHeight: IS_WEB ? 34 : 48,
+    rowPaddingV: IS_WEB ? 7 : 10,
+    rowPaddingH: IS_WEB ? 10 : 12,
+    rowMarginV: IS_WEB ? 1 : 2,
+    rowRadius: IS_WEB ? 8 : 10,
+    rowGap: IS_WEB ? 9 : 10,
+
+    selectionBarInsetV: IS_WEB ? 7 : 10,
+
+    actionButtonSize: IS_WEB ? 28 : 34,
+    actionButtonRadius: IS_WEB ? 7 : 9,
+
+    chevronWidth: IS_WEB ? 18 : 20,
+    iconWidth: IS_WEB ? 20 : 22,
+
+    // On mobile we prefer inset rows (box moves in), not just indented content.
+    childIndent: IS_WEB ? 6 : 0,
+    grandChildIndent: IS_WEB ? 32 : 0,
+    rowInset1: IS_WEB ? 0 : 16,
+    rowInset2: IS_WEB ? 0 : 40,
+
+    nestRailInsetV: IS_WEB ? 6 : 10,
+    nestRailWidth: IS_WEB ? 1 : 2,
+
+    titleFontSize: IS_WEB ? 14 : 16,
+    titleLineHeight: IS_WEB ? 18 : 20,
+    subtitleFontSize: IS_WEB ? 12 : 13,
+    subtitleLineHeight: IS_WEB ? 16 : 18,
+    subtitleMarginTop: IS_WEB ? 2 : 3,
+} as const;
+
+const UI_ICONS = {
+    spinner: IS_WEB ? 14 : 16,
+    rowIcon: IS_WEB ? 18 : 20,
+    chevron: IS_WEB ? 16 : 18,
+    folder: IS_WEB ? 16 : 18,
+    gitBranch: IS_WEB ? 12 : 13,
+    headerAdd: IS_WEB ? 18 : 20,
+    rowAdd: IS_WEB ? 18 : 20,
+    reorderHandle: IS_WEB ? 18 : 20,
+} as const;
+
 function safeParseJson<T>(value: string | null): T | null {
     if (!value) return null;
     try {
@@ -146,14 +196,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         justifyContent: 'space-between',
         paddingHorizontal: 12,
         // Keep the sidebar compact but avoid "cramped" headers.
-        paddingVertical: 8,
-        minHeight: 36,
+        paddingVertical: UI_METRICS.sectionHeaderPaddingV,
+        minHeight: UI_METRICS.sectionHeaderMinHeight,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.chrome.panelBorder,
     },
     sectionTitle: {
-        fontSize: 11,
-        lineHeight: 14,
+        fontSize: IS_WEB ? 11 : 12,
+        lineHeight: IS_WEB ? 14 : 16,
         fontWeight: '700',
         color: theme.colors.groupped.sectionTitle,
         letterSpacing: 0.7,
@@ -166,11 +216,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 10,
     },
     headerButton: {
-        width: 28,
-        height: 28,
+        width: UI_METRICS.actionButtonSize,
+        height: UI_METRICS.actionButtonSize,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 6,
+        borderRadius: UI_METRICS.actionButtonRadius,
     },
     headerButtonHover: {
         backgroundColor: theme.colors.chrome.listHoverBackground,
@@ -178,32 +228,56 @@ const stylesheet = StyleSheet.create((theme) => ({
 
     list: {
         // Avoid a "double padding" feel: the header already provides vertical rhythm.
-        paddingTop: 4,
-        paddingBottom: 6,
+        paddingTop: IS_WEB ? 4 : 8,
+        paddingBottom: IS_WEB ? 6 : 10,
     },
 
     row: {
-        // Slightly tighter rows for a more compact sidebar density.
-        minHeight: 28,
-        paddingHorizontal: 8,
-        paddingVertical: 5,
+        minHeight: UI_METRICS.rowMinHeight,
+        paddingHorizontal: UI_METRICS.rowPaddingH,
+        paddingVertical: UI_METRICS.rowPaddingV,
+        marginVertical: UI_METRICS.rowMarginV,
         marginHorizontal: 6,
-        borderRadius: 6,
+        borderRadius: UI_METRICS.rowRadius,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: UI_METRICS.rowGap,
     },
     rowHover: {
         backgroundColor: theme.colors.chrome.listHoverBackground,
     },
+    rowPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
     rowActive: {
         backgroundColor: theme.colors.chrome.listActiveBackground,
+    },
+    rowMobileBase: {
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.chrome.panelBorder,
+    },
+    rowMobileRoot: {
+        backgroundColor: theme.colors.surface,
+    },
+    rowMobileNested: {
+        backgroundColor: 'transparent',
+    },
+    rowMobileNestedDeep: {
+        backgroundColor: 'transparent',
+    },
+    rowMobileInset1: {
+        marginLeft: UI_METRICS.rowInset1,
+        marginRight: 6,
+    },
+    rowMobileInset2: {
+        marginLeft: UI_METRICS.rowInset2,
+        marginRight: 6,
     },
     selectionBar: {
         position: 'absolute',
         left: 0,
-        top: 5,
-        bottom: 5,
+        top: UI_METRICS.selectionBarInsetV,
+        bottom: UI_METRICS.selectionBarInsetV,
         width: 2,
         backgroundColor: theme.colors.chrome.accent,
         borderTopLeftRadius: 2,
@@ -211,9 +285,19 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 
     chevron: {
-        width: 16,
+        width: UI_METRICS.chevronWidth,
         alignItems: 'center',
         justifyContent: 'center',
+        position: 'relative',
+    },
+    nestRail: {
+        position: 'absolute',
+        top: UI_METRICS.nestRailInsetV,
+        bottom: UI_METRICS.nestRailInsetV,
+        left: Math.floor(UI_METRICS.chevronWidth / 2),
+        width: UI_METRICS.nestRailWidth,
+        backgroundColor: theme.colors.chrome.panelBorder,
+        opacity: IS_WEB ? 0.9 : 0.75,
     },
     projectActions: {
         flexDirection: 'row',
@@ -221,14 +305,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 2,
     },
     rowActionButton: {
-        width: 24,
-        height: 24,
+        width: UI_METRICS.actionButtonSize,
+        height: UI_METRICS.actionButtonSize,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 6,
+        borderRadius: UI_METRICS.actionButtonRadius,
     },
     icon: {
-        width: 18,
+        width: UI_METRICS.iconWidth,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -238,27 +322,29 @@ const stylesheet = StyleSheet.create((theme) => ({
         flexDirection: 'column',
     },
     title: {
-        fontSize: 13,
+        fontSize: UI_METRICS.titleFontSize,
+        lineHeight: UI_METRICS.titleLineHeight,
         color: theme.colors.text,
         ...Typography.default('semiBold'),
     },
     subtitleRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 1,
+        marginTop: UI_METRICS.subtitleMarginTop,
         gap: 6,
     },
     subtitle: {
-        fontSize: 11,
+        fontSize: UI_METRICS.subtitleFontSize,
+        lineHeight: UI_METRICS.subtitleLineHeight,
         color: theme.colors.textSecondary,
         ...Typography.default(),
     },
 
     childIndent: {
-        paddingLeft: 6,
+        paddingLeft: UI_METRICS.childIndent,
     },
     grandChildIndent: {
-        paddingLeft: 32,
+        paddingLeft: UI_METRICS.grandChildIndent,
     },
 }));
 
@@ -347,19 +433,28 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             onPress={() => navigateToSession(props.session.id)}
             style={({ hovered, pressed }: any) => [
                 styles.row,
+                !IS_WEB && (props.depth === 2 ? styles.rowMobileNestedDeep : styles.rowMobileNested),
+                !IS_WEB && (props.depth === 2 ? styles.rowMobileInset2 : styles.rowMobileInset1),
                 props.depth === 2 ? styles.grandChildIndent : styles.childIndent,
                 props.selected && styles.rowActive,
-                (Platform.OS === 'web' && (hovered || pressed) && !props.selected) && styles.rowHover,
+                (IS_WEB && hovered && !props.selected) && styles.rowHover,
+                (pressed && !props.selected) && styles.rowPressed,
             ]}
         >
             {props.selected && <View style={styles.selectionBar} />}
-            <View style={styles.chevron} />
+            <View style={styles.chevron}>
+                {!IS_WEB && (
+                    <>
+                        <View style={styles.nestRail} />
+                    </>
+                )}
+            </View>
             <View style={styles.icon}>
                 {sessionStatus.state === 'thinking'
-                    ? <ActivityIndicator size={14} color={iconColor} />
+                    ? <ActivityIndicator size={UI_ICONS.spinner} color={iconColor} />
                     : (
                         <Animated.View style={shouldPulseUnreadIcon ? unreadPulseStyle : undefined}>
-                            <Ionicons name={iconName} size={18} color={iconColor} />
+                            <Ionicons name={iconName} size={UI_ICONS.rowIcon} color={iconColor} />
                         </Animated.View>
                     )
                 }
@@ -827,7 +922,7 @@ export function WorkspaceExplorerSidebar() {
                         ]}
                         accessibilityLabel="New session"
                     >
-                        <Ionicons name="add" size={18} color={theme.colors.header.tint} />
+                        <Ionicons name="add" size={UI_ICONS.headerAdd} color={theme.colors.header.tint} />
                     </Pressable>
                 </View>
             </View>
@@ -977,7 +1072,10 @@ export function WorkspaceExplorerSidebar() {
                                         }}
                                         style={({ hovered, pressed }: any) => [
                                             styles.row,
-                                            (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
+                                            !IS_WEB && styles.rowMobileBase,
+                                            !IS_WEB && styles.rowMobileRoot,
+                                            (IS_WEB && hovered) && styles.rowHover,
+                                            pressed && styles.rowPressed,
                                             draggingStableId === stableId && { opacity: 0 },
                                         ]}
                                     >
@@ -985,7 +1083,7 @@ export function WorkspaceExplorerSidebar() {
                                             <View style={styles.rowActionButton}>
                                                 <Ionicons
                                                     name="reorder-three-outline"
-                                                    size={18}
+                                                    size={UI_ICONS.reorderHandle}
                                                     color={theme.colors.textSecondary}
                                                 />
                                             </View>
@@ -997,7 +1095,7 @@ export function WorkspaceExplorerSidebar() {
                                             <View style={styles.subtitleRow}>
                                                 {hasGitStatus && (
                                                     <>
-                                                        <Octicons name="git-branch" size={12} color={theme.colors.textSecondary} />
+                                                        <Octicons name="git-branch" size={UI_ICONS.gitBranch} color={theme.colors.textSecondary} />
                                                         <Text style={styles.subtitle} numberOfLines={1}>
                                                             {branch || 'detached'}
                                                         </Text>
@@ -1025,12 +1123,12 @@ export function WorkspaceExplorerSidebar() {
                                                 ]}
                                                 accessibilityLabel={t('newSession.startNewSessionInFolder')}
                                             >
-                                                <Ionicons name="add" size={18} color={theme.colors.textSecondary} />
+                                                <Ionicons name="add" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
                                             </Pressable>
                                             <View style={styles.chevron}>
                                                 <Ionicons
                                                     name={row.expanded ? 'chevron-down' : 'chevron-forward'}
-                                                    size={16}
+                                                    size={UI_ICONS.chevron}
                                                     color={theme.colors.textSecondary}
                                                 />
                                             </View>
@@ -1062,14 +1160,23 @@ export function WorkspaceExplorerSidebar() {
                                         onPress={() => toggleExpanded(expandedKey)}
                                         style={({ hovered, pressed }: any) => [
                                             styles.row,
+                                            !IS_WEB && styles.rowMobileNested,
+                                            !IS_WEB && styles.rowMobileInset1,
                                             styles.childIndent,
-                                            (Platform.OS === 'web' && (hovered || pressed)) && styles.rowHover,
+                                            (IS_WEB && hovered) && styles.rowHover,
+                                            pressed && styles.rowPressed,
                                         ]}
                                     >
                                         {/* Keep alignment consistent with session rows (which reserve a chevron slot). */}
-                                        <View style={styles.chevron} />
+                                        <View style={styles.chevron}>
+                                            {!IS_WEB && (
+                                                <>
+                                                    <View style={styles.nestRail} />
+                                                </>
+                                            )}
+                                        </View>
                                         <View style={styles.icon}>
-                                            <Octicons name="file-directory" size={16} color={theme.colors.textSecondary} />
+                                            <Octicons name="file-directory" size={UI_ICONS.folder} color={theme.colors.textSecondary} />
                                         </View>
                                         <View style={styles.textBlock}>
                                             <Text style={styles.title} numberOfLines={1}>
@@ -1081,7 +1188,7 @@ export function WorkspaceExplorerSidebar() {
                                                 </Text>
                                                 {hasGitStatus && (
                                                     <>
-                                                        <Octicons name="git-branch" size={12} color={theme.colors.textSecondary} />
+                                                        <Octicons name="git-branch" size={UI_ICONS.gitBranch} color={theme.colors.textSecondary} />
                                                         <Text style={styles.subtitle} numberOfLines={1}>
                                                             {branch || 'detached'}
                                                         </Text>
@@ -1108,12 +1215,12 @@ export function WorkspaceExplorerSidebar() {
                                                 ]}
                                                 accessibilityLabel={t('newSession.startNewSessionInFolder')}
                                             >
-                                                <Ionicons name="add" size={18} color={theme.colors.textSecondary} />
+                                                <Ionicons name="add" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
                                             </Pressable>
                                             <View style={styles.chevron}>
                                                 <Ionicons
                                                     name={row.expanded ? 'chevron-down' : 'chevron-forward'}
-                                                    size={16}
+                                                    size={UI_ICONS.chevron}
                                                     color={theme.colors.textSecondary}
                                                 />
                                             </View>
@@ -1168,7 +1275,7 @@ export function WorkspaceExplorerSidebar() {
                             ]}
                         >
                             <View style={styles.rowActionButton}>
-                                <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
+                                <Ionicons name="reorder-three-outline" size={UI_ICONS.reorderHandle} color={theme.colors.textSecondary} />
                             </View>
                             <View style={styles.textBlock}>
                                 <Text style={styles.title} numberOfLines={1}>
