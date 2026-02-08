@@ -7,13 +7,14 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Ionicons, Octicons } from '@/icons/vector-icons';
 import { Modal } from '@/modal';
 import { machineSpawnNewSession, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
-import { useMachine, useSessions } from '@/sync/storage';
+import { useMachine, useSessions, useSettingMutable } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
+import { formatPathRelativeToProjectBase, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
+import { isAbsolutePathLike, joinBasePath } from '@/utils/basePathUtils';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, RefreshControl, Text, View } from 'react-native';
@@ -75,6 +76,7 @@ export default function MachineDetailScreen() {
     const [isSpawning, setIsSpawning] = useState(false);
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
+    const [projectBasePaths, setProjectBasePaths] = useSettingMutable('projectBasePaths');
     // Variant D only
 
     const machineSessions = useMemo(() => {
@@ -209,7 +211,13 @@ export default function MachineDetailScreen() {
             const pathToUse = (customPath.trim() || '~');
             if (!isMachineOnline(machine)) return;
             setIsSpawning(true);
-            const absolutePath = resolveAbsolutePath(pathToUse, machine?.metadata?.homeDir);
+            // Allow users to type a project-relative folder; join it under the configured base path.
+            const homeDir = machine?.metadata?.homeDir;
+            const base = effectiveProjectBasePath || homeDir || '';
+            const absolutePath =
+                pathToUse.startsWith('~') ? resolveAbsolutePath(pathToUse, homeDir) :
+                isAbsolutePathLike(pathToUse) ? pathToUse :
+                joinBasePath(base, pathToUse);
             const result = await machineSpawnNewSession({
                 machineId: machineId!,
                 directory: absolutePath,
@@ -246,7 +254,7 @@ export default function MachineDetailScreen() {
 
     const pastUsedRelativePath = useCallback((session: Session) => {
         if (!session.metadata) return 'unknown path';
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+        return formatPathRelativeToProjectBase(session.metadata.path, session.metadata.machineId, session.metadata.homeDir);
     }, []);
 
     if (!machine) {
@@ -272,6 +280,8 @@ export default function MachineDetailScreen() {
     const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
 
     const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
+    const currentProjectBasePath = (projectBasePaths.find(p => p.machineId === machineId)?.path || '').trim();
+    const effectiveProjectBasePath = currentProjectBasePath || (machine.metadata?.homeDir || '');
 
     return (
         <>
@@ -382,7 +392,7 @@ export default function MachineDetailScreen() {
                             </View>
                             <View style={{ paddingTop: 4 }} />
                             {pathsToShow.map((path, index) => {
-                                const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
+                                const display = formatPathRelativeToProjectBase(path, machineId, machine.metadata?.homeDir);
                                 const isSelected = customPath.trim() === display;
                                 const isLast = index === pathsToShow.length - 1;
                                 const hideDivider = isLast && pathsToShow.length <= 5;
@@ -484,6 +494,54 @@ export default function MachineDetailScreen() {
                             title={t('machine.daemonStateVersion')}
                             subtitle={String(machine.daemonStateVersion)}
                         />
+                </ItemGroup>
+
+                {/* Projects */}
+                <ItemGroup title="Projects">
+                    <Item
+                        title={t('finishSession.basePath')}
+                        subtitle={effectiveProjectBasePath ? effectiveProjectBasePath : 'Not set'}
+                        subtitleLines={0}
+                        showChevron={false}
+                        onPress={async () => {
+                            const homeDir = machine.metadata?.homeDir;
+                            const input = await Modal.prompt(
+                                t('finishSession.basePath'),
+                                'Used as the default starting folder when choosing a project path.',
+                                {
+                                    defaultValue: currentProjectBasePath || (homeDir || ''),
+                                    placeholder: homeDir || 'e.g. ~',
+                                    cancelText: t('common.cancel'),
+                                    confirmText: t('common.save'),
+                                }
+                            );
+                            if (input === null) return;
+
+                            const trimmed = input.trim();
+                            const next = projectBasePaths.filter(p => p.machineId !== machineId);
+                            if (trimmed) {
+                                const abs = resolveAbsolutePath(trimmed, homeDir);
+                                next.unshift({ machineId, path: abs });
+                            }
+                            setProjectBasePaths(next);
+                        }}
+                    />
+                    {currentProjectBasePath ? (
+                        <Item
+                            title="Clear Base Repository"
+                            titleStyle={{ color: theme.colors.textDestructive }}
+                            showChevron={false}
+                            onPress={async () => {
+                                const ok = await Modal.confirm(
+                                    'Clear Base Repository?',
+                                    'This will revert project browsing defaults back to the home directory.',
+                                    { cancelText: t('common.cancel'), confirmText: t('common.reset'), destructive: true }
+                                );
+                                if (!ok) return;
+                                setProjectBasePaths(projectBasePaths.filter(p => p.machineId !== machineId));
+                            }}
+                        />
+                    ) : null}
                 </ItemGroup>
 
                 {/* Previous Sessions (debug view) */}

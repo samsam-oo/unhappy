@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { storage } from '@/sync/storage';
+import { pathRelativeToBase } from '@/utils/basePathUtils';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -133,11 +135,36 @@ export function formatPathRelativeToHome(path: string, homeDir?: string): string
 }
 
 /**
+ * Formats a path relative to the machine's configured "Base Repository" (project base path).
+ * Falls back to home-relative (~) formatting when the path is outside the base.
+ *
+ * Display goal: hide absolute paths from the user whenever possible.
+ */
+export function formatPathRelativeToProjectBase(path: string, machineId?: string | null, homeDir?: string | null): string {
+    const p = (path || '').trim();
+    if (!p) return path;
+
+    const settings = storage.getState().settings;
+    const configuredBase = machineId
+        ? settings.projectBasePaths?.find(e => e.machineId === machineId)?.path
+        : null;
+    const base = (configuredBase || homeDir || '').trim();
+    if (!base) return p;
+
+    const rel = pathRelativeToBase(p, base);
+    // If rel is unchanged, it's outside base; still try to hide absolute bits via "~".
+    if (rel === p) {
+        return formatPathRelativeToHome(p, homeDir || undefined);
+    }
+    return rel;
+}
+
+/**
  * Returns the session path for the subtitle.
  */
 export function getSessionSubtitle(session: Session): string {
     if (session.metadata) {
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+        return formatPathRelativeToProjectBase(session.metadata.path, session.metadata.machineId, session.metadata.homeDir);
     }
     return t('status.unknown');
 }

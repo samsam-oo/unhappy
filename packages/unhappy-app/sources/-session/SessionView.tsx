@@ -21,7 +21,7 @@ import { tracking, trackMessageSent } from '@/track';
 import { isRunningOnMac } from '@/utils/platform';
 import { promptCommitMessage } from '@/utils/promptCommitMessage';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
-import { formatPathRelativeToHome, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
+import { formatPathRelativeToProjectBase, getSessionName, useSessionStatus } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { commitWorktreeChanges, extractWorktreeInfo } from '@/utils/finishWorktree';
 import { Ionicons } from '@/icons/vector-icons';
@@ -386,7 +386,7 @@ export const SessionView = React.memo((props: { id: string }) => {
         const isConnected = session.presence === 'online';
         return {
             title: getSessionName(session),
-            subtitle: session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined,
+            subtitle: session.metadata?.path ? formatPathRelativeToProjectBase(session.metadata.path, session.metadata?.machineId, session.metadata?.homeDir) : undefined,
             avatarId: undefined,
             onAvatarPress: undefined,
             isConnected: isConnected,

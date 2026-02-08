@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToProjectBase, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill, sessionDelete } from '@/sync/ops';
@@ -294,7 +294,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         />
                         <Item
                             title={t('sessionInfo.path')}
-                            subtitle={formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
+                            subtitle={formatPathRelativeToProjectBase(session.metadata.path, session.metadata.machineId, session.metadata.homeDir)}
                             icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
@@ -338,7 +338,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         {session.metadata.happyHomeDir && (
                             <Item
                                 title={t('sessionInfo.happyHome')}
-                                subtitle={formatPathRelativeToHome(session.metadata.happyHomeDir, session.metadata.homeDir)}
+                                subtitle={formatPathRelativeToProjectBase(session.metadata.happyHomeDir, session.metadata.machineId, session.metadata.homeDir)}
                                 icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />

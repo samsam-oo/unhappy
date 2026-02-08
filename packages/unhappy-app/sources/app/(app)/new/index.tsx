@@ -31,6 +31,7 @@ import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { useEnvironmentVariables, resolveEnvVarSubstitution, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { joinBasePath, pathRelativeToBase } from '@/utils/basePathUtils';
 import { MultiTextInput } from '@/components/MultiTextInput';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
@@ -327,6 +328,7 @@ function NewSessionWizard() {
 
     // Settings and state
     const recentMachinePaths = useSetting('recentMachinePaths');
+    const projectBasePaths = useSetting('projectBasePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
 
     // A/B Test Flag - determines which wizard UI to show
@@ -652,6 +654,27 @@ function NewSessionWizard() {
         if (!selectedMachineId) return null;
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
+
+    const selectedMachineBasePath = React.useMemo(() => {
+        if (!selectedMachineId) return null;
+        const fromSetting = projectBasePaths.find(p => p.machineId === selectedMachineId)?.path;
+        const trimmed = (fromSetting || '').trim();
+        return trimmed ? trimmed : (selectedMachine?.metadata?.homeDir || null);
+    }, [projectBasePaths, selectedMachine?.metadata?.homeDir, selectedMachineId]);
+
+    const selectedMachineHomeDir = selectedMachine?.metadata?.homeDir;
+    const effectiveBasePath = selectedMachineBasePath || selectedMachineHomeDir || '';
+    const formatWorkingDirForUser = React.useCallback((absPath: string) => {
+        if (!effectiveBasePath) return formatPathRelativeToHome(absPath, selectedMachineHomeDir);
+        return pathRelativeToBase(absPath, effectiveBasePath);
+    }, [effectiveBasePath, selectedMachineHomeDir]);
+    const parseWorkingDirFromUserInput = React.useCallback((text: string) => {
+        const raw = (text || '').trim();
+        if (!effectiveBasePath) return null;
+        if (!raw || raw === '.') return effectiveBasePath;
+        if (raw.startsWith('~')) return resolveAbsolutePath(raw, selectedMachineHomeDir);
+        return joinBasePath(effectiveBasePath, raw);
+    }, [effectiveBasePath, selectedMachineHomeDir]);
 
     // Get recent paths for the selected machine
     // Recent machines computed from sessions (for inline machine selection)
@@ -1280,7 +1303,7 @@ function NewSessionWizard() {
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
-                                currentPath={selectedPath}
+                                currentPath={formatWorkingDirForUser(selectedPath)}
                                 onPathClick={handlePathClick}
                             />
                         </View>
@@ -1843,7 +1866,7 @@ function NewSessionWizard() {
                                 <SearchableListSelector<string>
                                     config={{
                                     getItemId: (path) => path,
-                                    getItemTitle: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
+                                    getItemTitle: (path) => formatWorkingDirForUser(path),
                                     getItemSubtitle: undefined,
                                     getItemIcon: (path) => (
                                         <Ionicons
@@ -1861,22 +1884,16 @@ function NewSessionWizard() {
                                     ),
                                     getFavoriteItemIcon: (path) => (
                                         <Ionicons
-                                            name={path === selectedMachine?.metadata?.homeDir ? "home-outline" : "star-outline"}
+                                            name={(effectiveBasePath && path === effectiveBasePath) ? "home-outline" : "star-outline"}
                                             size={24}
                                             color={theme.colors.textSecondary}
                                         />
                                     ),
-                                    canRemoveFavorite: (path) => path !== selectedMachine?.metadata?.homeDir,
-                                    formatForDisplay: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                                    parseFromDisplay: (text) => {
-                                        if (selectedMachine?.metadata?.homeDir) {
-                                            return resolveAbsolutePath(text, selectedMachine.metadata.homeDir);
-                                        }
-                                        return null;
-                                    },
+                                    canRemoveFavorite: (path) => !(effectiveBasePath && path === effectiveBasePath),
+                                    formatForDisplay: (path) => formatWorkingDirForUser(path),
+                                    parseFromDisplay: (text) => parseWorkingDirFromUserInput(text),
                                     filterItem: (path, searchText) => {
-                                        const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
-                                        return displayPath.toLowerCase().includes(searchText.toLowerCase());
+                                        return formatWorkingDirForUser(path).toLowerCase().includes(searchText.toLowerCase());
                                     },
                                     searchPlaceholder: "Type to filter or enter custom directory...",
                                     recentSectionTitle: "Recent Directories",
@@ -1891,43 +1908,60 @@ function NewSessionWizard() {
                                 items={recentPaths}
                                 recentItems={recentPaths}
                                 favoriteItems={(() => {
-                                    if (!selectedMachine?.metadata?.homeDir) return [];
-                                    const homeDir = selectedMachine.metadata.homeDir;
-                                    // Include home directory plus user favorites
-                                    return [homeDir, ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, homeDir))];
+                                    if (!selectedMachineHomeDir || !effectiveBasePath) return [];
+                                    // Include base directory plus user favorites (stored relative to homeDir).
+                                    return [effectiveBasePath, ...favoriteDirectories.map(fav => resolveAbsolutePath(fav, selectedMachineHomeDir))];
                                 })()}
                                 selectedItem={selectedPath}
                                 onSelect={(path) => {
                                     setSelectedPath(path);
                                 }}
                                 onToggleFavorite={(path) => {
-                                    const homeDir = selectedMachine?.metadata?.homeDir;
-                                    if (!homeDir) return;
+                                    if (!selectedMachineHomeDir) return;
 
-                                    // Don't allow removing home directory (handled by canRemoveFavorite)
-                                    if (path === homeDir) return;
+                                    // Don't allow removing base path (handled by canRemoveFavorite)
+                                    if (effectiveBasePath && path === effectiveBasePath) return;
 
                                     // Convert to relative format for storage
-                                    const relativePath = formatPathRelativeToHome(path, homeDir);
+                                    const relativePath = formatPathRelativeToHome(path, selectedMachineHomeDir);
 
                                     // Check if already in favorites
                                     const isInFavorites = favoriteDirectories.some(fav =>
-                                        resolveAbsolutePath(fav, homeDir) === path
+                                        resolveAbsolutePath(fav, selectedMachineHomeDir) === path
                                     );
 
                                     if (isInFavorites) {
                                         // Remove from favorites
                                         setFavoriteDirectories(favoriteDirectories.filter(fav =>
-                                            resolveAbsolutePath(fav, homeDir) !== path
+                                            resolveAbsolutePath(fav, selectedMachineHomeDir) !== path
                                         ));
                                     } else {
                                         // Add to favorites
                                         setFavoriteDirectories([...favoriteDirectories, relativePath]);
                                     }
                                 }}
-                                    context={{ homeDir: selectedMachine?.metadata?.homeDir }}
+                                    context={{ homeDir: selectedMachineHomeDir }}
                                 />
                             </View>
+
+                            {selectedMachineId && selectedMachineBasePath ? (
+                                <View style={{ marginBottom: 24 }}>
+                                    <ItemGroup title={t('finishSession.basePath')}>
+                                        <Item
+                                            title={t('common.open')}
+                                            subtitle="Pick a project folder"
+                                            subtitleLines={0}
+                                            icon={<Ionicons name="folder-open-outline" size={29} color={theme.colors.textSecondary} />}
+                                            onPress={() => {
+                                                router.push({
+                                                    pathname: '/new/pick/project',
+                                                    params: { machineId: selectedMachineId, basePath: selectedMachineBasePath },
+                                                } as any);
+                                            }}
+                                        />
+                                    </ItemGroup>
+                                </View>
+                            ) : null}
 
                             {/* Section 4: Permission Mode */}
                             <View ref={permissionSectionRef}>
@@ -2038,7 +2072,7 @@ function NewSessionWizard() {
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}
-                            currentPath={selectedPath}
+                            currentPath={formatWorkingDirForUser(selectedPath)}
                             onPathClick={handleAgentInputPathClick}
                             profileId={selectedProfileId}
                             onProfileClick={handleAgentInputProfileClick}

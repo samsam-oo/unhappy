@@ -3,7 +3,7 @@ import { View, Text, Platform } from 'react-native';
 import { Ionicons } from '@/icons/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
-import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { useSessionStatus, formatPathRelativeToProjectBase } from '@/utils/sessionUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
@@ -107,7 +107,7 @@ export function EmptyMessages({ session }: EmptyMessagesProps) {
             
             {session.metadata?.path && (
                 <Text style={styles.pathText}>
-                    {formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
+                    {formatPathRelativeToProjectBase(session.metadata.path, session.metadata.machineId, session.metadata.homeDir)}
                 </Text>
             )}
             

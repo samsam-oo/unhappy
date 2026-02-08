@@ -5,7 +5,7 @@ import { Text } from '@/components/StyledText';
 import { router, useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@/icons/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToProjectBase } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
@@ -213,7 +213,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
             // Get or create project group
             let projectGroup = groups.get(projectPath);
             if (!projectGroup) {
-                const displayPath = formatPathRelativeToHome(projectPath, session.metadata?.homeDir);
+                const displayPath = formatPathRelativeToProjectBase(projectPath, session.metadata?.machineId, session.metadata?.homeDir);
                 projectGroup = {
                     path: projectPath,
                     displayPath,

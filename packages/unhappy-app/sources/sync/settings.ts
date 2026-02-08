@@ -277,6 +277,11 @@ export const SettingsSchema = z.object({
         machineId: z.string(),
         path: z.string()
     })).describe('Last 10 machine-path combinations, ordered by most recent first'),
+    // Per-machine base directories used as the starting point for project selection/browsing.
+    projectBasePaths: z.array(z.object({
+        machineId: z.string(),
+        path: z.string(),
+    })).describe('Per-machine base directories used for project selection'),
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
@@ -342,6 +347,7 @@ export const settingsDefaults: Settings = {
     voiceAssistantLanguage: null,
     preferredLanguage: null,
     recentMachinePaths: [],
+    projectBasePaths: [],
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,

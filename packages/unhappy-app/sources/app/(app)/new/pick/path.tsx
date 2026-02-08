@@ -5,12 +5,13 @@ import { CommonActions, useNavigation } from '@react-navigation/native';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { useMachine, useSessions, useSetting } from '@/sync/storage';
 import { Ionicons } from '@/icons/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
+import { joinBasePath, pathRelativeToBase } from '@/utils/basePathUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -64,28 +65,46 @@ export default function PathPickerScreen() {
     const router = useRouter();
     const navigation = useNavigation();
     const params = useLocalSearchParams<{ machineId?: string; selectedPath?: string }>();
-    const machines = useAllMachines();
     const sessions = useSessions();
     const inputRef = useRef<MultiTextInputHandle>(null);
     const recentMachinePaths = useSetting('recentMachinePaths');
+    const projectBasePaths = useSetting('projectBasePaths');
 
-    const [customPath, setCustomPath] = useState(params.selectedPath || '');
+    const [customPath, setCustomPath] = useState('');
 
-    // Get the selected machine
-    const machine = useMemo(() => {
-        return machines.find(m => m.id === params.machineId);
-    }, [machines, params.machineId]);
+    const machineId = typeof params.machineId === 'string' ? params.machineId : '';
+    const machine = useMachine(machineId);
+
+    const baseRoot = useMemo(() => {
+        if (!machineId) return '';
+        const fromSetting = projectBasePaths.find(p => p.machineId === machineId)?.path;
+        return (fromSetting && fromSetting.trim()) ? fromSetting.trim() : (machine?.metadata?.homeDir || '');
+    }, [machine?.metadata?.homeDir, machineId, projectBasePaths]);
+
+    // Initialize input from selectedPath (which may be absolute) after baseRoot is known
+    React.useEffect(() => {
+        const selected = (params.selectedPath || '').trim();
+        if (!selected) {
+            setCustomPath('.');
+            return;
+        }
+        if (!baseRoot) {
+            setCustomPath(selected);
+            return;
+        }
+        setCustomPath(pathRelativeToBase(selected, baseRoot));
+    }, [baseRoot, params.selectedPath]);
 
     // Get recent paths for this machine - prioritize from settings, then fall back to sessions
     const recentPaths = useMemo(() => {
-        if (!params.machineId) return [];
+        if (!machineId) return [];
 
         const paths: string[] = [];
         const pathSet = new Set<string>();
 
         // First, add paths from recentMachinePaths (these are the most recent)
         recentMachinePaths.forEach(entry => {
-            if (entry.machineId === params.machineId && !pathSet.has(entry.path)) {
+            if (entry.machineId === machineId && !pathSet.has(entry.path)) {
                 paths.push(entry.path);
                 pathSet.add(entry.path);
             }
@@ -99,7 +118,7 @@ export default function PathPickerScreen() {
                 if (typeof item === 'string') return; // Skip section headers
 
                 const session = item as any;
-                if (session.metadata?.machineId === params.machineId && session.metadata?.path) {
+                if (session.metadata?.machineId === machineId && session.metadata?.path) {
                     const path = session.metadata.path;
                     if (!pathSet.has(path)) {
                         pathSet.add(path);
@@ -118,11 +137,13 @@ export default function PathPickerScreen() {
         }
 
         return paths;
-    }, [sessions, params.machineId, recentMachinePaths]);
+    }, [sessions, machineId, recentMachinePaths]);
 
 
     const handleSelectPath = React.useCallback(() => {
-        const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
+        const raw = customPath.trim();
+        const rel = raw || '.';
+        const pathToUse = joinBasePath(baseRoot, rel);
         // Pass path back via navigation params (main's pattern, received by new/index.tsx)
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
@@ -133,7 +154,7 @@ export default function PathPickerScreen() {
             } as never);
         }
         router.back();
-    }, [customPath, router, machine, navigation]);
+    }, [baseRoot, customPath, router, navigation]);
 
     if (!machine) {
         return (
@@ -146,7 +167,7 @@ export default function PathPickerScreen() {
                         headerRight: () => (
                             <Pressable
                                 onPress={handleSelectPath}
-                                disabled={!customPath.trim()}
+                                disabled={!baseRoot}
                                 style={({ pressed }) => ({
                                     marginRight: 16,
                                     opacity: pressed ? 0.7 : 1,
@@ -183,7 +204,7 @@ export default function PathPickerScreen() {
                     headerRight: () => (
                         <Pressable
                             onPress={handleSelectPath}
-                            disabled={!customPath.trim()}
+                            disabled={!baseRoot}
                             style={({ pressed }) => ({
                                 opacity: pressed ? 0.7 : 1,
                                 padding: 4,
@@ -212,7 +233,7 @@ export default function PathPickerScreen() {
                                         ref={inputRef}
                                         value={customPath}
                                         onChangeText={setCustomPath}
-                                        placeholder="Enter path (e.g. /home/user/projects)"
+                                        placeholder="Enter project folder (relative to base path)"
                                         maxHeight={76}
                                         paddingTop={8}
                                         paddingBottom={8}
@@ -227,13 +248,14 @@ export default function PathPickerScreen() {
                         {recentPaths.length > 0 && (
                             <ItemGroup title="Recent Paths">
                                 {recentPaths.map((path, index) => {
-                                    const isSelected = customPath.trim() === path;
+                                    const display = baseRoot ? pathRelativeToBase(path, baseRoot) : path;
+                                    const isSelected = customPath.trim() === display;
                                     const isLast = index === recentPaths.length - 1;
 
                                     return (
                                         <Item
                                             key={path}
-                                            title={path}
+                                            title={display}
                                             leftElement={
                                                 <Ionicons
                                                     name="folder-outline"
@@ -242,7 +264,7 @@ export default function PathPickerScreen() {
                                                 />
                                             }
                                             onPress={() => {
-                                                setCustomPath(path);
+                                                setCustomPath(display);
                                                 setTimeout(() => inputRef.current?.focus(), 50);
                                             }}
                                             selected={isSelected}
@@ -258,20 +280,14 @@ export default function PathPickerScreen() {
                         {recentPaths.length === 0 && (
                             <ItemGroup title="Suggested Paths">
                                 {(() => {
-                                    const homeDir = machine.metadata?.homeDir || '/home';
-                                    const suggestedPaths = [
-                                        homeDir,
-                                        `${homeDir}/projects`,
-                                        `${homeDir}/Documents`,
-                                        `${homeDir}/Desktop`
-                                    ];
-                                    return suggestedPaths.map((path, index) => {
-                                        const isSelected = customPath.trim() === path;
+                                    const suggested = ['.', 'projects', 'Documents', 'Desktop'];
+                                    return suggested.map((rel, index) => {
+                                        const isSelected = customPath.trim() === rel;
 
                                         return (
                                             <Item
-                                                key={path}
-                                                title={path}
+                                                key={rel}
+                                                title={rel}
                                                 leftElement={
                                                     <Ionicons
                                                         name="folder-outline"
@@ -280,7 +296,8 @@ export default function PathPickerScreen() {
                                                     />
                                                 }
                                                 onPress={() => {
-                                                    setCustomPath(path);
+                                                    // Keep as relative input; commit will join with base.
+                                                    setCustomPath(rel);
                                                     setTimeout(() => inputRef.current?.focus(), 50);
                                                 }}
                                                 selected={isSelected}
