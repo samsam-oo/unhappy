@@ -76,6 +76,7 @@ const UI_ICONS = {
     folder: IS_WEB ? 16 : 18,
     gitBranch: IS_WEB ? 12 : 13,
     headerAdd: IS_WEB ? 18 : 20,
+    headerCollapse: IS_WEB ? 18 : 20,
     rowAdd: IS_WEB ? 18 : 20,
     reorderHandle: IS_WEB ? 18 : 20,
 } as const;
@@ -529,6 +530,18 @@ export function WorkspaceExplorerSidebar() {
     const dragScale = useSharedValue(1);
     const dragGrabOffset = useSharedValue(0);
 
+    // Reanimated: avoid passing inline/anonymous functions to `runOnJS` from a worklet.
+    const setSuppressProjectToggle = React.useCallback((v: boolean) => {
+        suppressProjectToggleRef.current = v;
+    }, []);
+
+    const suppressProjectToggleFor = React.useCallback((ms: number) => {
+        suppressProjectToggleRef.current = true;
+        setTimeout(() => {
+            suppressProjectToggleRef.current = false;
+        }, ms);
+    }, []);
+
     const ensureProjectHeaderRef = React.useCallback((stableId: string) => {
         const existing = projectHeaderRefsRef.current.get(stableId);
         if (existing) return existing;
@@ -718,6 +731,36 @@ export function WorkspaceExplorerSidebar() {
         const base = workspaceOrderLoaded ? (workspaceOrder ?? defaultWorkspaceOrder) : defaultWorkspaceOrder;
         return normalizeWorkspaceOrder(base, stableIds);
     }, [defaultWorkspaceOrder, projectGroups, workspaceOrder, workspaceOrderLoaded]);
+
+    const allExpandableKeys = React.useMemo(() => {
+        const keys: string[] = [];
+        for (const group of projectGroups) {
+            keys.push(getExpandedKey('project', group.stableId));
+            for (const wt of group.worktrees) {
+                keys.push(getExpandedKey('worktree', getProjectStableId(wt)));
+            }
+        }
+        return keys;
+    }, [projectGroups]);
+
+    const allExpanded = React.useMemo(() => {
+        if (!allExpandableKeys.length) return true;
+        return allExpandableKeys.every((k) => (expanded[k] ?? true) === true);
+    }, [allExpandableKeys, expanded]);
+
+    const toggleAllExpanded = React.useCallback(() => {
+        if (draggingStableIdRef.current) return;
+        if (!allExpandableKeys.length) return;
+        if (Platform.OS !== 'web') {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        }
+        const nextValue = !allExpanded;
+        setExpanded((prev) => {
+            const next = { ...prev };
+            for (const k of allExpandableKeys) next[k] = nextValue;
+            return next;
+        });
+    }, [allExpanded, allExpandableKeys]);
 
     const orderedProjectGroups = React.useMemo(() => {
         const map = new Map<string, ProjectGroup>();
@@ -924,6 +967,21 @@ export function WorkspaceExplorerSidebar() {
                     >
                         <Ionicons name="add" size={UI_ICONS.headerAdd} color={theme.colors.header.tint} />
                     </Pressable>
+                    <Pressable
+                        onPress={toggleAllExpanded}
+                        hitSlop={10}
+                        style={({ hovered, pressed }: any) => [
+                            styles.headerButton,
+                            (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
+                        ]}
+                        accessibilityLabel={allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'}
+                    >
+                        <Ionicons
+                            name={allExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                            size={UI_ICONS.headerCollapse}
+                            color={theme.colors.header.tint}
+                        />
+                    </Pressable>
                 </View>
             </View>
 
@@ -977,9 +1035,7 @@ export function WorkspaceExplorerSidebar() {
                                     // The handle lives inside a Pressable row that toggles expansion.
                                     // If the long-press drag doesn't activate (or activates slightly late),
                                     // we still don't want the row "click" to toggle.
-                                    runOnJS(() => {
-                                        suppressProjectToggleRef.current = true;
-                                    })();
+                                    runOnJS(setSuppressProjectToggle)(true);
                                 })
                                 .onStart((e) => {
                                     'worklet';
@@ -996,14 +1052,9 @@ export function WorkspaceExplorerSidebar() {
                                 })
                                 .onFinalize(() => {
                                     'worklet';
+                                    // Keep suppression through the release -> onPress sequence.
+                                    runOnJS(suppressProjectToggleFor)(250);
                                     runOnJS(endWorkspaceDrag)();
-                                    runOnJS(() => {
-                                        // Keep suppression through the release -> onPress sequence.
-                                        suppressProjectToggleRef.current = true;
-                                        setTimeout(() => {
-                                            suppressProjectToggleRef.current = false;
-                                        }, 250);
-                                    })();
                                 });
 
                             return (
