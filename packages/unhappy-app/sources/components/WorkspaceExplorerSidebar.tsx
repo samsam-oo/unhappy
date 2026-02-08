@@ -274,6 +274,14 @@ const stylesheet = StyleSheet.create((theme) => ({
         marginLeft: UI_METRICS.rowInset2,
         marginRight: 6,
     },
+    // Mobile: keep a single outer border per workspace group; indent via padding (not margin)
+    // so group borders align vertically.
+    mobileIndent1: {
+        paddingLeft: UI_METRICS.rowPaddingH + UI_METRICS.rowInset1,
+    },
+    mobileIndent2: {
+        paddingLeft: UI_METRICS.rowPaddingH + UI_METRICS.rowInset2,
+    },
     selectionBar: {
         position: 'absolute',
         left: 0,
@@ -299,6 +307,29 @@ const stylesheet = StyleSheet.create((theme) => ({
         width: UI_METRICS.nestRailWidth,
         backgroundColor: theme.colors.chrome.panelBorder,
         opacity: IS_WEB ? 0.9 : 0.75,
+    },
+    // Mobile: use a dot marker instead of an "elbow" underscore.
+    treeDotWrap: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+        // Keep the dot slightly left so it sits on the rail (not in the middle of empty space).
+        paddingLeft: Math.floor(UI_METRICS.chevronWidth / 2),
+    },
+    treeDot: {
+        width: 4,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: theme.colors.chrome.panelBorder,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.surface,
+        opacity: IS_WEB ? 0 : 0.95,
+    },
+    treeDotWorktree: {
+        width: 5,
+        height: 5,
+        borderRadius: 3,
+        opacity: IS_WEB ? 0 : 1,
     },
     projectActions: {
         flexDirection: 'row',
@@ -350,9 +381,9 @@ const stylesheet = StyleSheet.create((theme) => ({
 }));
 
 type Row =
-    | { type: 'project'; project: Project; expanded: boolean; isVirtual?: boolean }
-    | { type: 'worktree'; project: Project; expanded: boolean; parentStableId: string }
-    | { type: 'session'; session: Session; depth: 1 | 2 };
+    | { type: 'project'; project: Project; expanded: boolean; isVirtual?: boolean; groupStableId: string }
+    | { type: 'worktree'; project: Project; expanded: boolean; parentStableId: string; groupStableId: string }
+    | { type: 'session'; session: Session; depth: 1 | 2; groupStableId: string };
 
 type ProjectGroup = {
     stableId: string;
@@ -366,6 +397,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     session: Session;
     selected: boolean;
     depth: 1 | 2;
+    mobileChromeStyle?: any;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -434,9 +466,9 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             onPress={() => navigateToSession(props.session.id)}
             style={({ hovered, pressed }: any) => [
                 styles.row,
-                !IS_WEB && (props.depth === 2 ? styles.rowMobileNestedDeep : styles.rowMobileNested),
-                !IS_WEB && (props.depth === 2 ? styles.rowMobileInset2 : styles.rowMobileInset1),
-                props.depth === 2 ? styles.grandChildIndent : styles.childIndent,
+                !IS_WEB && props.mobileChromeStyle,
+                !IS_WEB && (props.depth === 2 ? styles.mobileIndent2 : styles.mobileIndent1),
+                IS_WEB && (props.depth === 2 ? styles.grandChildIndent : styles.childIndent),
                 props.selected && styles.rowActive,
                 (IS_WEB && hovered && !props.selected) && styles.rowHover,
                 (pressed && !props.selected) && styles.rowPressed,
@@ -447,6 +479,11 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
                 {!IS_WEB && (
                     <>
                         <View style={styles.nestRail} />
+                        {props.depth === 2 && (
+                            <View style={styles.treeDotWrap} pointerEvents="none">
+                                <View style={styles.treeDot} />
+                            </View>
+                        )}
                     </>
                 )}
             </View>
@@ -904,7 +941,13 @@ export function WorkspaceExplorerSidebar() {
             const projectExpandedKey = getExpandedKey('project', projectStableId);
             const isProjectExpanded = expanded[projectExpandedKey] ?? true;
 
-            out.push({ type: 'project', project: group.project, expanded: isProjectExpanded, isVirtual: group.isVirtual });
+            out.push({
+                type: 'project',
+                project: group.project,
+                expanded: isProjectExpanded,
+                isVirtual: group.isVirtual,
+                groupStableId: projectStableId,
+            });
 
             // Mark included ids even if collapsed, so we don't duplicate in the "ungrouped" section.
             for (const id of group.project.sessionIds || []) included.add(id);
@@ -920,7 +963,7 @@ export function WorkspaceExplorerSidebar() {
 
             // Sessions and worktrees are siblings under the project, but the "folder" (worktree)
             // should stay visually at the bottom of the list.
-            for (const s of rootSessions) out.push({ type: 'session', session: s, depth: 1 });
+            for (const s of rootSessions) out.push({ type: 'session', session: s, depth: 1, groupStableId: projectStableId });
 
             const worktrees = [...group.worktrees].sort((a, b) => b.updatedAt - a.updatedAt);
             for (const wt of worktrees) {
@@ -928,7 +971,13 @@ export function WorkspaceExplorerSidebar() {
                 const wtExpandedKey = getExpandedKey('worktree', wtStableId);
                 const isWorktreeExpanded = expanded[wtExpandedKey] ?? true;
 
-                out.push({ type: 'worktree', project: wt, expanded: isWorktreeExpanded, parentStableId: projectStableId });
+                out.push({
+                    type: 'worktree',
+                    project: wt,
+                    expanded: isWorktreeExpanded,
+                    parentStableId: projectStableId,
+                    groupStableId: projectStableId,
+                });
 
                 if (!isWorktreeExpanded) continue;
 
@@ -936,7 +985,7 @@ export function WorkspaceExplorerSidebar() {
                     .map((id) => sessionById.get(id))
                     .filter(Boolean) as Session[];
                 wtSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-                for (const s of wtSessions) out.push({ type: 'session', session: s, depth: 2 });
+                for (const s of wtSessions) out.push({ type: 'session', session: s, depth: 2, groupStableId: projectStableId });
             }
         }
 
@@ -945,7 +994,7 @@ export function WorkspaceExplorerSidebar() {
             .filter((s) => !included.has(s.id))
             .sort((a, b) => b.updatedAt - a.updatedAt);
         for (const s of ungrouped) {
-            out.push({ type: 'session', session: s, depth: 1 });
+            out.push({ type: 'session', session: s, depth: 1, groupStableId: `u:${s.id}` });
         }
 
         return out;
@@ -1014,7 +1063,45 @@ export function WorkspaceExplorerSidebar() {
                         scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
                     }}
                     scrollEventThrottle={16}
-                    renderItem={({ item: row }) => {
+                    renderItem={({ item: row, index }) => {
+                        const groupStableId = row.groupStableId;
+                        const prevGroupStableId = index > 0 ? rows[index - 1].groupStableId : null;
+                        const nextGroupStableId = index < rows.length - 1 ? rows[index + 1].groupStableId : null;
+
+                        const isGroupStart = groupStableId !== prevGroupStableId;
+                        const isGroupEnd = groupStableId !== nextGroupStableId;
+                        const isUngrouped = groupStableId.startsWith('u:');
+                        const groupAccent = !isUngrouped && (row.type !== 'project' || row.expanded);
+
+                        const mobileChromeStyle = !IS_WEB
+                            ? ({
+                                // Make each workspace feel like a single expandable "card" on mobile.
+                                marginVertical: 0,
+                                marginTop: isGroupStart ? 6 : 0,
+                                marginBottom: isGroupEnd ? 6 : 0,
+                                borderRadius: 0,
+                                borderTopLeftRadius: isGroupStart ? UI_METRICS.rowRadius : 0,
+                                borderTopRightRadius: isGroupStart ? UI_METRICS.rowRadius : 0,
+                                borderBottomLeftRadius: isGroupEnd ? UI_METRICS.rowRadius : 0,
+                                borderBottomRightRadius: isGroupEnd ? UI_METRICS.rowRadius : 0,
+                                borderTopWidth: StyleSheet.hairlineWidth,
+                                borderBottomWidth: isGroupEnd ? StyleSheet.hairlineWidth : 0,
+                                borderRightWidth: StyleSheet.hairlineWidth,
+                                borderLeftWidth: groupAccent ? 3 : StyleSheet.hairlineWidth,
+                                borderColor: theme.colors.chrome.panelBorder,
+                                // Keep the expand/collapse "group stripe" neutral on mobile (avoid loud blue).
+                                borderLeftColor: groupAccent ? theme.colors.groupped.sectionTitle : theme.colors.chrome.panelBorder,
+                                backgroundColor:
+                                    row.type === 'project' && row.expanded
+                                        ? theme.colors.surfaceHighest
+                                        : row.type === 'worktree' && row.expanded
+                                            ? theme.colors.surfaceHigh
+                                            : row.type === 'session' && row.depth === 2
+                                                ? theme.colors.surfaceHigh
+                                        : theme.colors.surface,
+                            } as const)
+                            : null;
+
                         if (row.type === 'project') {
                             const stableId = getProjectStableId(row.project);
                             const expandedKey = getExpandedKey('project', stableId);
@@ -1123,8 +1210,7 @@ export function WorkspaceExplorerSidebar() {
                                         }}
                                         style={({ hovered, pressed }: any) => [
                                             styles.row,
-                                            !IS_WEB && styles.rowMobileBase,
-                                            !IS_WEB && styles.rowMobileRoot,
+                                            !IS_WEB && mobileChromeStyle,
                                             (IS_WEB && hovered) && styles.rowHover,
                                             pressed && styles.rowPressed,
                                             draggingStableId === stableId && { opacity: 0 },
@@ -1211,9 +1297,9 @@ export function WorkspaceExplorerSidebar() {
                                         onPress={() => toggleExpanded(expandedKey)}
                                         style={({ hovered, pressed }: any) => [
                                             styles.row,
-                                            !IS_WEB && styles.rowMobileNested,
-                                            !IS_WEB && styles.rowMobileInset1,
-                                            styles.childIndent,
+                                            !IS_WEB && mobileChromeStyle,
+                                            !IS_WEB && styles.mobileIndent1,
+                                            IS_WEB && styles.childIndent,
                                             (IS_WEB && hovered) && styles.rowHover,
                                             pressed && styles.rowPressed,
                                         ]}
@@ -1223,6 +1309,9 @@ export function WorkspaceExplorerSidebar() {
                                             {!IS_WEB && (
                                                 <>
                                                     <View style={styles.nestRail} />
+                                                    <View style={styles.treeDotWrap} pointerEvents="none">
+                                                        <View style={[styles.treeDot, styles.treeDotWorktree]} />
+                                                    </View>
                                                 </>
                                             )}
                                         </View>
@@ -1292,6 +1381,7 @@ export function WorkspaceExplorerSidebar() {
                         session={row.session}
                         selected={isSelected}
                         depth={row.depth}
+                        mobileChromeStyle={mobileChromeStyle}
                     />
                 </Animated.View>
             );
