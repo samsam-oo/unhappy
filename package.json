@@ -6,16 +6,12 @@
             "packages/unhappy-app",
             "packages/unhappy-cli",
             "packages/unhappy-server"
-        ],
-        "nohoist": [
-            "**/zod",
-            "**/react",
-            "**/react-dom",
-            "**/react-native",
-            "**/react-native/**",
-            "**/react-native-edge-to-edge/**",
-            "**/react-native-incall-manager/**"
         ]
+    },
+    "resolutions": {
+        "react": "19.1.0",
+        "react-dom": "19.1.0",
+        "react-native": "0.81.5"
     },
     "packageManager": "yarn@1.22.22"
 }

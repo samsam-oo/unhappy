@@ -111,7 +111,7 @@ async function doMobileAuth(
   console.log('\nMobile Authentication\n');
   console.log('Scan this QR code with your Unhappy mobile app:\n');
 
-  const authUrl = 'happy://terminal?' + encodeBase64Url(keypair.publicKey);
+  const authUrl = 'unhappy://terminal?' + encodeBase64Url(keypair.publicKey);
   displayQRCode(authUrl);
 
   console.log('\nOr manually enter this URL:');

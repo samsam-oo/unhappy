@@ -16,6 +16,9 @@ export default function RootLayout() {
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
     const { theme } = useUnistyles();
+    const groupedContentStyle = React.useMemo(() => ({
+        backgroundColor: theme.colors.groupped.background,
+    }), [theme.colors.groupped.background]);
 
     return (
         <Stack
@@ -58,7 +61,9 @@ export default function RootLayout() {
                 options={{
                     headerShown: true,
                     headerTitle: t('settings.title'),
-                    headerBackTitle: t('common.home')
+                    headerBackTitle: t('common.home'),
+                    // Match Settings list background (and Terminal screens) to the grouped background.
+                    contentStyle: groupedContentStyle,
                 }}
             />
             <Stack.Screen
@@ -129,12 +134,14 @@ export default function RootLayout() {
                 name="terminal/connect"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),
+                    contentStyle: groupedContentStyle,
                 }}
             />
             <Stack.Screen
                 name="terminal/index"
                 options={{
                     headerTitle: t('navigation.connectTerminal'),
+                    contentStyle: groupedContentStyle,
                 }}
             />
             <Stack.Screen

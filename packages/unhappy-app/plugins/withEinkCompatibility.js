@@ -1,4 +1,6 @@
-const { withAndroidManifest } = require('@expo/config-plugins');
+// Prefer Expo's subpath export so the app doesn't need to install
+// `@expo/config-plugins` directly (Expo doctor recommendation).
+const { withAndroidManifest } = require('expo/config-plugins');
 
 /**
  * Android hardware feature names that can be marked as optional
