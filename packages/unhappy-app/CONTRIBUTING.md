@@ -1,16 +1,17 @@
-# Contributing to Happy
+# Contributing to Unhappy
 
 ## Development Workflow: Build Variants
 
-The Happy app supports three build variants across **iOS, Android, and macOS desktop**, each with separate bundle IDs so all three can be installed simultaneously:
+The Unhappy app supports three build variants across **iOS, Android, and macOS desktop**, each with separate bundle IDs so all three can be installed simultaneously:
 
-| Variant | Bundle ID | App Name | Use Case |
-|---------|-----------|----------|----------|
-| **Development** | `com.samsamoo.unhappy.dev` | Happy (dev) | Local development with hot reload |
-| **Preview** | `com.samsamoo.unhappy.preview` | Happy (preview) | Beta testing & OTA updates before production |
-| **Production** | `com.ex3ndr.happy` | Happy | Public App Store release |
+| Variant         | Bundle ID                | App Name          | Use Case                                     |
+| --------------- | ------------------------ | ----------------- | -------------------------------------------- |
+| **Development** | `im.unhappy.app-develop` | Unhappy (Develop) | Local development with hot reload            |
+| **Preview**     | `im.unhappy.app-preview` | Unhappy (Preview) | Beta testing & OTA updates before production |
+| **Production**  | `com.ex3ndr.happy`       | Unhappy           | Public App Store release                     |
 
 **Why Preview?**
+
 - **Development**: Fast iteration, dev server, instant reload
 - **Preview**: Beta testers get OTA updates (`eas update --branch preview`) without app store submission
 - **Production**: Stable App Store builds
@@ -62,6 +63,7 @@ npm run tauri:build:production
 ```
 
 **How Tauri Variants Work:**
+
 - Base config: `src-tauri/tauri.conf.json` (production defaults)
 - Partial configs: `tauri.dev.conf.json`, `tauri.preview.conf.json`
 - Tauri merges partial configs using [JSON Merge Patch (RFC 7396)](https://datatracker.ietf.org/doc/html/rfc7396)
@@ -83,9 +85,10 @@ npm run start:production
 ## Visual Differences
 
 Each variant displays a different app name on your device:
-- **Development**: "Happy (dev)" - Yellow/orange theme
-- **Preview**: "Happy (preview)" - Preview theme
-- **Production**: "Happy" - Standard theme
+
+- **Development**: "Unhappy (Develop)" - Yellow/orange theme
+- **Preview**: "Unhappy (Preview)" - Preview theme
+- **Production**: "Unhappy" - Standard theme
 
 This makes it easy to distinguish which version you're testing!
 
@@ -94,6 +97,7 @@ This makes it easy to distinguish which version you're testing!
 ### Testing Development Changes
 
 1. **Build development variant:**
+
    ```bash
    npm run ios:dev
    ```
@@ -110,11 +114,13 @@ This makes it easy to distinguish which version you're testing!
 ### Testing Preview (Pre-Release)
 
 1. **Build preview variant:**
+
    ```bash
    npm run ios:preview
    ```
 
 2. **Test OTA updates:**
+
    ```bash
    npm run ota  # Publishes to preview branch
    ```
@@ -124,11 +130,13 @@ This makes it easy to distinguish which version you're testing!
 ### Production Release
 
 1. **Build production variant:**
+
    ```bash
    npm run ios:production
    ```
 
 2. **Submit to App Store:**
+
    ```bash
    npm run submit
    ```
@@ -173,6 +181,7 @@ const variant = process.env.APP_ENV || 'development';
 ```
 
 This controls:
+
 - Bundle identifier
 - App name
 - Associated domains (deep linking)
@@ -191,7 +200,7 @@ This prevents dev/preview builds from interfering with production deep links.
 
 ## Testing Connected to Different Servers
 
-You can connect different variants to different Happy CLI instances:
+You can connect different variants to different Unhappy CLI instances:
 
 ```bash
 # Development app → Dev CLI daemon
@@ -207,13 +216,14 @@ Each app maintains separate authentication and sessions!
 
 ## Local Server Development
 
-To test with a local Happy server:
+To test with a local Unhappy server:
 
 ```bash
 npm run start:local-server
 ```
 
 This sets:
+
 - `EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005`
 - `EXPO_PUBLIC_DEBUG=1`
 - Debug logging enabled
@@ -247,9 +257,10 @@ This shouldn't happen - each variant has a unique bundle ID. If it does:
 ### All three apps look the same
 
 Check the app name on the home screen:
-- "Happy (dev)"
-- "Happy (preview)"
-- "Happy"
+
+- "Unhappy (Develop)"
+- "Unhappy (Preview)"
+- "Unhappy"
 
 If they're all the same name, the variant might not be set correctly. Verify:
 
@@ -258,7 +269,7 @@ If they're all the same name, the variant might not be set correctly. Verify:
 echo $APP_ENV
 
 # Or look at the build output
-npm run ios:dev  # Should show "Happy (dev)" as the name
+npm run ios:dev  # Should show "Unhappy (Develop)" as the name
 ```
 
 ### Connected device not found
@@ -289,9 +300,9 @@ The `app.config.js` file reads the `APP_ENV` environment variable:
 ```javascript
 const variant = process.env.APP_ENV || 'development';
 const bundleId = {
-  development: "com.samsamoo.unhappy.dev",
-  preview: "com.samsamoo.unhappy.preview",
-  production: "com.ex3ndr.happy"
+  development: 'im.unhappy.app-develop',
+  preview: 'im.unhappy.app-preview',
+  production: 'com.ex3ndr.happy',
 }[variant];
 ```
 

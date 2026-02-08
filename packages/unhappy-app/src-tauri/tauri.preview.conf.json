@@ -1,11 +1,11 @@
 {
   "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Happy (preview)",
-  "identifier": "com.samsamoo.unhappy.preview",
+  "productName": "Unhappy (Preview)",
+  "identifier": "im.unhappy.app-preview",
   "app": {
     "windows": [
       {
-        "title": "Happy (preview)"
+        "title": "Unhappy (Preview)"
       }
     ]
   }

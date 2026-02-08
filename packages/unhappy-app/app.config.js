@@ -1,24 +1,24 @@
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Happy (dev)",
-    preview: "Happy (preview)",
-    production: "Happy"
+    development: "Unhappy (Develop)",
+    preview: "Unhappy (Review)",
+    production: "Unhappy"
 }[variant];
 const bundleId = {
-    development: "com.samsamoo.unhappy.dev",
-    preview: "com.samsamoo.unhappy.preview",
-    production: "com.ex3ndr.happy"
+    development: "im.unhappy.app-develop",
+    preview: "im.unhappy.app-preview",
+    production: "im.unhappy.app"
 }[variant];
 
 export default {
     expo: {
         name,
-        slug: "happy",
+        slug: "unhappy",
         version: "1.6.2",
         runtimeVersion: "18",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
-        scheme: "happy",
+        scheme: "unhappy",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
         notification: {
@@ -34,9 +34,10 @@ export default {
             infoPlist: {
                 NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.",
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
-                NSBonjourServices: ["_http._tcp", "_https._tcp"]
+                NSBonjourServices: ["_http._tcp", "_https._tcp"],
+                NSHumanReadableCopyright: "Based on original licensed work by slopus/happy. Maintained with attribution by Unhappy Coder contributors."
             },
-            associatedDomains: variant === 'production' ? ["applinks:app.happy.engineering"] : []
+            associatedDomains: variant === 'production' ? ["applinks:app.unhappy.im"] : []
         },
         android: {
             adaptiveIcon: {
@@ -63,7 +64,7 @@ export default {
                     "data": [
                         {
                             "scheme": "https",
-                            "host": "app.happy.engineering",
+                            "host": "app.unhappy.im",
                             "pathPrefix": "/"
                         }
                     ],
@@ -150,9 +151,9 @@ export default {
             ]
         ],
         updates: {
-            url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
+            url: "https://u.expo.dev/dbc533c5-b29e-4b57-8a2c-e64df81aadef",
             requestHeaders: {
-                "expo-channel-name": "production"
+                "expo-channel-name": "main"
             }
         },
         experiments: {
@@ -163,7 +164,7 @@ export default {
                 root: "./sources/app"
             },
             eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
+                projectId: "dbc533c5-b29e-4b57-8a2c-e64df81aadef"
             },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -172,6 +173,6 @@ export default {
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
             }
         },
-        owner: "bulkacorp"
+        owner: "33ohoh"
     }
 };

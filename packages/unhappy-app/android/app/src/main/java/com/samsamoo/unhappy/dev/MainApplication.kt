@@ -1,4 +1,4 @@
-package com.samsamoo.unhappy.dev
+package im.unhappy.app-develop
 
 import android.app.Application
 import android.content.res.Configuration

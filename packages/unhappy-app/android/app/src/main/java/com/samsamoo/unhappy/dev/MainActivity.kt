@@ -1,4 +1,4 @@
-package com.samsamoo.unhappy.dev
+package im.unhappy.app-develop
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

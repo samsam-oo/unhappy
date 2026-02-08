@@ -24,14 +24,14 @@ const VARIANTS = {
     homeDir: path.join(os.homedir(), '.unhappy'),
     color: '\x1b[32m', // Green
     label: '✅ STABLE',
-    serverUrl: process.env.UNHAPPY_SERVER_URL || 'https://api.cluster-fluster.com'
+    serverUrl: process.env.UNHAPPY_SERVER_URL || 'https://api.unhappy.im',
   },
   dev: {
     homeDir: path.join(os.homedir(), '.unhappy-dev'),
     color: '\x1b[33m', // Yellow
     label: '🔧 DEV',
-    serverUrl: process.env.UNHAPPY_SERVER_URL || 'https://api.cluster-fluster.com'
-  }
+    serverUrl: process.env.UNHAPPY_SERVER_URL || 'https://api.unhappy.im',
+  },
 };
 
 const variant = process.argv[2];
@@ -39,7 +39,9 @@ const command = process.argv[3];
 const args = process.argv.slice(4);
 
 if (!variant || !VARIANTS[variant]) {
-  console.error('Usage: node scripts/env-wrapper.js <stable|dev> <command> [...args]');
+  console.error(
+    'Usage: node scripts/env-wrapper.js <stable|dev> <command> [...args]',
+  );
   console.error('');
   console.error('Variants:');
   console.error('  stable - Production-ready version (data: ~/.unhappy/)');
@@ -59,7 +61,9 @@ if (!fs.existsSync(config.homeDir)) {
 }
 
 // Visual feedback
-console.log(`${config.color}${config.label}\x1b[0m Unhappy CLI (data: ${config.homeDir})`);
+console.log(
+  `${config.color}${config.label}\x1b[0m Unhappy CLI (data: ${config.homeDir})`,
+);
 
 // Set environment and execute command
 const env = {
@@ -73,7 +77,7 @@ const binPath = path.join(__dirname, '..', 'bin', 'unhappy.mjs');
 const proc = spawn('node', [binPath, command, ...args], {
   env,
   stdio: 'inherit',
-  shell: process.platform === 'win32'
+  shell: process.platform === 'win32',
 });
 
 proc.on('exit', (code) => process.exit(code || 0));

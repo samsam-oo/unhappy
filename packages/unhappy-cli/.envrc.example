@@ -1,4 +1,4 @@
-# Happy CLI Development Environment
+# Unhappy CLI Development Environment
 #
 # This file is for direnv users who want automatic environment switching
 # when entering this directory.
@@ -12,6 +12,6 @@
 
 export UNHAPPY_HOME_DIR="$HOME/.unhappy-dev"
 export UNHAPPY_VARIANT="dev"
-export UNHAPPY_SERVER_URL="${UNHAPPY_SERVER_URL:-https://api.cluster-fluster.com}"
+export UNHAPPY_SERVER_URL="${UNHAPPY_SERVER_URL:-https://api.unhappy.im}"
 
 echo "🔧 DEV environment activated (data: $UNHAPPY_HOME_DIR)"

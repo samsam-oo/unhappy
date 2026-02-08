@@ -1,18 +1,20 @@
-# Privacy Policy for Happy Coder
+# Privacy Policy for Unhappy Coder
 
 **Last Updated: January 2025**
 
 ## Overview
 
-Happy Coder is committed to protecting your privacy. This policy explains how we handle your data with our zero-knowledge encryption architecture.
+Unhappy Coder is committed to protecting your privacy. This policy explains how we handle your data with our zero-knowledge encryption architecture.
 
 ## What We Collect
 
 ### Encrypted Data
+
 - **Messages and Code**: All your Claude Code conversations and code snippets are end-to-end encrypted on your device before transmission. We store this encrypted data but have no ability to decrypt or read it.
 - **Encryption Keys**: When you pair devices, encryption keys are transmitted between your devices in encrypted form. We cannot access or decrypt these keys.
 
 ### Metadata (Not Encrypted)
+
 - **Message IDs**: Unique identifiers for message ordering and synchronization
 - **Timestamps**: When messages were created and synced
 - **Device IDs**: Anonymous identifiers for device pairing
@@ -20,17 +22,20 @@ Happy Coder is committed to protecting your privacy. This policy explains how we
 - **Push Notification Tokens**: Device tokens for sending push notifications via Expo's push notification service
 
 ### Analytics (PostHog)
+
 - **Anonymous Events**: We collect basic app usage events through PostHog to improve the app experience
 - **Privacy by Design**: All analytics events use an anonymized ID derived from a secret key - we cannot match this back to any user or account
 - **No Content Tracking**: We only track basic app usage events, never any message content, code, or personal information
 - **Opt-Out Available**: You can disable analytics collection at any time in the app settings
 
 ### Subscription Management (Revenue Cat)
+
 - **Account ID**: Revenue Cat uses your account ID to manage subscriptions and enable premium features
 - **Backend Integration**: This ID allows us to provide additional features from our backend while maintaining end-to-end encryption for your content
 - **Data Separation**: Purchase analytics sent to PostHog use the anonymized ID instead - we cannot match Revenue Cat data with PostHog analytics
 
 ## What We Don't Collect
+
 - Your actual code or conversation content (we can't decrypt it)
 - Personal information beyond what you voluntarily include in encrypted messages
 - Device information beyond anonymous IDs
@@ -39,18 +44,22 @@ Happy Coder is committed to protecting your privacy. This policy explains how we
 ## How We Use Data
 
 ### Encrypted Data
+
 - Stored on our servers solely for synchronization between your devices
 - Transmitted to your paired devices when requested
 - Retained until you delete it through the app
 
 ### Metadata
+
 - Message IDs and timestamps are used to maintain proper message ordering
 - Device IDs enable secure pairing between your devices
 - Session IDs track your Claude Code terminal sessions for synchronization
 - Push notification tokens are stored to enable notifications through Expo's service
 
 ### Push Notifications
+
 Push notifications are sent directly from your devices to each other, not from our backend. This means:
+
 - We never see the content of your notifications
 - Notification content is generated on your device
 - Only device-to-device communication occurs for notification content
@@ -73,6 +82,7 @@ Push notifications are sent directly from your devices to each other, not from o
 ## Your Rights
 
 You have the right to:
+
 - Delete all your data through the app
 - Export your encrypted data
 - Audit our open-source code
@@ -89,11 +99,13 @@ We will notify users of any material changes to this privacy policy through the 
 ## Contact
 
 For privacy concerns or questions:
+
 - GitHub Issues: https://github.com/samsam-oo/unhappy-coder/issues
 
 ## Compliance
 
-Happy Coder is designed with privacy by default and complies with:
+Unhappy Coder is designed with privacy by default and complies with:
+
 - GDPR (General Data Protection Regulation)
 - CCPA (California Consumer Privacy Act)
 - Privacy by Design principles

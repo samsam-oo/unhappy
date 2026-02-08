@@ -1,8 +1,8 @@
-# Happy Coder Content Creator Brief
+# Unhappy Coder Content Creator Brief
 
 ## Key Features
 
-Happy Coder is an open-source mobile app that lets developers control AI coding agents (Claude Code, Codex, Gemini-CLI) from their phone.
+Unhappy Coder is an open-source mobile app that lets developers control AI coding agents (Claude Code, Codex, Gemini-CLI) from their phone.
 
 - Control Claude Code from iOS, Android, or web browser
 - Runs on YOUR hardware (laptop, desktop, server, Raspberry Pi)
@@ -15,18 +15,18 @@ Happy Coder is an open-source mobile app that lets developers control AI coding 
 
 ## Key Value Props
 
-- On Happy Coder, I can manage Claude Code from my phone without paying $600/year
-- On Happy Coder, I never miss when Claude gets stuck on a permission prompt
-- Happy Coder runs on my own computer, not expensive cloud servers
-- On Happy Coder, I can check on long-running tasks without returning to my desk
-- Happy Coder is open source - I can audit, modify, or self-host everything
-- On Happy Coder, I can run multiple agents in parallel and switch between them instantly
-- Happy Coder keeps my code on my machines with end-to-end encryption
-- On Happy Coder, I can keep coding while commuting, eating, or away from my desk
+- On Unhappy Coder, I can manage Claude Code from my phone without paying $600/year
+- On Unhappy Coder, I never miss when Claude gets stuck on a permission prompt
+- Unhappy Coder runs on my own computer, not expensive cloud servers
+- On Unhappy Coder, I can check on long-running tasks without returning to my desk
+- Unhappy Coder is open source - I can audit, modify, or self-host everything
+- On Unhappy Coder, I can run multiple agents in parallel and switch between them instantly
+- Unhappy Coder keeps my code on my machines with end-to-end encryption
+- On Unhappy Coder, I can keep coding while commuting, eating, or away from my desk
 
 ## Example Hooks
 
-- "I saved $600/year by switching from [competitor] to the open-source Happy Coder"
+- "I saved $600/year by switching from [competitor] to the open-source Unhappy Coder"
 - "Claude asked for sudo permission... and I was at the gym"
 - "That moment when your 2-hour refactor gets stuck 5 minutes after you leave"
 - "Running 3 Claude Code agents in parallel from my phone while getting coffee"
@@ -39,7 +39,7 @@ Happy Coder is an open-source mobile app that lets developers control AI coding 
 
 ## Requirements for Content
 
-- Clearly say "Happy Coder" in the video or caption
+- Clearly say "Unhappy Coder" in the video or caption
 - Mention it's free and open source
 - Include link to github.com/samsam-oo/unhappy
 - Show actual usage (QR code connection, mobile control, push notifications)

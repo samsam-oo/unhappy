@@ -29,10 +29,10 @@ yarn unlink:dev    # Remove unhappy-dev symlink
 
 This creates a `unhappy-dev` command in your PATH pointing to your local build, while leaving any npm-installed `unhappy` command untouched.
 
-| Command | Runs |
-|---------|------|
-| `unhappy` | Stable npm version (from `npm install -g unhappy-coder`) |
-| `unhappy-dev` | Local development version (from this repo) |
+| Command       | Runs                                                     |
+| ------------- | -------------------------------------------------------- |
+| `unhappy`     | Stable npm version (from `npm install -g unhappy-coder`) |
+| `unhappy-dev` | Local development version (from this repo)               |
 
 **Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.
 
@@ -56,17 +56,20 @@ npm run setup:dev
 ```
 
 This creates:
+
 - `~/.unhappy/` - Stable version data (production-ready)
 - `~/.unhappy-dev/` - Development version data (for testing changes)
 
 ### Daily Usage
 
 **Stable (production-ready):**
+
 ```bash
 npm run stable:daemon:start
 ```
 
 **Development (testing changes):**
+
 ```bash
 npm run dev:daemon:start
 ```
@@ -74,6 +77,7 @@ npm run dev:daemon:start
 ## Visual Indicators
 
 You'll always see which version you're using:
+
 - `✅ STABLE MODE - Data: ~/.unhappy`
 - `🔧 DEV MODE - Data: ~/.unhappy-dev`
 
@@ -126,15 +130,16 @@ npm run dev:variant doctor
 
 Both versions maintain complete separation:
 
-| Aspect | Stable | Development |
-|--------|--------|-------------|
-| Data Directory | `~/.unhappy/` | `~/.unhappy-dev/` |
-| Settings | `~/.unhappy/settings.json` | `~/.unhappy-dev/settings.json` |
-| Auth Keys | `~/.unhappy/access.key` | `~/.unhappy-dev/access.key` |
-| Daemon State | `~/.unhappy/daemon.state.json` | `~/.unhappy-dev/daemon.state.json` |
-| Logs | `~/.unhappy/logs/` | `~/.unhappy-dev/logs/` |
+| Aspect         | Stable                         | Development                        |
+| -------------- | ------------------------------ | ---------------------------------- |
+| Data Directory | `~/.unhappy/`                  | `~/.unhappy-dev/`                  |
+| Settings       | `~/.unhappy/settings.json`     | `~/.unhappy-dev/settings.json`     |
+| Auth Keys      | `~/.unhappy/access.key`        | `~/.unhappy-dev/access.key`        |
+| Daemon State   | `~/.unhappy/daemon.state.json` | `~/.unhappy-dev/daemon.state.json` |
+| Logs           | `~/.unhappy/logs/`             | `~/.unhappy-dev/logs/`             |
 
 **No conflicts!** Both can run simultaneously with separate:
+
 - Authentication sessions
 - Server connections
 - Daemon processes
@@ -146,6 +151,7 @@ Both versions maintain complete separation:
 For automatic environment switching when entering directories:
 
 1. Install [direnv](https://direnv.net/):
+
    ```bash
    # macOS
    brew install direnv
@@ -155,6 +161,7 @@ For automatic environment switching when entering directories:
    ```
 
 2. Setup direnv for this project:
+
    ```bash
    cp .envrc.example .envrc
    direnv allow
@@ -165,40 +172,49 @@ For automatic environment switching when entering directories:
 ## Troubleshooting
 
 ### Commands not working?
+
 ```bash
 npm install
 ```
 
 ### Permission denied on scripts?
+
 ```bash
 chmod +x scripts/*.cjs
 ```
 
 ### Data directories not created?
+
 ```bash
 npm run setup:dev
 ```
 
 ### Both daemons won't start?
+
 Check port conflicts - each daemon needs its own port. The dev daemon will automatically use a different port from stable.
 
 ### How do I check which version is running?
+
 Look for the visual indicator:
+
 - `✅ STABLE MODE` = stable version
 - `🔧 DEV MODE` = development version
 
 Or check the daemon status:
+
 ```bash
 npm run stable:daemon:status   # Shows ~/.unhappy/ data location
 npm run dev:daemon:status       # Shows ~/.unhappy-dev/ data location
 ```
 
 ### `yarn link:dev` fails with permission denied?
+
 ```bash
 sudo yarn link:dev
 ```
 
 ### `unhappy-dev` command not found after linking?
+
 - Ensure your global npm bin is in PATH: `npm bin -g`
 - Try opening a new terminal window
 - Check the symlink was created: `ls -la $(npm bin -g)/unhappy-dev`
@@ -208,7 +224,7 @@ sudo yarn link:dev
 1. **Use stable for production work** - Your tested, reliable version
 2. **Use dev for testing changes** - Test new features without breaking your workflow
 3. **Run both simultaneously** - Compare behavior side-by-side
-4. **Different accounts** - Use different Happy accounts for dev/stable if needed
+4. **Different accounts** - Use different Unhappy accounts for dev/stable if needed
 5. **Check logs** - Logs are separated: `~/.unhappy/logs/` vs `~/.unhappy-dev/logs/`
 
 ## Example Workflow
@@ -252,11 +268,12 @@ Cross-platform via Node.js - works identically on Windows, macOS, and Linux!
 
 ## Testing Profile Sync Between GUI and CLI
 
-Profile synchronization ensures AI backend configurations created in the Happy mobile/web GUI work seamlessly with the CLI daemon.
+Profile synchronization ensures AI backend configurations created in the Unhappy mobile/web GUI work seamlessly with the CLI daemon.
 
 ### Profile Schema Validation
 
 The profile schema is defined in both repositories:
+
 - **GUI:** `sources/sync/settings.ts` (AIBackendProfileSchema)
 - **CLI:** `src/persistence.ts` (AIBackendProfileSchema)
 
@@ -265,14 +282,16 @@ The profile schema is defined in both repositories:
 ### Testing Profile Sync
 
 1. **Create profile in GUI:**
+
    ```
-   - Open Happy mobile/web app
+   - Open Unhappy mobile/web app
    - Settings → AI Backend Profiles
    - Create new profile with custom environment variables
    - Note the profile ID
    ```
 
 2. **Verify CLI receives profile:**
+
    ```bash
    # Start daemon with dev variant
    npm run dev:daemon:start
@@ -282,6 +301,7 @@ The profile schema is defined in both repositories:
    ```
 
 3. **Test profile-based session spawning:**
+
    ```bash
    # From GUI: Start new session with custom profile
    # Check CLI daemon logs for:
@@ -309,11 +329,13 @@ When modifying profile schemas:
 ### Common Issues
 
 **"Invalid profile" warnings in logs:**
+
 - Check profile has valid UUID (not timestamp)
 - Verify environment variable names match regex: `^[A-Z_][A-Z0-9_]*$`
 - Ensure compatibility.claude or compatibility.codex is true
 
 **Environment variables not expanding:**
+
 - Reference variable must be set in daemon's process.env
 - Check daemon logs for expansion warnings
 - Verify no typos in ${VAR} references
@@ -327,6 +349,7 @@ yarn release       # Interactive version bump, changelog, publish
 ```
 
 This runs tests, builds, and publishes to npm. The published package includes:
+
 - `unhappy` - Main CLI command
 - `happy-mcp` - MCP bridge command
 

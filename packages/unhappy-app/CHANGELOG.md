@@ -20,7 +20,7 @@ This release revolutionizes remote development with Codex integration and Daemon
 
 ## Version 3 - 2025-08-29
 
-This update introduces seamless GitHub integration, bringing your developer identity directly into Happy while maintaining our commitment to privacy and security.
+This update introduces seamless GitHub integration, bringing your developer identity directly into Unhappy while maintaining our commitment to privacy and security.
 
 - Added GitHub account connection through secure OAuth authentication flow
 - Integrated profile synchronization displaying your GitHub avatar, name, and bio
@@ -41,7 +41,7 @@ This update focuses on seamless device connectivity, visual refinements, and int
 
 ## Version 1 - 2025-05-12
 
-Welcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.
+Welcome to Unhappy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.
 
 - Implemented end-to-end encrypted session management ensuring complete privacy
 - Integrated intelligent voice assistant with natural conversation capabilities

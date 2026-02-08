@@ -84,3 +84,4 @@ We're engineers scattered across Bay Area coffee shops and hacker houses, consta
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+This project respectfully acknowledges `slopus/happy` as the original licensed upstream work and preserves attribution to that foundation.

@@ -4,7 +4,6 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "base": "packages/unhappy-app",
     "development": {
       "autoIncrement": true,
       "developmentClient": true,
@@ -47,13 +46,5 @@
       }
     }
   },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "steve@bulkovo.com",
-        "ascAppId": "126165711",
-        "appleTeamId": "466DQWDR8C"
-      }
-    }
-  }
+  "submit": {}
 }

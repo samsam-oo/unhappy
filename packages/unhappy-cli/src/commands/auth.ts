@@ -1,17 +1,30 @@
-import chalk from 'chalk';
-import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence';
-import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
-import { existsSync, rmSync } from 'node:fs';
-import { createInterface } from 'node:readline';
-import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
+import {
+  checkIfDaemonRunningAndCleanupStaleState,
+  stopDaemon,
+} from '@/daemon/controlClient';
+import {
+  clearCredentials,
+  clearMachineId,
+  readCredentials,
+  readSettings,
+} from '@/persistence';
+import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { logger } from '@/ui/logger';
+import chalk from 'chalk';
+import { existsSync, rmSync } from 'node:fs';
 import os from 'node:os';
+import { createInterface } from 'node:readline';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
 
-  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
+  if (
+    !subcommand ||
+    subcommand === 'help' ||
+    subcommand === '--help' ||
+    subcommand === '-h'
+  ) {
     showAuthHelp();
     return;
   }
@@ -38,7 +51,7 @@ function showAuthHelp(): void {
 ${chalk.bold('happy auth')} - Authentication management
 
 ${chalk.bold('Usage:')}
-  happy auth login [--force]    Authenticate with Happy
+  happy auth login [--force]    Authenticate with Unhappy
   happy auth logout             Remove authentication and machine data
   happy auth status             Show authentication status
   happy auth help               Show this help message
@@ -93,11 +106,17 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       console.log(chalk.green('✓ Already authenticated'));
       console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
       console.log(chalk.gray(`  Host: ${os.hostname()}`));
-      console.log(chalk.gray(`  Use 'happy auth login --force' to re-authenticate`));
+      console.log(
+        chalk.gray(`  Use 'happy auth login --force' to re-authenticate`),
+      );
       return;
     } else if (existingCreds && !settings?.machineId) {
-      console.log(chalk.yellow('⚠️  Credentials exist but machine ID is missing'));
-      console.log(chalk.gray('  This can happen if --auth flag was used previously'));
+      console.log(
+        chalk.yellow('⚠️  Credentials exist but machine ID is missing'),
+      );
+      console.log(
+        chalk.gray('  This can happen if --auth flag was used previously'),
+      );
       console.log(chalk.gray('  Fixing by setting up machine...\n'));
     }
   }
@@ -109,7 +128,10 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     console.log(chalk.green('\n✓ Authentication successful'));
     console.log(chalk.gray(`  Machine ID: ${result.machineId}`));
   } catch (error) {
-    console.error(chalk.red('Authentication failed:'), error instanceof Error ? error.message : 'Unknown error');
+    console.error(
+      chalk.red('Authentication failed:'),
+      error instanceof Error ? error.message : 'Unknown error',
+    );
     process.exit(1);
   }
 }
@@ -125,17 +147,22 @@ async function handleAuthLogout(): Promise<void> {
     return;
   }
 
-  console.log(chalk.blue('This will log you out of Happy'));
-  console.log(chalk.yellow('⚠️  You will need to re-authenticate to use Happy again'));
+  console.log(chalk.blue('This will log you out of Unhappy'));
+  console.log(
+    chalk.yellow('⚠️  You will need to re-authenticate to use Unhappy again'),
+  );
 
   // Ask for confirmation
   const rl = createInterface({
     input: process.stdin,
-    output: process.stdout
+    output: process.stdout,
   });
 
   const answer = await new Promise<string>((resolve) => {
-    rl.question(chalk.yellow('Are you sure you want to log out? (y/N): '), resolve);
+    rl.question(
+      chalk.yellow('Are you sure you want to log out? (y/N): '),
+      resolve,
+    );
   });
 
   rl.close();
@@ -146,7 +173,7 @@ async function handleAuthLogout(): Promise<void> {
       try {
         await stopDaemon();
         console.log(chalk.gray('Stopped daemon'));
-      } catch { }
+      } catch {}
 
       // Remove entire happy directory (as current logout does)
       if (existsSync(happyDir)) {
@@ -156,7 +183,9 @@ async function handleAuthLogout(): Promise<void> {
       console.log(chalk.green('✓ Successfully logged out'));
       console.log(chalk.gray('  Run "happy auth login" to authenticate again'));
     } catch (error) {
-      throw new Error(`Failed to logout: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Failed to logout: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   } else {
     console.log(chalk.blue('Logout cancelled'));

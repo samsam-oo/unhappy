@@ -1,11 +1,11 @@
 {
   "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Happy (dev)",
-  "identifier": "com.samsamoo.unhappy.dev",
+  "productName": "Unhappy (Develop)",
+  "identifier": "im.unhappy.app-develop",
   "app": {
     "windows": [
       {
-        "title": "Happy (dev)"
+        "title": "Unhappy (Develop)"
       }
     ]
   }

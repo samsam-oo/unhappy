@@ -27,7 +27,7 @@
     {
       "version": 3,
       "date": "2025-08-29",
-      "summary": "This update introduces seamless GitHub integration, bringing your developer identity directly into Happy while maintaining our commitment to privacy and security.",
+      "summary": "This update introduces seamless GitHub integration, bringing your developer identity directly into Unhappy while maintaining our commitment to privacy and security.",
       "changes": [
         "Added GitHub account connection through secure OAuth authentication flow",
         "Integrated profile synchronization displaying your GitHub avatar, name, and bio",
@@ -36,7 +36,7 @@
         "Added one-tap GitHub disconnect functionality with confirmation protection",
         "Improved account management with clear connection status indicators"
       ],
-      "rawMarkdown": "## Version 3 - 2025-08-29\n\n\nThis update introduces seamless GitHub integration, bringing your developer identity directly into Happy while maintaining our commitment to privacy and security.\n\n- Added GitHub account connection through secure OAuth authentication flow\n- Integrated profile synchronization displaying your GitHub avatar, name, and bio\n- Implemented encrypted token storage on our backend for additional security protection\n- Enhanced settings interface with personalized profile display when connected\n- Added one-tap GitHub disconnect functionality with confirmation protection\n- Improved account management with clear connection status indicators"
+      "rawMarkdown": "## Version 3 - 2025-08-29\n\n\nThis update introduces seamless GitHub integration, bringing your developer identity directly into Unhappy while maintaining our commitment to privacy and security.\n\n- Added GitHub account connection through secure OAuth authentication flow\n- Integrated profile synchronization displaying your GitHub avatar, name, and bio\n- Implemented encrypted token storage on our backend for additional security protection\n- Enhanced settings interface with personalized profile display when connected\n- Added one-tap GitHub disconnect functionality with confirmation protection\n- Improved account management with clear connection status indicators"
     },
     {
       "version": 2,
@@ -54,7 +54,7 @@
     {
       "version": 1,
       "date": "2025-05-12",
-      "summary": "Welcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.",
+      "summary": "Welcome to Unhappy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.",
       "changes": [
         "Implemented end-to-end encrypted session management ensuring complete privacy",
         "Integrated intelligent voice assistant with natural conversation capabilities",
@@ -62,7 +62,7 @@
         "Built seamless real-time synchronization across all your devices",
         "Established native support for iOS, Android, and responsive web interfaces"
       ],
-      "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
+      "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Unhappy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
   "latestVersion": 5

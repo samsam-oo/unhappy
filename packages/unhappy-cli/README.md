@@ -19,6 +19,7 @@ unhappy
 ```
 
 This will:
+
 1. Start a Claude Code session
 2. Display a QR code to connect from your mobile device
 3. Allow real-time session sharing between Claude Code and your mobile app
@@ -32,6 +33,7 @@ unhappy gemini
 Start a Gemini CLI session with remote control capabilities.
 
 **First time setup:**
+
 ```bash
 # Authenticate with Google
 unhappy connect gemini
@@ -92,7 +94,7 @@ unhappy gemini project get          # Show current Google Cloud Project ID
 
 ### Unhappy Configuration
 
-- `UNHAPPY_SERVER_URL` - Custom server URL (default: https://api.cluster-fluster.com)
+- `UNHAPPY_SERVER_URL` - Custom server URL (default: https://api.unhappy.im)
 - `UNHAPPY_WEBAPP_URL` - Custom web app URL (default: https://app.happy.engineering)
 - `UNHAPPY_HOME_DIR` - Custom home directory for Unhappy data (default: ~/.unhappy)
 - `UNHAPPY_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
@@ -127,6 +129,7 @@ unhappy gemini project set your-project-id
 ```
 
 Or use environment variable:
+
 ```bash
 GOOGLE_CLOUD_PROJECT=your-project-id unhappy gemini
 ```

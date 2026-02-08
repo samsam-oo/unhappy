@@ -1,8 +1,8 @@
 /**
- * Happy MCP STDIO Bridge
+ * Unhappy MCP STDIO Bridge
  *
  * Minimal STDIO MCP server exposing a single tool `change_title`.
- * On invocation it forwards the tool call to an existing Happy HTTP MCP server
+ * On invocation it forwards the tool call to an existing Unhappy HTTP MCP server
  * using the StreamableHTTPClientTransport.
  *
  * Configure the target HTTP MCP URL via env var `UNHAPPY_HTTP_MCP_URL` or
@@ -11,10 +11,10 @@
  * Note: This process must not print to stdout as it would break MCP STDIO.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
 function parseArgs(argv: string[]): { url: string | null } {
@@ -37,7 +37,7 @@ async function main() {
   if (!baseUrl) {
     // Write to stderr; never stdout.
     process.stderr.write(
-      '[happy-mcp] Missing target URL. Set UNHAPPY_HTTP_MCP_URL or pass --url <http://127.0.0.1:PORT>\n'
+      '[happy-mcp] Missing target URL. Set UNHAPPY_HTTP_MCP_URL or pass --url <http://127.0.0.1:PORT>\n',
     );
     process.exit(2);
   }
@@ -48,7 +48,7 @@ async function main() {
     if (httpClient) return httpClient;
     const client = new Client(
       { name: 'happy-stdio-bridge', version: '1.0.0' },
-      { capabilities: {} }
+      { capabilities: {} },
     );
 
     const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
@@ -59,7 +59,7 @@ async function main() {
 
   // Create STDIO MCP server
   const server = new McpServer({
-    name: 'Happy MCP Bridge',
+    name: 'Unhappy MCP Bridge',
     version: '1.0.0',
   });
 
@@ -76,18 +76,24 @@ async function main() {
     async (args) => {
       try {
         const client = await ensureHttpClient();
-        const response = await client.callTool({ name: 'change_title', arguments: args });
+        const response = await client.callTool({
+          name: 'change_title',
+          arguments: args,
+        });
         // Pass-through response from HTTP server
         return response as any;
       } catch (error) {
         return {
           content: [
-            { type: 'text', text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}` },
+            {
+              type: 'text',
+              text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}`,
+            },
           ],
           isError: true,
         };
       }
-    }
+    },
   );
 
   // Start STDIO transport
@@ -98,9 +104,10 @@ async function main() {
 // Start and surface fatal errors to stderr only
 main().catch((err) => {
   try {
-    process.stderr.write(`[happy-mcp] Fatal: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(
+      `[happy-mcp] Fatal: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
   } finally {
     process.exit(1);
   }
 });
-

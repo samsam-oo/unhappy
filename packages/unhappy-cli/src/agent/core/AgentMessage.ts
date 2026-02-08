@@ -3,8 +3,8 @@
  *
  * This module defines the message types that flow between:
  * - Agent backends (Gemini, Codex, Claude, etc.)
- * - Happy CLI
- * - Mobile app (via Happy server)
+ * - Unhappy CLI
+ * - Mobile app (via Unhappy server)
  *
  * These types are backend-agnostic and work with any agent that
  * implements the AgentBackend interface.
@@ -152,7 +152,7 @@ export interface PatchApplyEndMessage {
  * Union type of all agent messages.
  *
  * These messages are emitted by agent backends and forwarded
- * to the Happy server and mobile app.
+ * to the Unhappy server and mobile app.
  */
 export type AgentMessage =
   | ModelOutputMessage
@@ -177,7 +177,9 @@ export type AgentMessageHandler = (msg: AgentMessage) => void;
 /**
  * Type guard for model output messages
  */
-export function isModelOutputMessage(msg: AgentMessage): msg is ModelOutputMessage {
+export function isModelOutputMessage(
+  msg: AgentMessage,
+): msg is ModelOutputMessage {
   return msg.type === 'model-output';
 }
 
@@ -198,14 +200,18 @@ export function isToolCallMessage(msg: AgentMessage): msg is ToolCallMessage {
 /**
  * Type guard for tool result messages
  */
-export function isToolResultMessage(msg: AgentMessage): msg is ToolResultMessage {
+export function isToolResultMessage(
+  msg: AgentMessage,
+): msg is ToolResultMessage {
   return msg.type === 'tool-result';
 }
 
 /**
  * Type guard for permission request messages
  */
-export function isPermissionRequestMessage(msg: AgentMessage): msg is PermissionRequestMessage {
+export function isPermissionRequestMessage(
+  msg: AgentMessage,
+): msg is PermissionRequestMessage {
   return msg.type === 'permission-request';
 }
 

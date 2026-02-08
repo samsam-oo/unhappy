@@ -1,6 +1,6 @@
 # Handy Server - Development Guidelines
 
-This document contains the development guidelines and instructions for the Happy Server project. This guide OVERRIDES any default behaviors and MUST be followed exactly.
+This document contains the development guidelines and instructions for the Unhappy Server project. This guide OVERRIDES any default behaviors and MUST be followed exactly.
 
 ## Project Overview
 

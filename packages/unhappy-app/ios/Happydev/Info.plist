@@ -7,7 +7,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>Happy (dev)</string>
+    <string>Unhappy (Develop)</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -22,13 +22,15 @@
     <string>1.6.2</string>
     <key>CFBundleSignature</key>
     <string>????</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Based on original licensed work by slopus/happy. Maintained with attribution by Unhappy Coder contributors.</string>
     <key>CFBundleURLTypes</key>
     <array>
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>happy</string>
-          <string>com.samsamoo.unhappy.dev</string>
+          <string>unhappy</string>
+          <string>im.unhappy.app-develop</string>
         </array>
       </dict>
       <dict>
