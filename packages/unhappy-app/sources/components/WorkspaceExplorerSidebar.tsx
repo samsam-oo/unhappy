@@ -132,6 +132,13 @@ function getSelectedSessionIdFromPathname(pathname: string): string | null {
     return match?.[1] ?? null;
 }
 
+function truncateWithEllipsis(text: string, maxChars: number): string {
+    const t = text.trim();
+    if (t.length <= maxChars) return t;
+    if (maxChars <= 3) return t.slice(0, maxChars);
+    return t.slice(0, maxChars - 3).trimEnd() + '...';
+}
+
 const WORKTREE_SEGMENT_POSIX = '/.unhappy/worktree/';
 const WORKTREE_SEGMENT_WIN = '\\.unhappy\\worktree\\';
 
@@ -448,7 +455,8 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     const navigateToSession = useNavigateToSession();
 
     const sessionStatus = useSessionStatus(props.session);
-    const sessionTitle = props.session.metadata?.summary?.text?.trim() || 'Session';
+    const rawSessionTitle = props.session.metadata?.summary?.text?.trim() || 'Session';
+    const sessionTitle = truncateWithEllipsis(rawSessionTitle, Platform.select({ web: 44, default: 30 }) ?? 30);
 
     // Keep icon colors intentionally monotone. Use selection state (not session status)
     // to slightly increase contrast.
@@ -521,11 +529,9 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             <View style={styles.chevron}>
                 <>
                     <View style={styles.nestRail} />
-                    {props.depth === 2 && (
-                        <View style={styles.treeDotWrap} pointerEvents="none">
-                            <View style={styles.treeDot} />
-                        </View>
-                    )}
+                    <View style={styles.treeDotWrap} pointerEvents="none">
+                        <View style={styles.treeDot} />
+                    </View>
                 </>
             </View>
             <View style={styles.icon}>
@@ -1358,13 +1364,6 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             >
                                                 <Ionicons name="add" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
                                             </Pressable>
-                                            <View style={styles.chevron}>
-                                                <Ionicons
-                                                    name={row.expanded ? 'chevron-down' : 'chevron-forward'}
-                                                    size={UI_ICONS.chevron}
-                                                    color={theme.colors.textSecondary}
-                                                />
-                                            </View>
                                         </View>
                                     </Pressable>
                                 </Animated.View>
@@ -1460,13 +1459,6 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             >
                                                 <Ionicons name="add" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
                                             </Pressable>
-                                            <View style={styles.chevron}>
-                                                <Ionicons
-                                                    name={row.expanded ? 'chevron-down' : 'chevron-forward'}
-                                                    size={UI_ICONS.chevron}
-                                                    color={theme.colors.textSecondary}
-                                                />
-                                            </View>
                                         </View>
                                     </Pressable>
                                 </Animated.View>

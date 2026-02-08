@@ -15,6 +15,7 @@ import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 import { getToolName } from "./utils/getToolName";
+import { buildReadyPushNotification } from "@/utils/readyPushNotification";
 
 interface PermissionsField {
     date: number;
@@ -384,10 +385,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     onReady: () => {
                         if (!pending && session.queue.size() === 0) {
                             session.client.sendSessionEvent({ type: 'ready' });
+                            const ready = buildReadyPushNotification({
+                                agentName: "Claude",
+                                cwd: session.path,
+                            });
                             session.api.push().sendToAllDevices(
-                                'It\'s ready!',
-                                `Claude is waiting for your command`,
-                                { sessionId: session.client.sessionId }
+                                ready.title,
+                                ready.body,
+                                { sessionId: session.client.sessionId, ...ready.data }
                             );
                         }
                     },

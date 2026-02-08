@@ -285,11 +285,11 @@ function SessionHeaderActions(props: {
     const router = useRouter();
     const { theme } = useUnistyles();
 
-    // Keep header clean on small screens.
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
-    const show = Platform.OS === 'web' || isRunningOnMac();
-    if (!show && !isTablet) return null;
+    const isCompactPhone = deviceType === 'phone' && !isTablet && Platform.OS !== 'web' && !isRunningOnMac();
+    const show = Platform.OS === 'web' || isRunningOnMac() || isTablet || isCompactPhone;
+    if (!show) return null;
 
     const machineId = props.session.metadata?.machineId;
     const path = props.session.metadata?.path;
@@ -297,8 +297,28 @@ function SessionHeaderActions(props: {
 
     const worktreeInfo = extractWorktreeInfo(path);
 
-    // Avoid crowding on compact phones.
-    if (deviceType === 'phone' && !isTablet && Platform.OS !== 'web' && !isRunningOnMac()) return null;
+    // On phones, use icon-only buttons to avoid crowding the header.
+    if (isCompactPhone) {
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <HeaderIconButton
+                    label={t('common.open')}
+                    icon={<Ionicons name="folder-outline" size={20} color={theme.colors.header.tint} />}
+                    onPress={() => props.setMenu(props.menu === 'open' ? null : 'open')}
+                />
+                <HeaderIconButton
+                    label={t('common.commit')}
+                    icon={<Ionicons name="git-commit-outline" size={20} color={theme.colors.header.tint} />}
+                    onPress={() => props.setMenu(props.menu === 'commit' ? null : 'commit')}
+                />
+                <HeaderIconButton
+                    label={t('tabs.settings')}
+                    icon={<Ionicons name="settings-outline" size={20} color={theme.colors.header.tint} />}
+                    onPress={() => router.push(`/session/${props.sessionId}/info`)}
+                />
+            </View>
+        );
+    }
 
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -316,8 +336,8 @@ function SessionHeaderActions(props: {
             />
 
             <HeaderIconButton
-                label="More"
-                icon={<Ionicons name="reorder-three-outline" size={18} color={theme.colors.header.tint} />}
+                label={t('tabs.settings')}
+                icon={<Ionicons name="settings-outline" size={18} color={theme.colors.header.tint} />}
                 onPress={() => router.push(`/session/${props.sessionId}/info`)}
             />
         </View>

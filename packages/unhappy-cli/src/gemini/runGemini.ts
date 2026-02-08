@@ -25,6 +25,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
+import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 
@@ -332,10 +333,15 @@ export async function runGemini(opts: {
   const sendReady = () => {
     session.sendSessionEvent({ type: 'ready' });
     try {
+      const ready = buildReadyPushNotification({
+        agentName: 'Gemini',
+        cwd: metadata.path,
+      });
       api
         .push()
-        .sendToAllDevices("It's ready!", 'Gemini is waiting for your command', {
+        .sendToAllDevices(ready.title, ready.body, {
           sessionId: session.sessionId,
+          ...ready.data,
         });
     } catch (pushError) {
       logger.debug('[Gemini] Failed to send ready push', pushError);
