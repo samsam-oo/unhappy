@@ -76,7 +76,21 @@ export abstract class BasePermissionHandler {
         this.session.rpcHandlerManager.registerHandler<PermissionResponse, void>(
             'permission',
             async (response) => {
-                const pending = this.pendingRequests.get(response.id);
+                // Some older Codex MCP payloads used an undefined toolCallId, which became:
+                // - Map key: `undefined` (actual undefined)
+                // - Serialized/JSON key: "undefined" (string)
+                // This fallback prevents a permanent hang if those two drift.
+                let pending = this.pendingRequests.get(response.id);
+                if (!pending && response.id === 'undefined') {
+                    pending = this.pendingRequests.get(undefined as any);
+                    if (pending) {
+                        logger.debug(`${this.getLogPrefix()} Permission response id="undefined" matched legacy pending request keyed by undefined`);
+                        // Normalize key by deleting the legacy entry.
+                        this.pendingRequests.delete(undefined as any);
+                        // Re-insert under the string id so later code paths are consistent.
+                        this.pendingRequests.set('undefined', pending);
+                    }
+                }
                 if (!pending) {
                     logger.debug(`${this.getLogPrefix()} Permission request not found or already resolved`);
                     return;

@@ -1,6 +1,7 @@
 import { useUpdates } from './useUpdates';
 import { useFriendRequests, useRequestedFriends, useFeedItems } from '@/sync/storage';
 import { useChangelog } from './useChangelog';
+import { ENABLE_INBOX } from '@/featureFlags';
 
 // Hook to check if inbox has content to show
 export function useInboxHasContent(): boolean {
@@ -15,5 +16,11 @@ export function useInboxHasContent(): boolean {
     // - Outgoing friend requests pending
     // - Feed items (activity updates)
     // - Unread changelog entries
-    return updateAvailable || friendRequests.length > 0 || requestedFriends.length > 0 || (changelog.hasUnread === true);
+    return (
+        ENABLE_INBOX &&
+        (updateAvailable ||
+            friendRequests.length > 0 ||
+            requestedFriends.length > 0 ||
+            (changelog.hasUnread === true))
+    );
 }

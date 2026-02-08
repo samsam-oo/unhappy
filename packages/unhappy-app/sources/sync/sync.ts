@@ -1518,6 +1518,7 @@ class Sync {
     }
 
     private handleUpdate = async (update: unknown) => {
+        const DEBUG_SYNC = __DEV__ || process.env.EXPO_PUBLIC_DEBUG === '1';
         console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
@@ -1637,6 +1638,15 @@ class Sync {
                 const metadata = updateData.body.metadata && sessionEncryption
                     ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
                     : session.metadata;
+
+                if (DEBUG_SYNC && updateData.body.agentState) {
+                    const reqs = agentState?.requests ? Object.entries(agentState.requests) : [];
+                    if (reqs.length > 0) {
+                        console.log('🔐 [Sync] AgentState requests:', reqs.map(([id, r]) => ({ id, tool: r.tool })));
+                    } else {
+                        console.log('🔐 [Sync] AgentState updated (no pending requests)');
+                    }
+                }
 
                 this.applySessions([{
                     ...session,

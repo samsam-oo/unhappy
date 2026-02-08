@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { execSync } from 'child_process';
+import { randomUUID } from 'crypto';
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
 
@@ -128,18 +129,21 @@ export class CodexMcpClient {
         this.client.setRequestHandler(
             ElicitRequestSchema,
             async (request) => {
-                console.log('[CodexMCP] Received elicitation request:', request.params);
+                logger.debugLargeJson('[CodexMCP] Received elicitation request params:', request.params);
 
                 // Load params
                 const params = request.params as unknown as {
-                    message: string,
-                    codex_elicitation: string,
-                    codex_mcp_tool_call_id: string,
-                    codex_event_id: string,
-                    codex_call_id: string,
-                    codex_command: string[],
-                    codex_cwd: string
-                }
+                    message?: unknown;
+                    codex_elicitation?: unknown;
+                    codex_mcp_tool_call_id?: unknown;
+                    codex_event_id?: unknown;
+                    codex_call_id?: unknown;
+                    codex_command?: unknown;
+                    codex_cwd?: unknown;
+                    // Future/alternate key names (keep permissive).
+                    callId?: unknown;
+                    tool_call_id?: unknown;
+                };
                 const toolName = 'CodexBash';
 
                 // If no permission handler set, deny by default
@@ -151,13 +155,39 @@ export class CodexMcpClient {
                 }
 
                 try {
+                    // Codex versions / MCP servers have varied field names for the tool call id.
+                    // This id MUST match the tool-call id used later in events/results so the app's approval can resolve the pending request.
+                    const candidates = [
+                        params.codex_mcp_tool_call_id,
+                        params.codex_call_id,
+                        params.callId,
+                        params.tool_call_id,
+                        params.codex_event_id, // last resort: better than "undefined"
+                    ];
+                    const toolCallId =
+                        candidates.find((v) => typeof v === 'string' && v.trim().length > 0) as string | undefined;
+
+                    // If Codex doesn't give us a usable id, generate one to avoid
+                    // collisions ("undefined") and infinite waiting on the mobile UI.
+                    const effectiveToolCallId = toolCallId || randomUUID();
+                    if (!toolCallId) {
+                        logger.debug('[CodexMCP] Missing tool call id in elicitation params; generated:', effectiveToolCallId, {
+                            keys: params && typeof params === 'object' ? Object.keys(params as any) : null,
+                        });
+                    } else {
+                        logger.debug('[CodexMCP] Elicitation tool call id selected:', effectiveToolCallId);
+                    }
+
+                    const command = Array.isArray(params.codex_command) ? params.codex_command : [];
+                    const cwd = typeof params.codex_cwd === 'string' ? params.codex_cwd : '';
+
                     // Request permission through the handler
                     const result = await this.permissionHandler.handleToolCall(
-                        params.codex_call_id,
+                        effectiveToolCallId,
                         toolName,
                         {
-                            command: params.codex_command,
-                            cwd: params.codex_cwd
+                            command,
+                            cwd
                         }
                     );
 

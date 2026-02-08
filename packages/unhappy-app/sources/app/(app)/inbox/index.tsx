@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@/icons/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { ENABLE_INBOX } from '@/featureFlags';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -78,6 +79,16 @@ export default function InboxPage() {
     const isTablet = useIsTablet();
     const router = useRouter();
     const headerHeight = useHeaderHeight();
+
+    React.useEffect(() => {
+        if (!ENABLE_INBOX) {
+            router.replace('/');
+        }
+    }, [router]);
+
+    if (!ENABLE_INBOX) {
+        return null;
+    }
 
     // Calculate gradient height: safe area + some extra for the fade effect
     const gradientHeight = insets.top + 40;

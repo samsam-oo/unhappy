@@ -3,7 +3,7 @@ import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { syncCreate } from '@/sync/sync';
 import * as Updates from 'expo-updates';
 import { clearPersistence } from '@/sync/persistence';
-import { Platform } from 'react-native';
+import { DevSettings, Platform } from 'react-native';
 import { trackLogout } from '@/track';
 
 interface AuthContextType {
@@ -51,8 +51,17 @@ export function AuthProvider({ children, initialCredentials }: { children: React
             try {
                 await Updates.reloadAsync();
             } catch (error) {
-                // In dev mode, reloadAsync will throw ERR_UPDATES_DISABLED
-                console.log('Reload failed (expected in dev mode):', error);
+                // In dev mode, reloadAsync often throws ERR_UPDATES_DISABLED.
+                // Fall back to the RN dev reload so logout/server changes actually apply.
+                if (__DEV__) {
+                    try {
+                        DevSettings.reload();
+                        return;
+                    } catch (e) {
+                        console.log('DevSettings.reload failed:', e);
+                    }
+                }
+                console.log('Reload failed:', error);
             }
         }
     };

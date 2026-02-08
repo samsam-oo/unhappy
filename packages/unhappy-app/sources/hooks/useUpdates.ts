@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus, DevSettings, Platform } from 'react-native';
 import * as Updates from 'expo-updates';
 
 export function useUpdates() {
@@ -56,6 +56,14 @@ export function useUpdates() {
             try {
                 await Updates.reloadAsync();
             } catch (error) {
+                if (__DEV__) {
+                    try {
+                        DevSettings.reload();
+                        return;
+                    } catch (e) {
+                        console.error('DevSettings.reload failed:', e);
+                    }
+                }
                 console.error('Error reloading app:', error);
             }
         }

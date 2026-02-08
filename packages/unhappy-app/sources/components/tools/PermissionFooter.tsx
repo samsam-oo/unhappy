@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { AppState, View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
-import { storage } from '@/sync/storage';
+import { storage, useSession, useSocketStatus } from '@/sync/storage';
 import { t } from '@/text';
+import { Modal } from '@/modal';
 
 interface PermissionFooterProps {
     permission: {
@@ -25,18 +26,87 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
+    const session = useSession(sessionId);
+    const controlledByUser = session?.agentState?.controlledByUser === true;
+    const socket = useSocketStatus();
+
+    const DEBUG_PERMISSIONS = __DEV__ || process.env.EXPO_PUBLIC_DEBUG === '1';
+    const permissionId =
+        typeof (permission as any)?.id === 'string' ? String((permission as any).id) : '';
+    const isPermissionIdValid =
+        permissionId.trim().length > 0 && permissionId.trim() !== 'undefined';
+
+    const dbg = (...args: any[]) => {
+        if (!DEBUG_PERMISSIONS) return;
+        // Keep logs greppable and dense.
+        console.log(
+            '[PermissionFooter]',
+            ...args,
+            {
+                sessionId,
+                toolName,
+                permissionId,
+                permissionIdType: typeof (permission as any)?.id,
+                permissionIdValid: isPermissionIdValid,
+                status: permission.status,
+                decision: permission.decision,
+                mode: permission.mode,
+                controlledByUser,
+                socketStatus: socket.status,
+                lastConnectedAt: socket.lastConnectedAt,
+                lastDisconnectedAt: socket.lastDisconnectedAt,
+                loadingButton,
+                loadingAllEdits,
+                loadingForSession,
+            }
+        );
+    };
+
+    // If the app backgrounded mid-RPC, make sure we don't come back with a permanently disabled footer.
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', (next) => {
+            if (next === 'active') {
+                setLoadingButton(null);
+                setLoadingAllEdits(false);
+                setLoadingForSession(false);
+                dbg('AppState active: reset loading');
+            }
+        });
+        return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        dbg('mount');
+        return () => dbg('unmount');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        dbg('permission changed');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [permission.status, permission.reason, permission.mode, permission.allowedTools, permission.decision]);
 
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
+        if (!isPermissionIdValid) {
+            dbg('approve: invalid permission id');
+            Modal.alert(t('common.error'), 'Invalid permission id (check Codex permission handler).');
+            return;
+        }
 
         setLoadingButton('allow');
         try {
-            await sessionAllow(sessionId, permission.id);
+            dbg('approve: start');
+            await sessionAllow(sessionId, permissionId);
+            dbg('approve: ok');
         } catch (error) {
             console.error('Failed to approve permission:', error);
+            dbg('approve: error', error instanceof Error ? error.message : error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingButton(null);
         }
@@ -44,14 +114,23 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     const handleApproveAllEdits = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
+        if (!isPermissionIdValid) {
+            dbg('approveAllEdits: invalid permission id');
+            Modal.alert(t('common.error'), 'Invalid permission id (check permission handler).');
+            return;
+        }
 
         setLoadingAllEdits(true);
         try {
-            await sessionAllow(sessionId, permission.id, 'acceptEdits');
+            dbg('approveAllEdits: start');
+            await sessionAllow(sessionId, permissionId, 'acceptEdits');
             // Update the session permission mode to 'acceptEdits' for future permissions
             storage.getState().updateSessionPermissionMode(sessionId, 'acceptEdits');
+            dbg('approveAllEdits: ok');
         } catch (error) {
             console.error('Failed to approve all edits:', error);
+            dbg('approveAllEdits: error', error instanceof Error ? error.message : error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingAllEdits(false);
         }
@@ -59,9 +138,15 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     const handleApproveForSession = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession || !toolName) return;
+        if (!isPermissionIdValid) {
+            dbg('approveForSession: invalid permission id');
+            Modal.alert(t('common.error'), 'Invalid permission id (check permission handler).');
+            return;
+        }
 
         setLoadingForSession(true);
         try {
+            dbg('approveForSession: start');
             // Special handling for Bash tool - include exact command
             let toolIdentifier = toolName;
             if (toolName === 'Bash' && toolInput?.command) {
@@ -69,9 +154,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                 toolIdentifier = `Bash(${command})`;
             }
 
-            await sessionAllow(sessionId, permission.id, undefined, [toolIdentifier]);
+            await sessionAllow(sessionId, permissionId, undefined, [toolIdentifier]);
+            dbg('approveForSession: ok', { toolIdentifier });
         } catch (error) {
             console.error('Failed to approve for session:', error);
+            dbg('approveForSession: error', error instanceof Error ? error.message : error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingForSession(false);
         }
@@ -79,12 +167,21 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     const handleDeny = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
+        if (!isPermissionIdValid) {
+            dbg('deny: invalid permission id');
+            Modal.alert(t('common.error'), 'Invalid permission id (check permission handler).');
+            return;
+        }
 
         setLoadingButton('deny');
         try {
-            await sessionDeny(sessionId, permission.id);
+            dbg('deny: start');
+            await sessionDeny(sessionId, permissionId);
+            dbg('deny: ok');
         } catch (error) {
             console.error('Failed to deny permission:', error);
+            dbg('deny: error', error instanceof Error ? error.message : error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to deny permission');
         } finally {
             setLoadingButton(null);
         }
@@ -93,12 +190,21 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     // Codex-specific handlers
     const handleCodexApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (!isPermissionIdValid) {
+            dbg('codexApprove: invalid permission id');
+            Modal.alert(t('common.error'), 'Invalid permission id (Codex). Update CLI and restart daemon/session.');
+            return;
+        }
 
         setLoadingButton('allow');
         try {
-            await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved');
+            dbg('codexApprove: start');
+            await sessionAllow(sessionId, permissionId, undefined, undefined, 'approved');
+            dbg('codexApprove: ok');
         } catch (error) {
             console.error('Failed to approve permission:', error);
+            dbg('codexApprove: error', error instanceof Error ? error.message : error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingButton(null);
         }
@@ -106,12 +212,21 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     const handleCodexApproveForSession = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (!isPermissionIdValid) {
+            dbg('codexApproveForSession: invalid permission id');
+            Modal.alert(t('common.error'), 'Invalid permission id (Codex). Update CLI and restart daemon/session.');
+            return;
+        }
 
         setLoadingForSession(true);
         try {
-            await sessionAllow(sessionId, permission.id, undefined, undefined, 'approved_for_session');
+            dbg('codexApproveForSession: start');
+            await sessionAllow(sessionId, permissionId, undefined, undefined, 'approved_for_session');
+            dbg('codexApproveForSession: ok');
         } catch (error) {
             console.error('Failed to approve for session:', error);
+            dbg('codexApproveForSession: error', error instanceof Error ? error.message : error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingForSession(false);
         }
@@ -119,12 +234,21 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     const handleCodexAbort = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (!isPermissionIdValid) {
+            dbg('codexAbort: invalid permission id');
+            Modal.alert(t('common.error'), 'Invalid permission id (Codex). Update CLI and restart daemon/session.');
+            return;
+        }
 
         setLoadingButton('abort');
         try {
-            await sessionDeny(sessionId, permission.id, undefined, undefined, 'abort');
+            dbg('codexAbort: start');
+            await sessionDeny(sessionId, permissionId, undefined, undefined, 'abort');
+            dbg('codexAbort: ok');
         } catch (error) {
             console.error('Failed to abort permission:', error);
+            dbg('codexAbort: error', error instanceof Error ? error.message : error);
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to abort permission');
         } finally {
             setLoadingButton(null);
         }
@@ -172,6 +296,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             gap: Platform.select({ web: 6, default: 8 }),
             alignItems: Platform.select({ web: 'flex-start', default: 'stretch' }) as any,
         },
+        helperText: {
+            marginTop: 6,
+            fontSize: 12,
+            color: theme.colors.textSecondary,
+            lineHeight: 16,
+        },
         optionItem: {
             backgroundColor: theme.colors.surfaceHighest,
             borderRadius: Platform.select({ web: 8, default: 10 }),
@@ -206,6 +336,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         optionRow: {
             flexDirection: 'row',
             alignItems: 'center',
+            gap: 8,
+        },
+        optionRowRight: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginLeft: 'auto',
             gap: 8,
         },
         dot: {
@@ -245,8 +381,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         kind: 'allow' | 'allowAll' | 'deny';
         isSelected: boolean;
         isInactive: boolean;
-        onPress: () => void;
         disabled: boolean;
+        loading?: boolean;
+        disabledReason?: string;
+        onPress: () => void;
     }) {
         const dotStyle =
             props.kind === 'allow'
@@ -255,16 +393,35 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     ? styles.dotAllowAll
                     : styles.dotDeny;
 
+        const onPress = () => {
+            dbg('press', {
+                label: props.label,
+                kind: props.kind,
+                disabled: props.disabled,
+                disabledReason: props.disabledReason,
+            });
+            if (props.disabled) {
+                if (props.disabledReason && props.disabledReason.trim()) {
+                    Modal.alert(t('status.permissionRequired'), props.disabledReason);
+                }
+                return;
+            }
+            props.onPress();
+        };
+
         return (
             <Pressable
-                onPress={props.onPress}
-                disabled={props.disabled}
+                onPress={onPress}
+                onPressIn={() => dbg('pressIn', { label: props.label, kind: props.kind })}
+                hitSlop={8}
                 style={({ pressed }) => [
                     styles.optionItem,
                     pressed && !props.disabled && styles.optionItemPressed,
                     props.isSelected && styles.optionItemSelected,
-                    props.isInactive && styles.optionItemInactive,
+                    (props.isInactive || props.disabled) && styles.optionItemInactive,
                 ]}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: props.disabled, selected: props.isSelected }}
             >
                 <View style={styles.optionRow}>
                     <View style={[styles.dot, dotStyle]} />
@@ -276,12 +433,26 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     >
                         {props.label}
                     </Text>
+                    {props.loading ? (
+                        <View style={styles.optionRowRight}>
+                            {/* Keep simple and platform-native. */}
+                            <Text style={styles.buttonText}>…</Text>
+                        </View>
+                    ) : null}
                 </View>
             </Pressable>
         );
     }
 
     if (isCodex) {
+        const disabledBecauseControlled = controlledByUser
+            ? 'Permissions are shown in terminal only. Reset or send a message to control from app.'
+            : undefined;
+        const disabledBecauseNotPending =
+            !isPending
+                ? `This request is no longer pending (status: ${permission.status}${permission.reason ? `, reason: ${permission.reason}` : ''}).`
+                : undefined;
+
         return (
             <View style={styles.container}>
                 <View style={styles.buttonContainer}>
@@ -291,7 +462,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         isSelected={isCodexApproved}
                         isInactive={isCodexAborted || isCodexApprovedForSession}
                         onPress={handleCodexApprove}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        loading={loadingButton === 'allow'}
+                        disabled={controlledByUser || !isPending || loadingButton !== null || loadingForSession}
+                        disabledReason={disabledBecauseControlled ?? disabledBecauseNotPending}
                     />
                     <OptionButton
                         label={t('codex.permissions.yesForSession')}
@@ -299,7 +472,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         isSelected={isCodexApprovedForSession}
                         isInactive={isCodexAborted || isCodexApproved}
                         onPress={handleCodexApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        loading={loadingForSession}
+                        disabled={controlledByUser || !isPending || loadingButton !== null || loadingForSession}
+                        disabledReason={disabledBecauseControlled ?? disabledBecauseNotPending}
                     />
                     <OptionButton
                         label={t('codex.permissions.stopAndExplain')}
@@ -307,12 +482,27 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         isSelected={isCodexAborted}
                         isInactive={isCodexApproved || isCodexApprovedForSession}
                         onPress={handleCodexAbort}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        loading={loadingButton === 'abort'}
+                        disabled={controlledByUser || !isPending || loadingButton !== null || loadingForSession}
+                        disabledReason={disabledBecauseControlled ?? disabledBecauseNotPending}
                     />
                 </View>
+                {controlledByUser ? (
+                    <Text style={styles.helperText}>
+                        Permissions shown in terminal only. Reset or send a message to control from app.
+                    </Text>
+                ) : null}
             </View>
         );
     }
+
+    const disabledBecauseControlled = controlledByUser
+        ? 'Permissions are shown in terminal only. Reset or send a message to control from app.'
+        : undefined;
+    const disabledBecauseNotPending =
+        !isPending
+            ? `This request is no longer pending (status: ${permission.status}${permission.reason ? `, reason: ${permission.reason}` : ''}).`
+            : undefined;
 
     return (
         <View style={styles.container}>
@@ -323,7 +513,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     isSelected={isApprovedViaAllow}
                     isInactive={isDenied || isApprovedViaAllEdits || isApprovedForSession}
                     onPress={handleApprove}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    loading={loadingButton === 'allow'}
+                    disabled={controlledByUser || !isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    disabledReason={disabledBecauseControlled ?? disabledBecauseNotPending}
                 />
 
                 {(toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit' || toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
@@ -333,7 +525,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         isSelected={isApprovedViaAllEdits}
                         isInactive={isDenied || isApprovedViaAllow || isApprovedForSession}
                         onPress={handleApproveAllEdits}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        loading={loadingAllEdits}
+                        disabled={controlledByUser || !isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        disabledReason={disabledBecauseControlled ?? disabledBecauseNotPending}
                     />
                 )}
 
@@ -344,7 +538,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         isSelected={isApprovedForSession}
                         isInactive={isDenied || isApprovedViaAllow || isApprovedViaAllEdits}
                         onPress={handleApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        loading={loadingForSession}
+                        disabled={controlledByUser || !isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        disabledReason={disabledBecauseControlled ?? disabledBecauseNotPending}
                     />
                 )}
 
@@ -354,9 +550,16 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     isSelected={isDenied}
                     isInactive={isApproved}
                     onPress={handleDeny}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    loading={loadingButton === 'deny'}
+                    disabled={controlledByUser || !isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                    disabledReason={disabledBecauseControlled ?? disabledBecauseNotPending}
                 />
             </View>
+            {controlledByUser ? (
+                <Text style={styles.helperText}>
+                    Permissions shown in terminal only. Reset or send a message to control from app.
+                </Text>
+            ) : null}
         </View>
     );
 };

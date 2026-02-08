@@ -16,6 +16,7 @@ import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 import { Ionicons } from '@/icons/vector-icons';
 import { isRunningOnMac } from '@/utils/platform';
+import { ENABLE_INBOX } from '@/featureFlags';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -195,6 +196,8 @@ export const SidebarView = React.memo(() => {
     const actionIconSize = Platform.select({ web: 20, default: 28 });
     const actionImageSize = Platform.select({ web: 20, default: 32 });
     const showFab = Platform.OS !== 'web' && !isRunningOnMac();
+    // Keep the last rows visible above the bottom FAB.
+    const sidebarBottomPaddingExtra = showFab ? 88 : 0;
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
@@ -255,28 +258,30 @@ export const SidebarView = React.memo(() => {
                                 />
                             </Pressable>
                         )}
-                        <Pressable
-                            onPress={() => router.push('/(app)/inbox')}
-                            hitSlop={15}
-                            style={styles.notificationButton}
-                        >
-                            <Image
-                                source={require('@/assets/images/brutalist/Brutalism 27.png')}
-                                contentFit="contain"
-                                style={[{ width: actionImageSize, height: actionImageSize }]}
-                                tintColor={theme.colors.header.tint}
-                            />
-                            {friendRequests.length > 0 && (
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>
-                                        {friendRequests.length > 99 ? '99+' : friendRequests.length}
-                                    </Text>
-                                </View>
-                            )}
-                            {inboxHasContent && friendRequests.length === 0 && (
-                                <View style={styles.indicatorDot} />
-                            )}
-                        </Pressable>
+                        {ENABLE_INBOX && (
+                            <Pressable
+                                onPress={() => router.push('/(app)/inbox')}
+                                hitSlop={15}
+                                style={styles.notificationButton}
+                            >
+                                <Image
+                                    source={require('@/assets/images/brutalist/Brutalism 27.png')}
+                                    contentFit="contain"
+                                    style={[{ width: actionImageSize, height: actionImageSize }]}
+                                    tintColor={theme.colors.header.tint}
+                                />
+                                {friendRequests.length > 0 && (
+                                    <View style={styles.badge}>
+                                        <Text style={styles.badgeText}>
+                                            {friendRequests.length > 99 ? '99+' : friendRequests.length}
+                                        </Text>
+                                    </View>
+                                )}
+                                {inboxHasContent && friendRequests.length === 0 && (
+                                    <View style={styles.indicatorDot} />
+                                )}
+                            </Pressable>
+                        )}
                         <Pressable
                             onPress={() => router.push('/settings')}
                             hitSlop={15}
@@ -306,7 +311,7 @@ export const SidebarView = React.memo(() => {
                 {realtimeStatus !== 'disconnected' && (
                     <VoiceAssistantStatusBar variant="sidebar" />
                 )}
-                <MainView variant="sidebar" />
+                <MainView variant="sidebar" sidebarBottomPaddingExtra={sidebarBottomPaddingExtra} />
             </View>
             {showFab && <FABWide onPress={handleNewSession} />}
         </>

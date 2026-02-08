@@ -21,9 +21,15 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackFriendsSearch } from '@/track';
+import { ENABLE_INBOX } from '@/featureFlags';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
+    /**
+     * Extra bottom padding applied to the sessions list when rendered in the sidebar variant.
+     * Useful when there is a bottom overlay (e.g. a floating action button).
+     */
+    sidebarBottomPaddingExtra?: number;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -223,7 +229,7 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     return null;
 });
 
-export const MainView = React.memo(({ variant }: MainViewProps) => {
+export const MainView = React.memo(({ variant, sidebarBottomPaddingExtra = 0 }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const isTablet = useIsTablet();
@@ -234,6 +240,13 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     // Tab state management
     // NOTE: Zen tab removed - the feature never got to a useful state
     const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
+
+    // Safety: if the inbox feature is disabled, never allow the inbox tab to become active.
+    React.useEffect(() => {
+        if (!ENABLE_INBOX && activeTab === 'inbox') {
+            setActiveTab('sessions');
+        }
+    }, [activeTab]);
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
@@ -247,7 +260,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const renderTabContent = React.useCallback(() => {
         switch (activeTab) {
             case 'inbox':
-                return <InboxView />;
+                return ENABLE_INBOX ? <InboxView /> : <SessionsListWrapper />;
             case 'settings':
                 return <SettingsViewWrapper />;
             case 'sessions':
@@ -283,7 +296,7 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         // Sessions list
         return (
             <View style={styles.sidebarContentContainer}>
-                <WorkspaceExplorerSidebar />
+                <WorkspaceExplorerSidebar bottomPaddingExtra={sidebarBottomPaddingExtra} />
             </View>
         );
     }
@@ -297,6 +310,10 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     }
 
     // Regular phone mode with tabs
+    const normalizedActiveTab: ActiveTabType = ((activeTab === 'inbox' && !ENABLE_INBOX) || activeTab === 'zen'
+        ? 'sessions'
+        : activeTab) as ActiveTabType;
+
     return (
         <>
             <View style={styles.phoneContainer}>
@@ -309,8 +326,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                     }}
                 >
                     <Header
-                        title={<HeaderTitle activeTab={activeTab as ActiveTabType} />}
-                        headerRight={() => <HeaderRight activeTab={activeTab as ActiveTabType} />}
+                        title={<HeaderTitle activeTab={normalizedActiveTab} />}
+                        headerRight={() => <HeaderRight activeTab={normalizedActiveTab} />}
                         headerLeft={() => <HeaderLogo />}
                         headerShadowVisible={false}
                         headerTransparent={true}
@@ -322,9 +339,9 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 {renderTabContent()}
             </View>
             <TabBar
-                activeTab={activeTab}
+                activeTab={(normalizedActiveTab as unknown) as TabType}
                 onTabPress={handleTabPress}
-                inboxBadgeCount={friendRequests.length}
+                inboxBadgeCount={ENABLE_INBOX ? friendRequests.length : 0}
             />
         </>
     );

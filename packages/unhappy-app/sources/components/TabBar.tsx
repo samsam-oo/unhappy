@@ -7,6 +7,7 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
+import { ENABLE_INBOX } from '@/featureFlags';
 
 export type TabType = 'zen' | 'inbox' | 'sessions' | 'settings';
 
@@ -87,11 +88,15 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
 
     const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
         // NOTE: Zen tab removed - the feature never got to a useful state
-        return [
-            { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') },
+        const out: { key: TabType; icon: any; label: string }[] = [];
+        if (ENABLE_INBOX) {
+            out.push({ key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') });
+        }
+        out.push(
             { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism 15.png'), label: t('tabs.sessions') },
             { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism 9.png'), label: t('tabs.settings') },
-        ];
+        );
+        return out;
     }, []);
 
     return (

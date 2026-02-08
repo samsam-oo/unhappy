@@ -6,9 +6,13 @@ const serverConfigStorage = new MMKV({ id: 'server-config' });
 const SERVER_KEY = 'custom-server-url';
 const DEFAULT_SERVER_URL = 'https://api.unhappy.im';
 
+function getStoredCustomServerUrl(): string | null {
+  return serverConfigStorage.getString(SERVER_KEY) || null;
+}
+
 export function getServerUrl(): string {
   return (
-    serverConfigStorage.getString(SERVER_KEY) ||
+    getStoredCustomServerUrl() ||
     // Support a few historical env var names.
     process.env.EXPO_PUBLIC_HAPPY_SERVER_URL ||
     process.env.EXPO_PUBLIC_UNHAPPY_SERVER_URL ||
@@ -26,7 +30,10 @@ export function setServerUrl(url: string | null): void {
 }
 
 export function isUsingCustomServer(): boolean {
-  return getServerUrl() !== DEFAULT_SERVER_URL;
+  // "Custom" means explicitly overridden by the user (persisted in MMKV),
+  // not "different from the baked-in default". Env vars may intentionally
+  // change the default in dev/preview builds.
+  return !!getStoredCustomServerUrl();
 }
 
 export function getServerInfo(): {

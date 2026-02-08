@@ -80,7 +80,8 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
     }, [auth.credentials, options]);
 
     const connectTerminal = React.useCallback(async () => {
-        const canUseModernScanner = Platform.OS !== 'web' && CameraView.isModernBarcodeScannerAvailable;
+        // See `useConnectAccount` for rationale: prefer in-app scanner on iOS for predictable teardown.
+        const canUseModernScanner = Platform.OS === 'android' && CameraView.isModernBarcodeScannerAvailable;
         const needsCameraPermission = Platform.OS === 'ios' || !canUseModernScanner;
 
         qrDebug('connectTerminal() start', { platform: Platform.OS, canUseModernScanner, needsCameraPermission });
@@ -120,9 +121,14 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
                 } catch (e) {
                     qrDebug('connectTerminal() launchScanner() threw, falling back', { message: (e as any)?.message });
                     console.error(e);
+                    // Ensure we don't keep a stale subscription around if launching fails.
+                    cleanupModernSubscription();
                     router.push('/scanner/terminal');
                 } finally {
-                    cleanupModernSubscription();
+                    // See `useConnectAccount`: iOS resolves `launchScanner()` immediately after presenting.
+                    if (Platform.OS !== 'ios') {
+                        cleanupModernSubscription();
+                    }
                 }
             } else {
                 qrDebug('connectTerminal() modern scanner unavailable, routing to in-app scanner');

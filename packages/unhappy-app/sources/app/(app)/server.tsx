@@ -12,6 +12,7 @@ import {
   validateServerUrl,
 } from '@/sync/serverConfig';
 import { t } from '@/text';
+import { useAuth } from '@/auth/AuthContext';
 import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
@@ -84,6 +85,7 @@ export default function ServerConfigScreen() {
   const { theme } = useUnistyles();
   const styles = stylesheet;
   const router = useRouter();
+  const auth = useAuth();
   const serverInfo = getServerInfo();
   const [inputUrl, setInputUrl] = useState(
     serverInfo.isCustom ? getServerUrl() : '',
@@ -149,10 +151,16 @@ export default function ServerConfigScreen() {
 
     if (confirmed) {
       setServerUrl(inputUrl);
+      // Server changes don't fully apply until the app reloads (socket connection, cached auth).
+      // Logging out ensures we reconnect and re-auth against the selected server.
+      await auth.logout();
     }
   };
 
   const handleReset = async () => {
+    if (!serverInfo.isCustom) {
+      return;
+    }
     const confirmed = await Modal.confirm(
       t('server.resetToDefault'),
       t('server.resetServerDefault'),
@@ -162,6 +170,7 @@ export default function ServerConfigScreen() {
     if (confirmed) {
       setServerUrl(null);
       setInputUrl('');
+      await auth.logout();
     }
   };
 
@@ -215,6 +224,7 @@ export default function ServerConfigScreen() {
                     size="normal"
                     display="inverted"
                     onPress={handleReset}
+                    disabled={!serverInfo.isCustom}
                   />
                 </View>
                 <View style={styles.buttonWrapper}>

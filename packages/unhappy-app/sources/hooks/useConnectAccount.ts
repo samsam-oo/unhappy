@@ -63,7 +63,10 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
     }, [auth.credentials, options]);
 
     const connectAccount = React.useCallback(async () => {
-        const canUseModernScanner = Platform.OS !== 'web' && CameraView.isModernBarcodeScannerAvailable;
+        // iOS "modern scanner" (DataScannerViewController) doesn't provide a reliable JS signal for
+        // user-cancel/dismiss, and can leave the OS camera indicator stuck on some devices.
+        // Prefer the in-app CameraView-based scanner on iOS for predictable teardown.
+        const canUseModernScanner = Platform.OS === 'android' && CameraView.isModernBarcodeScannerAvailable;
         const needsCameraPermission = Platform.OS === 'ios' || !canUseModernScanner;
 
         if (await checkScannerPermissions(needsCameraPermission)) {
@@ -93,10 +96,25 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
                     await CameraView.launchScanner({ barcodeTypes: ['qr'] });
                 } catch (e) {
                     console.error(e);
+                    // Ensure we don't keep a stale subscription around if launching fails.
+                    cleanupModernSubscription();
                     // Fall back to in-app camera view scanner.
                     router.push('/scanner/account');
                 } finally {
-                    cleanupModernSubscription();
+                    /**
+                     * expo-camera behavior differs by platform:
+                     * - Android: `launchScanner()` resolves/rejects when the scan completes/cancels.
+                     * - iOS: `launchScanner()` resolves immediately after presenting the scanner UI.
+                     *
+                     * If we clean up the subscription immediately on iOS, we will miss scan events.
+                     * We instead clean up on:
+                     * - successful scan (in the event handler above)
+                     * - hook unmount (effect below)
+                     * - next scan attempt (cleanup at the top of this block)
+                     */
+                    if (Platform.OS !== 'ios') {
+                        cleanupModernSubscription();
+                    }
                 }
             } else {
                 // iOS < 16 (or devices without modern scanner) need an in-app scanner UI.

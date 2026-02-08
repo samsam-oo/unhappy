@@ -30,11 +30,13 @@ import { AsyncLock } from '@/utils/lock';
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
     handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
+        // Only show push notifications when the app is in the background.
+        // This handler is only used for notifications received while the app is foregrounded.
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
     }),
 });
 

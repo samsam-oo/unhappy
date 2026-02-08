@@ -11,13 +11,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname, useRouter } from 'expo-router';
 import * as React from 'react';
 import { ActivityIndicator, FlatList, LayoutAnimation, Platform, Pressable, UIManager, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+    Easing,
     FadeIn,
     FadeOut,
     LinearTransition,
-    Easing,
     cancelAnimation,
     runOnJS,
     useAnimatedStyle,
@@ -25,60 +24,64 @@ import Animated, {
     withRepeat,
     withTiming,
 } from 'react-native-reanimated';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
 const WORKSPACE_ORDER_KEY = 'happy.workspaceExplorer.workspaceOrder.v1';
 
 const IS_WEB = Platform.OS === 'web';
+const DEFAULT_EXPANDED = false;
 
 // This view is used both in the desktop sidebar and as the phone "Sessions" main screen.
 // Keep it readable/tappable on mobile while still reasonably dense on web.
 const UI_METRICS = {
-    sectionHeaderPaddingV: IS_WEB ? 8 : 10,
-    sectionHeaderMinHeight: IS_WEB ? 36 : 44,
+    // Unify web + native. The prior web-compact values made the sidebar feel like a
+    // different component. Prefer one consistent layout.
+    sectionHeaderPaddingV: 10,
+    sectionHeaderMinHeight: 44,
 
-    rowMinHeight: IS_WEB ? 34 : 48,
-    rowPaddingV: IS_WEB ? 7 : 10,
-    rowPaddingH: IS_WEB ? 10 : 12,
-    rowMarginV: IS_WEB ? 1 : 2,
-    rowRadius: IS_WEB ? 8 : 10,
-    rowGap: IS_WEB ? 9 : 10,
+    rowMinHeight: 48,
+    rowPaddingV: 10,
+    rowPaddingH: 12,
+    rowMarginV: 2,
+    rowRadius: 10,
+    rowGap: 10,
 
-    selectionBarInsetV: IS_WEB ? 7 : 10,
+    selectionBarInsetV: 10,
 
-    actionButtonSize: IS_WEB ? 28 : 34,
-    actionButtonRadius: IS_WEB ? 7 : 9,
+    actionButtonSize: 34,
+    actionButtonRadius: 9,
 
-    chevronWidth: IS_WEB ? 18 : 20,
-    iconWidth: IS_WEB ? 20 : 22,
+    chevronWidth: 20,
+    iconWidth: 22,
 
-    // On mobile we prefer inset rows (box moves in), not just indented content.
-    childIndent: IS_WEB ? 6 : 0,
-    grandChildIndent: IS_WEB ? 32 : 0,
-    rowInset1: IS_WEB ? 0 : 16,
-    rowInset2: IS_WEB ? 0 : 40,
+    // Prefer inset rows (box moves in), not just indented content.
+    childIndent: 0,
+    grandChildIndent: 0,
+    rowInset1: 16,
+    rowInset2: 40,
 
-    nestRailInsetV: IS_WEB ? 6 : 10,
-    nestRailWidth: IS_WEB ? 1 : 2,
+    nestRailInsetV: 10,
+    nestRailWidth: 2,
 
-    titleFontSize: IS_WEB ? 14 : 16,
-    titleLineHeight: IS_WEB ? 18 : 20,
-    subtitleFontSize: IS_WEB ? 12 : 13,
-    subtitleLineHeight: IS_WEB ? 16 : 18,
-    subtitleMarginTop: IS_WEB ? 2 : 3,
+    titleFontSize: 16,
+    titleLineHeight: 20,
+    subtitleFontSize: 13,
+    subtitleLineHeight: 18,
+    subtitleMarginTop: 3,
 } as const;
 
 const UI_ICONS = {
-    spinner: IS_WEB ? 14 : 16,
-    rowIcon: IS_WEB ? 18 : 20,
-    chevron: IS_WEB ? 16 : 18,
-    folder: IS_WEB ? 16 : 18,
-    gitBranch: IS_WEB ? 12 : 13,
-    headerAdd: IS_WEB ? 18 : 20,
-    headerCollapse: IS_WEB ? 18 : 20,
-    rowAdd: IS_WEB ? 18 : 20,
-    reorderHandle: IS_WEB ? 18 : 20,
+    spinner: 16,
+    rowIcon: 20,
+    chevron: 18,
+    folder: 18,
+    gitBranch: 13,
+    headerAdd: 20,
+    headerCollapse: 20,
+    rowAdd: 20,
+    reorderHandle: 20,
 } as const;
 
 function safeParseJson<T>(value: string | null): T | null {
@@ -88,6 +91,31 @@ function safeParseJson<T>(value: string | null): T | null {
     } catch {
         return null;
     }
+}
+
+function migrateExpandedMap(stored: unknown): Record<string, boolean> | null {
+    if (!stored || typeof stored !== 'object') return null;
+    const entries = Object.entries(stored as Record<string, unknown>);
+    const migrated: Record<string, boolean> = {};
+    for (const [k, v] of entries) {
+        if (typeof v !== 'boolean') continue;
+        // Migration: older versions stored keys as `${machineId}:${path}` without a type prefix.
+        if (k.startsWith('p:') || k.startsWith('w:')) migrated[k] = v;
+        else migrated[`p:${k}`] = v;
+    }
+    return migrated;
+}
+
+function sessionNeedsAttention(session: Session): boolean {
+    if (session.unread) return true;
+    const requests = session.agentState?.requests;
+    return !!requests && Object.keys(requests).length > 0;
+}
+
+function formatBadgeCount(count: number): string {
+    if (count <= 0) return '';
+    if (count > 99) return '99+';
+    return String(count);
 }
 
 function getProjectStableId(project: Project): string {
@@ -203,8 +231,8 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderBottomColor: theme.colors.chrome.panelBorder,
     },
     sectionTitle: {
-        fontSize: IS_WEB ? 11 : 12,
-        lineHeight: IS_WEB ? 14 : 16,
+        fontSize: 12,
+        lineHeight: 16,
         fontWeight: '700',
         color: theme.colors.groupped.sectionTitle,
         letterSpacing: 0.7,
@@ -229,8 +257,8 @@ const stylesheet = StyleSheet.create((theme) => ({
 
     list: {
         // Avoid a "double padding" feel: the header already provides vertical rhythm.
-        paddingTop: IS_WEB ? 4 : 8,
-        paddingBottom: IS_WEB ? 6 : 10,
+        paddingTop: 8,
+        paddingBottom: 10,
     },
 
     row: {
@@ -306,7 +334,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         left: Math.floor(UI_METRICS.chevronWidth / 2),
         width: UI_METRICS.nestRailWidth,
         backgroundColor: theme.colors.chrome.panelBorder,
-        opacity: IS_WEB ? 0.9 : 0.75,
+        opacity: 0.75,
     },
     // Mobile: use a dot marker instead of an "elbow" underscore.
     treeDotWrap: {
@@ -323,18 +351,34 @@ const stylesheet = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.chrome.panelBorder,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.surface,
-        opacity: IS_WEB ? 0 : 0.95,
+        opacity: 0.95,
     },
     treeDotWorktree: {
         width: 5,
         height: 5,
         borderRadius: 3,
-        opacity: IS_WEB ? 0 : 1,
+        opacity: 1,
     },
     projectActions: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 2,
+        gap: 6,
+    },
+    badge: {
+        minWidth: 18,
+        height: 18,
+        paddingHorizontal: 6,
+        borderRadius: 999,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.status.error,
+    },
+    badgeText: {
+        fontSize: 12,
+        lineHeight: 16,
+        fontWeight: '800',
+        color: '#FFFFFF',
+        ...Typography.default('semiBold'),
     },
     rowActionButton: {
         width: UI_METRICS.actionButtonSize,
@@ -397,7 +441,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     session: Session;
     selected: boolean;
     depth: 1 | 2;
-    mobileChromeStyle?: any;
+    groupChromeStyle?: any;
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -466,9 +510,8 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             onPress={() => navigateToSession(props.session.id)}
             style={({ hovered, pressed }: any) => [
                 styles.row,
-                !IS_WEB && props.mobileChromeStyle,
-                !IS_WEB && (props.depth === 2 ? styles.mobileIndent2 : styles.mobileIndent1),
-                IS_WEB && (props.depth === 2 ? styles.grandChildIndent : styles.childIndent),
+                props.groupChromeStyle,
+                props.depth === 2 ? styles.mobileIndent2 : styles.mobileIndent1,
                 props.selected && styles.rowActive,
                 (IS_WEB && hovered && !props.selected) && styles.rowHover,
                 (pressed && !props.selected) && styles.rowPressed,
@@ -476,16 +519,14 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
         >
             {props.selected && <View style={styles.selectionBar} />}
             <View style={styles.chevron}>
-                {!IS_WEB && (
-                    <>
-                        <View style={styles.nestRail} />
-                        {props.depth === 2 && (
-                            <View style={styles.treeDotWrap} pointerEvents="none">
-                                <View style={styles.treeDot} />
-                            </View>
-                        )}
-                    </>
-                )}
+                <>
+                    <View style={styles.nestRail} />
+                    {props.depth === 2 && (
+                        <View style={styles.treeDotWrap} pointerEvents="none">
+                            <View style={styles.treeDot} />
+                        </View>
+                    )}
+                </>
             </View>
             <View style={styles.icon}>
                 {sessionStatus.state === 'thinking'
@@ -506,7 +547,8 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     );
 });
 
-export function WorkspaceExplorerSidebar() {
+export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }) {
+    const bottomPaddingExtra = props?.bottomPaddingExtra ?? 0;
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
@@ -526,23 +568,33 @@ export function WorkspaceExplorerSidebar() {
 
     const initialExpanded = React.useMemo(() => {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            const stored = safeParseJson<Record<string, boolean>>(
-                window.localStorage.getItem(LOCAL_STORAGE_KEY)
-            );
-            if (stored && typeof stored === 'object') {
-                // Migration: older versions stored keys as `${machineId}:${path}` without a type prefix.
-                const migrated: Record<string, boolean> = {};
-                for (const [k, v] of Object.entries(stored)) {
-                    if (k.startsWith('p:') || k.startsWith('w:')) migrated[k] = v;
-                    else migrated[`p:${k}`] = v;
-                }
-                return migrated;
-            }
+            const stored = safeParseJson<unknown>(window.localStorage.getItem(LOCAL_STORAGE_KEY));
+            const migrated = migrateExpandedMap(stored);
+            if (migrated) return migrated;
         }
         return {} as Record<string, boolean>;
     }, []);
 
     const [expanded, setExpanded] = React.useState<Record<string, boolean>>(initialExpanded);
+
+    React.useEffect(() => {
+        if (Platform.OS === 'web') return;
+        let cancelled = false;
+        void (async () => {
+            try {
+                const raw = await AsyncStorage.getItem(LOCAL_STORAGE_KEY);
+                const parsed = safeParseJson<unknown>(raw);
+                const migrated = migrateExpandedMap(parsed);
+                if (cancelled) return;
+                if (migrated) setExpanded(migrated);
+            } catch {
+                // ignore
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const listContainerRef = React.useRef<View>(null);
     const listPageYRef = React.useRef(0);
@@ -645,11 +697,11 @@ export function WorkspaceExplorerSidebar() {
             const next = { ...prev };
 
             const projectKey = getExpandedKey('project', baseStableId);
-            if (next[projectKey] === false) next[projectKey] = true;
+            if (next[projectKey] !== true) next[projectKey] = true;
 
             if (isWorktreePath(path)) {
                 const worktreeKey = getExpandedKey('worktree', stableId);
-                if (next[worktreeKey] === false) next[worktreeKey] = true;
+                if (next[worktreeKey] !== true) next[worktreeKey] = true;
             }
 
             return next;
@@ -657,9 +709,14 @@ export function WorkspaceExplorerSidebar() {
     }, [selectedSessionId, sessionById]);
 
     React.useEffect(() => {
-        if (Platform.OS !== 'web' || typeof window === 'undefined') return;
         try {
-            window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(expanded));
+            const raw = JSON.stringify(expanded);
+            if (Platform.OS === 'web') {
+                if (typeof window === 'undefined') return;
+                window.localStorage.setItem(LOCAL_STORAGE_KEY, raw);
+                return;
+            }
+            void AsyncStorage.setItem(LOCAL_STORAGE_KEY, raw);
         } catch {
             // ignore
         }
@@ -670,7 +727,7 @@ export function WorkspaceExplorerSidebar() {
         if (Platform.OS !== 'web') {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         }
-        setExpanded((prev) => ({ ...prev, [expandedKey]: !(prev[expandedKey] ?? true) }));
+        setExpanded((prev) => ({ ...prev, [expandedKey]: !(prev[expandedKey] ?? DEFAULT_EXPANDED) }));
     }, []);
 
     const projectGroups: ProjectGroup[] = React.useMemo(() => {
@@ -782,7 +839,7 @@ export function WorkspaceExplorerSidebar() {
 
     const allExpanded = React.useMemo(() => {
         if (!allExpandableKeys.length) return true;
-        return allExpandableKeys.every((k) => (expanded[k] ?? true) === true);
+        return allExpandableKeys.every((k) => (expanded[k] ?? DEFAULT_EXPANDED) === true);
     }, [allExpandableKeys, expanded]);
 
     const toggleAllExpanded = React.useCallback(() => {
@@ -857,7 +914,7 @@ export function WorkspaceExplorerSidebar() {
         }
         const projectKey = getExpandedKey('project', stableId);
         setExpanded((prev) => {
-            const isExpanded = prev[projectKey] ?? true;
+            const isExpanded = prev[projectKey] ?? DEFAULT_EXPANDED;
             if (!isExpanded) return prev;
             return { ...prev, [projectKey]: false };
         });
@@ -939,7 +996,7 @@ export function WorkspaceExplorerSidebar() {
         for (const group of orderedProjectGroups) {
             const projectStableId = group.stableId;
             const projectExpandedKey = getExpandedKey('project', projectStableId);
-            const isProjectExpanded = expanded[projectExpandedKey] ?? true;
+            const isProjectExpanded = expanded[projectExpandedKey] ?? DEFAULT_EXPANDED;
 
             out.push({
                 type: 'project',
@@ -969,7 +1026,7 @@ export function WorkspaceExplorerSidebar() {
             for (const wt of worktrees) {
                 const wtStableId = getProjectStableId(wt);
                 const wtExpandedKey = getExpandedKey('worktree', wtStableId);
-                const isWorktreeExpanded = expanded[wtExpandedKey] ?? true;
+                const isWorktreeExpanded = expanded[wtExpandedKey] ?? DEFAULT_EXPANDED;
 
                 out.push({
                     type: 'worktree',
@@ -999,6 +1056,35 @@ export function WorkspaceExplorerSidebar() {
 
         return out;
     }, [expanded, orderedProjectGroups, sessionById, sessions]);
+
+    const attentionCountByStableId = React.useMemo(() => {
+        const map = new Map<string, number>();
+
+        for (const group of projectGroups) {
+            let groupCount = 0;
+
+            const rootSessions = group.project.sessionIds || [];
+            for (const id of rootSessions) {
+                const s = sessionById.get(id);
+                if (s && sessionNeedsAttention(s)) groupCount++;
+            }
+
+            for (const wt of group.worktrees) {
+                const wtStableId = getProjectStableId(wt);
+                let wtCount = 0;
+                for (const id of wt.sessionIds || []) {
+                    const s = sessionById.get(id);
+                    if (s && sessionNeedsAttention(s)) wtCount++;
+                }
+                map.set(wtStableId, wtCount);
+                groupCount += wtCount;
+            }
+
+            map.set(group.stableId, groupCount);
+        }
+
+        return map;
+    }, [projectGroups, sessionById]);
 
     return (
         <View style={styles.container}>
@@ -1056,7 +1142,9 @@ export function WorkspaceExplorerSidebar() {
                         if (row.type === 'worktree') return `w:${getProjectStableId(row.project)}`;
                         return `s:${row.session.id}`;
                     }}
-                    contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 16 }]}
+                    // This view can be rendered with a bottom overlay (e.g. a floating "new session" button on tablet).
+                    // Add extra bottom padding so the last rows can scroll above the overlay.
+                    contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 16 + bottomPaddingExtra }]}
                     scrollEnabled={!draggingStableId}
                     removeClippedSubviews={false}
                     onScroll={(e) => {
@@ -1073,34 +1161,32 @@ export function WorkspaceExplorerSidebar() {
                         const isUngrouped = groupStableId.startsWith('u:');
                         const groupAccent = !isUngrouped && (row.type !== 'project' || row.expanded);
 
-                        const mobileChromeStyle = !IS_WEB
-                            ? ({
-                                // Make each workspace feel like a single expandable "card" on mobile.
-                                marginVertical: 0,
-                                marginTop: isGroupStart ? 6 : 0,
-                                marginBottom: isGroupEnd ? 6 : 0,
-                                borderRadius: 0,
-                                borderTopLeftRadius: isGroupStart ? UI_METRICS.rowRadius : 0,
-                                borderTopRightRadius: isGroupStart ? UI_METRICS.rowRadius : 0,
-                                borderBottomLeftRadius: isGroupEnd ? UI_METRICS.rowRadius : 0,
-                                borderBottomRightRadius: isGroupEnd ? UI_METRICS.rowRadius : 0,
-                                borderTopWidth: StyleSheet.hairlineWidth,
-                                borderBottomWidth: isGroupEnd ? StyleSheet.hairlineWidth : 0,
-                                borderRightWidth: StyleSheet.hairlineWidth,
-                                borderLeftWidth: groupAccent ? 3 : StyleSheet.hairlineWidth,
-                                borderColor: theme.colors.chrome.panelBorder,
-                                // Keep the expand/collapse "group stripe" neutral on mobile (avoid loud blue).
-                                borderLeftColor: groupAccent ? theme.colors.groupped.sectionTitle : theme.colors.chrome.panelBorder,
-                                backgroundColor:
-                                    row.type === 'project' && row.expanded
-                                        ? theme.colors.surfaceHighest
-                                        : row.type === 'worktree' && row.expanded
+                        const groupChromeStyle = {
+                            // Make each workspace feel like a single expandable "card".
+                            marginVertical: 0,
+                            marginTop: isGroupStart ? 6 : 0,
+                            marginBottom: isGroupEnd ? 6 : 0,
+                            borderRadius: 0,
+                            borderTopLeftRadius: isGroupStart ? UI_METRICS.rowRadius : 0,
+                            borderTopRightRadius: isGroupStart ? UI_METRICS.rowRadius : 0,
+                            borderBottomLeftRadius: isGroupEnd ? UI_METRICS.rowRadius : 0,
+                            borderBottomRightRadius: isGroupEnd ? UI_METRICS.rowRadius : 0,
+                            borderTopWidth: StyleSheet.hairlineWidth,
+                            borderBottomWidth: isGroupEnd ? StyleSheet.hairlineWidth : 0,
+                            borderRightWidth: StyleSheet.hairlineWidth,
+                            borderLeftWidth: groupAccent ? 3 : StyleSheet.hairlineWidth,
+                            borderColor: theme.colors.chrome.panelBorder,
+                            // Keep the expand/collapse "group stripe" neutral.
+                            borderLeftColor: groupAccent ? theme.colors.groupped.sectionTitle : theme.colors.chrome.panelBorder,
+                            backgroundColor:
+                                row.type === 'project' && row.expanded
+                                    ? theme.colors.surfaceHighest
+                                    : row.type === 'worktree' && row.expanded
+                                        ? theme.colors.surfaceHigh
+                                        : row.type === 'session' && row.depth === 2
                                             ? theme.colors.surfaceHigh
-                                            : row.type === 'session' && row.depth === 2
-                                                ? theme.colors.surfaceHigh
-                                        : theme.colors.surface,
-                            } as const)
-                            : null;
+                                    : theme.colors.surface,
+                        } as const;
 
                         if (row.type === 'project') {
                             const stableId = getProjectStableId(row.project);
@@ -1108,6 +1194,8 @@ export function WorkspaceExplorerSidebar() {
                             const title = getBasename(row.project.key.path);
                             const hasGitStatus = row.project.gitStatus != null;
                             const branch = row.project.gitStatus?.branch;
+                            const attentionCount = attentionCountByStableId.get(stableId) ?? 0;
+                            const badgeText = formatBadgeCount(attentionCount);
                             const machineName =
                                 row.project.machineMetadata?.displayName ||
                                 row.project.machineMetadata?.host ||
@@ -1210,7 +1298,7 @@ export function WorkspaceExplorerSidebar() {
                                         }}
                                         style={({ hovered, pressed }: any) => [
                                             styles.row,
-                                            !IS_WEB && mobileChromeStyle,
+                                            groupChromeStyle,
                                             (IS_WEB && hovered) && styles.rowHover,
                                             pressed && styles.rowPressed,
                                             draggingStableId === stableId && { opacity: 0 },
@@ -1244,6 +1332,14 @@ export function WorkspaceExplorerSidebar() {
                                             </View>
                                         </View>
                                         <View style={styles.projectActions}>
+                                            {attentionCount > 0 && (
+                                                <View
+                                                    style={styles.badge}
+                                                    accessibilityLabel={`${attentionCount} notifications`}
+                                                >
+                                                    <Text style={styles.badgeText}>{badgeText}</Text>
+                                                </View>
+                                            )}
                                             <Pressable
                                                 hitSlop={10}
                                                 onPress={(e: any) => {
@@ -1282,6 +1378,8 @@ export function WorkspaceExplorerSidebar() {
                             const title = getBasename(row.project.key.path);
                             const hasGitStatus = row.project.gitStatus != null;
                             const branch = row.project.gitStatus?.branch;
+                            const attentionCount = attentionCountByStableId.get(stableId) ?? 0;
+                            const badgeText = formatBadgeCount(attentionCount);
                             const machineName =
                                 row.project.machineMetadata?.displayName ||
                                 row.project.machineMetadata?.host ||
@@ -1297,23 +1395,20 @@ export function WorkspaceExplorerSidebar() {
                                         onPress={() => toggleExpanded(expandedKey)}
                                         style={({ hovered, pressed }: any) => [
                                             styles.row,
-                                            !IS_WEB && mobileChromeStyle,
-                                            !IS_WEB && styles.mobileIndent1,
-                                            IS_WEB && styles.childIndent,
+                                            groupChromeStyle,
+                                            styles.mobileIndent1,
                                             (IS_WEB && hovered) && styles.rowHover,
                                             pressed && styles.rowPressed,
                                         ]}
                                     >
                                         {/* Keep alignment consistent with session rows (which reserve a chevron slot). */}
                                         <View style={styles.chevron}>
-                                            {!IS_WEB && (
-                                                <>
-                                                    <View style={styles.nestRail} />
-                                                    <View style={styles.treeDotWrap} pointerEvents="none">
-                                                        <View style={[styles.treeDot, styles.treeDotWorktree]} />
-                                                    </View>
-                                                </>
-                                            )}
+                                            <>
+                                                <View style={styles.nestRail} />
+                                                <View style={styles.treeDotWrap} pointerEvents="none">
+                                                    <View style={[styles.treeDot, styles.treeDotWorktree]} />
+                                                </View>
+                                            </>
                                         </View>
                                         <View style={styles.icon}>
                                             <Octicons name="file-directory" size={UI_ICONS.folder} color={theme.colors.textSecondary} />
@@ -1340,6 +1435,14 @@ export function WorkspaceExplorerSidebar() {
                                             </View>
                                         </View>
                                         <View style={styles.projectActions}>
+                                            {attentionCount > 0 && (
+                                                <View
+                                                    style={styles.badge}
+                                                    accessibilityLabel={`${attentionCount} notifications`}
+                                                >
+                                                    <Text style={styles.badgeText}>{badgeText}</Text>
+                                                </View>
+                                            )}
                                             <Pressable
                                                 hitSlop={10}
                                                 onPress={(e: any) => {
@@ -1381,7 +1484,7 @@ export function WorkspaceExplorerSidebar() {
                         session={row.session}
                         selected={isSelected}
                         depth={row.depth}
-                        mobileChromeStyle={mobileChromeStyle}
+                        groupChromeStyle={groupChromeStyle}
                     />
                 </Animated.View>
             );

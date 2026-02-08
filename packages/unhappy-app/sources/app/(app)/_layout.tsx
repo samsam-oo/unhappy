@@ -7,6 +7,7 @@ import { Platform, TouchableOpacity, Text } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { ENABLE_INBOX } from '@/featureFlags';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -48,14 +49,16 @@ export default function RootLayout() {
                     headerTitle: ''
                 }}
             />
-            <Stack.Screen
-                name="inbox/index"
-                options={{
-                    headerShown: false,
-                    headerTitle: t('tabs.inbox'),
-                    headerBackTitle: t('common.home')
-                }}
-            />
+            {ENABLE_INBOX && (
+                <Stack.Screen
+                    name="inbox/index"
+                    options={{
+                        headerShown: false,
+                        headerTitle: t('tabs.inbox'),
+                        headerBackTitle: t('common.home')
+                    }}
+                />
+            )}
             <Stack.Screen
                 name="settings/index"
                 options={{
