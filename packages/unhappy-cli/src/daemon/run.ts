@@ -350,7 +350,9 @@ export async function startDaemon(): Promise<void> {
             const codexHomeDir = tmp.dirSync();
 
             // Write the token to the temporary directory
-            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+            // Must be written before spawning Codex; otherwise Codex can race and
+            // start unauthenticated (intermittent failures).
+            await fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
 
             // Set the environment variable for Codex
             authEnv.CODEX_HOME = codexHomeDir.name;

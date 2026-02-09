@@ -6,6 +6,8 @@ export interface CodexSessionConfig {
     prompt: string;
     'approval-policy'?: 'untrusted' | 'on-failure' | 'on-request' | 'never';
     'base-instructions'?: string;
+    'compact-prompt'?: string;
+    'developer-instructions'?: string;
     config?: Record<string, any>;
     cwd?: string;
     'include-plan-tool'?: boolean;
@@ -15,11 +17,15 @@ export interface CodexSessionConfig {
 }
 
 export interface CodexToolResponse {
-    content: Array<{
-        type: 'text' | 'image' | 'resource';
-        text?: string;
-        data?: any;
-        mimeType?: string;
-    }>;
+    content: Array<
+        | { type: 'text'; text: string }
+        | { type: 'image'; data: unknown; mimeType?: string }
+        | { type: 'resource'; data: unknown; mimeType?: string }
+    >;
+    structuredContent?: {
+        threadId: string;
+        content: string;
+        [key: string]: unknown;
+    };
     isError?: boolean;
 }

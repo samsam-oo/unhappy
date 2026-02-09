@@ -569,8 +569,29 @@ export async function runCodex(opts: {
     session.sendCodexMessage(message);
   });
   client.setPermissionHandler(permissionHandler);
-  client.setHandler((msg) => {
-    logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
+  client.setHandler((msg: any) => {
+    // Avoid logging the full raw Codex event payloads (can be huge and include prompt contents).
+    const msgType = typeof msg?.type === 'string' ? msg.type : 'unknown';
+    const callIdForLog =
+      typeof (msg as any)?.call_id === 'string' ? (msg as any).call_id : null;
+    const threadIdForLog =
+      typeof (msg as any)?.thread_id === 'string'
+        ? (msg as any).thread_id
+        : typeof (msg as any)?.session_id === 'string'
+          ? (msg as any).session_id
+          : null;
+
+    if (
+      msgType === 'raw_response_item' ||
+      msgType === 'agent_message_delta' ||
+      msgType === 'agent_message_content_delta'
+    ) {
+      logger.debug(`[Codex] MCP event: ${msgType}`);
+    } else {
+      logger.debug(
+        `[Codex] MCP event: ${msgType}${callIdForLog ? ` call_id=${callIdForLog}` : ''}${threadIdForLog ? ` thread_id=${threadIdForLog}` : ''}`,
+      );
+    }
 
     // Best-effort: persist session id as soon as we learn it (handles abrupt process death).
     // Avoid awaiting in the hot path; fire and forget.
@@ -578,18 +599,67 @@ export async function runCodex(opts: {
 
     // Add messages to the ink UI buffer based on message type
     if (msg.type === 'agent_message') {
-      messageBuffer.addMessage(msg.message, 'assistant');
+      messageBuffer.addMessage(
+        typeof msg.message === 'string' ? msg.message : String(msg.message),
+        'assistant',
+      );
     } else if (msg.type === 'agent_reasoning_delta') {
       // Skip reasoning deltas in the UI to reduce noise
     } else if (msg.type === 'agent_reasoning') {
+      const text = typeof msg.text === 'string' ? msg.text : String(msg.text);
       messageBuffer.addMessage(
-        `[Thinking] ${msg.text.substring(0, 100)}...`,
+        `[Thinking] ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`,
         'system',
       );
     } else if (msg.type === 'exec_command_begin') {
-      messageBuffer.addMessage(`Executing: ${msg.command}`, 'tool');
+      const command =
+        Array.isArray(msg.parsed_cmd) &&
+        msg.parsed_cmd.length > 0 &&
+        typeof msg.parsed_cmd[0]?.cmd === 'string'
+          ? msg.parsed_cmd[0].cmd
+          : Array.isArray(msg.command)
+            ? msg.command.join(' ')
+            : typeof msg.command === 'string'
+              ? msg.command
+              : '';
+      messageBuffer.addMessage(
+        `Executing: ${command || 'command'}`,
+        'tool',
+      );
+    } else if (msg.type === 'exec_approval_request') {
+      const command =
+        Array.isArray(msg.parsed_cmd) &&
+        msg.parsed_cmd.length > 0 &&
+        typeof msg.parsed_cmd[0]?.cmd === 'string'
+          ? msg.parsed_cmd[0].cmd
+          : Array.isArray(msg.command)
+            ? msg.command.join(' ')
+            : typeof msg.command === 'string'
+              ? msg.command
+              : '';
+      messageBuffer.addMessage(
+        `Approval requested: ${command || 'command'}`,
+        'status',
+      );
     } else if (msg.type === 'exec_command_end') {
-      const output = msg.output || msg.error || 'Command completed';
+      const output =
+        typeof msg.formatted_output === 'string' && msg.formatted_output.trim()
+          ? msg.formatted_output
+          : typeof msg.aggregated_output === 'string' &&
+              msg.aggregated_output.trim()
+            ? msg.aggregated_output
+            : typeof msg.stdout === 'string' && msg.stdout.trim()
+              ? msg.stdout
+              : typeof msg.stderr === 'string' && msg.stderr.trim()
+                ? msg.stderr
+                : typeof msg.output === 'string' && msg.output.trim()
+                  ? msg.output
+                  : typeof msg.error === 'string'
+                    ? msg.error
+                    : msg.error
+                      ? String(msg.error)
+                      : 'Command completed';
+
       const truncatedOutput = output.substring(0, 200);
       messageBuffer.addMessage(
         `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
@@ -679,7 +749,8 @@ export async function runCodex(opts: {
       });
 
       // Add UI feedback for patch operation
-      const changeCount = Object.keys(changes).length;
+      const changeCount =
+        changes && typeof changes === 'object' ? Object.keys(changes).length : 0;
       const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
       messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
 
@@ -702,10 +773,20 @@ export async function runCodex(opts: {
 
       // Add UI feedback for completion
       if (success) {
-        const message = stdout || 'Files modified successfully';
+        const message =
+          typeof stdout === 'string'
+            ? stdout
+            : stdout
+              ? JSON.stringify(stdout)
+              : 'Files modified successfully';
         messageBuffer.addMessage(message.substring(0, 200), 'result');
       } else {
-        const errorMsg = stderr || 'Failed to modify files';
+        const errorMsg =
+          typeof stderr === 'string'
+            ? stderr
+            : stderr
+              ? JSON.stringify(stderr)
+              : 'Failed to modify files';
         messageBuffer.addMessage(
           `Error: ${errorMsg.substring(0, 200)}`,
           'result',
@@ -726,7 +807,7 @@ export async function runCodex(opts: {
     }
     if (msg.type === 'turn_diff') {
       // Handle turn_diff messages and track unified_diff changes
-      if (msg.unified_diff) {
+      if (typeof msg.unified_diff === 'string' && msg.unified_diff) {
         diffProcessor.processDiff(msg.unified_diff);
       }
     }
