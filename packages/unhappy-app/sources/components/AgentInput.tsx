@@ -29,6 +29,7 @@ interface AgentInputProps {
     placeholder: string;
     onChangeText: (text: string) => void;
     sessionId?: string;
+    machineId?: string;
     onSend: () => void;
     sendIcon?: React.ReactNode;
     permissionMode?: PermissionMode;
@@ -63,6 +64,7 @@ interface AgentInputProps {
     onFileViewerPress?: () => void;
     agentType?: 'claude' | 'codex' | 'gemini';
     onAgentClick?: () => void;
+    onAgentTypeChange?: (agentType: 'claude' | 'codex' | 'gemini') => void;
     machineName?: string | null;
     onMachineClick?: () => void;
     currentPath?: string | null;
@@ -307,10 +309,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const hasText = props.value.trim().length > 0;
 
-    // Check if this is a Codex or Gemini session
-    // Use metadata.flavor for existing sessions, agentType prop for new sessions
-    const isCodex = props.metadata?.flavor === 'codex' || props.agentType === 'codex';
-    const isGemini = props.metadata?.flavor === 'gemini' || props.agentType === 'gemini';
+    // Check which agent "flavor" we're on.
+    // Use metadata.flavor for existing sessions, agentType prop for new sessions.
+    const agentFlavor: 'claude' | 'codex' | 'gemini' =
+        props.agentType === 'codex' || props.metadata?.flavor === 'codex'
+            ? 'codex'
+            : props.agentType === 'gemini' || props.metadata?.flavor === 'gemini'
+                ? 'gemini'
+                : 'claude';
+    const isCodex = agentFlavor === 'codex';
+    const isGemini = agentFlavor === 'gemini';
 
     // Profile data
     const profiles = useSetting('profiles');
@@ -407,13 +415,37 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [modelLoadError, setModelLoadError] = React.useState<string | null>(null);
 
     const loadModels = React.useCallback(async () => {
-        if (isGemini) {
+        if (agentFlavor === 'gemini') {
             // Static list, no RPC required.
             setAvailableModels(['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']);
             setModelLoadError(null);
             return;
         }
         if (!props.sessionId) {
+            // New-session flow: no sessionId yet. If we have machineId, use machine-scoped RPC.
+            if (props.machineId) {
+                setIsLoadingModels(true);
+                setModelLoadError(null);
+                try {
+                    const resp = await apiSocket.machineRPC<ListModelsResponse, { agent: 'claude' | 'codex' | 'gemini' }>(
+                        props.machineId,
+                        'list-models',
+                        { agent: agentFlavor }
+                    );
+                    if (resp.success) {
+                        setAvailableModels(resp.models);
+                    } else {
+                        setAvailableModels(null);
+                        setModelLoadError(resp.error || 'Failed to load models.');
+                    }
+                } catch (e) {
+                    setAvailableModels(null);
+                    setModelLoadError(e instanceof Error ? e.message : 'Failed to load models.');
+                } finally {
+                    setIsLoadingModels(false);
+                }
+                return;
+            }
             setAvailableModels(null);
             setModelLoadError(t('agentInput.model.configureInCli'));
             return;
@@ -434,7 +466,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         } finally {
             setIsLoadingModels(false);
         }
-    }, [isGemini, props.sessionId]);
+    }, [agentFlavor, props.sessionId, props.machineId]);
+
+    const handleAgentTypeSwitch = React.useCallback((next: 'claude' | 'codex' | 'gemini') => {
+        if (!props.onAgentTypeChange) return;
+        hapticsLight();
+        props.onAgentTypeChange(next);
+
+        // Best-effort: reset model selection when switching providers.
+        if (next === 'gemini') {
+            props.onModelModeChange?.('gemini-2.5-pro');
+        } else {
+            props.onModelModeChange?.(null);
+        }
+        // Force reload next time overlay opens (or immediately if already open).
+        setAvailableModels(null);
+        setModelLoadError(null);
+    }, [props.onAgentTypeChange, props.onModelModeChange]);
 
     const openPermissionOverlay = React.useCallback(() => {
         if (!props.onPermissionModeChange) return;
@@ -689,6 +737,47 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             {t('agentInput.model.title')}
                                         </Text>
 
+                                        {/* Provider switcher (pre-session only). This unifies "Claude/Codex" switching with the model picker. */}
+                                        {!props.sessionId && props.onAgentTypeChange && (
+                                            <View style={{
+                                                flexDirection: 'row',
+                                                gap: 8,
+                                                paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+                                                paddingBottom: 8,
+                                            }}>
+                                                {(['claude', 'codex', 'gemini'] as const).map((k) => {
+                                                    // Only show Gemini when the caller has Gemini enabled (ex: experiments flag).
+                                                    if (k === 'gemini' && props.connectionStatus?.cliStatus?.gemini === undefined) return null;
+                                                    const active = agentFlavor === k;
+                                                    return (
+                                                        <Pressable
+                                                            key={k}
+                                                            onPress={() => handleAgentTypeSwitch(k)}
+                                                            style={({ pressed }: any) => ({
+                                                                height: 28,
+                                                                paddingHorizontal: 10,
+                                                                borderRadius: 999,
+                                                                borderWidth: 1,
+                                                                borderColor: active ? theme.colors.button.primary.background : theme.colors.divider,
+                                                                backgroundColor: active ? theme.colors.button.primary.background + '14' : 'transparent',
+                                                                justifyContent: 'center',
+                                                                opacity: pressed ? 0.7 : 1,
+                                                            })}
+                                                        >
+                                                            <Text style={{
+                                                                fontSize: 12,
+                                                                fontWeight: '600',
+                                                                color: active ? theme.colors.button.primary.background : theme.colors.textSecondary,
+                                                                ...Typography.default('semiBold'),
+                                                            }}>
+                                                                {k === 'claude' ? 'Claude' : k === 'codex' ? 'Codex' : 'Gemini'}
+                                                            </Text>
+                                                        </Pressable>
+                                                    );
+                                                })}
+                                            </View>
+                                        )}
+
                                         {isLoadingModels ? (
                                             <View style={{ paddingHorizontal: Platform.select({ web: 12, default: 16 }), paddingVertical: 12 }}>
                                                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
@@ -706,50 +795,52 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         ) : (
                                             <>
                                                 {/* Default / reset */}
-                                                <Pressable
-                                                    key="__default__"
-                                                    onPress={() => handleModelSelect(null)}
-                                                    style={({ pressed, hovered }: any) => ({
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        paddingHorizontal: Platform.select({ web: 12, default: 16 }),
-                                                        paddingVertical: 8,
-                                                        backgroundColor: Platform.OS === 'web'
-                                                            ? (pressed
-                                                                ? theme.colors.chrome.listActiveBackground
-                                                                : hovered
-                                                                    ? theme.colors.chrome.listHoverBackground
-                                                                    : 'transparent')
-                                                            : (pressed ? theme.colors.surfacePressed : 'transparent')
-                                                    })}
-                                                >
-                                                    <View style={{
-                                                        width: 16,
-                                                        height: 16,
-                                                        borderRadius: 8,
-                                                        borderWidth: 2,
-                                                        borderColor: !props.modelMode || props.modelMode === 'default' ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        marginRight: 12
-                                                    }}>
-                                                        {(!props.modelMode || props.modelMode === 'default') && (
-                                                            <View style={{
-                                                                width: 6,
-                                                                height: 6,
-                                                                borderRadius: 3,
-                                                                backgroundColor: theme.colors.radio.dot
-                                                            }} />
-                                                        )}
-                                                    </View>
-                                                    <Text style={{
-                                                        fontSize: 14,
-                                                        color: (!props.modelMode || props.modelMode === 'default') ? theme.colors.radio.active : theme.colors.text,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        Default
-                                                    </Text>
-                                                </Pressable>
+                                                {!isGemini && (
+                                                    <Pressable
+                                                        key="__default__"
+                                                        onPress={() => handleModelSelect(null)}
+                                                        style={({ pressed, hovered }: any) => ({
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+                                                            paddingVertical: 8,
+                                                            backgroundColor: Platform.OS === 'web'
+                                                                ? (pressed
+                                                                    ? theme.colors.chrome.listActiveBackground
+                                                                    : hovered
+                                                                        ? theme.colors.chrome.listHoverBackground
+                                                                        : 'transparent')
+                                                                : (pressed ? theme.colors.surfacePressed : 'transparent')
+                                                        })}
+                                                    >
+                                                        <View style={{
+                                                            width: 16,
+                                                            height: 16,
+                                                            borderRadius: 8,
+                                                            borderWidth: 2,
+                                                            borderColor: !props.modelMode || props.modelMode === 'default' ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            marginRight: 12
+                                                        }}>
+                                                            {(!props.modelMode || props.modelMode === 'default') && (
+                                                                <View style={{
+                                                                    width: 6,
+                                                                    height: 6,
+                                                                    borderRadius: 3,
+                                                                    backgroundColor: theme.colors.radio.dot
+                                                                }} />
+                                                            )}
+                                                        </View>
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            color: (!props.modelMode || props.modelMode === 'default') ? theme.colors.radio.active : theme.colors.text,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            Default
+                                                        </Text>
+                                                    </Pressable>
+                                                )}
 
                                                 {(availableModels || []).map((model) => {
                                                     const isSelected = props.modelMode === model;

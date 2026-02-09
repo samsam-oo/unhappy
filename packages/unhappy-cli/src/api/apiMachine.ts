@@ -12,6 +12,7 @@ import {
   SpawnSessionOptions,
   SpawnSessionResult,
 } from '../modules/common/registerCommonHandlers';
+import { listClaudeModels, listCodexModels } from '@/modules/common/listModels';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import {
@@ -212,6 +213,23 @@ export class ApiMachineClient {
         message:
           'Daemon stop request acknowledged, starting shutdown sequence...',
       };
+    });
+
+    // Model listing for UI dropdowns (best-effort).
+    // Used by the "new session" flow (no sessionId yet) so the UI can still show a model picker.
+    this.rpcHandlerManager.registerHandler('list-models', async (params: any) => {
+      const agent: 'claude' | 'codex' | 'gemini' | undefined = params?.agent;
+      if (agent === 'gemini') {
+        return {
+          success: true as const,
+          models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+        };
+      }
+      if (agent === 'codex') {
+        return await listCodexModels();
+      }
+      // Default to Claude when unspecified.
+      return await listClaudeModels();
     });
   }
 

@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import os from 'os';
-import * as tmp from 'tmp';
 
 import { ApiClient } from '@/api/api';
 import { DaemonState, MachineMetadata, Metadata } from '@/api/types';
@@ -346,16 +345,24 @@ export async function startDaemon(): Promise<void> {
         const authEnv: Record<string, string> = {};
         if (options.token) {
           if (options.agent === 'codex') {
-            // Create a temporary directory for Codex
-            const codexHomeDir = tmp.dirSync();
+            // Use a stable CODEX_HOME so Codex transcripts can be resumed after restarts.
+            // We still (re)write auth.json before spawning to avoid startup races.
+            const codexHomeDir = join(configuration.happyHomeDir, 'codex-home');
+            try {
+              await fs.mkdir(codexHomeDir, { recursive: true, mode: 0o700 });
+            } catch {}
 
-            // Write the token to the temporary directory
-            // Must be written before spawning Codex; otherwise Codex can race and
-            // start unauthenticated (intermittent failures).
-            await fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+            const authPath = join(codexHomeDir, 'auth.json');
+            await fs.writeFile(authPath, options.token, {
+              encoding: 'utf8',
+              mode: 0o600,
+            });
+            // Ensure strict permissions even if the file already existed.
+            try {
+              await fs.chmod(authPath, 0o600);
+            } catch {}
 
-            // Set the environment variable for Codex
-            authEnv.CODEX_HOME = codexHomeDir.name;
+            authEnv.CODEX_HOME = codexHomeDir;
           } else {
             // Assuming claude
             authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;

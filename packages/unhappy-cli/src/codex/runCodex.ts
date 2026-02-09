@@ -314,8 +314,23 @@ export async function runCodex(opts: {
   let abortController = new AbortController();
   let shouldExit = false;
   let storedSessionIdForResume: string | null = null;
+  let storedCodexHomeDirForResume: string | null = null;
+  let storedResumeFileForResume: string | null = null;
   const cwd = process.cwd();
   const resumeEnabled = opts.resume !== false;
+  const getEffectiveCodexHomeDir = (): string => {
+    const fromEnv =
+      typeof process.env.CODEX_HOME === 'string' ? process.env.CODEX_HOME.trim() : '';
+    return fromEnv || join(os.homedir(), '.codex');
+  };
+  const getUnhappyHomeDir = (): string => {
+    const raw =
+      typeof process.env.UNHAPPY_HOME_DIR === 'string'
+        ? process.env.UNHAPPY_HOME_DIR.trim()
+        : '';
+    if (!raw) return join(os.homedir(), '.unhappy');
+    return raw.replace(/^~/, os.homedir());
+  };
 
   /**
    * Handles aborting the current task/inference without exiting the process.
@@ -333,6 +348,7 @@ export async function runCodex(opts: {
           try {
             await upsertCodexResumeEntry(cwd, {
               codexSessionId: storedSessionIdForResume,
+              codexHomeDir: getEffectiveCodexHomeDir(),
               updatedAt: Date.now(),
             });
           } catch (e) {
@@ -488,6 +504,14 @@ export async function runCodex(opts: {
       const entry = await readCodexResumeEntry(cwd);
       if (entry?.codexSessionId) {
         storedSessionIdForResume = entry.codexSessionId;
+        storedCodexHomeDirForResume =
+          typeof entry.codexHomeDir === 'string' && entry.codexHomeDir.trim()
+            ? entry.codexHomeDir.trim()
+            : null;
+        storedResumeFileForResume =
+          typeof entry.resumeFile === 'string' && entry.resumeFile.trim()
+            ? entry.resumeFile.trim()
+            : null;
         logger.debug(
           '[Codex] Loaded persisted codex sessionId for resume:',
           storedSessionIdForResume,
@@ -509,6 +533,7 @@ export async function runCodex(opts: {
       try {
         await upsertCodexResumeEntry(cwd, {
           codexSessionId: sessionId,
+          codexHomeDir: getEffectiveCodexHomeDir(),
           updatedAt: Date.now(),
         });
         logger.debug(
@@ -546,11 +571,16 @@ export async function runCodex(opts: {
   }
 
   // Helper: find Codex session transcript for a given sessionId
-  function findCodexResumeFile(sessionId: string | null): string | null {
+  function findCodexResumeFile(
+    sessionId: string | null,
+    codexHomeDirOverride?: string | null,
+  ): string | null {
     if (!sessionId) return null;
     try {
       const codexHomeDir =
-        process.env.CODEX_HOME || join(os.homedir(), '.codex');
+        (typeof codexHomeDirOverride === 'string'
+          ? codexHomeDirOverride.trim()
+          : '') || getEffectiveCodexHomeDir();
       const rootDir = join(codexHomeDir, 'sessions');
 
       // Recursively collect all files under the sessions directory
@@ -592,6 +622,82 @@ export async function runCodex(opts: {
       return candidates[0] || null;
     } catch {
       return null;
+    }
+  }
+
+  function findCodexResumeFileWithFallbacks(sessionId: string): string | null {
+    const homes: string[] = [];
+    const currentHome = getEffectiveCodexHomeDir();
+    const defaultHome = join(os.homedir(), '.codex');
+    const unhappyCodexHome = join(getUnhappyHomeDir(), 'codex-home');
+
+    homes.push(currentHome);
+    if (storedCodexHomeDirForResume) homes.push(storedCodexHomeDirForResume);
+    if (defaultHome !== currentHome) homes.push(defaultHome);
+    if (unhappyCodexHome !== currentHome) homes.push(unhappyCodexHome);
+
+    const seen = new Set<string>();
+    for (const home of homes) {
+      const key = home.trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const found = findCodexResumeFile(sessionId, key);
+      if (found) return found;
+    }
+
+    // Last-resort: daemon used to create per-session temp CODEX_HOME directories; try to find
+    // an old transcript in the system temp directory by looking for candidate Codex homes.
+    try {
+      const tmpRoot = os.tmpdir();
+      const entries = fs.readdirSync(tmpRoot, { withFileTypes: true });
+      // Bound worst-case work; only probe directories that look like Codex homes.
+      let probed = 0;
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dir = join(tmpRoot, entry.name);
+        const authPath = join(dir, 'auth.json');
+        const sessionsPath = join(dir, 'sessions');
+        if (!fs.existsSync(authPath) || !fs.existsSync(sessionsPath)) continue;
+        probed++;
+        const found = findCodexResumeFile(sessionId, dir);
+        if (found) return found;
+        if (probed >= 50) break;
+      }
+    } catch {}
+
+    return null;
+  }
+
+  // If daemon or shell changed CODEX_HOME between runs, resuming may require going back to the
+  // previous CODEX_HOME where the transcript was written. Prefer current CODEX_HOME when it works.
+  if (
+    resumeEnabled &&
+    storedSessionIdForResume &&
+    storedCodexHomeDirForResume &&
+    storedCodexHomeDirForResume !== getEffectiveCodexHomeDir()
+  ) {
+    const currentHome = getEffectiveCodexHomeDir();
+    const foundInCurrent = findCodexResumeFile(storedSessionIdForResume, currentHome);
+    if (!foundInCurrent) {
+      const foundInStored = findCodexResumeFile(
+        storedSessionIdForResume,
+        storedCodexHomeDirForResume,
+      );
+      if (foundInStored) {
+        process.env.CODEX_HOME = storedCodexHomeDirForResume;
+        void upsertCodexResumeEntry(cwd, {
+          codexSessionId: storedSessionIdForResume,
+          codexHomeDir: storedCodexHomeDirForResume,
+          resumeFile: foundInStored,
+          updatedAt: Date.now(),
+        }).catch((e) => {
+          logger.debug('[Codex] Failed to backfill codex resume entry', e);
+        });
+        logger.debug(
+          '[Codex] Switched CODEX_HOME to persisted directory for resume:',
+          storedCodexHomeDirForResume,
+        );
+      }
     }
   }
   permissionHandler = new CodexPermissionHandler(session);
@@ -1039,15 +1145,24 @@ export async function runCodex(opts: {
           }
           // Priority 2: Resume from stored abort session
           else if (storedSessionIdForResume) {
-            const abortResumeFile = findCodexResumeFile(
-              storedSessionIdForResume,
-            );
+            const abortResumeFile =
+              storedResumeFileForResume && fs.existsSync(storedResumeFileForResume)
+                ? storedResumeFileForResume
+                : findCodexResumeFileWithFallbacks(storedSessionIdForResume);
             if (abortResumeFile) {
               resumeFile = abortResumeFile;
               logger.debug(
                 '[Codex] Using resume file from stored session:',
                 resumeFile,
               );
+              void upsertCodexResumeEntry(cwd, {
+                codexSessionId: storedSessionIdForResume,
+                codexHomeDir: getEffectiveCodexHomeDir(),
+                resumeFile,
+                updatedAt: Date.now(),
+              }).catch((e) => {
+                logger.debug('[Codex] Failed to persist resume file path', e);
+              });
               messageBuffer.addMessage(
                 'Resuming previous context...',
                 'status',
@@ -1110,6 +1225,7 @@ export async function runCodex(opts: {
               try {
                 await upsertCodexResumeEntry(cwd, {
                   codexSessionId: storedSessionIdForResume,
+                  codexHomeDir: getEffectiveCodexHomeDir(),
                   updatedAt: Date.now(),
                 });
               } catch (e) {
