@@ -736,7 +736,7 @@ export async function runCodex(opts: {
   const happyServer = await startHappyServer(session);
   const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');
   const mcpServers = {
-    happy: {
+    unhappy: {
       command: bridgeCommand,
       args: ['--url', happyServer.url],
     },

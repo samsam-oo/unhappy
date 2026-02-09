@@ -43,8 +43,12 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
                 
             }
             
-            // Check for mcp__unhappy__change_title tool calls
-            if (content.type === 'tool-call' && content.name === 'mcp__unhappy__change_title') {
+            // Check for change_title MCP tool calls.
+            // Claude Code uses the format `mcp__<server>__<tool>`.
+            if (
+                content.type === 'tool-call' &&
+                content.name === 'mcp__unhappy__change_title'
+            ) {
                 const title = content.input?.title;
                 if (typeof title === 'string') {
                     return {

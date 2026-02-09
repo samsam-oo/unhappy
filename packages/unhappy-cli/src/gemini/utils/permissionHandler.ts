@@ -56,7 +56,14 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         // - GeminiReasoning: Reasoning is just display of thinking process, not an action
         // - think: Thinking/saving memories is safe
         // - save_memory: Saving memories is safe
-        const alwaysAutoApproveNames = ['change_title', 'unhappy__change_title', 'GeminiReasoning', 'CodexReasoning', 'think', 'save_memory'];
+        const alwaysAutoApproveNames = [
+            'change_title',
+            'unhappy__change_title',
+            'GeminiReasoning',
+            'CodexReasoning',
+            'think',
+            'save_memory',
+        ];
         const alwaysAutoApproveIds = ['change_title', 'save_memory'];
         
         // Check by tool name
@@ -145,4 +152,3 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         });
     }
 }
-

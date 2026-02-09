@@ -518,7 +518,7 @@ export async function runClaude(
     messageQueue,
     api,
     allowedTools: happyServer.toolNames.map(
-      (toolName) => `mcp__happy__${toolName}`,
+      (toolName) => `mcp__unhappy__${toolName}`,
     ),
     onModeChange: (newMode) => {
       session.sendSessionEvent({ type: 'switch', mode: newMode });
@@ -532,7 +532,7 @@ export async function runClaude(
       currentSession = sessionInstance;
     },
     mcpServers: {
-      happy: {
+      unhappy: {
         type: 'http' as const,
         url: happyServer.url,
       },

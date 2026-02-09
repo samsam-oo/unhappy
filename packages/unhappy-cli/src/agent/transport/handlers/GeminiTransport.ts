@@ -58,7 +58,14 @@ interface ExtendedToolPattern extends ToolPattern {
 const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
   {
     name: 'change_title',
-    patterns: ['change_title', 'change-title', 'unhappy__change_title', 'mcp__unhappy__change_title'],
+    patterns: [
+      'change_title',
+      'change-title',
+      // Some clients namespace MCP tools as "<server>__<tool>".
+      'unhappy__change_title',
+      // Claude Code-style MCP tool names: "mcp__<server>__<tool>"
+      'mcp__unhappy__change_title',
+    ],
     inputFields: ['title'],
     emptyInputDefault: true, // change_title often has empty input (title extracted from context)
   },
