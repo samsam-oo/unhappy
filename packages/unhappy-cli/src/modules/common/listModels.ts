@@ -111,17 +111,48 @@ export async function listCodexModels(opts?: {
             capabilities: {},
           });
 
-          const resp = await rpc('model/list', {});
-          const result = resp?.result;
-          const data: unknown = result?.data;
-          const models = Array.isArray(data)
-            ? data
-                .map((m: any) => (typeof m?.id === 'string' ? m.id : null))
-                .filter((v: any): v is string => typeof v === 'string' && v.trim().length > 0)
-            : [];
+          // Codex has shipped multiple app-server variants; try a couple method names.
+          const tryList = async (method: string) => {
+            const resp = await rpc(method, {});
+            const result = resp?.result;
+            const data: unknown = result?.data;
+            const models = Array.isArray(data)
+              ? data
+                  .map((m: any) =>
+                    typeof m?.id === 'string' ? m.id : typeof m === 'string' ? m : null,
+                  )
+                  .filter(
+                    (v: any): v is string =>
+                      typeof v === 'string' && v.trim().length > 0,
+                  )
+              : [];
+            return models;
+          };
+
+          let models: string[] = [];
+          try {
+            models = await tryList('model/list');
+          } catch {
+            models = [];
+          }
+          if (models.length === 0) {
+            try {
+              models = await tryList('models/list');
+            } catch {
+              models = [];
+            }
+          }
 
           cleanup();
-          finish({ success: true, models: Array.from(new Set(models)).sort() });
+          const unique = Array.from(new Set(models)).sort();
+          if (unique.length === 0) {
+            finish({
+              success: false,
+              error: 'No Codex models returned (app-server model list was empty)',
+            });
+            return;
+          }
+          finish({ success: true, models: unique });
         } catch (e) {
           cleanup();
           finish({
