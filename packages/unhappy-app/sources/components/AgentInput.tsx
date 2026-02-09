@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@/icons/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, Text, ActivityIndicator, TouchableWithoutFeedback, Pressable } from 'react-native';
+import { View, Platform, useWindowDimensions, Text, ActivityIndicator, TouchableWithoutFeedback, Pressable, TextInput } from 'react-native';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
@@ -21,8 +21,6 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata, type ReasoningEffortMode } from '@/sync/storageTypes';
-import { AIBackendProfile } from '@/sync/settings';
-import { getBuiltInProfile } from '@/sync/profileUtils';
 
 interface AgentInputProps {
     value: string;
@@ -69,6 +67,11 @@ interface AgentInputProps {
     onMachineClick?: () => void;
     currentPath?: string | null;
     onPathClick?: () => void;
+    sessionType?: 'simple' | 'worktree';
+    onSessionTypeChange?: (value: 'simple' | 'worktree') => void;
+    worktreeName?: string;
+    onWorktreeNameChange?: (value: string) => void;
+    onWorktreeNameGenerate?: () => void;
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
@@ -117,6 +120,82 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingRight: 8,
         paddingVertical: 4,
         minHeight: 40,
+    },
+    sessionTypeBox: {
+        backgroundColor: theme.colors.surfacePressed,
+        borderRadius: 12,
+        padding: 10,
+        marginBottom: 8,
+        gap: 8,
+    },
+    sessionTypeTitle: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
+    sessionTypeOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 10,
+        gap: 10,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    sessionTypeOptionActive: {
+        borderColor: theme.colors.button.primary.background,
+        backgroundColor: theme.colors.button.primary.background + '10',
+    },
+    sessionTypeOptionLabel: {
+        fontSize: 13,
+        color: theme.colors.text,
+        fontWeight: '600',
+        ...Typography.default('semiBold'),
+    },
+    sessionTypeOptionSpacer: {
+        flex: 1,
+    },
+    worktreeNameBlock: {
+        marginTop: 2,
+        gap: 6,
+    },
+    worktreeNameHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    worktreeNameLabel: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
+    worktreeNameAction: {
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
+    worktreeNameInput: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ web: 10, default: 12 }),
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        color: theme.colors.text,
+        fontSize: 14,
+        ...Typography.default(),
+    },
+    worktreeNameHint: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
     },
 
     // Overlay styles
@@ -325,17 +404,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 : 'claude';
     const isCodex = agentFlavor === 'codex';
     const isGemini = agentFlavor === 'gemini';
-
-    // Profile data
-    const profiles = useSetting('profiles');
-    const currentProfile = React.useMemo(() => {
-        if (!props.profileId) return null;
-        // Check custom profiles first
-        const customProfile = profiles.find(p => p.id === props.profileId);
-        if (customProfile) return customProfile;
-        // Check built-in profiles
-        return getBuiltInProfile(props.profileId);
-    }, [profiles, props.profileId]);
 
     // Calculate context warning (always shown when contextSize is known)
     const contextSize = props.usageData?.contextSize;
@@ -1149,6 +1217,94 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </View>
                 )}
 
+                {/* Box 1.5: Session Type (rendered under path selection for new-session flows) */}
+                {!!props.sessionType && !!props.onSessionTypeChange && (
+                    <View style={styles.sessionTypeBox}>
+                        <Text style={styles.sessionTypeTitle}>{t('newSession.sessionType.title')}</Text>
+
+                        <Pressable
+                            onPress={() => {
+                                hapticsLight();
+                                props.onSessionTypeChange?.('simple');
+                            }}
+                            style={(p) => ([
+                                styles.sessionTypeOption,
+                                props.sessionType === 'simple' && styles.sessionTypeOptionActive,
+                                p.pressed ? { opacity: 0.85 } : null,
+                            ])}
+                        >
+                            <Ionicons name="folder-outline" size={16} color={theme.colors.textSecondary} />
+                            <Text style={styles.sessionTypeOptionLabel}>{t('newSession.sessionType.simple')}</Text>
+                            <View style={styles.sessionTypeOptionSpacer} />
+                            {props.sessionType === 'simple' && (
+                                <Ionicons
+                                    name="checkmark-circle"
+                                    size={18}
+                                    color={theme.colors.button.primary.background}
+                                />
+                            )}
+                        </Pressable>
+
+                        <Pressable
+                            onPress={() => {
+                                hapticsLight();
+                                props.onSessionTypeChange?.('worktree');
+                            }}
+                            style={(p) => ([
+                                styles.sessionTypeOption,
+                                props.sessionType === 'worktree' && styles.sessionTypeOptionActive,
+                                p.pressed ? { opacity: 0.85 } : null,
+                            ])}
+                        >
+                            <Ionicons name="git-branch-outline" size={16} color={theme.colors.textSecondary} />
+                            <Text style={styles.sessionTypeOptionLabel}>{t('newSession.sessionType.worktree')}</Text>
+                            <View style={styles.sessionTypeOptionSpacer} />
+                            {props.sessionType === 'worktree' && (
+                                <Ionicons
+                                    name="checkmark-circle"
+                                    size={18}
+                                    color={theme.colors.button.primary.background}
+                                />
+                            )}
+                        </Pressable>
+
+                        {props.sessionType === 'worktree' && props.worktreeName !== undefined && props.onWorktreeNameChange && (
+                            <View style={styles.worktreeNameBlock}>
+                                <View style={styles.worktreeNameHeader}>
+                                    <Text style={styles.worktreeNameLabel}>{t('newSession.worktree.nameLabel')}</Text>
+                                    {props.onWorktreeNameGenerate && (
+                                        <Pressable
+                                            onPress={() => {
+                                                hapticsLight();
+                                                props.onWorktreeNameGenerate?.();
+                                            }}
+                                            hitSlop={10}
+                                            style={(p) => ([
+                                                styles.worktreeNameAction,
+                                                p.pressed ? { opacity: 0.85 } : null,
+                                            ])}
+                                            accessibilityLabel="Generate worktree name"
+                                        >
+                                            <Ionicons name="shuffle" size={16} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    )}
+                                </View>
+                                <TextInput
+                                    value={props.worktreeName}
+                                    onChangeText={props.onWorktreeNameChange}
+                                    placeholder={t('newSession.worktree.namePlaceholder')}
+                                    placeholderTextColor={theme.colors.textSecondary}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                    spellCheck={false}
+                                    style={styles.worktreeNameInput}
+                                />
+                                <Text style={styles.worktreeNameHint}>{t('newSession.worktree.nameHint')}</Text>
+                            </View>
+                        )}
+                    </View>
+                )}
+
                 {/* Box 2: Action Area (Input + Send) */}
                 <View style={styles.unifiedPanel}>
                     {/* Input field */}
@@ -1169,44 +1325,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={styles.actionButtonsLeft}>
-                            {/* Mode / Profile */}
-                            {props.profileId !== undefined && (
-                                <Pressable
-                                    disabled={!props.onProfileClick}
-                                    onPress={() => {
-                                        if (!props.onProfileClick) return;
-                                        hapticsLight();
-                                        props.onProfileClick?.();
-                                    }}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    style={(p) => ({
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        justifyContent: 'center',
-                                        height: 32,
-                                        opacity: !props.onProfileClick ? 0.5 : (p.pressed ? 0.7 : 1),
-                                        gap: 6,
-                                    })}
-                                >
-                                    <Ionicons
-                                        name="person-outline"
-                                        size={14}
-                                        color={theme.colors.button.secondary.tint}
-                                    />
-                                    <Text style={{
-                                        fontSize: 13,
-                                        color: theme.colors.button.secondary.tint,
-                                        fontWeight: '600',
-                                        ...Typography.default('semiBold'),
-                                    }} numberOfLines={1}>
-                                        {currentProfile?.name || (props.profileId ? 'Profile' : 'Manual')}
-                                    </Text>
-                                </Pressable>
-                            )}
-
                             {/* Model */}
                             {props.onModelModeChange && (
                                 <Pressable
@@ -1306,7 +1424,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </Pressable>
                             )}
 
-                            {/* Git Status Badge */}
                             <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                         </View>
 
@@ -1379,15 +1496,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     );
 }));
 
-// Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
-    const styles = stylesheet;
     const { theme } = useUnistyles();
 
-    if (!sessionId || !onPress) {
-        return null;
-    }
+    if (!sessionId || !onPress) return null;
 
     return (
         <Pressable

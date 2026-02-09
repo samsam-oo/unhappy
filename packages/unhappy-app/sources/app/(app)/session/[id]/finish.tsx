@@ -17,6 +17,7 @@ import { promptCommitMessage } from '@/utils/promptCommitMessage';
 import { MergeConfirmModal } from '@/components/MergeConfirmModal';
 import {
     extractWorktreeInfo,
+    resolveWorktreeBranchName,
     resolveMainBranch,
     mergeWorktreeBranch,
     createPullRequest,
@@ -32,6 +33,7 @@ function FinishSessionContent({ session }: { session: Session }) {
     const router = useRouter();
 
     const worktreeInfo = extractWorktreeInfo(session.metadata?.path || '');
+    const [worktreeBranchName, setWorktreeBranchName] = useState<string | null>(null);
     const [mainBranch, setMainBranch] = useState<string | null>(null);
     const pushAfterMergeRef = React.useRef(false);
     const [worktreeDirty, setWorktreeDirty] = useState(false);
@@ -60,6 +62,18 @@ function FinishSessionContent({ session }: { session: Session }) {
         return () => { cancelled = true; };
     }, [worktreeInfo, machineId]);
 
+    // Resolve current branch name from the worktree directory.
+    useEffect(() => {
+        if (!worktreeInfo || !machineId) return;
+        let cancelled = false;
+        resolveWorktreeBranchName(machineId, worktreeInfo.worktreePath).then((branch) => {
+            if (cancelled) return;
+            // Fallback to folder name for older sessions (where branch==folder).
+            setWorktreeBranchName(branch || worktreeInfo.worktreeName);
+        });
+        return () => { cancelled = true; };
+    }, [worktreeInfo, machineId]);
+
     // Refresh worktree status on mount
     useEffect(() => {
         refreshWorktreeStatus();
@@ -80,12 +94,13 @@ function FinishSessionContent({ session }: { session: Session }) {
 
     // Merge action
     const [merging, performMerge] = useHappyAction(async () => {
-        if (!worktreeInfo || !machineId || !mainBranch) return;
+        if (!worktreeInfo || !machineId || !mainBranch || !worktreeBranchName) return;
         const pushAfterMerge = pushAfterMergeRef.current;
         const result = await mergeWorktreeBranch(
             machineId,
             worktreeInfo.basePath,
-            worktreeInfo.branchName,
+            worktreeInfo. worktreePath,
+            worktreeBranchName,
             mainBranch,
             { push: pushAfterMerge }
         );
@@ -100,13 +115,13 @@ function FinishSessionContent({ session }: { session: Session }) {
     });
 
     const handleMerge = useCallback(() => {
-        if (!worktreeInfo || !mainBranch) return;
+        if (!worktreeInfo || !mainBranch || !worktreeBranchName) return;
         Modal.show({
             component: MergeConfirmModal,
             props: {
                 title: t('finishSession.mergeConfirmTitle'),
                 message: t('finishSession.mergeConfirmMessage', {
-                    branch: worktreeInfo.branchName,
+                    branch: worktreeBranchName,
                     target: mainBranch,
                 }),
                 pushLabel: t('finishSession.pushAfterMerge'),
@@ -120,15 +135,16 @@ function FinishSessionContent({ session }: { session: Session }) {
                 },
             },
         });
-    }, [worktreeInfo, mainBranch, performMerge]);
+    }, [worktreeInfo, mainBranch, worktreeBranchName, performMerge]);
 
     // PR action
     const [creatingPR, performCreatePR] = useHappyAction(async () => {
-        if (!worktreeInfo || !machineId || !mainBranch) return;
+        if (!worktreeInfo || !machineId || !mainBranch || !worktreeBranchName) return;
         const result = await createPullRequest(
             machineId,
             worktreeInfo.basePath,
-            worktreeInfo.branchName,
+            worktreeInfo.worktreePath,
+            worktreeBranchName,
             mainBranch
         );
         if (!result.success) throw new HappyError(result.error || 'Failed to create PR', false);
@@ -157,11 +173,12 @@ function FinishSessionContent({ session }: { session: Session }) {
 
     // Delete action
     const [deleting, performDelete] = useHappyAction(async () => {
-        if (!worktreeInfo || !machineId) return;
+        if (!worktreeInfo || !machineId || !worktreeBranchName) return;
         const result = await deleteWorktree(
             machineId,
             worktreeInfo.basePath,
-            worktreeInfo.branchName,
+            worktreeInfo.worktreePath,
+            worktreeBranchName,
             worktreeSessionIds
         );
         if (!result.success) throw new HappyError(result.error || 'Delete failed', false);
@@ -170,11 +187,11 @@ function FinishSessionContent({ session }: { session: Session }) {
     });
 
     const handleDelete = useCallback(() => {
-        if (!worktreeInfo) return;
+        if (!worktreeInfo || !worktreeBranchName) return;
         Modal.alert(
             t('finishSession.deleteConfirmTitle'),
             t('finishSession.deleteConfirmMessage', {
-                branch: worktreeInfo.branchName,
+                branch: worktreeBranchName,
             }),
             [
                 { text: t('common.cancel'), style: 'cancel' },
@@ -185,7 +202,7 @@ function FinishSessionContent({ session }: { session: Session }) {
                 },
             ]
         );
-    }, [worktreeInfo, performDelete]);
+    }, [worktreeInfo, worktreeBranchName, performDelete]);
 
     // Commit action
     const commitMessageRef = React.useRef<string>('');
@@ -235,7 +252,7 @@ function FinishSessionContent({ session }: { session: Session }) {
         );
     }
 
-    const isLoading = !mainBranch;
+    const isLoading = !mainBranch || !worktreeBranchName;
 
     return (
         <ItemList>
@@ -259,7 +276,7 @@ function FinishSessionContent({ session }: { session: Session }) {
                             color: theme.colors.text,
                             ...Typography.default('semiBold')
                         }}>
-                            {worktreeInfo.branchName}
+                            {worktreeBranchName || worktreeInfo.worktreeName}
                         </Text>
                     </View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>

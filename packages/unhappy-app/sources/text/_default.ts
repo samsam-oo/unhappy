@@ -327,7 +327,7 @@ export const en = {
     worktree: {
       nameLabel: 'Worktree name',
       namePlaceholder: 'e.g. swift-island',
-      nameHint: 'Used for both the worktree folder and the git branch.',
+      nameHint: 'Used for the git branch. The worktree folder name will be derived safely.',
       creating: ({ name }: { name: string }) =>
         `Creating worktree '${name}'...`,
       notGitRepo: 'Worktrees require a git repository',

@@ -194,6 +194,15 @@ export async function runCodex(opts: {
     undefined;
   let currentModel: string | undefined = undefined;
   let currentEffort: ReasoningEffortMode | undefined = undefined;
+  // System prompt overrides (sent by mobile/web as message.meta.*)
+  // Claude applies these per turn; Codex MCP currently only supports instructions at session start.
+  // We still track them so we can inject them into startSession config.
+  let currentCustomSystemPrompt: string | undefined = undefined;
+  let currentAppendSystemPrompt: string | undefined = undefined;
+  // Codex does not support changing instructions after session creation; also,
+  // some Codex versions ignore instruction fields. As a fallback, we inject the
+  // instructions into the first prompt once.
+  let injectedInstructionsIntoPrompt = false;
 
   session.onUserMessage((message) => {
     // Resolve permission mode (accept all modes, will be mapped in switch statement)
@@ -244,6 +253,28 @@ export async function runCodex(opts: {
       );
     }
 
+    // Resolve custom system prompt; explicit null resets to default (undefined)
+    let messageCustomSystemPrompt = currentCustomSystemPrompt;
+    if (message.meta?.hasOwnProperty('customSystemPrompt')) {
+      messageCustomSystemPrompt =
+        (message.meta.customSystemPrompt as any) || undefined; // null/'' -> undefined
+      currentCustomSystemPrompt = messageCustomSystemPrompt;
+      logger.debug(
+        `[Codex] customSystemPrompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to default'}`,
+      );
+    }
+
+    // Resolve append system prompt; explicit null resets to default (undefined)
+    let messageAppendSystemPrompt = currentAppendSystemPrompt;
+    if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+      messageAppendSystemPrompt =
+        (message.meta.appendSystemPrompt as any) || undefined; // null/'' -> undefined
+      currentAppendSystemPrompt = messageAppendSystemPrompt;
+      logger.debug(
+        `[Codex] appendSystemPrompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to default'}`,
+      );
+    }
+
     const enhancedMode: EnhancedMode = {
       permissionMode: messagePermissionMode || 'default',
       model: messageModel,
@@ -258,7 +289,15 @@ export async function runCodex(opts: {
     session.keepAlive(thinking, 'remote');
   }, 2000);
 
+  // When true, we avoid emitting "ready" (and especially ready push notifications)
+  // during shutdown paths like killSession. This prevents noisy notifications when
+  // the user explicitly terminates the session.
+  let shouldExit = false;
+
   const sendReady = () => {
+    if (shouldExit) {
+      return;
+    }
     session.sendSessionEvent({ type: 'ready' });
     try {
       const ready = buildReadyPushNotification({
@@ -312,7 +351,6 @@ export async function runCodex(opts: {
   //
 
   let abortController = new AbortController();
-  let shouldExit = false;
   let storedSessionIdForResume: string | null = null;
   let storedCodexHomeDirForResume: string | null = null;
   let storedResumeFileForResume: string | null = null;
@@ -379,6 +417,8 @@ export async function runCodex(opts: {
    */
   const handleKillSession = async () => {
     logger.debug('[Codex] Kill session requested - terminating process');
+    // Prevent any late "ready" / push notifications during shutdown.
+    shouldExit = true;
     await handleAbort();
     logger.debug('[Codex] Abort completed, proceeding with termination');
 
@@ -1122,9 +1162,32 @@ export async function runCodex(opts: {
             }
           })();
           const startConfig: CodexSessionConfig = {
-            prompt: first
-              ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
-              : message.message,
+            prompt: (() => {
+              const base = message.message;
+              // NOTE: TS control-flow can't see assignments from the onUserMessage callback,
+              // so it may incorrectly narrow these to `undefined` here. Normalize explicitly.
+              const instructionParts = [
+                currentCustomSystemPrompt,
+                currentAppendSystemPrompt,
+              ] as Array<string | undefined>;
+
+              const instructions = instructionParts
+                .map((v) => (typeof v === 'string' ? v.trim() : ''))
+                .filter((v) => v.length > 0)
+                .join('\n\n');
+
+              // Fallback: if instructions were provided, inject them into the first prompt
+              // so the model sees them even if it ignores the dedicated instruction fields.
+              const maybeInject =
+                !injectedInstructionsIntoPrompt && instructions
+                  ? (injectedInstructionsIntoPrompt = true, '\n\n' + instructions)
+                  : '';
+
+              if (first) {
+                return base + maybeInject + '\n\n' + CHANGE_TITLE_INSTRUCTION;
+              }
+              return base + maybeInject;
+            })(),
             sandbox,
             'approval-policy': approvalPolicy,
             config: {
@@ -1136,6 +1199,15 @@ export async function runCodex(opts: {
           };
           if (message.mode.model) {
             startConfig.model = message.mode.model;
+          }
+          // Mobile/web clients pass a UI system prompt that enables features like smart reply options
+          // via `<options><option>...</option></options>` blocks. Claude honors this per turn, but Codex
+          // needs it as session-level instructions.
+          if (currentCustomSystemPrompt) {
+            startConfig['base-instructions'] = currentCustomSystemPrompt;
+          }
+          if (currentAppendSystemPrompt) {
+            startConfig['developer-instructions'] = currentAppendSystemPrompt;
           }
 
           // Check for resume file from multiple sources

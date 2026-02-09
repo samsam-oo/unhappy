@@ -7,10 +7,10 @@ import { generateWorktreeName } from './generateWorktreeName';
 
 type CreateWorktreeOptions = {
     /**
-     * Optional worktree name.
-     * This is used as BOTH:
-     * - git branch name (via `git worktree add -b <name>`)
-     * - folder name under `.unhappy/worktree/<name>`
+     * Optional worktree *branch* name.
+     *
+     * Note: branch names may include slashes (e.g. "feat/abc"), but worktree folders cannot.
+     * We derive a safe folder name under `.unhappy/worktree/<folder>` from the branch name.
      */
     name?: string;
 };
@@ -20,15 +20,28 @@ function bashQuote(value: string): string {
     return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
-function validateWorktreeName(name: string): { ok: true; name: string } | { ok: false; error: string } {
+function validateBranchName(name: string): { ok: true; name: string } | { ok: false; error: string } {
     const trimmed = name.trim();
     if (!trimmed) return { ok: false, error: 'Worktree name cannot be empty' };
-    if (/[\\/]/.test(trimmed)) return { ok: false, error: 'Worktree name cannot contain "/" or "\\\\"' };
-    if (/\s/.test(trimmed)) return { ok: false, error: 'Worktree name cannot contain spaces' };
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(trimmed)) {
-        return { ok: false, error: 'Worktree name must match: [A-Za-z0-9][A-Za-z0-9._-]{0,63}' };
-    }
+    if (/[\r\n]/.test(trimmed)) return { ok: false, error: 'Worktree name cannot contain newlines' };
     return { ok: true, name: trimmed };
+}
+
+function deriveWorktreeFolderName(branchName: string): string {
+    const trimmed = branchName.trim();
+    // Keep this conservative: ASCII + safe filename chars. Replace everything else with '-'.
+    // Slashes are allowed in branch names, but not in folder names.
+    let folder = trimmed
+        .replace(/[\\/]/g, '-')          // path separators -> '-'
+        .replace(/\s+/g, '-')            // whitespace -> '-'
+        .replace(/[^A-Za-z0-9._-]/g, '-')// everything else -> '-'
+        .replace(/-+/g, '-')             // collapse
+        .replace(/^[^A-Za-z0-9]+/, '');  // ensure it can start with [A-Za-z0-9]
+
+    if (!folder) folder = 'worktree';
+    if (folder === '.' || folder === '..') folder = 'worktree';
+    if (folder.length > 64) folder = folder.slice(0, 64);
+    return folder;
 }
 
 export async function createWorktree(
@@ -46,10 +59,11 @@ export async function createWorktree(
     error?: string;
 }> {
     const requestedName = options?.name;
-    const name =
-        typeof requestedName === 'string' && requestedName.trim()
-            ? requestedName.trim()
-            : generateWorktreeName();
+    const requestedBranchName =
+        typeof requestedName === 'string' && requestedName.trim() ? requestedName.trim() : '';
+
+    // Branch name is the user-facing name; worktree folder name is derived from it.
+    const branchName = requestedBranchName || generateWorktreeName();
 
     // Use a stable cwd for RPC execution and pass paths explicitly to avoid
     // misclassifying "invalid directory" as "not a git repo".
@@ -110,8 +124,8 @@ export async function createWorktree(
     }
 
     // If the user provided a name, validate it and ensure git accepts it as a branch name.
-    if (typeof requestedName === 'string' && requestedName.trim()) {
-        const validated = validateWorktreeName(requestedName);
+    if (requestedBranchName) {
+        const validated = validateBranchName(requestedBranchName);
         if (!validated.ok) {
             return {
                 success: false,
@@ -140,51 +154,66 @@ export async function createWorktree(
     
     // Create the worktree with new branch
     const worktreeRootAbs = `${repoRoot}/.unhappy/worktree`;
-    const worktreePathAbs = `${worktreeRootAbs}/${name}`;
-    let result = await machineBash(
-        machineId,
-        `mkdir -p ${bashQuote(worktreeRootAbs)} && git -C ${bashQuote(repoRoot)} worktree add -b ${bashQuote(name)} ${bashQuote(worktreePathAbs)}`,
-        safeCwd
-    );
-    
-    // If worktree exists, try with a different name (only when auto-generating).
-    const combinedErr = `${result.stderr || ''}\n${result.stdout || ''}`;
-    if (!result.success && !requestedName?.trim() && combinedErr.includes('already exists')) {
-        // Try up to 3 times with numbered suffixes
-        for (let i = 2; i <= 4; i++) {
-            const newName = `${name}-${i}`;
-            const newWorktreePathAbs = `${worktreeRootAbs}/${newName}`;
-            result = await machineBash(
-                machineId,
-                `mkdir -p ${bashQuote(worktreeRootAbs)} && git -C ${bashQuote(repoRoot)} worktree add -b ${bashQuote(newName)} ${bashQuote(newWorktreePathAbs)}`,
-                safeCwd
-            );
-            
-            if (result.success) {
-                return {
-                    success: true,
-                    worktreePath: newWorktreePathAbs,
-                    branchName: newName,
-                    error: undefined
-                };
-            }
+
+    // For user-provided branch names, we keep the branch name stable and only adjust the *folder* if needed.
+    // For auto-generated names, we keep branch and folder aligned (name[-2], name[-3], ...).
+    const folderBase = requestedBranchName ? deriveWorktreeFolderName(branchName) : branchName;
+
+    const candidates: Array<{ branch: string; folder: string }> = [];
+    if (requestedBranchName) {
+        for (let i = 1; i <= 4; i++) {
+            const folder = i === 1 ? folderBase : `${folderBase}-${i}`;
+            candidates.push({ branch: branchName, folder });
+        }
+    } else {
+        // Auto-generated: keep branch and folder identical.
+        for (let i = 1; i <= 4; i++) {
+            const n = i === 1 ? branchName : `${branchName}-${i}`;
+            candidates.push({ branch: n, folder: n });
         }
     }
-    
-    if (result.success) {
-        return {
-            success: true,
-            worktreePath: worktreePathAbs,
-            branchName: name,
-            error: undefined
-        };
+
+    let lastError: string | null = null;
+    for (const cand of candidates) {
+        const worktreePathAbs = `${worktreeRootAbs}/${cand.folder}`;
+
+        // Avoid treating "branch already exists" as a folder collision: check folder existence first.
+        const pathExists = await machineBash(machineId, `test -e ${bashQuote(worktreePathAbs)}`, safeCwd);
+        if (pathExists.success) continue;
+
+        const result = await machineBash(
+            machineId,
+            `mkdir -p ${bashQuote(worktreeRootAbs)} && git -C ${bashQuote(repoRoot)} worktree add -b ${bashQuote(cand.branch)} ${bashQuote(worktreePathAbs)}`,
+            safeCwd
+        );
+        if (result.success) {
+            return {
+                success: true,
+                worktreePath: worktreePathAbs,
+                branchName: cand.branch,
+                error: undefined
+            };
+        }
+        lastError = (result.stderr || result.stdout || 'Failed to create worktree').trim();
+
+        // If the user requested an explicit branch name, don't retry with different branch names.
+        // Only continue retries when we are auto-generating, or when the folder already exists.
+        if (requestedBranchName) {
+            return {
+                success: false,
+                worktreePath: '',
+                branchName: '',
+                errorCode: 'WORKTREE_ERROR',
+                error: lastError || 'Failed to create worktree'
+            };
+        }
     }
-    
+
     return {
         success: false,
         worktreePath: '',
         branchName: '',
         errorCode: 'WORKTREE_ERROR',
-        error: (result.stderr || result.stdout || 'Failed to create worktree').trim()
+        error: (lastError || 'Failed to create worktree after multiple attempts').trim()
     };
 }

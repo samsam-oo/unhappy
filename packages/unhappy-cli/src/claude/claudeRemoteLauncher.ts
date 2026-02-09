@@ -384,7 +384,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     onReady: () => {
                         if (!pending && session.queue.size() === 0) {
-                            session.client.sendSessionEvent({ type: 'ready' });
+                            // If the user explicitly aborted/exited, avoid sending a push notification.
+                            // This prevents "ready" pushes after a forced stop.
+                            const shouldSendPush =
+                                !exitReason && !(abortController && abortController.signal.aborted);
+
+                            if (!exitReason) {
+                                session.client.sendSessionEvent({ type: 'ready' });
+                            }
+
+                            if (!shouldSendPush) {
+                                return;
+                            }
+
                             const ready = buildReadyPushNotification({
                                 agentName: "Claude",
                                 cwd: session.path,

@@ -38,8 +38,17 @@ import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
+import { apiSocket } from "./apiSocket";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import {
+    buildWorktreePath,
+    buildWorktreeRootPath,
+    getWorktreeBasePath,
+    getWorktreeRootRequestPath,
+    isWorktreePath,
+    normalizePathNoTrailingSep,
+} from "./worktreeDiscovery";
 
 // Debounce timer for realtimeMode changes
 let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,6 +64,112 @@ export function setCurrentViewedSessionId(sessionId: string | null) {
 
 export function getCurrentViewedSessionId(): string | null {
     return _currentViewedSessionId;
+}
+
+type ListDirectoryEntry = {
+    name: string;
+    type: 'file' | 'directory' | 'other';
+    size?: number;
+    modified?: number;
+};
+
+type ListDirectoryResponse = {
+    success: boolean;
+    entries?: ListDirectoryEntry[];
+    error?: string;
+};
+
+type WorktreeDiscoveryCandidate = {
+    workspaceKey: string; // `${machineId}:${normalizedBasePath}`
+    sessionId?: string;
+    machineId: string;
+    basePath: string;
+    machineMetadata?: any;
+};
+
+type WorktreeDiscoveryState = {
+    inFlight: boolean;
+    lastAttemptAt: number;
+    lastSuccessAt: number;
+    knownWorktrees: Set<string>;
+};
+
+const WORKTREE_DISCOVERY_SUCCESS_TTL_MS = 5 * 60 * 1000;
+const WORKTREE_DISCOVERY_RETRY_MS = 30 * 1000;
+const worktreeDiscoveryByWorkspace = new Map<string, WorktreeDiscoveryState>();
+
+function getOrInitWorktreeDiscoveryState(workspaceKey: string): WorktreeDiscoveryState {
+    const existing = worktreeDiscoveryByWorkspace.get(workspaceKey);
+    if (existing) return existing;
+    const created: WorktreeDiscoveryState = {
+        inFlight: false,
+        lastAttemptAt: 0,
+        lastSuccessAt: 0,
+        knownWorktrees: new Set(),
+    };
+    worktreeDiscoveryByWorkspace.set(workspaceKey, created);
+    return created;
+}
+
+async function discoverWorktreesForWorkspace(candidate: WorktreeDiscoveryCandidate): Promise<void> {
+    const state = getOrInitWorktreeDiscoveryState(candidate.workspaceKey);
+    const now = Date.now();
+
+    if (state.inFlight) return;
+    if (state.lastSuccessAt > 0 && now - state.lastSuccessAt < WORKTREE_DISCOVERY_SUCCESS_TTL_MS) return;
+    if (state.lastAttemptAt > 0 && now - state.lastAttemptAt < WORKTREE_DISCOVERY_RETRY_MS) return;
+
+    state.inFlight = true;
+    state.lastAttemptAt = now;
+
+    try {
+        const resp = candidate.sessionId
+            ? await apiSocket.sessionRPC<ListDirectoryResponse, { path: string }>(
+                candidate.sessionId!,
+                'listDirectory',
+                { path: getWorktreeRootRequestPath(candidate.basePath) }
+            )
+            : await apiSocket.machineRPC<ListDirectoryResponse, { path: string }>(
+                candidate.machineId,
+                'listDirectory',
+                { path: buildWorktreeRootPath(candidate.basePath) }
+            );
+
+        // Treat "directory doesn't exist" as a successful scan with zero worktrees.
+        if (!resp || resp.success !== true) {
+            state.lastSuccessAt = Date.now();
+            return;
+        }
+
+        const dirs = (resp.entries || []).filter((e) => e && e.type === 'directory' && typeof e.name === 'string' && e.name.trim());
+        let didAddAny = false;
+
+        for (const entry of dirs) {
+            const worktreePath = buildWorktreePath(candidate.basePath, entry.name);
+            if (state.knownWorktrees.has(worktreePath)) continue;
+            state.knownWorktrees.add(worktreePath);
+            didAddAny = true;
+            projectManager.ensureProject(
+                { machineId: candidate.machineId, path: worktreePath },
+                candidate.machineMetadata ?? null
+            );
+        }
+
+        state.lastSuccessAt = Date.now();
+        if (didAddAny) {
+            // Force subscribers to re-evaluate `getProjects()` selectors.
+            storage.getState().bumpProjectsRevision();
+        }
+    } catch {
+        // Best-effort: retry later on the next applySessions tick.
+    } finally {
+        state.inFlight = false;
+    }
+}
+
+function scheduleWorktreeDiscovery(candidates: WorktreeDiscoveryCandidate[]) {
+    // Fire-and-forget; each workspace key is self-throttled.
+    for (const c of candidates) void discoverWorktreesForWorkspace(c);
 }
 
 /**
@@ -102,6 +217,7 @@ interface StorageState {
     localSettings: LocalSettings;
     purchases: Purchases;
     profile: Profile;
+    projectsRevision: number;
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
@@ -158,6 +274,7 @@ interface StorageState {
     updateArtifact: (artifact: DecryptedArtifact) => void;
     deleteArtifact: (artifactId: string) => void;
     deleteSession: (sessionId: string) => void;
+    bumpProjectsRevision: () => void;
     // Project management methods
     getProjects: () => import('./projectManager').Project[];
     getProject: (projectId: string) => import('./projectManager').Project | null;
@@ -293,6 +410,7 @@ export const storage = create<StorageState>()((set, get) => {
         localSettings,
         purchases,
         profile,
+        projectsRevision: 0,
         sessions: {},
         machines: {},
         artifacts: {},  // Initialize artifacts
@@ -317,6 +435,7 @@ export const storage = create<StorageState>()((set, get) => {
         socketLastDisconnectedAt: null,
         isDataReady: false,
         nativeUpdateStatus: null,
+        bumpProjectsRevision: () => set((s) => ({ projectsRevision: (s.projectsRevision ?? 0) + 1 })),
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -336,7 +455,9 @@ export const storage = create<StorageState>()((set, get) => {
             const state = get();
             return Object.values(state.sessions).filter(s => s.active);
         },
-        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => {
+            let worktreeCandidates: WorktreeDiscoveryCandidate[] = [];
+            set((state) => {
             // Load local-only overrides if sessions are empty (initial load)
             const isInitialLoad = Object.keys(state.sessions).length === 0;
             const savedDrafts = isInitialLoad ? sessionDrafts : {};
@@ -517,6 +638,40 @@ export const storage = create<StorageState>()((set, get) => {
             });
             projectManager.updateSessions(Object.values(mergedSessions), machineMetadataMap);
 
+            // When a workspace (base project) exists, discover pre-existing worktrees under `.unhappy/worktree`
+            // so the UI can show them even before any sessions are started inside them.
+            const byWorkspace = new Map<string, WorktreeDiscoveryCandidate & { updatedAt: number; priority: number }>();
+            for (const s of Object.values(mergedSessions)) {
+                const machineId = s.metadata?.machineId;
+                const path = typeof s.metadata?.path === 'string' ? s.metadata.path : '';
+                if (!machineId || !path) continue;
+                const updatedAt = typeof s.updatedAt === 'number' ? s.updatedAt : 0;
+                const isWorktree = isWorktreePath(path);
+                const basePathRaw = isWorktree ? (getWorktreeBasePath(path) || '') : path;
+                if (!basePathRaw) continue;
+                const basePath = normalizePathNoTrailingSep(basePathRaw);
+                const workspaceKey = `${machineId}:${basePath}`;
+                const existing = byWorkspace.get(workspaceKey);
+                const priority = isWorktree ? 1 : 2; // Prefer a base-path session (session-scoped scan can escape homeDir constraint).
+                const shouldReplace =
+                    !existing ||
+                    priority > existing.priority ||
+                    (priority === existing.priority && updatedAt > existing.updatedAt);
+
+                if (shouldReplace) {
+                    byWorkspace.set(workspaceKey, {
+                        workspaceKey,
+                        ...(isWorktree ? {} : { sessionId: s.id }),
+                        machineId,
+                        basePath,
+                        machineMetadata: machineMetadataMap.get(machineId),
+                        updatedAt,
+                        priority,
+                    });
+                }
+            }
+            worktreeCandidates = Array.from(byWorkspace.values()).map(({ updatedAt: _u, priority: _p, ...rest }) => rest);
+
             return {
                 ...state,
                 sessions: mergedSessions,
@@ -524,7 +679,9 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData,
                 sessionMessages: updatedSessionMessages
             };
-        }),
+        });
+            if (worktreeCandidates.length > 0) scheduleWorktreeDiscovery(worktreeCandidates);
+        },
         applyLoaded: () => set((state) => {
             const result = {
                 ...state,

@@ -327,10 +327,18 @@ export async function runGemini(opts: {
     session.keepAlive(thinking, 'remote');
   }, 2000);
 
+  // Used to suppress "ready" and push notifications during explicit shutdown
+  // paths (e.g. killSession). This avoids sending a "ready" push when the user
+  // force-stops a session.
+  let shouldExit = false;
+
   // Track if this is the first message to include system prompt only once
   let isFirstMessage = true;
 
   const sendReady = () => {
+    if (shouldExit) {
+      return;
+    }
     session.sendSessionEvent({ type: 'ready' });
     try {
       const ready = buildReadyPushNotification({
@@ -375,7 +383,6 @@ export async function runGemini(opts: {
   //
 
   let abortController = new AbortController();
-  let shouldExit = false;
   let geminiBackend: AgentBackend | null = null;
   let acpSessionId: string | null = null;
   let wasSessionCreated = false;
@@ -409,6 +416,8 @@ export async function runGemini(opts: {
 
   const handleKillSession = async () => {
     logger.debug('[Gemini] Kill session requested - terminating process');
+    // Prevent any late "ready" / push notifications during shutdown.
+    shouldExit = true;
     await handleAbort();
     logger.debug('[Gemini] Abort completed, proceeding with termination');
 

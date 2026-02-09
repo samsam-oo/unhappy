@@ -46,7 +46,12 @@ function formatBashFailure(result: BashResultLike, fallback: string): string {
 export interface WorktreeInfo {
     worktreePath: string;
     basePath: string;
-    branchName: string;
+    /**
+     * Folder name under `.unhappy/worktree/`.
+     *
+     * This is NOT necessarily the git branch name (branch names can include slashes, folders cannot).
+     */
+    worktreeName: string;
 }
 
 export interface FinishResult {
@@ -72,14 +77,26 @@ export function extractWorktreeInfo(sessionPath: string): WorktreeInfo | null {
 
     const basePath = sessionPath.slice(0, idx);
     const afterSegment = sessionPath.slice(idx + segmentLen);
-    const branchName = afterSegment.split(/[\\/]/)[0];
-    if (!branchName) return null;
+    const worktreeName = afterSegment.split(/[\\/]/)[0];
+    if (!worktreeName) return null;
 
     return {
         worktreePath: sessionPath,
         basePath,
-        branchName,
+        worktreeName,
     };
+}
+
+export async function resolveWorktreeBranchName(machineId: string, worktreePath: string): Promise<string | null> {
+    // Prefer "branch --show-current"; empty stdout means detached HEAD.
+    const res = await machineBash(machineId, `git -C ${bashQuote(worktreePath)} branch --show-current`, SAFE_CWD);
+    const name = (res.success ? (res.stdout || '').trim() : '').trim();
+    if (name) return name;
+
+    // Fallback for older git or edge cases.
+    const sym = await machineBash(machineId, `git -C ${bashQuote(worktreePath)} symbolic-ref --quiet --short HEAD`, SAFE_CWD);
+    const symName = (sym.success ? (sym.stdout || '').trim() : '').trim();
+    return symName || null;
 }
 
 export async function getWorktreeStatus(machineId: string, worktreePath: string): Promise<WorktreeStatus> {
@@ -190,12 +207,11 @@ function isNonFastForwardPushFailure(result: BashResultLike): boolean {
 export async function mergeWorktreeBranch(
     machineId: string,
     basePath: string,
+    worktreePath: string,
     branchName: string,
     mainBranch: string,
     options?: MergeOptions
 ): Promise<FinishResult> {
-    const worktreePath = buildWorktreePath(basePath, branchName);
-
     // Step 1: Check for uncommitted changes in the worktree
     const status = await getWorktreeStatus(machineId, worktreePath);
     if (!status.success) {
@@ -275,11 +291,10 @@ export async function mergeWorktreeBranch(
 export async function createPullRequest(
     machineId: string,
     basePath: string,
+    worktreePath: string,
     branchName: string,
     mainBranch: string
 ): Promise<FinishResult & { prUrl?: string }> {
-    const worktreePath = buildWorktreePath(basePath, branchName);
-
     // Guard: don't allow "empty push" from dirty working tree.
     const status = await getWorktreeStatus(machineId, worktreePath);
     if (!status.success) return { success: false, error: status.error || 'Failed to get git status' };
@@ -382,6 +397,7 @@ export async function createPullRequest(
 export async function deleteWorktree(
     machineId: string,
     basePath: string,
+    worktreePath: string,
     branchName: string,
     sessionIds: string[]
 ): Promise<FinishResult> {
@@ -395,10 +411,9 @@ export async function deleteWorktree(
     }
 
     // Step 2: Remove the git worktree
-    const worktreeDirAbs = buildWorktreePath(basePath, branchName);
     const removeResult = await machineBash(
         machineId,
-        `git -C ${bashQuote(basePath)} worktree remove ${bashQuote(worktreeDirAbs)} --force`,
+        `git -C ${bashQuote(basePath)} worktree remove ${bashQuote(worktreePath)} --force`,
         SAFE_CWD
     );
     if (!removeResult.success) {

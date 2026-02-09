@@ -7,9 +7,11 @@ import type { Project } from '@/sync/projectManager';
 import { sessionKill } from '@/sync/ops';
 import { useAllSessions, useProjects } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
+import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
 import { useSessionStatus } from '@/utils/sessionUtils';
+import { Modal } from '@/modal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname, useRouter } from 'expo-router';
 import * as React from 'react';
@@ -32,7 +34,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
 const WORKSPACE_ORDER_KEY = 'happy.workspaceExplorer.workspaceOrder.v1';
-const HIDDEN_WORKSPACES_KEY = 'happy.workspaceExplorer.hiddenWorkspaces.v1';
 
 const IS_WEB = Platform.OS === 'web';
 const DEFAULT_EXPANDED = false;
@@ -225,31 +226,6 @@ async function saveWorkspaceOrder(order: string[]): Promise<void> {
     }
 }
 
-async function loadHiddenWorkspaces(): Promise<string[] | null> {
-    try {
-        const raw = await AsyncStorage.getItem(HIDDEN_WORKSPACES_KEY);
-        const parsed = safeParseJson<unknown>(raw);
-        if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) return parsed as string[];
-        return null;
-    } catch {
-        return null;
-    }
-}
-
-async function saveHiddenWorkspaces(hidden: string[]): Promise<void> {
-    try {
-        const raw = JSON.stringify(hidden);
-        if (Platform.OS === 'web') {
-            if (typeof window === 'undefined') return;
-            window.localStorage.setItem(HIDDEN_WORKSPACES_KEY, raw);
-            return;
-        }
-        await AsyncStorage.setItem(HIDDEN_WORKSPACES_KEY, raw);
-    } catch {
-        // ignore
-    }
-}
-
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
@@ -289,6 +265,47 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     headerButtonHover: {
         backgroundColor: theme.colors.chrome.listHoverBackground,
+    },
+
+    emptyState: {
+        flex: 1,
+        paddingHorizontal: 14,
+        paddingVertical: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+    },
+    emptyStateTitle: {
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.text,
+        textAlign: 'center',
+        ...Typography.default('semiBold'),
+    },
+    emptyStateSubtitle: {
+        fontSize: 12,
+        lineHeight: 16,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        ...Typography.default(),
+    },
+    emptyStateButton: {
+        marginTop: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.chrome.panelBorder,
+    },
+    emptyStateButtonHover: {
+        backgroundColor: theme.colors.chrome.listHoverBackground,
+    },
+    emptyStateButtonText: {
+        fontSize: 12,
+        lineHeight: 16,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
     },
 
     list: {
@@ -677,40 +694,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
 
     const [expanded, setExpanded] = React.useState<Record<string, boolean>>(initialExpanded);
 
-    const initialHiddenWorkspaces = React.useMemo(() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            const parsed = safeParseJson<unknown>(window.localStorage.getItem(HIDDEN_WORKSPACES_KEY));
-            if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) return parsed as string[];
-        }
-        return [] as string[];
-    }, []);
-
-    const [hiddenWorkspacesLoaded, setHiddenWorkspacesLoaded] = React.useState(Platform.OS === 'web');
-    const [hiddenWorkspaces, setHiddenWorkspaces] = React.useState<string[]>(initialHiddenWorkspaces);
-    const commitHiddenWorkspaces = React.useCallback((next: string[]) => {
-        setHiddenWorkspaces(next);
-        void saveHiddenWorkspaces(next);
-    }, []);
-
-    React.useEffect(() => {
-        if (Platform.OS === 'web') return;
-        let cancelled = false;
-        void (async () => {
-            const loaded = await loadHiddenWorkspaces();
-            if (cancelled) return;
-            setHiddenWorkspaces(loaded ?? []);
-            setHiddenWorkspacesLoaded(true);
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    const hiddenStableIds = React.useMemo(() => {
-        // While loading on native, treat as empty to avoid hiding unexpectedly before hydration.
-        if (!hiddenWorkspacesLoaded) return new Set<string>();
-        return new Set(hiddenWorkspaces);
-    }, [hiddenWorkspaces, hiddenWorkspacesLoaded]);
+    const activeSessionIds = React.useMemo(() => new Set(sessions.map((s) => s.id)), [sessions]);
 
     React.useEffect(() => {
         if (Platform.OS === 'web') return;
@@ -936,14 +920,19 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
     }, [projects]);
 
     const visibleProjectGroups = React.useMemo(() => {
-        if (!hiddenStableIds.size) return projectGroups;
-        return projectGroups
-            .filter((g) => !hiddenStableIds.has(g.stableId))
-            .map((g) => ({
-                ...g,
-                worktrees: g.worktrees.filter((wt) => !hiddenStableIds.has(getProjectStableId(wt))),
-            }));
-    }, [hiddenStableIds, projectGroups]);
+        if (!activeSessionIds.size) return [];
+
+        // Only show workspaces/worktrees that have at least one active (unarchived) session.
+        // "Delete workspace" is implemented by archiving all sessions under that workspace.
+        const out: ProjectGroup[] = [];
+        for (const g of projectGroups) {
+            const activeWorktrees = g.worktrees.filter((wt) => (wt.sessionIds || []).some((id) => activeSessionIds.has(id)));
+            const hasActiveRoot = (g.project.sessionIds || []).some((id) => activeSessionIds.has(id));
+            if (!hasActiveRoot && activeWorktrees.length === 0) continue;
+            out.push({ ...g, worktrees: activeWorktrees });
+        }
+        return out;
+    }, [activeSessionIds, projectGroups]);
 
     const defaultWorkspaceOrder = React.useMemo(() => {
         return [...visibleProjectGroups].sort((a, b) => b.updatedAt - a.updatedAt).map((g) => g.stableId);
@@ -1013,45 +1002,50 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
         return map;
     }, [visibleProjectGroups]);
 
-    const [hideWorkspaceArmedId, setHideWorkspaceArmedId] = React.useState<string | null>(null);
-    const hideWorkspaceArmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [deleteWorkspaceArmedId, setDeleteWorkspaceArmedId] = React.useState<string | null>(null);
+    const deleteWorkspaceArmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [deletingWorkspaceId, setDeletingWorkspaceId] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         return () => {
-            if (hideWorkspaceArmTimerRef.current) clearTimeout(hideWorkspaceArmTimerRef.current);
+            if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
         };
     }, []);
 
-    const hideWorkspace = React.useCallback((stableId: string) => {
+    const archiveSessions = React.useCallback(async (workspaceStableId: string, sessionIds: string[]) => {
         if (draggingStableIdRef.current) return;
-        if (!hiddenWorkspacesLoaded) return;
+        if (!sessionIds.length) return;
 
-        const nextHidden = Array.from(new Set([...hiddenWorkspaces, stableId]));
-        commitHiddenWorkspaces(nextHidden);
+        setDeletingWorkspaceId(workspaceStableId);
+        try {
+            // Best-effort: attempt to stop every session process. If some are already dead/offline,
+            // treat failures as non-fatal and refresh state afterwards.
+            const errors: string[] = [];
+            for (const id of sessionIds) {
+                const result = await sessionKill(id);
+                if (!result.success) errors.push(result.message || 'Failed to archive session');
+            }
 
-        // If it's a top-level workspace stableId, also remove it from the saved order so it stays "deleted".
-        if (workspaceOrder && workspaceOrder.includes(stableId)) {
-            commitWorkspaceOrder(workspaceOrder.filter((id) => id !== stableId));
+            await sync.refreshSessions();
+
+            if (errors.length) {
+                Modal.alert('Error', errors[0]!, [{ text: 'OK', style: 'cancel' }]);
+            }
+        } catch (e) {
+            if (e instanceof HappyError) {
+                Modal.alert('Error', e.message, [{ text: 'OK', style: 'cancel' }]);
+            } else {
+                Modal.alert('Error', 'Unknown error', [{ text: 'OK', style: 'cancel' }]);
+            }
+        } finally {
+            setDeletingWorkspaceId((cur) => (cur === workspaceStableId ? null : cur));
         }
-    }, [commitHiddenWorkspaces, commitWorkspaceOrder, hiddenWorkspaces, hiddenWorkspacesLoaded, workspaceOrder]);
 
-    const isHiddenSession = React.useCallback((s: Session) => {
-        if (!hiddenStableIds.size) return false;
-        const machineId = s.metadata?.machineId;
-        const path = s.metadata?.path;
-        if (!machineId || !path) return false;
-
-        const stableId = `${machineId}:${path}`;
-        if (hiddenStableIds.has(stableId)) return true;
-
-        if (isWorktreePath(path)) {
-            const basePath = getWorktreeBasePath(path) || path;
-            const baseStableId = `${machineId}:${basePath}`;
-            if (hiddenStableIds.has(baseStableId)) return true;
+        // Remove from saved order so it stays removed from the list ordering.
+        if (workspaceOrder && workspaceOrder.includes(workspaceStableId)) {
+            commitWorkspaceOrder(workspaceOrder.filter((id) => id !== workspaceStableId));
         }
-
-        return false;
-    }, [hiddenStableIds]);
+    }, [commitWorkspaceOrder, workspaceOrder]);
 
     const startWorkspaceDrag = React.useCallback((stableId: string, absoluteY: number) => {
         if (draggingStableIdRef.current) return;
@@ -1233,14 +1227,14 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
 
         // Fallback: sessions without metadata/project association.
         const ungrouped = sessions
-            .filter((s) => !included.has(s.id) && !isHiddenSession(s))
+            .filter((s) => !included.has(s.id))
             .sort((a, b) => b.updatedAt - a.updatedAt);
         for (const s of ungrouped) {
             out.push({ type: 'session', session: s, depth: 1, groupStableId: `u:${s.id}` });
         }
 
         return out;
-    }, [expanded, orderedProjectGroups, sessionById, sessions, isHiddenSession]);
+    }, [expanded, orderedProjectGroups, sessionById, sessions]);
 
     const attentionCountByStableId = React.useMemo(() => {
         const map = new Map<string, number>();
@@ -1326,6 +1320,29 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                         if (row.type === 'project') return `p:${getProjectStableId(row.project)}`;
                         if (row.type === 'worktree') return `w:${getProjectStableId(row.project)}`;
                         return `s:${row.session.id}`;
+                    }}
+                    ListEmptyComponent={() => {
+                        return (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyStateTitle}>
+                                    {'No active workspaces'}
+                                </Text>
+                                <Text style={styles.emptyStateSubtitle}>
+                                    {'Create a new session to add a workspace.'}
+                                </Text>
+                                <Pressable
+                                    onPress={() => router.push('/new')}
+                                    style={({ hovered, pressed }: any) => [
+                                        styles.emptyStateButton,
+                                        (Platform.OS === 'web' && (hovered || pressed)) && styles.emptyStateButtonHover,
+                                        pressed && styles.rowPressed,
+                                    ]}
+                                    accessibilityLabel="New session"
+                                >
+                                    <Text style={styles.emptyStateButtonText}>New session</Text>
+                                </Pressable>
+                            </View>
+                        );
                     }}
                     // This view can be rendered with a bottom overlay (e.g. a floating "new session" button on tablet).
                     // Add extra bottom padding so the last rows can scroll above the overlay.
@@ -1527,26 +1544,40 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             )}
                                             <Pressable
                                                 hitSlop={10}
+                                                disabled={deletingWorkspaceId === stableId}
                                                 onPress={(e: any) => {
                                                     if (draggingStableIdRef.current) return;
                                                     e?.stopPropagation?.();
+                                                    if (deletingWorkspaceId === stableId) return;
 
-                                                    const armed = hideWorkspaceArmedId === stableId;
+                                                    const armed = deleteWorkspaceArmedId === stableId;
                                                     if (!armed) {
-                                                        setHideWorkspaceArmedId(stableId);
-                                                        if (hideWorkspaceArmTimerRef.current) clearTimeout(hideWorkspaceArmTimerRef.current);
-                                                        hideWorkspaceArmTimerRef.current = setTimeout(() => {
-                                                            setHideWorkspaceArmedId((cur) => (cur === stableId ? null : cur));
+                                                        setDeleteWorkspaceArmedId(stableId);
+                                                        if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
+                                                        deleteWorkspaceArmTimerRef.current = setTimeout(() => {
+                                                            setDeleteWorkspaceArmedId((cur: string | null) => (cur === stableId ? null : cur));
                                                         }, 2500);
                                                         return;
                                                     }
 
-                                                    if (hideWorkspaceArmTimerRef.current) clearTimeout(hideWorkspaceArmTimerRef.current);
-                                                    setHideWorkspaceArmedId(null);
-                                                    hideWorkspace(stableId);
+                                                    if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
+                                                    setDeleteWorkspaceArmedId(null);
+                                                    const group = groupByStableId.get(stableId);
+                                                    const ids = new Set<string>();
+                                                    if (group) {
+                                                        for (const id of group.project.sessionIds || []) {
+                                                            if (activeSessionIds.has(id)) ids.add(id);
+                                                        }
+                                                        for (const wt of group.worktrees) {
+                                                            for (const id of wt.sessionIds || []) {
+                                                                if (activeSessionIds.has(id)) ids.add(id);
+                                                            }
+                                                        }
+                                                    }
+                                                    void archiveSessions(stableId, Array.from(ids));
                                                 }}
                                                 style={({ hovered, pressed }: any) => {
-                                                    const armed = hideWorkspaceArmedId === stableId;
+                                                    const armed = deleteWorkspaceArmedId === stableId;
                                                     return [
                                                         styles.rowActionButton,
                                                         (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
@@ -1554,13 +1585,17 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                         armed && (Platform.OS === 'web' && (hovered || pressed)) && styles.dangerActionArmedHover,
                                                     ];
                                                 }}
-                                                accessibilityLabel="Hide workspace"
+                                                accessibilityLabel="Delete workspace"
                                             >
-                                                <Ionicons
-                                                    name="trash-outline"
-                                                    size={UI_ICONS.rowAdd}
-                                                    color={(hideWorkspaceArmedId === stableId) ? theme.colors.textDestructive : theme.colors.textSecondary}
-                                                />
+                                                {deletingWorkspaceId === stableId ? (
+                                                    <ActivityIndicator size={UI_ICONS.spinner} color={theme.colors.textDestructive} />
+                                                ) : (
+                                                    <Ionicons
+                                                        name="close-outline"
+                                                        size={UI_ICONS.rowAdd}
+                                                        color={(deleteWorkspaceArmedId === stableId) ? theme.colors.textDestructive : theme.colors.textSecondary}
+                                                    />
+                                                )}
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={10}
@@ -1660,27 +1695,30 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             )}
                                             <Pressable
                                                 hitSlop={10}
+                                                disabled={deletingWorkspaceId === stableId}
                                                 onPress={(e: any) => {
                                                     if (draggingStableIdRef.current) return;
                                                     e?.stopPropagation?.();
+                                                    if (deletingWorkspaceId === stableId) return;
 
                                                     const wtStableId = stableId;
-                                                    const armed = hideWorkspaceArmedId === wtStableId;
+                                                    const armed = deleteWorkspaceArmedId === wtStableId;
                                                     if (!armed) {
-                                                        setHideWorkspaceArmedId(wtStableId);
-                                                        if (hideWorkspaceArmTimerRef.current) clearTimeout(hideWorkspaceArmTimerRef.current);
-                                                        hideWorkspaceArmTimerRef.current = setTimeout(() => {
-                                                            setHideWorkspaceArmedId((cur) => (cur === wtStableId ? null : cur));
+                                                        setDeleteWorkspaceArmedId(wtStableId);
+                                                        if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
+                                                        deleteWorkspaceArmTimerRef.current = setTimeout(() => {
+                                                            setDeleteWorkspaceArmedId((cur: string | null) => (cur === wtStableId ? null : cur));
                                                         }, 2500);
                                                         return;
                                                     }
 
-                                                    if (hideWorkspaceArmTimerRef.current) clearTimeout(hideWorkspaceArmTimerRef.current);
-                                                    setHideWorkspaceArmedId(null);
-                                                    hideWorkspace(wtStableId);
+                                                    if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
+                                                    setDeleteWorkspaceArmedId(null);
+                                                    const ids = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
+                                                    void archiveSessions(wtStableId, ids);
                                                 }}
                                                 style={({ hovered, pressed }: any) => {
-                                                    const armed = hideWorkspaceArmedId === stableId;
+                                                    const armed = deleteWorkspaceArmedId === stableId;
                                                     return [
                                                         styles.rowActionButton,
                                                         (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
@@ -1688,13 +1726,17 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                         armed && (Platform.OS === 'web' && (hovered || pressed)) && styles.dangerActionArmedHover,
                                                     ];
                                                 }}
-                                                accessibilityLabel="Hide worktree"
+                                                accessibilityLabel="Delete worktree"
                                             >
-                                                <Ionicons
-                                                    name="trash-outline"
-                                                    size={UI_ICONS.rowAdd}
-                                                    color={(hideWorkspaceArmedId === stableId) ? theme.colors.textDestructive : theme.colors.textSecondary}
-                                                />
+                                                {deletingWorkspaceId === stableId ? (
+                                                    <ActivityIndicator size={UI_ICONS.spinner} color={theme.colors.textDestructive} />
+                                                ) : (
+                                                    <Ionicons
+                                                        name="close-outline"
+                                                        size={UI_ICONS.rowAdd}
+                                                        color={(deleteWorkspaceArmedId === stableId) ? theme.colors.textDestructive : theme.colors.textSecondary}
+                                                    />
+                                                )}
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={10}

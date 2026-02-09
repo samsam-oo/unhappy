@@ -3,6 +3,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { EmptyMainScreen } from './EmptyMainScreen';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
+import { useSessionListViewData } from '@/sync/storage';
 import { WorkspaceExplorerSidebar } from './WorkspaceExplorerSidebar';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -38,10 +39,11 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 export const SessionsListWrapper = React.memo(() => {
     const { theme } = useUnistyles();
+    const rawSessionListViewData = useSessionListViewData();
     const sessionListViewData = useVisibleSessionListViewData();
     const styles = stylesheet;
 
-    if (sessionListViewData === null) {
+    if (rawSessionListViewData === null || sessionListViewData === null) {
         return (
             <View style={styles.container}>
                 <View style={styles.loadingContainerWrapper}>
@@ -53,7 +55,10 @@ export const SessionsListWrapper = React.memo(() => {
         );
     }
 
-    if (sessionListViewData.length === 0) {
+    // If there are no sessions at all, show onboarding/empty screen.
+    // Note: `useVisibleSessionListViewData` can be empty when "Hide inactive sessions" is enabled,
+    // even if there are existing sessions (all offline). In that case, still show the workspace sidebar.
+    if (rawSessionListViewData.length === 0) {
         return (
             <View style={styles.container}>
                 <View style={styles.emptyStateContainer}>

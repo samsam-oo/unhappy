@@ -110,23 +110,45 @@ export function parseMarkdownBlock(markdown: string) {
         }
 
         // Options block
-        if (trimmed.startsWith('<options>')) {
-            let items: string[] = [];
-            while (index < lines.length) {
-                const nextLine = lines[index];
-                if (nextLine.trim() === '</options>') {
-                    index++;
-                    break;
-                }
-                // Extract content from <option> tags
-                const optionMatch = nextLine.match(/<option>(.*?)<\/option>/);
-                if (optionMatch) {
-                    items.push(optionMatch[1]);
-                }
+        // Be permissive: some models emit compact XML on one line
+        // (e.g. "<options><option>A</option></options>") despite instructions.
+        const optionsOpenIdx = line.toLowerCase().indexOf('<options>');
+        if (optionsOpenIdx !== -1) {
+            const prefix = line.slice(0, optionsOpenIdx).trim();
+            if (prefix.length > 0) {
+                blocks.push({ type: 'text', content: parseMarkdownSpans(prefix, false) });
+            }
+
+            let buffer = line.slice(optionsOpenIdx);
+            while (index < lines.length && !buffer.toLowerCase().includes('</options>')) {
+                buffer += '\n' + lines[index];
                 index++;
             }
+
+            const bufferLower = buffer.toLowerCase();
+            const closeIdx = bufferLower.indexOf('</options>');
+            const optionsXml = closeIdx !== -1
+                ? buffer.slice(0, closeIdx + '</options>'.length)
+                : buffer;
+
+            const items: string[] = [];
+            const optionRegex = /<option>(.*?)<\/option>/gi;
+            let match: RegExpExecArray | null;
+            while ((match = optionRegex.exec(optionsXml)) !== null) {
+                const text = match[1]?.trim();
+                if (text) items.push(text);
+            }
+
             if (items.length > 0) {
                 blocks.push({ type: 'options', items });
+            }
+
+            // Preserve any trailing text after the options block.
+            if (closeIdx !== -1) {
+                const suffix = buffer.slice(closeIdx + '</options>'.length).trim();
+                if (suffix.length > 0) {
+                    blocks.push({ type: 'text', content: parseMarkdownSpans(suffix, false) });
+                }
             }
             continue;
         }

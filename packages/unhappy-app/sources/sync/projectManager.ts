@@ -97,6 +97,16 @@ class ProjectManager {
     }
 
     /**
+     * Ensure a project exists for the given key.
+     *
+     * This is used for "discovered" projects (e.g. existing git worktrees)
+     * that may not have any sessions yet, but should still appear in the UI.
+     */
+    ensureProject(key: ProjectKey, machineMetadata?: MachineMetadata | null): Project {
+        return this.getOrCreateProject(key, machineMetadata);
+    }
+
+    /**
      * Add or update a session in the project system
      */
     addSession(session: Session, machineMetadata?: MachineMetadata | null): void {
