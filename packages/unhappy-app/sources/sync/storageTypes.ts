@@ -73,6 +73,8 @@ export const AgentStateSchema = z.object({
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
 
+export type ReasoningEffortMode = 'low' | 'medium' | 'high' | 'max';
+
 export interface Session {
   id: string;
   seq: number;
@@ -94,6 +96,7 @@ export interface Session {
     id: string;
   }>;
   draft?: string | null; // Local draft message, not synced to server
+  profileId?: string | null; // Local-only: backend profile used when spawning this session
   permissionMode?:
     | 'default'
     | 'acceptEdits'
@@ -103,12 +106,8 @@ export interface Session {
     | 'safe-yolo'
     | 'yolo'
     | null; // Local permission mode, not synced to server
-  modelMode?:
-    | 'default'
-    | 'gemini-2.5-pro'
-    | 'gemini-2.5-flash'
-    | 'gemini-2.5-flash-lite'
-    | null; // Local model mode, not synced to server
+  modelMode?: string | null; // Local-only: model override, not synced to server
+  effortMode?: ReasoningEffortMode | null; // Local-only: reasoning effort override, not synced to server
   unread?: boolean; // Local-only: true when task completed while user was not viewing this session
   // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
   // We store it directly on Session to ensure it's available immediately on load.

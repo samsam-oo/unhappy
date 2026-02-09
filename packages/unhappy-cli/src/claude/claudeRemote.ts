@@ -13,6 +13,9 @@ import { systemPrompt } from "./utils/systemPrompt";
 import { PermissionResult } from "./sdk/types";
 import type { JsRuntime } from "./runClaude";
 
+// Preserve the initial environment value so we can restore when the UI resets effort.
+const BASE_CLAUDE_CODE_EFFORT_LEVEL = process.env.CLAUDE_CODE_EFFORT_LEVEL;
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -113,6 +116,18 @@ export async function claudeRemote(opts: {
 
     // Prepare SDK options
     let mode = initial.mode;
+
+    // Apply reasoning effort override (if any). When unset, restore the baseline/profile value.
+    const desiredEffort =
+        initial.mode.effort ??
+        opts.claudeEnvVars?.CLAUDE_CODE_EFFORT_LEVEL ??
+        BASE_CLAUDE_CODE_EFFORT_LEVEL;
+    if (desiredEffort) {
+        process.env.CLAUDE_CODE_EFFORT_LEVEL = desiredEffort;
+    } else {
+        delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
+    }
+
     const sdkOptions: QueryOptions = {
         cwd: opts.path,
         resume: startFrom ?? undefined,

@@ -232,7 +232,8 @@ class Sync {
         // Read model mode - for Gemini, default to gemini-2.5-pro if not set
         const flavor = session.metadata?.flavor;
         const isGemini = flavor === 'gemini';
-        const modelMode = session.modelMode || (isGemini ? 'gemini-2.5-pro' : 'default');
+        const modelMode = session.modelMode;
+        const effortMode = session.effortMode ?? null;
 
         // Generate local ID
         const localId = randomUUID();
@@ -254,11 +255,14 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
-        // Model settings - for Gemini, we pass the selected model; for others, CLI handles it
+        // Model settings:
+        // - For Gemini: always pass a concrete model so behavior is consistent across devices.
+        // - For Claude/Codex: pass the selected override if any; null resets to backend default.
         let model: string | null = null;
-        if (isGemini && modelMode !== 'default') {
-            // For Gemini ACP, pass the selected model to CLI
+        if (typeof modelMode === 'string' && modelMode.trim() && modelMode !== 'default') {
             model = modelMode;
+        } else if (isGemini) {
+            model = 'gemini-2.5-pro';
         }
         const fallbackModel: string | null = null;
 
@@ -274,6 +278,7 @@ class Sync {
                 permissionMode: permissionMode || 'default',
                 model,
                 fallbackModel,
+                effort: effortMode ?? 'medium',
                 appendSystemPrompt: systemPrompt,
                 ...(displayText && { displayText }) // Add displayText if provided
             }

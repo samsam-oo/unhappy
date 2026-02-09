@@ -1153,6 +1153,7 @@ function NewSessionWizard() {
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
+                storage.getState().updateSessionProfileId(result.sessionId, selectedProfileId);
                 if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
                 }
@@ -1299,7 +1300,7 @@ function NewSessionWizard() {
                                 permissionMode={permissionMode}
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
-                                onModelModeChange={setModelMode}
+                                onModelModeChange={(m) => setModelMode((m ?? 'default') as any)}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
@@ -2068,7 +2069,7 @@ function NewSessionWizard() {
                             permissionMode={permissionMode}
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
-                            onModelModeChange={setModelMode}
+                            onModelModeChange={(m) => setModelMode((m ?? 'default') as any)}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}

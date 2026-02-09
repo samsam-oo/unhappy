@@ -8,13 +8,11 @@ import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
-import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { machineBash, sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, setCurrentViewedSessionId, getCurrentViewedSessionId } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
-import { Session } from '@/sync/storageTypes';
+import { Session, type ReasoningEffortMode } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
@@ -523,7 +521,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const permissionMode = session.permissionMode || 'default';
     // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
     const isGeminiSession = session.metadata?.flavor === 'gemini';
-    const modelMode = session.modelMode || (isGeminiSession ? 'gemini-2.5-pro' : 'default');
+    const modelMode: string | null = session.modelMode ?? (isGeminiSession ? 'gemini-2.5-pro' : null);
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const experiments = useSetting('experiments');
@@ -549,8 +547,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionId]);
 
     // Function to update model mode (for Gemini sessions)
-    const updateModelMode = React.useCallback((mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => {
+    const updateModelMode = React.useCallback((mode: string | null) => {
         storage.getState().updateSessionModelMode(sessionId, mode);
+    }, [sessionId]);
+
+    const updateEffortMode = React.useCallback((mode: ReasoningEffortMode | null) => {
+        storage.getState().updateSessionEffortMode(sessionId, mode);
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -562,37 +564,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             marginTop: 0 // No marginTop needed since header is handled by parent
         },
     }), []);
-
-
-    // Handle microphone button press - memoized to prevent button flashing
-    const handleMicrophonePress = React.useCallback(async () => {
-        if (realtimeStatus === 'connecting') {
-            return; // Prevent actions during transitions
-        }
-        if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
-            try {
-                const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
-                await startRealtimeSession(sessionId, initialPrompt);
-                tracking?.capture('voice_session_started', { sessionId });
-            } catch (error) {
-                console.error('Failed to start realtime session:', error);
-                Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
-                tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
-            }
-        } else if (realtimeStatus === 'connected') {
-            await stopRealtimeSession();
-            tracking?.capture('voice_session_stopped');
-
-            // Notify voice assistant about voice session stop
-            voiceHooks.onVoiceStopped();
-        }
-    }, [realtimeStatus, sessionId]);
-
-    // Memoize mic button state to prevent flashing during chat transitions
-    const micButtonState = useMemo(() => ({
-        onMicPress: handleMicrophonePress,
-        isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
-    }), [handleMicrophonePress, realtimeStatus]);
 
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
@@ -632,8 +603,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
-            modelMode={modelMode as any}
-            onModelModeChange={updateModelMode as any}
+            modelMode={modelMode}
+            onModelModeChange={updateModelMode}
+            effortMode={session.effortMode ?? null}
+            onEffortModeChange={updateEffortMode}
+            profileId={session.profileId ?? null}
             metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,
@@ -649,8 +623,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                     trackMessageSent();
                 }
             }}
-            onMicPress={micButtonState.onMicPress}
-            isMicActive={micButtonState.isMicActive}
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}

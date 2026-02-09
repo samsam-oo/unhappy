@@ -23,6 +23,7 @@ import { hashObject } from '@/utils/deterministicJson';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import { listCodexModels } from '@/modules/common/listModels';
 import { render } from 'ink';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -80,9 +81,11 @@ export async function runCodex(opts: {
 }): Promise<void> {
   // Use shared PermissionMode type for cross-agent compatibility
   type PermissionMode = import('@/api/types').PermissionMode;
+  type ReasoningEffortMode = 'low' | 'medium' | 'high' | 'max';
   interface EnhancedMode {
     permissionMode: PermissionMode;
     model?: string;
+    effort?: ReasoningEffortMode;
   }
 
   //
@@ -181,6 +184,7 @@ export async function runCodex(opts: {
     hashObject({
       permissionMode: mode.permissionMode,
       model: mode.model,
+      effort: mode.effort,
     }),
   );
 
@@ -189,6 +193,7 @@ export async function runCodex(opts: {
   let currentPermissionMode: import('@/api/types').PermissionMode | undefined =
     undefined;
   let currentModel: string | undefined = undefined;
+  let currentEffort: ReasoningEffortMode | undefined = undefined;
 
   session.onUserMessage((message) => {
     // Resolve permission mode (accept all modes, will be mapped in switch statement)
@@ -220,9 +225,29 @@ export async function runCodex(opts: {
       );
     }
 
+    // Resolve reasoning effort; explicit null resets to default (undefined)
+    let messageEffort = currentEffort;
+    if (message.meta?.hasOwnProperty('effort')) {
+      const raw = message.meta.effort;
+      const normalized =
+        raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max'
+          ? (raw as ReasoningEffortMode)
+          : undefined;
+      messageEffort = normalized;
+      currentEffort = messageEffort;
+      logger.debug(
+        `[Codex] Effort updated from user message: ${messageEffort || 'reset to default'}`,
+      );
+    } else {
+      logger.debug(
+        `[Codex] User message received with no effort override, using current: ${currentEffort || 'default'}`,
+      );
+    }
+
     const enhancedMode: EnhancedMode = {
       permissionMode: messagePermissionMode || 'default',
       model: messageModel,
+      effort: messageEffort,
     };
     messageQueue.push(message.content.text, enhancedMode);
   });
@@ -391,6 +416,16 @@ export async function runCodex(opts: {
 
   // Register abort handler
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
+
+  // Model listing for UI dropdown (best-effort; cached per session process).
+  let cachedModelList: Awaited<ReturnType<typeof listCodexModels>> | null = null;
+  session.rpcHandlerManager.registerHandler('list-models', async () => {
+    if (cachedModelList?.success) {
+      return cachedModelList;
+    }
+    cachedModelList = await listCodexModels();
+    return cachedModelList;
+  });
 
   registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
 
@@ -961,13 +996,30 @@ export async function runCodex(opts: {
         })();
 
         if (!wasCreated) {
+          const codexReasoningEffort = (() => {
+            switch (message.mode.effort) {
+              case 'low':
+              case 'medium':
+              case 'high':
+                return message.mode.effort;
+              case 'max':
+                return 'xhigh';
+              default:
+                return undefined;
+            }
+          })();
           const startConfig: CodexSessionConfig = {
             prompt: first
               ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION
               : message.message,
             sandbox,
             'approval-policy': approvalPolicy,
-            config: { mcp_servers: mcpServers },
+            config: {
+              mcp_servers: mcpServers,
+              ...(codexReasoningEffort
+                ? { model_reasoning_effort: codexReasoningEffort }
+                : {}),
+            },
           };
           if (message.mode.model) {
             startConfig.model = message.mode.model;
