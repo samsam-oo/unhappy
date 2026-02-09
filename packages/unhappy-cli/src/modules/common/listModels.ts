@@ -1,5 +1,4 @@
 import { execFileSync, spawn } from 'node:child_process';
-import fs from 'node:fs';
 
 export type ListModelsResponse =
   | { success: true; models: string[] }
@@ -203,28 +202,12 @@ export async function listClaudeModels(): Promise<ListModelsResponse> {
       return { success: false, error: 'Claude Code CLI not found in PATH' };
     }
 
-    const resolved = fs.realpathSync(claudePath);
-    const text = fs.readFileSync(resolved, 'utf8');
-
-    // Extract model identifiers embedded in Claude Code bundle.
-    // This is best-effort: Claude does not currently expose a stable "list models" CLI command.
-    const re = /\bclaude-[a-z0-9-]{3,}\b/gi;
-    const found = new Set<string>();
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text))) {
-      const s = m[0];
-      if (s.includes('claude-code')) continue;
-      if (s.includes('claude-cli')) continue;
-      // Models include a version/date; this filters out most false positives.
-      if (!/[0-9]/.test(s)) continue;
-      found.add(s);
-    }
-
-    const models = Array.from(found).sort();
-    if (models.length === 0) {
-      return { success: false, error: 'No Claude models found (bundle scan returned empty)' };
-    }
-    return { success: true, models };
+    // Intentional: hard-code supported Claude models.
+    // We avoid "bundle scanning" since it returns many non-functional ids.
+    return {
+      success: true,
+      models: ['claude-opus-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5'],
+    };
   } catch (e) {
     return {
       success: false,

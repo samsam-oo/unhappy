@@ -532,22 +532,13 @@ export async function runClaude(
     cleanup();
   });
 
-  // Model listing for UI dropdown (best-effort; cached per session process).
-  let cachedModelList: Awaited<ReturnType<typeof listClaudeModels>> | null =
-    null;
+  // Model listing for UI dropdown (best-effort).
   session.rpcHandlerManager.registerHandler('list-models', async () => {
-    if (cachedModelList?.success && cachedModelList.models.length > 0) {
-      return cachedModelList;
+    const resp = await listClaudeModels();
+    if (resp.success && resp.models.length === 0) {
+      return { success: false, error: 'No Claude models returned' };
     }
-    cachedModelList = await listClaudeModels();
-    // Guard: never cache an "empty success" result; UI should show an error instead.
-    if (cachedModelList.success && cachedModelList.models.length === 0) {
-      cachedModelList = {
-        success: false,
-        error: 'No Claude models returned',
-      };
-    }
-    return cachedModelList;
+    return resp;
   });
 
   registerKillSessionHandler(session.rpcHandlerManager, cleanup);

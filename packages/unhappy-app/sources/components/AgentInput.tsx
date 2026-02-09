@@ -78,6 +78,12 @@ interface AgentInputProps {
 
 const MAX_CONTEXT_SIZE = 190000;
 
+const SUPPORTED_CLAUDE_MODELS = new Set([
+    'claude-opus-4-6',
+    'claude-sonnet-4-5',
+    'claude-haiku-4-5',
+]);
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
@@ -354,7 +360,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Handle combined text and selection state changes
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        // console.log('📝 Input state changed:', JSON.stringify(newState));
         setInputState(newState);
     }, []);
 
@@ -363,18 +368,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
     // To customize: useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: false, wrapAround: false })
     const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: true, wrapAround: true });
-
-    // Debug logging
-    // React.useEffect(() => {
-    //     console.log('🔍 Autocomplete Debug:', JSON.stringify({
-    //         value: props.value,
-    //         inputState,
-    //         activeWord,
-    //         suggestionsCount: suggestions.length,
-    //         selected,
-    //         prefixes: props.autocompletePrefixes
-    //     }, null, 2));
-    // }, [props.value, inputState, activeWord, suggestions.length, selected]);
 
     // Handle suggestion selection
     const handleSuggestionSelect = React.useCallback((index: number) => {
@@ -397,8 +390,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             end: result.cursorPosition
         });
 
-        // console.log('Selected suggestion:', suggestion.text);
-
         // Small haptic feedback
         hapticsLight();
     }, [suggestions, inputState, props.autocompletePrefixes]);
@@ -414,11 +405,36 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [isLoadingModels, setIsLoadingModels] = React.useState(false);
     const [modelLoadError, setModelLoadError] = React.useState<string | null>(null);
 
+    // Prevent cross-session/provider stale lists from sticking around.
+    React.useEffect(() => {
+        setAvailableModels(null);
+        setModelLoadError(null);
+    }, [agentFlavor, props.sessionId, props.machineId]);
+
+    // Final guard: even if a daemon returns extra Claude ids, only show supported ones.
+    React.useEffect(() => {
+        if (agentFlavor !== 'claude') return;
+        if (!availableModels) return;
+        const filtered = availableModels.filter((m) => SUPPORTED_CLAUDE_MODELS.has(m));
+        if (filtered.length === availableModels.length) return;
+        if (filtered.length === 0) {
+            setAvailableModels(null);
+            setModelLoadError('No supported Claude models found.');
+            return;
+        }
+        setAvailableModels(filtered);
+    }, [agentFlavor, availableModels]);
+
     const loadModels = React.useCallback(async () => {
         if (agentFlavor === 'gemini') {
             // Static list, no RPC required.
-            setAvailableModels(['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite']);
+            const models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+            setAvailableModels(models);
             setModelLoadError(null);
+            // Ensure we always have a concrete model selected.
+            if (props.onModelModeChange && (!props.modelMode || props.modelMode === 'default')) {
+                props.onModelModeChange(models[0]);
+            }
             return;
         }
         if (!props.sessionId) {
@@ -433,11 +449,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         { agent: agentFlavor }
                     );
                     if (resp.success) {
-                        if (!resp.models || resp.models.length === 0) {
+                        const models = agentFlavor === 'claude'
+                            ? (resp.models || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
+                            : (resp.models || []);
+                        if (models.length === 0) {
                             setAvailableModels(null);
-                            setModelLoadError('No models found.');
+                            setModelLoadError(agentFlavor === 'claude' ? 'No supported Claude models found.' : 'No models found.');
                         } else {
-                            setAvailableModels(resp.models);
+                            setAvailableModels(models);
+                            // Auto-select first model so we never show a fake "Default" state.
+                            if (props.onModelModeChange && (!props.modelMode || props.modelMode === 'default')) {
+                                props.onModelModeChange(models[0]);
+                            }
                         }
                     } else {
                         setAvailableModels(null);
@@ -452,7 +475,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 return;
             }
             setAvailableModels(null);
-            setModelLoadError(t('agentInput.model.configureInCli'));
+            setModelLoadError(t('newSession.noMachineSelected'));
             return;
         }
         setIsLoadingModels(true);
@@ -460,11 +483,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         try {
             const resp = await apiSocket.sessionRPC<ListModelsResponse, {}>(props.sessionId, 'list-models', {});
             if (resp.success) {
-                if (!resp.models || resp.models.length === 0) {
+                const models = agentFlavor === 'claude'
+                    ? (resp.models || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
+                    : (resp.models || []);
+                if (models.length === 0) {
                     setAvailableModels(null);
-                    setModelLoadError('No models found.');
+                    setModelLoadError(agentFlavor === 'claude' ? 'No supported Claude models found.' : 'No models found.');
                 } else {
-                    setAvailableModels(resp.models);
+                    setAvailableModels(models);
+                    // Auto-select first model so we never show a fake "Default" state.
+                    if (props.onModelModeChange && (!props.modelMode || props.modelMode === 'default')) {
+                        props.onModelModeChange(models[0]);
+                    }
                 }
             } else {
                 setAvailableModels(null);
@@ -476,19 +506,25 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         } finally {
             setIsLoadingModels(false);
         }
-    }, [agentFlavor, props.sessionId, props.machineId]);
+    }, [agentFlavor, props.sessionId, props.machineId, props.modelMode, props.onModelModeChange]);
+
+    // If the caller supports model selection but nothing is selected yet, fetch and auto-pick.
+    // This prevents the UI from falling back to a fake "Default" state.
+    React.useEffect(() => {
+        if (!props.onModelModeChange) return;
+        if (props.modelMode && props.modelMode !== 'default') return;
+        if (isLoadingModels) return;
+        // Fire-and-forget; loadModels handles errors internally.
+        void loadModels();
+    }, [props.onModelModeChange, props.modelMode, isLoadingModels, loadModels]);
 
     const handleAgentTypeSwitch = React.useCallback((next: 'claude' | 'codex' | 'gemini') => {
         if (!props.onAgentTypeChange) return;
         hapticsLight();
         props.onAgentTypeChange(next);
 
-        // Best-effort: reset model selection when switching providers.
-        if (next === 'gemini') {
-            props.onModelModeChange?.('gemini-2.5-pro');
-        } else {
-            props.onModelModeChange?.(null);
-        }
+        // Always ensure Gemini has a concrete model.
+        if (next === 'gemini') props.onModelModeChange?.('gemini-2.5-pro');
         // Force reload next time overlay opens (or immediately if already open).
         setAvailableModels(null);
         setModelLoadError(null);
@@ -505,10 +541,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         hapticsLight();
         setOverlayKind('model');
         // Load models lazily when opening.
-        if (!availableModels && !isLoadingModels) {
+        // Treat empty list as "not loaded" so we recover from older cached empty results.
+        if ((!availableModels || availableModels.length === 0 || !!modelLoadError) && !isLoadingModels) {
             await loadModels();
         }
-    }, [props.onModelModeChange, availableModels, isLoadingModels, loadModels]);
+    }, [props.onModelModeChange, availableModels, isLoadingModels, loadModels, modelLoadError]);
 
     const handlePermissionSelect = React.useCallback((mode: PermissionMode) => {
         hapticsLight();
@@ -793,65 +830,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                                             </View>
                                         ) : modelLoadError ? (
-                                            <Text style={{
-                                                fontSize: 13,
-                                                color: theme.colors.textSecondary,
-                                                paddingHorizontal: Platform.select({ web: 12, default: 16 }),
-                                                paddingVertical: 8,
-                                                ...Typography.default()
-                                            }}>
-                                                {modelLoadError}
-                                            </Text>
+                                            <Pressable
+                                                onPress={() => {
+                                                    if (!isLoadingModels) void loadModels();
+                                                }}
+                                                style={({ pressed }: any) => ({
+                                                    paddingHorizontal: Platform.select({ web: 12, default: 16 }),
+                                                    paddingVertical: 8,
+                                                    opacity: pressed ? 0.7 : 1,
+                                                })}
+                                            >
+                                                    <Text style={{
+                                                        fontSize: 13,
+                                                        color: theme.colors.textSecondary,
+                                                        ...Typography.default()
+                                                    }}>
+                                                        {modelLoadError} {' '}
+                                                        <Text style={{ color: theme.colors.button.secondary.tint, fontWeight: '600', ...Typography.default('semiBold') }}>
+                                                            Tap to retry
+                                                        </Text>
+                                                    </Text>
+                                            </Pressable>
                                         ) : (
                                             <>
-                                                {/* Default / reset */}
-                                                {!isGemini && (
-                                                    <Pressable
-                                                        key="__default__"
-                                                        onPress={() => handleModelSelect(null)}
-                                                        style={({ pressed, hovered }: any) => ({
-                                                            flexDirection: 'row',
-                                                            alignItems: 'center',
-                                                            paddingHorizontal: Platform.select({ web: 12, default: 16 }),
-                                                            paddingVertical: 8,
-                                                            backgroundColor: Platform.OS === 'web'
-                                                                ? (pressed
-                                                                    ? theme.colors.chrome.listActiveBackground
-                                                                    : hovered
-                                                                        ? theme.colors.chrome.listHoverBackground
-                                                                        : 'transparent')
-                                                                : (pressed ? theme.colors.surfacePressed : 'transparent')
-                                                        })}
-                                                    >
-                                                        <View style={{
-                                                            width: 16,
-                                                            height: 16,
-                                                            borderRadius: 8,
-                                                            borderWidth: 2,
-                                                            borderColor: !props.modelMode || props.modelMode === 'default' ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center',
-                                                            marginRight: 12
-                                                        }}>
-                                                            {(!props.modelMode || props.modelMode === 'default') && (
-                                                                <View style={{
-                                                                    width: 6,
-                                                                    height: 6,
-                                                                    borderRadius: 3,
-                                                                    backgroundColor: theme.colors.radio.dot
-                                                                }} />
-                                                            )}
-                                                        </View>
-                                                        <Text style={{
-                                                            fontSize: 14,
-                                                            color: (!props.modelMode || props.modelMode === 'default') ? theme.colors.radio.active : theme.colors.text,
-                                                            ...Typography.default()
-                                                        }}>
-                                                            Default
-                                                        </Text>
-                                                    </Pressable>
-                                                )}
-
                                                 {(availableModels || []).map((model) => {
                                                     const isSelected = props.modelMode === model;
                                                     return (
@@ -1228,13 +1229,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         size={14}
                                         color={theme.colors.button.secondary.tint}
                                     />
+                                    {agentFlavor === 'codex' && isLoadingModels && (
+                                        <ActivityIndicator size="small" color={theme.colors.button.secondary.tint} />
+                                    )}
                                     <Text style={{
                                         fontSize: 13,
                                         color: theme.colors.button.secondary.tint,
                                         fontWeight: '600',
                                         ...Typography.default('semiBold'),
                                     }} numberOfLines={1}>
-                                        {props.modelMode && props.modelMode !== 'default' ? props.modelMode : 'Default'}
+                                        {props.modelMode && props.modelMode !== 'default' ? props.modelMode : 'Select model'}
                                     </Text>
                                     <Ionicons
                                         name="chevron-down"

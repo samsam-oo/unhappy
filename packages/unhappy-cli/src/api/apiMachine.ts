@@ -217,12 +217,30 @@ export class ApiMachineClient {
 
     // Model listing for UI dropdowns (best-effort).
     // Used by the "new session" flow (no sessionId yet) so the UI can still show a model picker.
-    this.rpcHandlerManager.registerHandler('list-models', async (params: any) => {
-      const agent: 'claude' | 'codex' | 'gemini' | undefined = params?.agent;
+    // Codex model listing is relatively expensive (spawns `codex app-server`), so cache it.
+    // Claude/Gemini are cheap/static and should not be cached to avoid stale UI.
+    const LIST_CODEX_MODELS_TTL_MS = 5 * 60 * 1000;
+    const LIST_CODEX_MODELS_ERROR_TTL_MS = 15 * 1000;
+    type ListModelsResponse =
+      | { success: true; models: string[] }
+      | { success: false; error: string };
+    const listModelsCache = new Map<
+      string,
+      { expiresAt: number; value: ListModelsResponse }
+    >();
+    const listModelsInFlight = new Map<string, Promise<ListModelsResponse>>();
+
+    const listModelsFetch = async (
+      agent: 'claude' | 'codex' | 'gemini' | undefined,
+    ): Promise<ListModelsResponse> => {
       if (agent === 'gemini') {
         return {
           success: true as const,
-          models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+          models: [
+            'gemini-2.5-pro',
+            'gemini-2.5-flash',
+            'gemini-2.5-flash-lite',
+          ],
         };
       }
       if (agent === 'codex') {
@@ -230,6 +248,67 @@ export class ApiMachineClient {
       }
       // Default to Claude when unspecified.
       return await listClaudeModels();
+    };
+
+    const listModelsCached = async (
+      agent: 'claude' | 'codex' | 'gemini' | undefined,
+    ): Promise<ListModelsResponse> => {
+      const key = agent ?? 'claude';
+      if (key !== 'codex') {
+        // Avoid caching Claude/Gemini: the UX should reflect current support immediately.
+        return await listModelsFetch(agent);
+      }
+      const now = Date.now();
+
+      const cached = listModelsCache.get(key);
+      if (cached && cached.expiresAt > now) {
+        return cached.value;
+      }
+
+      const inFlight = listModelsInFlight.get(key);
+      if (inFlight) {
+        return await inFlight;
+      }
+
+      const p = (async () => {
+        const resp = await listModelsFetch(agent);
+
+        // Never cache an "empty success" result; it makes the UI look broken.
+        const normalized: ListModelsResponse =
+          resp.success && resp.models.length === 0
+            ? {
+                success: false,
+                error: `No ${key} models returned`,
+              }
+            : resp;
+
+        const ttl = normalized.success
+          ? LIST_CODEX_MODELS_TTL_MS
+          : LIST_CODEX_MODELS_ERROR_TTL_MS;
+        listModelsCache.set(key, {
+          expiresAt: Date.now() + ttl,
+          value: normalized,
+        });
+        return normalized;
+      })().finally(() => {
+        listModelsInFlight.delete(key);
+      });
+
+      listModelsInFlight.set(key, p);
+      return await p;
+    };
+
+    this.rpcHandlerManager.registerHandler('list-models', async (params: any) => {
+      const agent: 'claude' | 'codex' | 'gemini' | undefined = params?.agent;
+      logger.debug('[API MACHINE] list-models request', { agent });
+      const resp = await listModelsCached(agent);
+      logger.debug('[API MACHINE] list-models response', {
+        agent: agent ?? 'claude',
+        success: resp.success,
+        count: resp.success ? resp.models.length : 0,
+        error: resp.success ? undefined : resp.error,
+      });
+      return resp;
     });
   }
 

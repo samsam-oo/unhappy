@@ -256,11 +256,11 @@ class Sync {
         }
 
         // Model settings:
-        // - For Gemini: always pass a concrete model so behavior is consistent across devices.
-        // - For Claude/Codex: pass the selected override if any; null resets to backend default.
+        // - We always pass the session's selected model when present.
+        // - For Gemini, we still ensure a concrete default if none is set.
         let model: string | null = null;
         if (typeof modelMode === 'string' && modelMode.trim() && modelMode !== 'default') {
-            model = modelMode;
+            model = modelMode.trim();
         } else if (isGemini) {
             model = 'gemini-2.5-pro';
         }

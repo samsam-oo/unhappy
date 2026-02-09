@@ -6,7 +6,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
-import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { PermissionMode } from '@/components/PermissionModeSelector';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';

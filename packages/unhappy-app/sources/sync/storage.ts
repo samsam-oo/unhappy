@@ -874,8 +874,10 @@ export const storage = create<StorageState>()((set, get) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
-            // Treat "default" as reset to null (use backend default).
-            const normalizedMode = mode && mode !== 'default' ? mode : null;
+            const normalizedMode =
+                typeof mode === 'string'
+                    ? (mode.trim() ? mode.trim() : null)
+                    : null;
 
             // Update the session with the new model mode
             const updatedSessions = {

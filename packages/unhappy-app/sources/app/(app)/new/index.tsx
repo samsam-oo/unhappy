@@ -21,7 +21,7 @@ import { createWorktree } from '@/utils/createWorktree';
 import { generateWorktreeName } from '@/utils/generateWorktreeName';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
-import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
+import { PermissionMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
@@ -432,22 +432,17 @@ function NewSessionWizard() {
     // which intelligently resets only when the current mode is invalid for the new agent type.
     // A duplicate unconditional reset here was removed to prevent race conditions.
 
-    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-        // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
-
-        if (lastUsedModelMode) {
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'gemini' && validGeminiModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            }
+    const [modelMode, setModelMode] = React.useState<string | null>(() => {
+        // Use the last-used model only when it matches the current provider selection.
+        if (lastUsedModelMode && lastUsedAgent === agentType) {
+            return lastUsedModelMode;
         }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
+        // Gemini requires an explicit model selection.
+        if (agentType === 'gemini') {
+            return 'gemini-2.5-pro';
+        }
+        // Claude/Codex default is "unset" (let the CLI pick its default).
+        return null;
     });
     const [effortMode, setEffortMode] = React.useState<ReasoningEffortMode | null>(null);
 
@@ -466,11 +461,40 @@ function NewSessionWizard() {
         return null;
     });
 
+    // If machines load asynchronously and we didn't have one on first render,
+    // pick a sensible default so dependent UI (like model listing) can work.
+    React.useEffect(() => {
+        if (selectedMachineId) return;
+        if (machines.length === 0) return;
+        let best: string | null = null;
+        for (const recent of recentMachinePaths) {
+            if (machines.some(m => m.id === recent.machineId)) {
+                best = recent.machineId;
+                break;
+            }
+        }
+        best = best ?? machines[0]?.id ?? null;
+        if (!best) return;
+        setSelectedMachineId(best);
+        setSelectedPath(getRecentPathForMachine(best, recentMachinePaths));
+    }, [selectedMachineId, machines, recentMachinePaths]);
+
     const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
         setPermissionMode(mode);
         // Save the new selection immediately
         sync.applySettings({ lastUsedPermissionMode: mode });
     }, []);
+
+    const handleModelModeChange = React.useCallback((mode: string | null) => {
+        const normalized = typeof mode === 'string' ? mode.trim() : '';
+        if (!normalized) {
+            setModelMode(null);
+            sync.applySettings({ lastUsedModelMode: null });
+            return;
+        }
+        setModelMode(normalized);
+        sync.applySettings({ lastUsedModelMode: normalized, lastUsedAgent: agentType });
+    }, [agentType]);
 
     //
     // Path selection
@@ -752,9 +776,12 @@ function NewSessionWizard() {
         return (
             selectedProfileId !== null &&
             selectedMachineId !== null &&
-            selectedPath.trim() !== ''
+            selectedPath.trim() !== '' &&
+            typeof modelMode === 'string' &&
+            modelMode.trim() !== '' &&
+            modelMode !== 'default'
         );
-    }, [selectedProfileId, selectedMachineId, selectedPath]);
+    }, [selectedProfileId, selectedMachineId, selectedPath, modelMode]);
 
     const selectProfile = React.useCallback((profileId: string) => {
         setSelectedProfileId(profileId);
@@ -805,33 +832,23 @@ function NewSessionWizard() {
         }
     }, [agentType, permissionMode]);
 
-    // Reset model mode when agent type changes to appropriate default
+    // Keep model selection sane when switching providers.
     React.useEffect(() => {
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-        // Note: 'default' is NOT valid for Gemini - we want explicit model selection
-        const validGeminiModes: ModelMode[] = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+        setModelMode((prev) => {
+            const cur = (prev || '').trim();
+            if (!cur || cur === 'default') return null;
 
-        let isValidForCurrentAgent = false;
-        if (agentType === 'codex') {
-            isValidForCurrentAgent = validCodexModes.includes(modelMode);
-        } else if (agentType === 'gemini') {
-            isValidForCurrentAgent = validGeminiModes.includes(modelMode);
-        } else {
-            isValidForCurrentAgent = validClaudeModes.includes(modelMode);
-        }
-
-        if (!isValidForCurrentAgent) {
-            // Set appropriate default for each agent type
-            if (agentType === 'codex') {
-                setModelMode('gpt-5-codex-high');
-            } else if (agentType === 'gemini') {
-                setModelMode('gemini-2.5-pro');
-            } else {
-                setModelMode('default');
+            if (agentType === 'gemini') {
+                return cur.startsWith('gemini-') ? cur : 'gemini-2.5-pro';
             }
-        }
-    }, [agentType, modelMode]);
+            if (agentType === 'claude') {
+                return cur.startsWith('claude-') ? cur : null;
+            }
+            // codex: keep codex-ish ids, but clear obvious cross-provider carry-over
+            if (cur.startsWith('gemini-') || cur.startsWith('claude-')) return null;
+            return cur;
+        });
+    }, [agentType]);
 
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
@@ -1157,8 +1174,8 @@ function NewSessionWizard() {
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
                 storage.getState().updateSessionProfileId(result.sessionId, selectedProfileId);
                 storage.getState().updateSessionEffortMode(result.sessionId, effortMode);
-                if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
+                if (modelMode && modelMode !== 'default') {
+                    storage.getState().updateSessionModelMode(result.sessionId, modelMode);
                 }
 
                 // Send initial message if provided
@@ -1304,7 +1321,7 @@ function NewSessionWizard() {
                                 permissionMode={permissionMode}
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
-                                onModelModeChange={(m) => setModelMode((m ?? 'default') as any)}
+                                onModelModeChange={handleModelModeChange}
                                 effortMode={effortMode}
                                 onEffortModeChange={setEffortMode}
                                 connectionStatus={connectionStatus}
@@ -1404,8 +1421,9 @@ function NewSessionWizard() {
                             {/* Section 1: Profile Management */}
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
-                                <Ionicons name="person-outline" size={18} color={theme.colors.text} />
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
+                                {/* "Profile" here means backend preset, not a user profile. */}
+                                <Ionicons name="layers-outline" size={18} color={theme.colors.text} />
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Backend Preset</Text>
                             </View>
                             <Text style={styles.sectionDescription}>
                                 Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
@@ -2076,7 +2094,7 @@ function NewSessionWizard() {
                             permissionMode={permissionMode}
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
-                            onModelModeChange={(m) => setModelMode((m ?? 'default') as any)}
+                            onModelModeChange={handleModelModeChange}
                             effortMode={effortMode}
                             onEffortModeChange={setEffortMode}
                             connectionStatus={connectionStatus}

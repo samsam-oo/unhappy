@@ -241,7 +241,8 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'anthropic':
             return {
                 id: 'anthropic',
-                name: 'Anthropic (Default)',
+                name: 'Anthropic (Claude API)',
+                description: 'Direct Anthropic Claude backend (uses ANTHROPIC_* environment variables)',
                 anthropicConfig: {},
                 environmentVariables: [],
                 defaultPermissionMode: 'default',
@@ -351,7 +352,7 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
 export const DEFAULT_PROFILES = [
     {
         id: 'anthropic',
-        name: 'Anthropic (Default)',
+        name: 'Anthropic (Claude API)',
         isBuiltIn: true,
     },
     {

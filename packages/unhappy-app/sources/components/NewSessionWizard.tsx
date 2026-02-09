@@ -244,7 +244,8 @@ function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit
                         marginRight: 12,
                     }}>
                         <Ionicons
-                            name="person-outline"
+                            // "Profile" here means backend preset, not a user profile.
+                            name="layers-outline"
                             size={20}
                             color="white"
                         />
@@ -272,7 +273,7 @@ function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit
                                 color: theme.colors.textSecondary,
                                 marginTop: 2,
                             }}>
-                                Built-in profile
+                                Built-in preset
                             </Text>
                         )}
                     </View>
@@ -599,8 +600,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const builtInProfiles: AIBackendProfile[] = useMemo(() => [
         {
             id: 'anthropic',
-            name: 'Anthropic (Default)',
-            description: 'Default Claude configuration',
+            name: 'Anthropic (Claude API)',
+            description: 'Direct Anthropic Claude backend (uses ANTHROPIC_* environment variables)',
             anthropicConfig: {},
             environmentVariables: [],
             compatibility: { claude: true, codex: false, gemini: false },
@@ -1232,12 +1233,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'profile':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Choose AI Profile</Text>
+                        <Text style={styles.stepTitle}>Choose AI Backend Preset</Text>
                         <Text style={styles.stepDescription}>
-                            Select a pre-configured AI profile or set up manually
+                            A preset is a bundle of provider settings (endpoint, model, and environment variables).
                         </Text>
 
-                        <ItemGroup title="Built-in Profiles">
+                        <ItemGroup title="Built-in Presets">
                             {builtInProfiles.map((profile) => (
                                 <ProfileSelectionItem
                                     key={profile.id}
@@ -1251,7 +1252,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                         </ItemGroup>
 
                         {profiles.length > 0 && (
-                            <ItemGroup title="Custom Profiles">
+                            <ItemGroup title="Custom Presets">
                                 {profiles.map((profile) => (
                                     <ProfileSelectionItem
                                         key={profile.id}
@@ -1336,28 +1337,28 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 color: theme.colors.textSecondary,
                                 marginBottom: 4,
                             }}>
-                                💡 **Profile Selection Options:**
+                                Profile options:
                             </Text>
                             <Text style={{
                                 fontSize: 12,
                                 color: theme.colors.textSecondary,
                                 marginTop: 4,
                             }}>
-                                • **Use As-Is**: Quick session creation with current profile settings
+                                • Use As-Is: Quick session creation with current preset settings
                             </Text>
                             <Text style={{
                                 fontSize: 12,
                                 color: theme.colors.textSecondary,
                                 marginTop: 4,
                             }}>
-                                • **Edit**: Configure API keys and settings before session creation
+                                • Edit: Configure API keys and settings before session creation
                             </Text>
                             <Text style={{
                                 fontSize: 12,
                                 color: theme.colors.textSecondary,
                                 marginTop: 4,
                             }}>
-                                • **Manual**: Use CLI environment variables without profile configuration
+                                • Manual: Use CLI environment variables without preset configuration
                             </Text>
                         </View>
                     </View>
