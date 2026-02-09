@@ -436,10 +436,17 @@ export async function runCodex(opts: {
   // Model listing for UI dropdown (best-effort; cached per session process).
   let cachedModelList: Awaited<ReturnType<typeof listCodexModels>> | null = null;
   session.rpcHandlerManager.registerHandler('list-models', async () => {
-    if (cachedModelList?.success) {
+    if (cachedModelList?.success && cachedModelList.models.length > 0) {
       return cachedModelList;
     }
     cachedModelList = await listCodexModels();
+    // Guard: never cache an "empty success" result; UI should show an error instead.
+    if (cachedModelList.success && cachedModelList.models.length === 0) {
+      cachedModelList = {
+        success: false,
+        error: 'No Codex models returned',
+      };
+    }
     return cachedModelList;
   });
 

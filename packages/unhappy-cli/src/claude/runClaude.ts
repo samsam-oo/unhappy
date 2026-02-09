@@ -536,10 +536,17 @@ export async function runClaude(
   let cachedModelList: Awaited<ReturnType<typeof listClaudeModels>> | null =
     null;
   session.rpcHandlerManager.registerHandler('list-models', async () => {
-    if (cachedModelList?.success) {
+    if (cachedModelList?.success && cachedModelList.models.length > 0) {
       return cachedModelList;
     }
     cachedModelList = await listClaudeModels();
+    // Guard: never cache an "empty success" result; UI should show an error instead.
+    if (cachedModelList.success && cachedModelList.models.length === 0) {
+      cachedModelList = {
+        success: false,
+        error: 'No Claude models returned',
+      };
+    }
     return cachedModelList;
   });
 
