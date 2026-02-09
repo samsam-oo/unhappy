@@ -364,8 +364,11 @@ export const ko: TranslationStructure = {
     claudeCodeSessionId: 'Claude Code 세션 ID',
     claudeCodeSessionIdCopied:
       'Claude Code 세션 ID가 클립보드에 복사되었습니다',
+    codexSessionId: 'Codex 세션 ID',
+    codexSessionIdCopied: 'Codex 세션 ID가 클립보드에 복사되었습니다',
     aiProvider: 'AI 제공자',
     failedToCopyClaudeCodeSessionId: 'Claude Code 세션 ID 복사에 실패했습니다',
+    failedToCopyCodexSessionId: 'Codex 세션 ID 복사에 실패했습니다',
     metadataCopied: '메타데이터가 클립보드에 복사되었습니다',
     failedToCopyMetadata: '메타데이터 복사에 실패했습니다',
     failedToKillSession: '세션 종료에 실패했습니다',

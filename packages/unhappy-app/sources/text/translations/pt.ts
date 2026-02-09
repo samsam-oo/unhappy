@@ -398,8 +398,12 @@ export const pt: TranslationStructure = {
     claudeCodeSessionId: 'ID da sessão Claude Code',
     claudeCodeSessionIdCopied:
       'ID da sessão Claude Code copiado para a área de transferência',
+    codexSessionId: 'ID da sessão Codex',
+    codexSessionIdCopied:
+      'ID da sessão Codex copiado para a área de transferência',
     aiProvider: 'Provedor de IA',
     failedToCopyClaudeCodeSessionId: 'Falha ao copiar ID da sessão Claude Code',
+    failedToCopyCodexSessionId: 'Falha ao copiar ID da sessão Codex',
     metadataCopied: 'Metadados copiados para a área de transferência',
     failedToCopyMetadata: 'Falha ao copiar metadados',
     failedToKillSession: 'Falha ao encerrar sessão',

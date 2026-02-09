@@ -322,6 +322,10 @@ export class CodexMcpClient {
         return this.sessionId;
     }
 
+    getConversationId(): string | null {
+        return this.conversationId;
+    }
+
     hasActiveSession(): boolean {
         return this.sessionId !== null;
     }

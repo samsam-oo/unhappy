@@ -390,7 +390,7 @@ Messages are encrypted as `MessageContent` and then base64 encoded:
   "os": "...",
   "summary": { "text": "...", "updatedAt": 123 },
   "machineId": "...",
-  "claudeSessionId": "...",
+  "agentSessionId": "...",
   "tools": ["..."],
   "slashCommands": ["..."],
   "startedFromDaemon": true,

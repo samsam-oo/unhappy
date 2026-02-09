@@ -369,9 +369,12 @@ export const ru: TranslationStructure = {
     claudeCodeSessionId: 'ID сессии Claude Code',
     claudeCodeSessionIdCopied:
       'ID сессии Claude Code скопирован в буфер обмена',
+    codexSessionId: 'ID сессии Codex',
+    codexSessionIdCopied: 'ID сессии Codex скопирован в буфер обмена',
     aiProvider: 'Поставщик ИИ',
     failedToCopyClaudeCodeSessionId:
       'Не удалось скопировать ID сессии Claude Code',
+    failedToCopyCodexSessionId: 'Не удалось скопировать ID сессии Codex',
     metadataCopied: 'Метаданные скопированы в буфер обмена',
     failedToCopyMetadata: 'Не удалось скопировать метаданные',
     failedToKillSession: 'Не удалось завершить сессию',

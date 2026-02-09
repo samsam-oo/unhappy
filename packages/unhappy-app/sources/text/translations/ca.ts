@@ -399,9 +399,13 @@ export const ca: TranslationStructure = {
     claudeCodeSessionId: 'ID de la sessió de Claude Code',
     claudeCodeSessionIdCopied:
       'ID de la sessió de Claude Code copiat al porta-retalls',
+    codexSessionId: 'ID de la sessió de Codex',
+    codexSessionIdCopied:
+      'ID de la sessió de Codex copiat al porta-retalls',
     aiProvider: "Proveïdor d'IA",
     failedToCopyClaudeCodeSessionId:
       "Ha fallat copiar l'ID de la sessió de Claude Code",
+    failedToCopyCodexSessionId: "Ha fallat copiar l'ID de la sessió de Codex",
     metadataCopied: 'Metadades copiades al porta-retalls',
     failedToCopyMetadata: 'Ha fallat copiar les metadades',
     failedToKillSession: 'Ha fallat finalitzar la sessió',

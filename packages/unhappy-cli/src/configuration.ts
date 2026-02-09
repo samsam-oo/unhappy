@@ -22,6 +22,8 @@ class Configuration {
   public readonly privateKeyFile: string;
   public readonly daemonStateFile: string;
   public readonly daemonLockFile: string;
+  public readonly codexResumeStateFile: string;
+  public readonly codexResumeLockFile: string;
   public readonly currentCliVersion: string;
 
   public readonly isExperimentalEnabled: boolean;
@@ -55,6 +57,8 @@ class Configuration {
     this.privateKeyFile = join(this.happyHomeDir, 'access.key');
     this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json');
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock');
+    this.codexResumeStateFile = join(this.happyHomeDir, 'codex.resume.json');
+    this.codexResumeLockFile = join(this.happyHomeDir, 'codex.resume.json.lock');
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(
       process.env.UNHAPPY_EXPERIMENTAL?.toLowerCase() || '',

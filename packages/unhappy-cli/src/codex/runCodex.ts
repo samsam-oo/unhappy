@@ -5,7 +5,13 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
-import { Credentials, readSettings } from '@/persistence';
+import {
+  clearCodexResumeEntry,
+  Credentials,
+  readCodexResumeEntry,
+  readSettings,
+  upsertCodexResumeEntry,
+} from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { CodexDisplay } from '@/ui/ink/CodexDisplay';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';
@@ -69,6 +75,8 @@ export function emitReadyIfIdle({
 export async function runCodex(opts: {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
+  resume?: boolean;
+  clearResume?: boolean;
 }): Promise<void> {
   // Use shared PermissionMode type for cross-agent compatibility
   type PermissionMode = import('@/api/types').PermissionMode;
@@ -281,6 +289,8 @@ export async function runCodex(opts: {
   let abortController = new AbortController();
   let shouldExit = false;
   let storedSessionIdForResume: string | null = null;
+  const cwd = process.cwd();
+  const resumeEnabled = opts.resume !== false;
 
   /**
    * Handles aborting the current task/inference without exiting the process.
@@ -293,6 +303,17 @@ export async function runCodex(opts: {
       // Store the current session ID before aborting for potential resume
       if (client.hasActiveSession()) {
         storedSessionIdForResume = client.storeSessionForResume();
+        if (storedSessionIdForResume) {
+          // Persist immediately so SIGTERM/terminal close still allows resuming.
+          try {
+            await upsertCodexResumeEntry(cwd, {
+              codexSessionId: storedSessionIdForResume,
+              updatedAt: Date.now(),
+            });
+          } catch (e) {
+            logger.debug('[Codex] Failed to persist resume sessionId on abort', e);
+          }
+        }
         logger.debug(
           '[Codex] Stored session for resume:',
           storedSessionIdForResume,
@@ -321,6 +342,13 @@ export async function runCodex(opts: {
     logger.debug('[Codex] Abort completed, proceeding with termination');
 
     try {
+      // Explicit termination: don't auto-resume this session next time.
+      try {
+        await clearCodexResumeEntry(cwd);
+      } catch (e) {
+        logger.debug('[Codex] Failed to clear codex resume entry on kill', e);
+      }
+
       // Update lifecycle state to archived before closing
       if (session) {
         session.updateMetadata((currentMetadata) => ({
@@ -407,6 +435,80 @@ export async function runCodex(opts: {
   //
 
   const client = new CodexMcpClient();
+  let lastPersistedCodexSessionId: string | null = null;
+  let lastReportedAgentSessionId: string | null = null;
+  let lastReportedAgentConversationId: string | null = null;
+
+  if (opts.clearResume) {
+    try {
+      await clearCodexResumeEntry(cwd);
+      logger.debug('[Codex] Cleared persisted resume entry for cwd:', cwd);
+    } catch (e) {
+      logger.debug('[Codex] Failed to clear persisted resume entry', e);
+    }
+  }
+
+  if (resumeEnabled && !opts.clearResume) {
+    try {
+      const entry = await readCodexResumeEntry(cwd);
+      if (entry?.codexSessionId) {
+        storedSessionIdForResume = entry.codexSessionId;
+        logger.debug(
+          '[Codex] Loaded persisted codex sessionId for resume:',
+          storedSessionIdForResume,
+        );
+      }
+    } catch (e) {
+      logger.debug('[Codex] Failed to read persisted codex resume entry', e);
+    }
+  }
+
+  async function persistAndReportCodexIdentifiersIfNeeded(source: string) {
+    const sessionId = client.getSessionId();
+    const conversationId = client.getConversationId();
+    if (!sessionId) return;
+
+    // Persist local resume pointer only when sessionId changes.
+    if (sessionId !== lastPersistedCodexSessionId) {
+      lastPersistedCodexSessionId = sessionId;
+      try {
+        await upsertCodexResumeEntry(cwd, {
+          codexSessionId: sessionId,
+          updatedAt: Date.now(),
+        });
+        logger.debug(
+          `[Codex] Persisted codex sessionId (${source}):`,
+          sessionId,
+        );
+      } catch (e) {
+        logger.debug('[Codex] Failed to persist codex sessionId', e);
+      }
+    }
+
+    // Report upstream identifiers to server metadata so session details can show them.
+    const shouldReport =
+      sessionId !== lastReportedAgentSessionId ||
+      (conversationId &&
+        conversationId !== lastReportedAgentConversationId);
+    if (!shouldReport) return;
+
+    lastReportedAgentSessionId = sessionId;
+    if (conversationId) lastReportedAgentConversationId = conversationId;
+
+    try {
+      session.updateMetadata((currentMetadata) => ({
+        ...currentMetadata,
+        agentSessionId: sessionId,
+        ...(conversationId ? { agentConversationId: conversationId } : {}),
+      }));
+      logger.debug(`[Codex] Reported agent session id to metadata (${source}):`, {
+        sessionId,
+        conversationId: conversationId ?? null,
+      });
+    } catch (e) {
+      logger.debug('[Codex] Failed to report codex identifiers to metadata', e);
+    }
+  }
 
   // Helper: find Codex session transcript for a given sessionId
   function findCodexResumeFile(sessionId: string | null): string | null {
@@ -469,6 +571,10 @@ export async function runCodex(opts: {
   client.setPermissionHandler(permissionHandler);
   client.setHandler((msg) => {
     logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
+
+    // Best-effort: persist session id as soon as we learn it (handles abrupt process death).
+    // Avoid awaiting in the hot path; fire and forget.
+    void persistAndReportCodexIdentifiersIfNeeded('mcp-event');
 
     // Add messages to the ink UI buffer based on message type
     if (msg.type === 'agent_message') {
@@ -799,15 +905,20 @@ export async function runCodex(opts: {
             if (abortResumeFile) {
               resumeFile = abortResumeFile;
               logger.debug(
-                '[Codex] Using resume file from aborted session:',
+                '[Codex] Using resume file from stored session:',
                 resumeFile,
               );
               messageBuffer.addMessage(
-                'Resuming from aborted session...',
+                'Resuming previous context...',
                 'status',
               );
+              storedSessionIdForResume = null; // consume only if we actually have a resume file
+            } else {
+              logger.debug(
+                '[Codex] No resume file found for stored sessionId:',
+                storedSessionIdForResume,
+              );
             }
-            storedSessionIdForResume = null; // consume once
           }
 
           // Apply resume file if found
@@ -818,6 +929,7 @@ export async function runCodex(opts: {
           await client.startSession(startConfig, {
             signal: abortController.signal,
           });
+          void persistAndReportCodexIdentifiersIfNeeded('startSession');
           wasCreated = true;
           first = false;
         } else {
@@ -825,6 +937,7 @@ export async function runCodex(opts: {
             signal: abortController.signal,
           });
           logger.debug('[Codex] continueSession response:', response);
+          void persistAndReportCodexIdentifiersIfNeeded('continueSession');
         }
       } catch (error) {
         logger.warn('Error in codex session:', error);
@@ -853,6 +966,19 @@ export async function runCodex(opts: {
               '[Codex] Stored session after unexpected error:',
               storedSessionIdForResume,
             );
+            if (storedSessionIdForResume) {
+              try {
+                await upsertCodexResumeEntry(cwd, {
+                  codexSessionId: storedSessionIdForResume,
+                  updatedAt: Date.now(),
+                });
+              } catch (e) {
+                logger.debug(
+                  '[Codex] Failed to persist resume sessionId after error',
+                  e,
+                );
+              }
+            }
           }
         }
       } finally {

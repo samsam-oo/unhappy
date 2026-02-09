@@ -474,9 +474,13 @@ export const ja: TranslationStructure = {
     claudeCodeSessionId: 'Claude Code Session ID',
     claudeCodeSessionIdCopied:
       'Claude Code Session IDがクリップボードにコピーされました',
+    codexSessionId: 'Codex Session ID',
+    codexSessionIdCopied:
+      'Codex Session IDがクリップボードにコピーされました',
     aiProvider: 'AIプロバイダー',
     failedToCopyClaudeCodeSessionId:
       'Claude Code Session IDのコピーに失敗しました',
+    failedToCopyCodexSessionId: 'Codex Session IDのコピーに失敗しました',
     metadataCopied: 'メタデータがクリップボードにコピーされました',
     failedToCopyMetadata: 'メタデータのコピーに失敗しました',
     failedToKillSession: 'セッションの終了に失敗しました',

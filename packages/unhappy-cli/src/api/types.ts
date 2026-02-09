@@ -310,7 +310,12 @@ export type Metadata = {
     updatedAt: number
   },
   machineId?: string,
-  claudeSessionId?: string, // Claude Code session ID
+  /**
+   * Upstream/agent session identifiers (Claude Code / Codex / etc).
+   * Preferred over provider-specific fields.
+   */
+  agentSessionId?: string,
+  agentConversationId?: string,
   tools?: string[],
   slashCommands?: string[],
   homeDir: string,

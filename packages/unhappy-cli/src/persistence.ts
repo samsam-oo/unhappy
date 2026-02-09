@@ -12,6 +12,7 @@ import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
 import { logger } from '@/ui/logger';
+import { resolve } from 'node:path';
 
 // AI backend profile schema - MUST match happy app exactly
 // Using same Zod schema as GUI for runtime validation consistency
@@ -256,6 +257,195 @@ export interface DaemonLocallyPersistedState {
   startedWithCliVersion: string;
   lastHeartbeat?: string;
   daemonLogPath?: string;
+}
+
+//
+// Codex resume state (local)
+//
+
+export interface CodexResumeEntry {
+  cwd: string;
+  codexSessionId: string;
+  updatedAt: number;
+  createdAt: number;
+}
+
+type CodexResumeStateFile = {
+  schemaVersion: 1;
+  entries: Record<string, CodexResumeEntry>;
+};
+
+const CODEX_RESUME_SCHEMA_VERSION = 1 as const;
+const CODEX_RESUME_MAX_ENTRIES = 50;
+const CODEX_RESUME_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+async function updateCodexResumeState(
+  updater: (current: CodexResumeStateFile) => CodexResumeStateFile | Promise<CodexResumeStateFile>,
+): Promise<CodexResumeStateFile> {
+  // Multi-process safety (daemon + terminal sessions can overlap)
+  const LOCK_RETRY_INTERVAL_MS = 100;
+  const MAX_LOCK_ATTEMPTS = 50;
+  const STALE_LOCK_TIMEOUT_MS = 10000;
+
+  const lockFile = configuration.codexResumeLockFile;
+  const stateFile = configuration.codexResumeStateFile;
+  const tmpFile = configuration.codexResumeStateFile + '.tmp';
+  let fileHandle: FileHandle | undefined;
+  let attempts = 0;
+
+  // Ensure happy home dir exists
+  if (!existsSync(configuration.happyHomeDir)) {
+    await mkdir(configuration.happyHomeDir, { recursive: true });
+  }
+
+  while (attempts < MAX_LOCK_ATTEMPTS) {
+    try {
+      fileHandle = await open(
+        lockFile,
+        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,
+      );
+      break;
+    } catch (err: any) {
+      if (err?.code === 'EEXIST') {
+        attempts++;
+        await new Promise((r) => setTimeout(r, LOCK_RETRY_INTERVAL_MS));
+        try {
+          const stats = await stat(lockFile);
+          if (Date.now() - stats.mtimeMs > STALE_LOCK_TIMEOUT_MS) {
+            await unlink(lockFile).catch(() => {});
+          }
+        } catch {}
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (!fileHandle) {
+    throw new Error(
+      `Failed to acquire codex resume lock after ${(
+        (MAX_LOCK_ATTEMPTS * LOCK_RETRY_INTERVAL_MS) /
+        1000
+      ).toFixed(1)} seconds`,
+    );
+  }
+
+  try {
+    let current: CodexResumeStateFile = {
+      schemaVersion: CODEX_RESUME_SCHEMA_VERSION,
+      entries: {},
+    };
+
+    if (existsSync(stateFile)) {
+      try {
+        const content = await readFile(stateFile, 'utf8');
+        const raw = JSON.parse(content);
+        if (
+          raw &&
+          typeof raw === 'object' &&
+          raw.schemaVersion === CODEX_RESUME_SCHEMA_VERSION &&
+          raw.entries &&
+          typeof raw.entries === 'object'
+        ) {
+          current = raw as CodexResumeStateFile;
+        }
+      } catch {
+        // Corrupted file: ignore and recreate.
+      }
+    }
+
+    let updated = await updater(current);
+
+    // Prune old/extra entries (best-effort).
+    try {
+      const now = Date.now();
+      const all = Object.values(updated.entries)
+        .filter((e) => e && typeof e.cwd === 'string' && typeof e.codexSessionId === 'string')
+        .filter((e) => now - e.updatedAt <= CODEX_RESUME_MAX_AGE_MS)
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+
+      const keep = new Set(all.slice(0, CODEX_RESUME_MAX_ENTRIES).map((e) => resolve(e.cwd)));
+      const pruned: Record<string, CodexResumeEntry> = {};
+      for (const entry of all) {
+        const key = resolve(entry.cwd);
+        if (keep.has(key)) {
+          pruned[key] = { ...entry, cwd: key };
+        }
+      }
+      updated = {
+        schemaVersion: CODEX_RESUME_SCHEMA_VERSION,
+        entries: pruned,
+      };
+    } catch {}
+
+    await writeFile(tmpFile, JSON.stringify(updated, null, 2));
+    await rename(tmpFile, stateFile);
+    return updated;
+  } finally {
+    await fileHandle.close();
+    await unlink(lockFile).catch(() => {});
+  }
+}
+
+export async function readCodexResumeEntry(
+  cwd: string,
+): Promise<CodexResumeEntry | null> {
+  try {
+    const key = resolve(cwd);
+    if (!existsSync(configuration.codexResumeStateFile)) {
+      return null;
+    }
+    const content = await readFile(configuration.codexResumeStateFile, 'utf8');
+    const raw = JSON.parse(content) as CodexResumeStateFile;
+    if (!raw || raw.schemaVersion !== CODEX_RESUME_SCHEMA_VERSION) {
+      return null;
+    }
+    const entry = raw.entries?.[key];
+    if (!entry) return null;
+    if (typeof entry.codexSessionId !== 'string' || entry.codexSessionId.length === 0) {
+      return null;
+    }
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+export async function upsertCodexResumeEntry(
+  cwd: string,
+  update: { codexSessionId: string; updatedAt?: number; createdAt?: number },
+): Promise<void> {
+  const key = resolve(cwd);
+  const now = Date.now();
+  await updateCodexResumeState(async (current) => {
+    const existing = current.entries[key];
+    const createdAt = existing?.createdAt ?? update.createdAt ?? now;
+    const updatedAt = update.updatedAt ?? now;
+    return {
+      schemaVersion: CODEX_RESUME_SCHEMA_VERSION,
+      entries: {
+        ...current.entries,
+        [key]: {
+          cwd: key,
+          codexSessionId: update.codexSessionId,
+          createdAt,
+          updatedAt,
+        },
+      },
+    };
+  });
+}
+
+export async function clearCodexResumeEntry(cwd: string): Promise<void> {
+  const key = resolve(cwd);
+  await updateCodexResumeState((current) => {
+    const next = { ...current.entries };
+    delete next[key];
+    return {
+      schemaVersion: CODEX_RESUME_SCHEMA_VERSION,
+      entries: next,
+    };
+  });
 }
 
 export async function readSettings(): Promise<Settings> {

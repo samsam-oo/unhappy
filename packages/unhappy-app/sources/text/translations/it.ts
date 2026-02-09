@@ -480,9 +480,12 @@ export const it: TranslationStructure = {
     happySessionId: 'ID sessione Unhappy',
     claudeCodeSessionId: 'ID sessione Claude Code',
     claudeCodeSessionIdCopied: 'ID sessione Claude Code copiato negli appunti',
+    codexSessionId: 'ID sessione Codex',
+    codexSessionIdCopied: 'ID sessione Codex copiato negli appunti',
     aiProvider: 'Provider IA',
     failedToCopyClaudeCodeSessionId:
       "Impossibile copiare l'ID sessione Claude Code",
+    failedToCopyCodexSessionId: "Impossibile copiare l'ID sessione Codex",
     metadataCopied: 'Metadati copiati negli appunti',
     failedToCopyMetadata: 'Impossibile copiare i metadati',
     failedToKillSession: 'Impossibile terminare la sessione',

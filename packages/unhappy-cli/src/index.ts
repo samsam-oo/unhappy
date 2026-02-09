@@ -96,14 +96,22 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
 
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let resume: boolean | undefined = undefined;
+      let clearResume = false;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--resume') {
+          resume = true;
+        } else if (args[i] === '--no-resume') {
+          resume = false;
+        } else if (args[i] === '--clear-resume') {
+          clearResume = true;
         }
       }
 
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await runCodex({ credentials, startedBy });
+      await runCodex({ credentials, startedBy, resume, clearResume });
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(

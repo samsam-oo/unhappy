@@ -206,21 +206,43 @@ function SessionInfoContent({ session }: { session: Session }) {
                         icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
                         onPress={handleCopySessionId}
                     />
-                    {session.metadata?.claudeSessionId && (
-                        <Item
-                            title={t('sessionInfo.claudeCodeSessionId')}
-                            subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
-                            icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
-                            onPress={async () => {
-                                try {
-                                    await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
-                                    Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
-                                } catch (error) {
-                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
-                                }
-                            }}
-                        />
-                    )}
+                    {(() => {
+                        const agentSessionId = session.metadata?.agentSessionId;
+                        if (!agentSessionId) return null;
+
+                        const flavor = session.metadata?.flavor;
+                        const isCodex = flavor === 'codex';
+
+                        // Label and copy messages are flavor-specific, but the stored field is unified.
+                        const title = isCodex
+                            ? t('sessionInfo.codexSessionId')
+                            : t('sessionInfo.claudeCodeSessionId');
+                        const copiedMsg = isCodex
+                            ? t('sessionInfo.codexSessionIdCopied')
+                            : t('sessionInfo.claudeCodeSessionIdCopied');
+                        const failedMsg = isCodex
+                            ? t('sessionInfo.failedToCopyCodexSessionId')
+                            : t('sessionInfo.failedToCopyClaudeCodeSessionId');
+                        const icon = isCodex
+                            ? <Ionicons name="terminal-outline" size={29} color="#FF9500" />
+                            : <Ionicons name="code-outline" size={29} color="#9C27B0" />;
+
+                        return (
+                            <Item
+                                title={title}
+                                subtitle={`${agentSessionId.substring(0, 8)}...${agentSessionId.substring(agentSessionId.length - 8)}`}
+                                icon={icon}
+                                onPress={async () => {
+                                    try {
+                                        await Clipboard.setStringAsync(agentSessionId);
+                                        Modal.alert(t('common.success'), copiedMsg);
+                                    } catch (error) {
+                                        Modal.alert(t('common.error'), failedMsg);
+                                    }
+                                }}
+                            />
+                        );
+                    })()}
                     <Item
                         title={t('sessionInfo.connectionStatus')}
                         detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
