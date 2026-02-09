@@ -30,7 +30,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>unhappy</string>
-          <string>im.unhappy.app-develop</string>
+          <string>im.unhappy.app.develop</string>
         </array>
       </dict>
       <dict>

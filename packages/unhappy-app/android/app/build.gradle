@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'im.unhappy.app-develop'
+    namespace 'im.unhappy.app.develop'
     defaultConfig {
-        applicationId 'im.unhappy.app-develop'
+        applicationId 'im.unhappy.app.develop'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

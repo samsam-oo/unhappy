@@ -6,8 +6,8 @@ The Unhappy app supports three build variants across **iOS, Android, and macOS d
 
 | Variant         | Bundle ID                | App Name          | Use Case                                     |
 | --------------- | ------------------------ | ----------------- | -------------------------------------------- |
-| **Development** | `im.unhappy.app-develop` | Unhappy (Develop) | Local development with hot reload            |
-| **Preview**     | `im.unhappy.app-preview` | Unhappy (Preview) | Beta testing & OTA updates before production |
+| **Development** | `im.unhappy.app.develop` | Unhappy (Develop) | Local development with hot reload            |
+| **Preview**     | `im.unhappy.app.preview` | Unhappy (Preview) | Beta testing & OTA updates before production |
 | **Production**  | `com.ex3ndr.happy`       | Unhappy           | Public App Store release                     |
 
 **Why Preview?**
@@ -300,8 +300,8 @@ The `app.config.js` file reads the `APP_ENV` environment variable:
 ```javascript
 const variant = process.env.APP_ENV || 'development';
 const bundleId = {
-  development: 'im.unhappy.app-develop',
-  preview: 'im.unhappy.app-preview',
+  development: 'im.unhappy.app.develop',
+  preview: 'im.unhappy.app.preview',
   production: 'com.ex3ndr.happy',
 }[variant];
 ```

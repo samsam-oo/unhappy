@@ -1,4 +1,4 @@
-package im.unhappy.app-develop
+package im.unhappy.app.develop
 
 import android.app.Application
 import android.content.res.Configuration

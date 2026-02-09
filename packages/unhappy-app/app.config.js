@@ -5,8 +5,8 @@ const name = {
     production: "Unhappy"
 }[variant];
 const bundleId = {
-    development: "im.unhappy.app-develop",
-    preview: "im.unhappy.app-preview",
+    development: "im.unhappy.app.develop",
+    preview: "im.unhappy.app.preview",
     production: "im.unhappy.app"
 }[variant];
 
