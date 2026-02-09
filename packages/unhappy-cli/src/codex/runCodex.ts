@@ -645,19 +645,21 @@ export async function runCodex(opts: {
       msg.type === 'exec_approval_request'
     ) {
       let { call_id, type, ...inputs } = msg;
+      const canonicalCallId = client.canonicalizeToolCallId(call_id, inputs);
       session.sendCodexMessage({
         type: 'tool-call',
         name: 'CodexBash',
-        callId: call_id,
+        callId: canonicalCallId,
         input: inputs,
         id: randomUUID(),
       });
     }
     if (msg.type === 'exec_command_end') {
       let { call_id, type, ...output } = msg;
+      const canonicalCallId = client.canonicalizeToolCallId(call_id);
       session.sendCodexMessage({
         type: 'tool-call-result',
-        callId: call_id,
+        callId: canonicalCallId,
         output: output,
         id: randomUUID(),
       });
@@ -671,6 +673,10 @@ export async function runCodex(opts: {
     if (msg.type === 'patch_apply_begin') {
       // Handle the start of a patch operation
       let { call_id, auto_approved, changes } = msg;
+      const canonicalCallId = client.canonicalizeToolCallId(call_id, {
+        // patch events don't always include cwd/command; keep it stable if we already learned aliases
+        changes,
+      });
 
       // Add UI feedback for patch operation
       const changeCount = Object.keys(changes).length;
@@ -681,7 +687,7 @@ export async function runCodex(opts: {
       session.sendCodexMessage({
         type: 'tool-call',
         name: 'CodexPatch',
-        callId: call_id,
+        callId: canonicalCallId,
         input: {
           auto_approved,
           changes,
@@ -692,6 +698,7 @@ export async function runCodex(opts: {
     if (msg.type === 'patch_apply_end') {
       // Handle the end of a patch operation
       let { call_id, stdout, stderr, success } = msg;
+      const canonicalCallId = client.canonicalizeToolCallId(call_id);
 
       // Add UI feedback for completion
       if (success) {
@@ -708,7 +715,7 @@ export async function runCodex(opts: {
       // Send tool call result message
       session.sendCodexMessage({
         type: 'tool-call-result',
-        callId: call_id,
+        callId: canonicalCallId,
         output: {
           stdout,
           stderr,

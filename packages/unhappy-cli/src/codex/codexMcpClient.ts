@@ -56,6 +56,24 @@ export class CodexMcpClient {
     private conversationId: string | null = null;
     private handler: ((event: any) => void) | null = null;
     private permissionHandler: CodexPermissionHandler | null = null;
+    /**
+     * Map any observed Codex tool-call ids (from elicitation params, events, etc.)
+     * to a single canonical id. The app assumes "permissionId === toolCallId".
+     */
+    private toolCallIdAliases = new Map<string, string>();
+    /**
+     * When Codex doesn't provide a stable id in elicitation, we keep a short-lived
+     * record keyed by command+cwd so we can link the subsequent exec_* event call_id
+     * to the permission id we generated.
+     */
+    private recentElicitations: Array<{
+        canonicalId: string;
+        createdAt: number;
+        commandKey: string;
+        cwd: string;
+    }> = [];
+
+    private static readonly ELICITATION_TTL_MS = 60_000;
 
     constructor() {
         this.client = new Client(
@@ -84,6 +102,89 @@ export class CodexMcpClient {
      */
     setPermissionHandler(handler: CodexPermissionHandler): void {
         this.permissionHandler = handler;
+    }
+
+    /**
+     * Return the canonical tool call id to use for UI/state sync.
+     * If we can correlate the event `call_id` to a recent elicitation (command+cwd),
+     * this will unify permission and tool execution under the same id.
+     */
+    canonicalizeToolCallId(callId: string, inputs?: any): string {
+        if (typeof callId !== 'string' || callId.trim().length === 0) {
+            return callId;
+        }
+
+        // Fast path: already known.
+        const direct = this.toolCallIdAliases.get(callId);
+        if (direct) return direct;
+
+        // Attempt to correlate by (command, cwd) if available.
+        if (inputs && typeof inputs === 'object') {
+            const command = Array.isArray((inputs as any).command)
+                ? (inputs as any).command
+                : Array.isArray((inputs as any).codex_command)
+                    ? (inputs as any).codex_command
+                    : null;
+            const cwd =
+                typeof (inputs as any).cwd === 'string'
+                    ? (inputs as any).cwd
+                    : typeof (inputs as any).codex_cwd === 'string'
+                        ? (inputs as any).codex_cwd
+                        : '';
+
+            if (command) {
+                const commandKey = this.makeCommandKey(command);
+                const match = this.findRecentElicitation(commandKey, cwd);
+                if (match) {
+                    // Link the event call_id to the permission id.
+                    this.registerToolCallAliases(match.canonicalId, [callId]);
+                    return match.canonicalId;
+                }
+            }
+        }
+
+        return callId;
+    }
+
+    private makeCommandKey(command: unknown): string {
+        try {
+            return JSON.stringify(command);
+        } catch {
+            return String(command);
+        }
+    }
+
+    private pruneRecentElicitations(now: number): void {
+        const cutoff = now - CodexMcpClient.ELICITATION_TTL_MS;
+        if (this.recentElicitations.length === 0) return;
+        this.recentElicitations = this.recentElicitations.filter((e) => e.createdAt >= cutoff);
+    }
+
+    private findRecentElicitation(commandKey: string, cwd: string): { canonicalId: string } | null {
+        const now = Date.now();
+        this.pruneRecentElicitations(now);
+        // Search from newest to oldest.
+        for (let i = this.recentElicitations.length - 1; i >= 0; i--) {
+            const e = this.recentElicitations[i];
+            if (e.commandKey === commandKey && e.cwd === cwd) {
+                // Consume so we don't accidentally map multiple call_ids to one permission.
+                this.recentElicitations.splice(i, 1);
+                return { canonicalId: e.canonicalId };
+            }
+        }
+        return null;
+    }
+
+    private registerToolCallAliases(canonicalId: string, aliases: Array<unknown>): void {
+        if (typeof canonicalId !== 'string' || canonicalId.trim().length === 0) return;
+        // Ensure canonical maps to itself.
+        this.toolCallIdAliases.set(canonicalId, canonicalId);
+        for (const a of aliases) {
+            if (typeof a !== 'string') continue;
+            const s = a.trim();
+            if (!s) continue;
+            this.toolCallIdAliases.set(s, canonicalId);
+        }
     }
 
     async connect(): Promise<void> {
@@ -157,11 +258,13 @@ export class CodexMcpClient {
                 try {
                     // Codex versions / MCP servers have varied field names for the tool call id.
                     // This id MUST match the tool-call id used later in events/results so the app's approval can resolve the pending request.
+                    // Prefer ids that appear as the eventual exec_* event `call_id`.
+                    // Empirically, `codex_call_id` is the best match; MCP-level ids can differ.
                     const candidates = [
-                        params.codex_mcp_tool_call_id,
                         params.codex_call_id,
                         params.callId,
                         params.tool_call_id,
+                        params.codex_mcp_tool_call_id,
                         params.codex_event_id, // last resort: better than "undefined"
                     ];
                     const toolCallId =
@@ -180,6 +283,21 @@ export class CodexMcpClient {
 
                     const command = Array.isArray(params.codex_command) ? params.codex_command : [];
                     const cwd = typeof params.codex_cwd === 'string' ? params.codex_cwd : '';
+
+                    // Make all observed ids resolve to the canonical id we will use in AgentState/tool messages.
+                    this.registerToolCallAliases(effectiveToolCallId, candidates);
+                    // If we had to generate an id, keep a short-lived record so we can associate
+                    // the subsequent exec_* event call_id to this permission request.
+                    if (!toolCallId) {
+                        const now = Date.now();
+                        this.pruneRecentElicitations(now);
+                        this.recentElicitations.push({
+                            canonicalId: effectiveToolCallId,
+                            createdAt: now,
+                            commandKey: this.makeCommandKey(command),
+                            cwd,
+                        });
+                    }
 
                     // Request permission through the handler
                     const result = await this.permissionHandler.handleToolCall(
