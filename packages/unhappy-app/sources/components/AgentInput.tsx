@@ -463,14 +463,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         setOverlayKind(null);
     }, [props.onModelModeChange]);
 
-    const effectiveEffort: ReasoningEffortMode = (props.effortMode ?? 'medium') as ReasoningEffortMode;
+    const effectiveEffortLabel: string = props.effortMode ?? 'Default';
     const handleEffortPress = React.useCallback(() => {
         if (!props.onEffortModeChange) return;
         hapticsLight();
-        const order: ReasoningEffortMode[] = ['low', 'medium', 'high', 'max'];
-        const current = (props.effortMode ?? 'medium') as ReasoningEffortMode;
+        const order: Array<ReasoningEffortMode | null> = [null, 'low', 'medium', 'high', 'max'];
+        const current: ReasoningEffortMode | null = props.effortMode ?? null;
         const idx = order.indexOf(current);
-        const next = order[(idx >= 0 ? idx + 1 : 1) % order.length];
+        const next = order[(idx >= 0 ? idx + 1 : 0) % order.length] ?? null;
         props.onEffortModeChange(next);
     }, [props.onEffortModeChange, props.effortMode]);
 
@@ -1149,7 +1149,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     onPress={handleEffortPress}
                                     hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                     accessibilityRole="button"
-                                    accessibilityLabel={`Reasoning effort: ${effectiveEffort}`}
+                                    accessibilityLabel={`Reasoning effort: ${effectiveEffortLabel}`}
                                     style={(p) => ({
                                         flexDirection: 'row',
                                         alignItems: 'center',
@@ -1161,7 +1161,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         opacity: p.pressed ? 0.7 : 1,
                                     })}
                                 >
-                                    <EffortBatteryIcon effort={effectiveEffort} color={theme.colors.button.secondary.tint} />
+                                    <EffortBatteryIcon effort={props.effortMode ?? null} color={theme.colors.button.secondary.tint} />
                                 </Pressable>
                             )}
 
@@ -1315,8 +1315,17 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
     );
 }
 
-function EffortBatteryIcon(props: { effort: ReasoningEffortMode; color: string }) {
-    const filled = props.effort === 'low' ? 1 : props.effort === 'medium' ? 2 : props.effort === 'high' ? 3 : 4;
+function EffortBatteryIcon(props: { effort: ReasoningEffortMode | null; color: string }) {
+    const filled =
+        props.effort == null
+            ? 0
+            : props.effort === 'low'
+                ? 1
+                : props.effort === 'medium'
+                    ? 2
+                    : props.effort === 'high'
+                        ? 3
+                        : 4;
     const dim = (idx: number) => idx >= filled;
     const barStyle = (idx: number) => ({
         flex: 1,
@@ -1352,6 +1361,7 @@ function EffortBatteryIcon(props: { effort: ReasoningEffortMode; color: string }
                     marginLeft: 1.5,
                     borderRadius: 1,
                     backgroundColor: props.color,
+                    opacity: props.effort == null ? 0.25 : 1,
                 }}
             />
         </View>

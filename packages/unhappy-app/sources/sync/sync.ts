@@ -278,7 +278,9 @@ class Sync {
                 permissionMode: permissionMode || 'default',
                 model,
                 fallbackModel,
-                effort: effortMode ?? 'medium',
+                // `null` explicitly resets to backend default; omitted/undefined means "keep current".
+                // We always send the session setting so the agent behavior is deterministic.
+                effort: effortMode,
                 appendSystemPrompt: systemPrompt,
                 ...(displayText && { displayText }) // Add displayText if provided
             }

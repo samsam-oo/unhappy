@@ -37,6 +37,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { StatusDot } from '@/components/StatusDot';
 import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import type { ReasoningEffortMode } from '@/sync/storageTypes';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -448,6 +449,7 @@ function NewSessionWizard() {
         }
         return agentType === 'codex' ? 'gpt-5-codex-high' : agentType === 'gemini' ? 'gemini-2.5-pro' : 'default';
     });
+    const [effortMode, setEffortMode] = React.useState<ReasoningEffortMode | null>(null);
 
     // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
@@ -1154,6 +1156,7 @@ function NewSessionWizard() {
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
                 storage.getState().updateSessionProfileId(result.sessionId, selectedProfileId);
+                storage.getState().updateSessionEffortMode(result.sessionId, effortMode);
                 if (agentType === 'gemini' && modelMode && modelMode !== 'default') {
                     storage.getState().updateSessionModelMode(result.sessionId, modelMode as 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite');
                 }
@@ -1301,6 +1304,8 @@ function NewSessionWizard() {
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
                                 onModelModeChange={(m) => setModelMode((m ?? 'default') as any)}
+                                effortMode={effortMode}
+                                onEffortModeChange={setEffortMode}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
@@ -2070,6 +2075,8 @@ function NewSessionWizard() {
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
                             onModelModeChange={(m) => setModelMode((m ?? 'default') as any)}
+                            effortMode={effortMode}
+                            onEffortModeChange={setEffortMode}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}
