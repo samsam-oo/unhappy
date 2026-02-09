@@ -4,6 +4,7 @@ import { LocalSettings, localSettingsDefaults, localSettingsParse } from './loca
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
+import type { ReasoningEffortMode } from './storageTypes';
 
 const mmkv = new MMKV();
 const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
@@ -189,6 +190,57 @@ export function loadSessionPermissionModes(): Record<string, PermissionMode> {
 
 export function saveSessionPermissionModes(modes: Record<string, PermissionMode>) {
     mmkv.set('session-permission-modes', JSON.stringify(modes));
+}
+
+export function loadSessionModelModes(): Record<string, string> {
+    const modes = mmkv.getString('session-model-modes');
+    if (modes) {
+        try {
+            return JSON.parse(modes);
+        } catch (e) {
+            console.error('Failed to parse session model modes', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionModelModes(modes: Record<string, string>) {
+    mmkv.set('session-model-modes', JSON.stringify(modes));
+}
+
+export function loadSessionEffortModes(): Record<string, ReasoningEffortMode> {
+    const modes = mmkv.getString('session-effort-modes');
+    if (modes) {
+        try {
+            return JSON.parse(modes);
+        } catch (e) {
+            console.error('Failed to parse session effort modes', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionEffortModes(modes: Record<string, ReasoningEffortMode>) {
+    mmkv.set('session-effort-modes', JSON.stringify(modes));
+}
+
+export function loadSessionProfileIds(): Record<string, string> {
+    const ids = mmkv.getString('session-profile-ids');
+    if (ids) {
+        try {
+            return JSON.parse(ids);
+        } catch (e) {
+            console.error('Failed to parse session profile ids', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionProfileIds(ids: Record<string, string>) {
+    mmkv.set('session-profile-ids', JSON.stringify(ids));
 }
 
 export function loadProfile(): Profile {

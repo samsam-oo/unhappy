@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { Session, Machine, GitStatus } from "./storageTypes";
+import { Session, Machine, GitStatus, type ReasoningEffortMode } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
@@ -11,7 +11,26 @@ import { Purchases, customerInfoToPurchases } from "./purchases";
 import { TodoState } from "../-zen/model/ops";
 import { Profile } from "./profile";
 import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import {
+    loadSettings,
+    loadLocalSettings,
+    saveLocalSettings,
+    saveSettings,
+    loadPurchases,
+    savePurchases,
+    loadProfile,
+    saveProfile,
+    loadSessionDrafts,
+    saveSessionDrafts,
+    loadSessionPermissionModes,
+    saveSessionPermissionModes,
+    loadSessionModelModes,
+    saveSessionModelModes,
+    loadSessionEffortModes,
+    saveSessionEffortModes,
+    loadSessionProfileIds,
+    saveSessionProfileIds,
+} from "./persistence";
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -129,7 +148,9 @@ interface StorageState {
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
-    updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => void;
+    updateSessionModelMode: (sessionId: string, mode: string | null) => void;
+    updateSessionEffortMode: (sessionId: string, mode: ReasoningEffortMode | null) => void;
+    updateSessionProfileId: (sessionId: string, profileId: string | null) => void;
     markSessionRead: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
@@ -263,6 +284,9 @@ export const storage = create<StorageState>()((set, get) => {
     let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
+    let sessionModelModes = loadSessionModelModes();
+    let sessionEffortModes = loadSessionEffortModes();
+    let sessionProfileIds = loadSessionProfileIds();
     return {
         settings,
         settingsVersion: version,
@@ -313,9 +337,13 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
-            // Load drafts and permission modes if sessions are empty (initial load)
-            const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
-            const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+            // Load local-only overrides if sessions are empty (initial load)
+            const isInitialLoad = Object.keys(state.sessions).length === 0;
+            const savedDrafts = isInitialLoad ? sessionDrafts : {};
+            const savedPermissionModes = isInitialLoad ? sessionPermissionModes : {};
+            const savedModelModes = isInitialLoad ? sessionModelModes : {};
+            const savedEffortModes = isInitialLoad ? sessionEffortModes : {};
+            const savedProfileIds = isInitialLoad ? sessionProfileIds : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -330,6 +358,12 @@ export const storage = create<StorageState>()((set, get) => {
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
                 const savedPermissionMode = savedPermissionModes[session.id];
+                const existingModelMode = state.sessions[session.id]?.modelMode;
+                const savedModelMode = savedModelModes[session.id];
+                const existingEffortMode = state.sessions[session.id]?.effortMode;
+                const savedEffortMode = savedEffortModes[session.id];
+                const existingProfileId = state.sessions[session.id]?.profileId;
+                const savedProfileId = savedProfileIds[session.id];
 
                 // Detect thinking -> not-thinking transition for unread marking
                 const previousSession = state.sessions[session.id];
@@ -346,6 +380,9 @@ export const storage = create<StorageState>()((set, get) => {
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
                     permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
+                    profileId: existingProfileId ?? savedProfileId ?? session.profileId ?? null,
+                    modelMode: existingModelMode ?? savedModelMode ?? session.modelMode ?? null,
+                    effortMode: existingEffortMode ?? savedEffortMode ?? session.effortMode ?? null,
                     unread,
                 };
             });
@@ -833,20 +870,87 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
-        updateSessionModelMode: (sessionId: string, mode: 'default' | 'gemini-2.5-pro' | 'gemini-2.5-flash' | 'gemini-2.5-flash-lite') => set((state) => {
+        updateSessionModelMode: (sessionId: string, mode: string | null) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
+
+            // Treat "default" as reset to null (use backend default).
+            const normalizedMode = mode && mode !== 'default' ? mode : null;
 
             // Update the session with the new model mode
             const updatedSessions = {
                 ...state.sessions,
                 [sessionId]: {
                     ...session,
-                    modelMode: mode
+                    modelMode: normalizedMode
                 }
             };
 
+            // Collect all model modes for persistence (only non-null values to save space)
+            const allModes: Record<string, string> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (typeof sess.modelMode === 'string' && sess.modelMode.trim()) {
+                    allModes[id] = sess.modelMode;
+                }
+            });
+
+            saveSessionModelModes(allModes);
+
             // No need to rebuild sessionListViewData since model mode doesn't affect the list display
+            return {
+                ...state,
+                sessions: updatedSessions
+            };
+        }),
+        updateSessionEffortMode: (sessionId: string, mode: ReasoningEffortMode | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    effortMode: mode
+                }
+            };
+
+            // Collect all effort modes for persistence (only non-null values to save space)
+            const allModes: Record<string, ReasoningEffortMode> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.effortMode) {
+                    allModes[id] = sess.effortMode;
+                }
+            });
+
+            saveSessionEffortModes(allModes);
+
+            return {
+                ...state,
+                sessions: updatedSessions
+            };
+        }),
+        updateSessionProfileId: (sessionId: string, profileId: string | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    profileId: profileId
+                }
+            };
+
+            // Collect all profile ids for persistence (only non-null values to save space)
+            const allIds: Record<string, string> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (typeof sess.profileId === 'string' && sess.profileId.trim()) {
+                    allIds[id] = sess.profileId;
+                }
+            });
+
+            saveSessionProfileIds(allIds);
+
             return {
                 ...state,
                 sessions: updatedSessions
@@ -967,6 +1071,18 @@ export const storage = create<StorageState>()((set, get) => {
             const modes = loadSessionPermissionModes();
             delete modes[sessionId];
             saveSessionPermissionModes(modes);
+
+            const modelModes = loadSessionModelModes();
+            delete modelModes[sessionId];
+            saveSessionModelModes(modelModes);
+
+            const effortModes = loadSessionEffortModes();
+            delete effortModes[sessionId];
+            saveSessionEffortModes(effortModes);
+
+            const profileIds = loadSessionProfileIds();
+            delete profileIds[sessionId];
+            saveSessionProfileIds(profileIds);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);

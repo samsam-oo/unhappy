@@ -16,6 +16,7 @@ import { startHookServer } from '@/claude/utils/startHookServer';
 import { configuration } from '@/configuration';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
+import { listClaudeModels } from '@/modules/common/listModels';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { Credentials, readSettings } from '@/persistence';
 import { getEnvironmentInfo } from '@/ui/doctor';
@@ -272,6 +273,7 @@ export async function runClaude(
       isPlan: mode.permissionMode === 'plan',
       model: mode.model,
       fallbackModel: mode.fallbackModel,
+      effort: mode.effort,
       customSystemPrompt: mode.customSystemPrompt,
       appendSystemPrompt: mode.appendSystemPrompt,
       allowedTools: mode.allowedTools,
@@ -285,6 +287,7 @@ export async function runClaude(
     options.permissionMode;
   let currentModel = options.model; // Track current model state
   let currentFallbackModel: string | undefined = undefined; // Track current fallback model
+  let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = undefined; // Track current effort
   let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
   let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
   let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
@@ -316,6 +319,25 @@ export async function runClaude(
     } else {
       logger.debug(
         `[loop] User message received with no model override, using current: ${currentModel || 'default'}`,
+      );
+    }
+
+    // Resolve reasoning effort - use message.meta.effort if provided, otherwise use current
+    let messageEffort = currentEffort;
+    if (message.meta?.hasOwnProperty('effort')) {
+      const raw = message.meta.effort;
+      const normalized =
+        raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max'
+          ? (raw as 'low' | 'medium' | 'high' | 'max')
+          : undefined;
+      messageEffort = normalized;
+      currentEffort = messageEffort;
+      logger.debug(
+        `[loop] Effort updated from user message: ${messageEffort || 'reset to default'}`,
+      );
+    } else {
+      logger.debug(
+        `[loop] User message received with no effort override, using current: ${currentEffort || 'default'}`,
       );
     }
 
@@ -398,6 +420,7 @@ export async function runClaude(
         permissionMode: messagePermissionMode || 'default',
         model: messageModel,
         fallbackModel: messageFallbackModel,
+        effort: messageEffort,
         customSystemPrompt: messageCustomSystemPrompt,
         appendSystemPrompt: messageAppendSystemPrompt,
         allowedTools: messageAllowedTools,
@@ -420,6 +443,7 @@ export async function runClaude(
         permissionMode: messagePermissionMode || 'default',
         model: messageModel,
         fallbackModel: messageFallbackModel,
+        effort: messageEffort,
         customSystemPrompt: messageCustomSystemPrompt,
         appendSystemPrompt: messageAppendSystemPrompt,
         allowedTools: messageAllowedTools,
@@ -441,6 +465,7 @@ export async function runClaude(
       permissionMode: messagePermissionMode || 'default',
       model: messageModel,
       fallbackModel: messageFallbackModel,
+      effort: messageEffort,
       customSystemPrompt: messageCustomSystemPrompt,
       appendSystemPrompt: messageAppendSystemPrompt,
       allowedTools: messageAllowedTools,
@@ -505,6 +530,17 @@ export async function runClaude(
   process.on('unhandledRejection', (reason) => {
     logger.debug('[START] Unhandled rejection:', reason);
     cleanup();
+  });
+
+  // Model listing for UI dropdown (best-effort; cached per session process).
+  let cachedModelList: Awaited<ReturnType<typeof listClaudeModels>> | null =
+    null;
+  session.rpcHandlerManager.registerHandler('list-models', async () => {
+    if (cachedModelList?.success) {
+      return cachedModelList;
+    }
+    cachedModelList = await listClaudeModels();
+    return cachedModelList;
   });
 
   registerKillSessionHandler(session.rpcHandlerManager, cleanup);

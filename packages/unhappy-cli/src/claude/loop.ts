@@ -16,6 +16,7 @@ export interface EnhancedMode {
     permissionMode: PermissionMode;
     model?: string;
     fallbackModel?: string;
+    effort?: 'low' | 'medium' | 'high' | 'max';
     customSystemPrompt?: string;
     appendSystemPrompt?: string;
     allowedTools?: string[];
