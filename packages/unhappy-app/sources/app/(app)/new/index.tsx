@@ -1299,7 +1299,8 @@ function NewSessionWizard() {
                                 autocompletePrefixes={[]}
                                 autocompleteSuggestions={async () => []}
                                 agentType={agentType}
-                                onAgentClick={handleAgentClick}
+                                onAgentTypeChange={setAgentType}
+                                machineId={selectedMachineId ?? undefined}
                                 permissionMode={permissionMode}
                                 onPermissionModeChange={handlePermissionModeChange}
                                 modelMode={modelMode}
@@ -2070,7 +2071,8 @@ function NewSessionWizard() {
                             autocompletePrefixes={[]}
                             autocompleteSuggestions={async () => []}
                             agentType={agentType}
-                            onAgentClick={handleAgentInputAgentClick}
+                            onAgentTypeChange={setAgentType}
+                            machineId={selectedMachineId ?? undefined}
                             permissionMode={permissionMode}
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}

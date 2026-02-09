@@ -76,4 +76,33 @@ describe('Codex resume persistence', () => {
     // Old entry should not be present
     expect(entries[resolve(join(homeDir, 'old'))]).toBeUndefined();
   });
+
+  it('persists optional codexHomeDir and resumeFile fields (best-effort)', async () => {
+    const { upsertCodexResumeEntry, readCodexResumeEntry } = await import(
+      '@/persistence'
+    );
+
+    const cwd = join(homeDir, 'w', 'p2');
+    await upsertCodexResumeEntry(cwd, {
+      codexSessionId: 'sess-3',
+      codexHomeDir: '/tmp/codex-home',
+      resumeFile: '/tmp/codex-home/sessions/2026/02/01/rollout-foo-sess-3.jsonl',
+    });
+
+    const entry1 = await readCodexResumeEntry(cwd);
+    expect(entry1?.codexSessionId).toBe('sess-3');
+    expect(entry1?.codexHomeDir).toBe('/tmp/codex-home');
+    expect(entry1?.resumeFile).toBe(
+      '/tmp/codex-home/sessions/2026/02/01/rollout-foo-sess-3.jsonl',
+    );
+
+    // Update without the optional fields should preserve previous values.
+    await upsertCodexResumeEntry(cwd, { codexSessionId: 'sess-4' });
+    const entry2 = await readCodexResumeEntry(cwd);
+    expect(entry2?.codexSessionId).toBe('sess-4');
+    expect(entry2?.codexHomeDir).toBe('/tmp/codex-home');
+    expect(entry2?.resumeFile).toBe(
+      '/tmp/codex-home/sessions/2026/02/01/rollout-foo-sess-3.jsonl',
+    );
+  });
 });

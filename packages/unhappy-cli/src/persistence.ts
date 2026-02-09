@@ -266,6 +266,12 @@ export interface DaemonLocallyPersistedState {
 export interface CodexResumeEntry {
   cwd: string;
   codexSessionId: string;
+  // The CODEX_HOME directory used when this sessionId was observed. This matters because
+  // Codex stores session transcripts under CODEX_HOME/sessions, and daemon mode may set
+  // CODEX_HOME to a non-default path.
+  codexHomeDir?: string;
+  // Absolute path to the resume transcript file if known (best-effort).
+  resumeFile?: string;
   updatedAt: number;
   createdAt: number;
 }
@@ -413,7 +419,13 @@ export async function readCodexResumeEntry(
 
 export async function upsertCodexResumeEntry(
   cwd: string,
-  update: { codexSessionId: string; updatedAt?: number; createdAt?: number },
+  update: {
+    codexSessionId: string;
+    codexHomeDir?: string;
+    resumeFile?: string;
+    updatedAt?: number;
+    createdAt?: number;
+  },
 ): Promise<void> {
   const key = resolve(cwd);
   const now = Date.now();
@@ -428,6 +440,8 @@ export async function upsertCodexResumeEntry(
         [key]: {
           cwd: key,
           codexSessionId: update.codexSessionId,
+          codexHomeDir: update.codexHomeDir ?? existing?.codexHomeDir,
+          resumeFile: update.resumeFile ?? existing?.resumeFile,
           createdAt,
           updatedAt,
         },
