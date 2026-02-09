@@ -433,7 +433,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         { agent: agentFlavor }
                     );
                     if (resp.success) {
-                        setAvailableModels(resp.models);
+                        if (!resp.models || resp.models.length === 0) {
+                            setAvailableModels(null);
+                            setModelLoadError('No models found.');
+                        } else {
+                            setAvailableModels(resp.models);
+                        }
                     } else {
                         setAvailableModels(null);
                         setModelLoadError(resp.error || 'Failed to load models.');
@@ -455,7 +460,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         try {
             const resp = await apiSocket.sessionRPC<ListModelsResponse, {}>(props.sessionId, 'list-models', {});
             if (resp.success) {
-                setAvailableModels(resp.models);
+                if (!resp.models || resp.models.length === 0) {
+                    setAvailableModels(null);
+                    setModelLoadError('No models found.');
+                } else {
+                    setAvailableModels(resp.models);
+                }
             } else {
                 setAvailableModels(null);
                 setModelLoadError(resp.error || 'Failed to load models.');
