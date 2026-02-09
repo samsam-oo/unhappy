@@ -12,15 +12,15 @@
  * @module GeminiTransport
  */
 
+import { logger } from '@/ui/logger';
+import type { AgentMessage } from '../../core';
 import type {
-  TransportHandler,
-  ToolPattern,
   StderrContext,
   StderrResult,
   ToolNameContext,
+  ToolPattern,
+  TransportHandler,
 } from '../TransportHandler';
-import type { AgentMessage } from '../../core';
-import { logger } from '@/ui/logger';
 
 /**
  * Gemini-specific timeout values (in milliseconds)
@@ -58,7 +58,7 @@ interface ExtendedToolPattern extends ToolPattern {
 const GEMINI_TOOL_PATTERNS: ExtendedToolPattern[] = [
   {
     name: 'change_title',
-    patterns: ['change_title', 'change-title', 'happy__change_title', 'mcp__happy__change_title'],
+    patterns: ['change_title', 'change-title', 'unhappy__change_title', 'mcp__unhappy__change_title'],
     inputFields: ['title'],
     emptyInputDefault: true, // change_title often has empty input (title extracted from context)
   },

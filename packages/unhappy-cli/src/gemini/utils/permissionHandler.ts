@@ -5,17 +5,17 @@
  * Extends BasePermissionHandler with Gemini-specific permission mode logic.
  */
 
-import { logger } from "@/ui/logger";
 import { ApiSessionClient } from "@/api/apiSession";
 import type { PermissionMode } from '@/api/types';
+import { logger } from "@/ui/logger";
 import {
     BasePermissionHandler,
-    PermissionResult,
-    PendingRequest
+    PendingRequest,
+    PermissionResult
 } from '@/utils/BasePermissionHandler';
 
 // Re-export types for backwards compatibility
-export type { PermissionResult, PendingRequest };
+export type { PendingRequest, PermissionResult };
 
 /**
  * Gemini-specific permission handler with permission mode support.
@@ -56,7 +56,7 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
         // - GeminiReasoning: Reasoning is just display of thinking process, not an action
         // - think: Thinking/saving memories is safe
         // - save_memory: Saving memories is safe
-        const alwaysAutoApproveNames = ['change_title', 'happy__change_title', 'GeminiReasoning', 'CodexReasoning', 'think', 'save_memory'];
+        const alwaysAutoApproveNames = ['change_title', 'unhappy__change_title', 'GeminiReasoning', 'CodexReasoning', 'think', 'save_memory'];
         const alwaysAutoApproveIds = ['change_title', 'save_memory'];
         
         // Check by tool name

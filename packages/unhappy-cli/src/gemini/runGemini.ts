@@ -35,16 +35,16 @@ import type { PermissionMode } from '@/api/types';
 import { CHANGE_TITLE_INSTRUCTION, GEMINI_MODEL_ENV } from '@/gemini/constants';
 import type { CodexMessagePayload, GeminiMode } from '@/gemini/types';
 import {
-  getInitialGeminiModel,
-  readGeminiLocalConfig,
-  saveGeminiModelToConfig,
+    getInitialGeminiModel,
+    readGeminiLocalConfig,
+    saveGeminiModelToConfig,
 } from '@/gemini/utils/config';
 import { ConversationHistory } from '@/gemini/utils/conversationHistory';
 import { GeminiDiffProcessor } from '@/gemini/utils/diffProcessor';
 import {
-  formatOptionsXml,
-  hasIncompleteOptions,
-  parseOptionsFromText,
+    formatOptionsXml,
+    hasIncompleteOptions,
+    parseOptionsFromText,
 } from '@/gemini/utils/optionsParser';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
@@ -756,7 +756,7 @@ export async function runGemini(opts: {
           if (
             msg.toolName === 'change_title' ||
             msg.callId?.includes('change_title') ||
-            msg.toolName === 'happy__change_title'
+            msg.toolName === 'unhappy__change_title'
           ) {
             changeTitleCompleted = true;
             logger.debug('[gemini] change_title completed');
@@ -1237,7 +1237,7 @@ export async function runGemini(opts: {
         // If so, don't send task_complete until change_title is completed
         pendingChangeTitle =
           message.message.includes('change_title') ||
-          message.message.includes('happy__change_title');
+          message.message.includes('unhappy__change_title');
         changeTitleCompleted = false;
 
         if (!geminiBackend || !acpSessionId) {

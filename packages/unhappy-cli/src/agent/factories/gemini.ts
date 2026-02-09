@@ -9,25 +9,25 @@
  */
 
 import {
-  GEMINI_API_KEY_ENV,
-  GEMINI_MODEL_ENV,
-  GOOGLE_API_KEY_ENV,
+    GEMINI_API_KEY_ENV,
+    GEMINI_MODEL_ENV,
+    GOOGLE_API_KEY_ENV,
 } from '@/gemini/constants';
 import {
-  determineGeminiModel,
-  getGeminiModelSource,
-  readGeminiLocalConfig,
+    determineGeminiModel,
+    getGeminiModelSource,
+    readGeminiLocalConfig,
 } from '@/gemini/utils/config';
 import { logger } from '@/ui/logger';
 import {
-  AcpBackend,
-  type AcpBackendOptions,
-  type AcpPermissionHandler,
+    AcpBackend,
+    type AcpBackendOptions,
+    type AcpPermissionHandler,
 } from '../acp/AcpBackend';
 import type {
-  AgentBackend,
-  AgentFactoryOptions,
-  McpServerConfig,
+    AgentBackend,
+    AgentFactoryOptions,
+    McpServerConfig,
 } from '../core';
 import { agentRegistry } from '../core';
 import { geminiTransport } from '../transport';
@@ -170,7 +170,7 @@ export function createGeminiBackend(
         lower.includes('change_title') ||
         lower.includes('change title') ||
         lower.includes('set title') ||
-        lower.includes('mcp__happy__change_title')
+        lower.includes('mcp__unhappy__change_title')
       );
     },
   };

@@ -6,8 +6,7 @@
  * which will skip normal message processing phases and be handled as events instead.
  */
 
-import { NormalizedMessage } from "../typesRaw";
-import { AgentEvent } from "../typesRaw";
+import { AgentEvent, NormalizedMessage } from "../typesRaw";
 
 /**
  * Parses a normalized message to determine if it should be converted to an event.
@@ -44,8 +43,8 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
                 
             }
             
-            // Check for mcp__happy__change_title tool calls
-            if (content.type === 'tool-call' && content.name === 'mcp__happy__change_title') {
+            // Check for mcp__unhappy__change_title tool calls
+            if (content.type === 'tool-call' && content.name === 'mcp__unhappy__change_title') {
                 const title = content.input?.title;
                 if (typeof title === 'string') {
                     return {
