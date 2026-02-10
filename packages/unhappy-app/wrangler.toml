@@ -1,0 +1,21 @@
+name = "unhappy-app"
+compatibility_date = "2026-02-10"
+
+#
+# Cloudflare Workers + Static Assets (SPA)
+#
+# Build:
+#   # from repo root
+#   yarn workspace unhappy-app expo export --platform web --output-dir dist
+#
+# Dev:
+#   npx wrangler --cwd packages/unhappy-app dev
+#
+# Deploy:
+#   npx wrangler --cwd packages/unhappy-app deploy
+#
+
+[assets]
+# Expo web export output directory (see Dockerfile.webapp and src-tauri/tauri.conf.json).
+directory = "dist"
+not_found_handling = "single-page-application"
