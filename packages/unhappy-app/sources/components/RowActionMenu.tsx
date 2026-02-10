@@ -19,6 +19,11 @@ export interface RowAction {
 
 interface RowActionMenuProps {
     actions: RowAction[];
+    /**
+     * Called right before the menu becomes visible.
+     * Useful for refreshing underlying state (e.g. git status) so actions can be shown/hidden accurately.
+     */
+    onOpen?: () => void;
 }
 
 const IS_WEB = Platform.OS === 'web';
@@ -34,11 +39,12 @@ export const RowActionMenu = React.memo(function RowActionMenu(props: RowActionM
 
     const handleOpen = React.useCallback((e?: any) => {
         e?.stopPropagation?.();
+        props.onOpen?.();
         triggerRef.current?.measureInWindow((x, y, width, height) => {
             setAnchor({ x, y, width, height });
             setVisible(true);
         });
-    }, []);
+    }, [props]);
 
     const handleClose = React.useCallback(() => {
         setVisible(false);

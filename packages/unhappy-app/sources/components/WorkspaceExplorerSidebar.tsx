@@ -15,6 +15,7 @@ import { HappyError } from '@/utils/errors';
 import { useSessionStatus } from '@/utils/sessionUtils';
 import { Modal } from '@/modal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image } from 'expo-image';
 import { usePathname, useRouter } from 'expo-router';
 import * as React from 'react';
 import { ActivityIndicator, LayoutAnimation, Platform, Pressable, UIManager, View } from 'react-native';
@@ -39,6 +40,12 @@ const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
 const WORKSPACE_ORDER_KEY = 'happy.workspaceExplorer.workspaceOrder.v1';
 
 const IS_WEB = Platform.OS === 'web';
+
+const flavorIcons = {
+    claude: require('@/assets/images/icon-claude.png'),
+    codex: require('@/assets/images/icon-gpt.png'),
+    gemini: require('@/assets/images/icon-gemini.png'),
+};
 const DEFAULT_EXPANDED = true;
 
 // This view is used both in the desktop sidebar and as the phone "Sessions" main screen.
@@ -566,6 +573,13 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
         };
     });
 
+    const agentFlavor = (props.session.metadata?.flavor === 'codex' || props.session.metadata?.flavor === 'gemini')
+        ? props.session.metadata.flavor as 'codex' | 'gemini'
+        : 'claude' as const;
+
+    // Show the provider's icon when idle (waiting) and not unread.
+    const useFlavorIcon = sessionStatus.state === 'waiting' && !props.session.unread;
+
     const iconName = React.useMemo(() => {
         // If a session became ready while the user was away, prioritize an explicit "unread" icon.
         // Keep "thinking" and "permission_required" icons since those states are more actionable.
@@ -579,8 +593,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             case 'permission_required':
                 return 'alert-circle-outline';
             case 'waiting':
-                // "Waiting for your message" feels closer to chat than terminal.
-                return 'chatbubble-outline';
+                return 'chatbubble-outline'; // fallback, overridden by flavor icon
             case 'disconnected':
                 return 'cloud-outline';
             default:
@@ -629,11 +642,20 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             <View style={styles.icon}>
                 {sessionStatus.state === 'thinking'
                     ? <ActivityIndicator size={UI_ICONS.spinner} color={iconColor} />
-                    : (
-                        <Animated.View style={shouldPulseUnreadIcon ? unreadPulseStyle : undefined}>
-                            <Ionicons name={iconName} size={UI_ICONS.rowIcon} color={iconColor} />
-                        </Animated.View>
-                    )
+                    : useFlavorIcon
+                        ? (
+                            <Image
+                                source={flavorIcons[agentFlavor]}
+                                style={{ width: UI_ICONS.rowIcon, height: UI_ICONS.rowIcon }}
+                                contentFit="contain"
+                                tintColor={agentFlavor === 'codex' ? iconColor : undefined}
+                            />
+                        )
+                        : (
+                            <Animated.View style={shouldPulseUnreadIcon ? unreadPulseStyle : undefined}>
+                                <Ionicons name={iconName} size={UI_ICONS.rowIcon} color={iconColor} />
+                            </Animated.View>
+                        )
                 }
             </View>
             <View style={styles.textBlock}>
