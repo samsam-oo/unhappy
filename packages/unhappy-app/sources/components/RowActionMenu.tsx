@@ -83,7 +83,15 @@ export const RowActionMenu = React.memo(function RowActionMenu(props: RowActionM
                         ) : (
                             <IconComponent name={action.icon} size={iconSize} color={color} />
                         )}
-                        <Text style={[styles.menuItemLabel, isDisabled && styles.menuItemLabelDisabled, action.destructive && !isDisabled && styles.menuItemLabelDestructive]}>
+                        <Text
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                            style={[
+                                styles.menuItemLabel,
+                                isDisabled && styles.menuItemLabelDisabled,
+                                action.destructive && !isDisabled && styles.menuItemLabelDestructive,
+                            ]}
+                        >
                             {action.label}
                         </Text>
                     </Pressable>
@@ -225,6 +233,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => {
         fontSize: compact ? 13 : 14,
         lineHeight: compact ? 17 : 20,
         color: theme.colors.text,
+        minWidth: 0,
+        flexShrink: 1,
         ...Typography.default(),
     },
     menuItemLabelDestructive: {

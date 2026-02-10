@@ -706,6 +706,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
 
     const [expanded, setExpanded] = React.useState<Record<string, boolean>>(initialExpanded);
     const [menuLoading, setMenuLoading] = React.useState<Record<string, boolean>>({});
+    const menuLoadingInFlightRef = React.useRef(new Set<string>());
     const mountedRef = React.useRef(true);
     React.useEffect(() => {
         return () => {
@@ -1585,11 +1586,18 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                 const pickPreferred = (ids: string[]) => {
                                                     if (!ids.length) return null;
                                                     if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
-                                                    const best = ids
-                                                        .map((id) => sessionById.get(id))
-                                                        .filter((s): s is Session => Boolean(s))
-                                                        .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
-                                                    return best ?? ids[0] ?? null;
+                                                    let bestId: string | null = null;
+                                                    let bestUpdatedAt = -Infinity;
+                                                    for (const id of ids) {
+                                                        const s = sessionById.get(id);
+                                                        if (s && s.updatedAt > bestUpdatedAt) {
+                                                            bestUpdatedAt = s.updatedAt;
+                                                            bestId = s.id;
+                                                        } else if (!bestId) {
+                                                            bestId = id;
+                                                        }
+                                                    }
+                                                    return bestId ?? ids[0] ?? null;
                                                 };
                                                 const preferredReviewSessionId =
                                                     pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
@@ -1601,12 +1609,14 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                 onOpen={() => {
                                                     if (!preferredReviewSessionId) return;
                                                     // Ensure git status is fresh before deciding whether to show the "Changes" action.
-                                                    if (menuLoading[loadingKey]) return;
+                                                    if (menuLoadingInFlightRef.current.has(loadingKey)) return;
+                                                    menuLoadingInFlightRef.current.add(loadingKey);
                                                     setMenuLoading((prev) => ({ ...prev, [loadingKey]: true }));
                                                     void gitStatusSync
                                                         .getSync(preferredReviewSessionId)
                                                         .invalidateAndAwait()
                                                         .finally(() => {
+                                                            menuLoadingInFlightRef.current.delete(loadingKey);
                                                             if (!mountedRef.current) return;
                                                             setMenuLoading((prev) => ({ ...prev, [loadingKey]: false }));
                                                         });
@@ -1764,12 +1774,14 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             <RowActionMenu
                                                 onOpen={() => {
                                                     if (!preferredReviewSessionId) return;
-                                                    if (menuLoading[loadingKey]) return;
+                                                    if (menuLoadingInFlightRef.current.has(loadingKey)) return;
+                                                    menuLoadingInFlightRef.current.add(loadingKey);
                                                     setMenuLoading((prev) => ({ ...prev, [loadingKey]: true }));
                                                     void gitStatusSync
                                                         .getSync(preferredReviewSessionId)
                                                         .invalidateAndAwait()
                                                         .finally(() => {
+                                                            menuLoadingInFlightRef.current.delete(loadingKey);
                                                             if (!mountedRef.current) return;
                                                             setMenuLoading((prev) => ({ ...prev, [loadingKey]: false }));
                                                         });
