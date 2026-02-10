@@ -130,7 +130,14 @@ export async function claudeLocalLauncher(session: Session): Promise<LauncherRes
                     break;
                 }
                 if (!exitReason) {
-                    session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    const detail =
+                        e instanceof Error && e.message.trim()
+                            ? e.message.trim()
+                            : String(e);
+                    session.client.sendSessionEvent({
+                        type: 'message',
+                        message: `Claude error: ${detail}`,
+                    });
                     continue;
                 } else {
                     break;

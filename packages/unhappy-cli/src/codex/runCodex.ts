@@ -70,6 +70,44 @@ export function emitReadyIfIdle({
   return true;
 }
 
+function extractCodexToolResponseText(resp: any): string {
+  const structured = resp && typeof resp === 'object' ? resp.structuredContent : null;
+  const fromStructured =
+    structured && typeof structured === 'object' && typeof structured.content === 'string'
+      ? structured.content
+      : '';
+
+  const fromContentArray = Array.isArray(resp?.content)
+    ? resp.content
+        .map((c: any) => (c && typeof c === 'object' && c.type === 'text' ? String(c.text ?? '') : ''))
+        .filter((s: string) => s.trim().length > 0)
+        .join('\n')
+    : '';
+
+  const raw = (fromStructured || fromContentArray || '').trim();
+  if (!raw) return '';
+
+  // Common Codex error format: JSON string like {"detail":"..."}.
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && typeof parsed.detail === 'string' && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+  } catch {
+    // ignore, not JSON
+  }
+
+  return raw;
+}
+
+function isCodexToolResponseError(resp: any): boolean {
+  if (!resp || typeof resp !== 'object') return false;
+  if (resp.isError === true) return true;
+  const structured = resp.structuredContent;
+  if (structured && typeof structured === 'object' && structured.isError === true) return true;
+  return false;
+}
+
 /**
  * Main entry point for the codex command with ink UI
  */
@@ -1260,9 +1298,23 @@ export async function runCodex(opts: {
             (startConfig.config as any).experimental_resume = resumeFile;
           }
 
-          await client.startSession(startConfig, {
+          const startResp = await client.startSession(startConfig, {
             signal: abortController.signal,
           });
+          // Codex may return a tool-level error response (isError=true) without emitting streamed events.
+          // If we don't surface it, the mobile/web UI looks like it "hangs" with no response.
+          if (isCodexToolResponseError(startResp)) {
+            const detail = extractCodexToolResponseText(startResp) || 'Codex request failed';
+            const msg = `Codex error: ${detail}`;
+            messageBuffer.addMessage(msg, 'status');
+            session.sendSessionEvent({ type: 'message', message: msg });
+            // Ensure the next message attempts a fresh startSession (a failed start may still set threadId).
+            try { client.clearSession(); } catch {}
+            wasCreated = false;
+            // Keep `first` true so we send the title instruction on the next successful start.
+            first = true;
+            continue;
+          }
           void persistAndReportCodexIdentifiersIfNeeded('startSession');
           wasCreated = true;
           first = false;
@@ -1271,6 +1323,14 @@ export async function runCodex(opts: {
             signal: abortController.signal,
           });
           logger.debug('[Codex] continueSession response:', response);
+          if (isCodexToolResponseError(response)) {
+            const detail = extractCodexToolResponseText(response) || 'Codex request failed';
+            const msg = `Codex error: ${detail}`;
+            messageBuffer.addMessage(msg, 'status');
+            session.sendSessionEvent({ type: 'message', message: msg });
+            // Keep the session; the next user message can retry or trigger a mode change restart.
+            continue;
+          }
           void persistAndReportCodexIdentifiersIfNeeded('continueSession');
         }
       } catch (error) {

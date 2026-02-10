@@ -472,6 +472,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [availableModels, setAvailableModels] = React.useState<string[] | null>(null);
     const [isLoadingModels, setIsLoadingModels] = React.useState(false);
     const [modelLoadError, setModelLoadError] = React.useState<string | null>(null);
+    const ensureValidSelectedModel = React.useCallback((models: string[]) => {
+        if (!props.onModelModeChange) return;
+        if (!models || models.length === 0) return;
+        const current = typeof props.modelMode === 'string' ? props.modelMode.trim() : '';
+        if (!current || current === 'default' || !models.includes(current)) {
+            props.onModelModeChange(models[0]);
+        }
+    }, [props.onModelModeChange, props.modelMode]);
 
     // Prevent cross-session/provider stale lists from sticking around.
     React.useEffect(() => {
@@ -491,6 +499,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             return;
         }
         setAvailableModels(filtered);
+        ensureValidSelectedModel(filtered);
     }, [agentFlavor, availableModels]);
 
     const loadModels = React.useCallback(async () => {
@@ -499,10 +508,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             const models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
             setAvailableModels(models);
             setModelLoadError(null);
-            // Ensure we always have a concrete model selected.
-            if (props.onModelModeChange && (!props.modelMode || props.modelMode === 'default')) {
-                props.onModelModeChange(models[0]);
-            }
+            ensureValidSelectedModel(models);
             return;
         }
         if (!props.sessionId) {
@@ -525,10 +531,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             setModelLoadError(agentFlavor === 'claude' ? 'No supported Claude models found.' : 'No models found.');
                         } else {
                             setAvailableModels(models);
-                            // Auto-select first model so we never show a fake "Default" state.
-                            if (props.onModelModeChange && (!props.modelMode || props.modelMode === 'default')) {
-                                props.onModelModeChange(models[0]);
-                            }
+                            ensureValidSelectedModel(models);
                         }
                     } else {
                         setAvailableModels(null);
@@ -559,10 +562,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     setModelLoadError(agentFlavor === 'claude' ? 'No supported Claude models found.' : 'No models found.');
                 } else {
                     setAvailableModels(models);
-                    // Auto-select first model so we never show a fake "Default" state.
-                    if (props.onModelModeChange && (!props.modelMode || props.modelMode === 'default')) {
-                        props.onModelModeChange(models[0]);
-                    }
+                    ensureValidSelectedModel(models);
                 }
             } else {
                 setAvailableModels(null);
@@ -574,7 +574,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         } finally {
             setIsLoadingModels(false);
         }
-    }, [agentFlavor, props.sessionId, props.machineId, props.modelMode, props.onModelModeChange]);
+    }, [agentFlavor, props.sessionId, props.machineId, ensureValidSelectedModel]);
 
     // If the caller supports model selection but nothing is selected yet, fetch and auto-pick.
     // This prevents the UI from falling back to a fake "Default" state.

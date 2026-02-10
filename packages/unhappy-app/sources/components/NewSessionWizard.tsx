@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View, Text, Pressable, ScrollView, TextInput, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
@@ -581,17 +581,40 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const profiles = useSetting('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
 
+    const resolvedInitialAgentType: 'claude' | 'codex' =
+        lastUsedAgent === 'claude' || lastUsedAgent === 'codex'
+            ? lastUsedAgent
+            : 'claude';
+
+    const resolvedInitialPermissionMode: PermissionMode = (() => {
+        const raw = typeof lastUsedPermissionMode === 'string' ? lastUsedPermissionMode.trim() : '';
+        const allowed: PermissionMode[] = [
+            'default',
+            'acceptEdits',
+            'plan',
+            'bypassPermissions',
+            'read-only',
+            'safe-yolo',
+            'yolo',
+        ];
+        return allowed.includes(raw as PermissionMode) ? (raw as PermissionMode) : 'default';
+    })();
+
+    const resolvedInitialModelMode: ModelMode = (() => {
+        const raw = typeof lastUsedModelMode === 'string' ? lastUsedModelMode.trim() : '';
+        if (!raw) return 'default';
+        // Only apply the last-used model when it matches the initial agent selection.
+        if (lastUsedAgent !== resolvedInitialAgentType) return 'default';
+        return raw;
+    })();
+
     // Wizard state
     const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
-    const [agentType, setAgentType] = useState<'claude' | 'codex'>(() => {
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
-            return lastUsedAgent;
-        }
-        return 'claude';
-    });
-    const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
-    const [modelMode, setModelMode] = useState<ModelMode>('default');
+    const [agentType, setAgentType] = useState<'claude' | 'codex'>(resolvedInitialAgentType);
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>(resolvedInitialPermissionMode);
+    const [modelMode, setModelMode] = useState<ModelMode>(resolvedInitialModelMode);
+    const modelTouchedRef = useRef(false);
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
         return lastUsedProfile;
     });
@@ -1732,7 +1755,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                             color={theme.colors.button.primary.background}
                                         />
                                     ) : null}
-                                    onPress={() => setModelMode(option.value as ModelMode)}
+                                    onPress={() => {
+                                        modelTouchedRef.current = true;
+                                        setModelMode(option.value as ModelMode);
+                                    }}
                                     showChevron={false}
                                     selected={modelMode === option.value}
                                     showDivider={index < array.length - 1}

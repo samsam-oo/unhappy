@@ -1,5 +1,5 @@
 import { EnhancedMode } from "./loop";
-import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
+import { query, type QueryOptions, type SDKMessage, type SDKResultMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import { mapToClaudeMode } from "./utils/permissionMode";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join, resolve } from 'node:path';
@@ -208,6 +208,20 @@ export async function claudeRemote(opts: {
             if (message.type === 'result') {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                const resultMsg = message as SDKResultMessage;
+
+                // Claude may exit with non-zero code after emitting a structured error result.
+                // Treat this as a completed turn and surface the error text to the UI, instead of
+                // letting the process-exit propagate as a generic exception ("Process exited unexpectedly").
+                if (resultMsg.is_error) {
+                    const detail = (typeof resultMsg.result === 'string' && resultMsg.result.trim())
+                        ? resultMsg.result.trim()
+                        : 'Claude returned an error.';
+                    opts.onCompletionEvent?.(`Claude error: ${detail}`);
+                    // Do not attempt to continue the session after an error turn.
+                    messages.end();
+                    return;
+                }
 
                 // Send completion messages
                 if (isCompactCommand) {

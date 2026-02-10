@@ -26,6 +26,13 @@ import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from '
 import type { Writable } from 'node:stream'
 import { logger } from '@/ui/logger'
 
+const STDERR_TAIL_MAX_CHARS = 8000;
+function appendTail(prev: string, next: string, maxChars: number): string {
+    const combined = prev + next;
+    if (combined.length <= maxChars) return combined;
+    return combined.slice(combined.length - maxChars);
+}
+
 /**
  * Query class manages Claude Code process interaction
  */
@@ -352,6 +359,17 @@ export function query(config: {
         shell: !isJsFile && process.platform === 'win32'
     }) as ChildProcessWithoutNullStreams
 
+    // Capture stderr tail so we can surface actionable errors (e.g., invalid model) to clients.
+    let stderrTail = ''
+    try {
+        child.stderr.setEncoding('utf8')
+        child.stderr.on('data', (data: string) => {
+            stderrTail = appendTail(stderrTail, data, STDERR_TAIL_MAX_CHARS)
+        })
+    } catch {
+        // best-effort; ignore if stream isn't available
+    }
+
     // Handle stdin
     let childStdin: Writable | null = null
     if (typeof prompt === 'string') {
@@ -385,7 +403,9 @@ export function query(config: {
                 query.setError(new AbortError('Claude Code process aborted by user'))
             }
             if (code !== 0) {
-                query.setError(new Error(`Claude Code process exited with code ${code}`))
+                const tail = stderrTail.trim()
+                const suffix = tail ? `\n\nstderr:\n${tail}` : ''
+                query.setError(new Error(`Claude Code process exited with code ${code}${suffix}`))
             } else {
                 resolve()
             }
