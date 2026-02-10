@@ -73,6 +73,14 @@ type ListDirectoryEntry = {
     modified?: number;
 };
 
+type ListDirectoryRequest = {
+    path: string;
+    includeStats?: boolean;
+    types?: Array<'file' | 'directory' | 'other'>;
+    sort?: boolean;
+    maxEntries?: number;
+};
+
 type ListDirectoryResponse = {
     success: boolean;
     entries?: ListDirectoryEntry[];
@@ -123,16 +131,26 @@ async function discoverWorktreesForWorkspace(candidate: WorktreeDiscoveryCandida
     state.lastAttemptAt = now;
 
     try {
+        const req: ListDirectoryRequest = {
+            path: candidate.sessionId
+                ? getWorktreeRootRequestPath(candidate.basePath)
+                : buildWorktreeRootPath(candidate.basePath),
+            // Worktree discovery only needs directory names; avoid per-entry `stat` and large payloads.
+            includeStats: false,
+            types: ['directory'],
+            sort: false,
+            maxEntries: 2000,
+        };
         const resp = candidate.sessionId
-            ? await apiSocket.sessionRPC<ListDirectoryResponse, { path: string }>(
+            ? await apiSocket.sessionRPC<ListDirectoryResponse, ListDirectoryRequest>(
                 candidate.sessionId!,
                 'listDirectory',
-                { path: getWorktreeRootRequestPath(candidate.basePath) }
+                req
             )
-            : await apiSocket.machineRPC<ListDirectoryResponse, { path: string }>(
+            : await apiSocket.machineRPC<ListDirectoryResponse, ListDirectoryRequest>(
                 candidate.machineId,
                 'listDirectory',
-                { path: buildWorktreeRootPath(candidate.basePath) }
+                req
             );
 
         // Treat "directory doesn't exist" as a successful scan with zero worktrees.
@@ -161,7 +179,8 @@ async function discoverWorktreesForWorkspace(candidate: WorktreeDiscoveryCandida
             storage.getState().bumpProjectsRevision();
         }
     } catch {
-        // Best-effort: retry later on the next applySessions tick.
+        // Best-effort: don't thrash the socket on repeated failures/timeouts.
+        state.lastSuccessAt = Date.now();
     } finally {
         state.inFlight = false;
     }

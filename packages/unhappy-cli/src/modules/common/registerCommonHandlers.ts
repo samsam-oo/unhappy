@@ -49,6 +49,11 @@ interface WriteFileResponse {
 
 interface ListDirectoryRequest {
     path: string;
+    // Optional performance knobs. Defaults preserve legacy behavior.
+    includeStats?: boolean; // default true
+    types?: Array<'file' | 'directory' | 'other'>; // default all
+    sort?: boolean; // default true
+    maxEntries?: number; // optional cap after filtering/sorting
 }
 
 interface DirectoryEntry {
@@ -319,7 +324,13 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
 
     // List directory handler
     rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
-        logger.debug('List directory request:', data.path);
+        logger.debug('List directory request:', {
+            path: data.path,
+            includeStats: data.includeStats,
+            types: data.types,
+            sort: data.sort,
+            maxEntries: data.maxEntries,
+        });
 
         // Validate path is within working directory
         const validation = validatePath(data.path, workingDirectory);
@@ -328,45 +339,70 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
         }
 
         try {
-            const entries = await readdir(data.path, { withFileTypes: true });
+            const includeStats = data.includeStats !== false;
+            const doSort = data.sort !== false;
+            const maxEntries =
+                typeof data.maxEntries === 'number' && Number.isFinite(data.maxEntries) && data.maxEntries > 0
+                    ? Math.floor(data.maxEntries)
+                    : null;
+            const typeFilter =
+                Array.isArray(data.types) && data.types.length > 0
+                    ? new Set(data.types)
+                    : null;
+
+            const dirents = await readdir(data.path, { withFileTypes: true });
+
+            // First pass: determine type + filter without doing `stat`.
+            let items: Array<{ name: string; type: 'file' | 'directory' | 'other' }> = [];
+            for (const entry of dirents) {
+                let type: 'file' | 'directory' | 'other' = 'other';
+                if (entry.isDirectory()) type = 'directory';
+                else if (entry.isFile()) type = 'file';
+
+                if (typeFilter && !typeFilter.has(type)) continue;
+                items.push({ name: entry.name, type });
+            }
+
+            if (doSort) {
+                // Sort entries: directories first, then files, alphabetically.
+                items.sort((a, b) => {
+                    if (a.type === 'directory' && b.type !== 'directory') return -1;
+                    if (a.type !== 'directory' && b.type === 'directory') return 1;
+                    return a.name.localeCompare(b.name);
+                });
+            }
+
+            if (maxEntries !== null && items.length > maxEntries) {
+                items = items.slice(0, maxEntries);
+            }
+
+            if (!includeStats) {
+                return { success: true, entries: items };
+            }
 
             const directoryEntries: DirectoryEntry[] = await Promise.all(
-                entries.map(async (entry) => {
-                    const fullPath = join(data.path, entry.name);
-                    let type: 'file' | 'directory' | 'other' = 'other';
+                items.map(async (item) => {
+                    const fullPath = join(data.path, item.name);
                     let size: number | undefined;
                     let modified: number | undefined;
-
-                    if (entry.isDirectory()) {
-                        type = 'directory';
-                    } else if (entry.isFile()) {
-                        type = 'file';
-                    }
 
                     try {
                         const stats = await stat(fullPath);
                         size = stats.size;
                         modified = stats.mtime.getTime();
                     } catch (error) {
-                        // Ignore stat errors for individual files
+                        // Ignore stat errors for individual files.
                         logger.debug(`Failed to stat ${fullPath}:`, error);
                     }
 
                     return {
-                        name: entry.name,
-                        type,
+                        name: item.name,
+                        type: item.type,
                         size,
-                        modified
+                        modified,
                     };
                 })
             );
-
-            // Sort entries: directories first, then files, alphabetically
-            directoryEntries.sort((a, b) => {
-                if (a.type === 'directory' && b.type !== 'directory') return -1;
-                if (a.type !== 'directory' && b.type === 'directory') return 1;
-                return a.name.localeCompare(b.name);
-            });
 
             return { success: true, entries: directoryEntries };
         } catch (error) {
