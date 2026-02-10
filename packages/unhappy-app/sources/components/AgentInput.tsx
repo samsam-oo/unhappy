@@ -678,6 +678,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [props.permissionMode, theme.colors]);
 
     const effectiveEffortLabel: string = props.effortMode ?? 'Default';
+    const effortChipLabel = React.useMemo(() => {
+        const mode = props.effortMode ?? null;
+        if (!mode) return 'Auto';
+        if (mode === 'medium') return 'Med';
+        return mode.charAt(0).toUpperCase() + mode.slice(1);
+    }, [props.effortMode]);
     const handleEffortPress = React.useCallback(() => {
         if (!props.onEffortModeChange) return;
         hapticsLight();
@@ -1423,6 +1429,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                     accessibilityRole="button"
                                     accessibilityLabel={`Reasoning effort: ${effectiveEffortLabel}`}
+                                    accessibilityHint={`Cycles effort. Current: ${effortChipLabel}.`}
                                     style={(p) => ({
                                         flexDirection: 'row',
                                         alignItems: 'center',
@@ -1432,9 +1439,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         justifyContent: 'center',
                                         height: 32,
                                         opacity: p.pressed ? 0.7 : 1,
+                                        gap: 6,
                                     })}
                                 >
                                     <EffortBatteryIcon effort={props.effortMode ?? null} color={theme.colors.button.secondary.tint} />
+                                    <Text
+                                        style={{
+                                            fontSize: 13,
+                                            color: theme.colors.button.secondary.tint,
+                                            fontWeight: '600',
+                                            ...Typography.default('semiBold'),
+                                        }}
+                                        numberOfLines={1}
+                                    >
+                                        {effortChipLabel}
+                                    </Text>
                                 </Pressable>
                             )}
 
