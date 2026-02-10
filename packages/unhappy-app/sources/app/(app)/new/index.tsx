@@ -362,7 +362,8 @@ function NewSessionWizard() {
         if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
             return lastUsedProfile;
         }
-        return 'anthropic'; // Default to Anthropic
+        // Default: no profile env injection. Use daemon's base environment.
+        return null;
     });
     const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
         // Check if agent type was provided in temp data
@@ -785,14 +786,13 @@ function NewSessionWizard() {
     // Validation
     const canCreate = React.useMemo(() => {
         return (
-            selectedProfileId !== null &&
             selectedMachineId !== null &&
             selectedPath.trim() !== '' &&
             typeof modelMode === 'string' &&
             modelMode.trim() !== '' &&
             modelMode !== 'default'
         );
-    }, [selectedProfileId, selectedMachineId, selectedPath, modelMode]);
+    }, [selectedMachineId, selectedPath, modelMode]);
 
     const selectProfile = React.useCallback((profileId: string) => {
         setSelectedProfileId(profileId);
@@ -1159,12 +1159,16 @@ function NewSessionWizard() {
                 lastUsedEffortMode: effortMode,
             });
 
-            // Get environment variables from selected profile
-            let environmentVariables = undefined;
+            // Get environment variables from selected profile.
+            // Important: send {} (not undefined) when no profile is selected to prevent daemon fallback
+            // to CLI local active profile (which may inject provider mappings like ${DEEPSEEK_AUTH_TOKEN}).
+            let environmentVariables: Record<string, string> | undefined = {};
             if (selectedProfileId) {
                 const selectedProfile = profileMap.get(selectedProfileId);
                 if (selectedProfile) {
                     environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
+                } else {
+                    environmentVariables = {};
                 }
             }
 

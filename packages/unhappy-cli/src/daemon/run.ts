@@ -373,12 +373,12 @@ export async function startDaemon(): Promise<void> {
         // Priority: GUI-provided profile > CLI local active profile > none
         let profileEnv: Record<string, string> = {};
 
-        if (
-          options.environmentVariables &&
-          Object.keys(options.environmentVariables).length > 0
-        ) {
-          // GUI provided profile environment variables - highest priority for profile settings
-          profileEnv = options.environmentVariables;
+        if (options.environmentVariables !== undefined) {
+          // GUI provided profile environment variables - highest priority for profile settings.
+          //
+          // NOTE: An empty object is a valid/intentional "no profile env injection" signal.
+          // Treat presence (even empty) as explicit so we do NOT fall back to CLI local active profile.
+          profileEnv = options.environmentVariables || {};
           logger.info(
             `[DAEMON RUN] Using GUI-provided profile environment variables (${Object.keys(profileEnv).length} vars)`,
           );
@@ -432,16 +432,42 @@ export async function startDaemon(): Promise<void> {
           `[DAEMON RUN] After variable expansion: ${Object.keys(extraEnv).join(', ')}`,
         );
 
-        // Fail-fast validation: Check that any auth variables present are fully expanded
-        // Only validate variables that are actually set (different agents need different auth)
-        const potentialAuthVars = [
-          'ANTHROPIC_AUTH_TOKEN',
-          'CLAUDE_CODE_OAUTH_TOKEN',
-          'OPENAI_API_KEY',
-          'CODEX_HOME',
-          'AZURE_OPENAI_API_KEY',
-          'TOGETHER_API_KEY',
-        ];
+        // Fail-fast validation: Check that auth variables relevant to this agent are fully expanded.
+        //
+        // Important nuance:
+        // The GUI can send profile env vars for *any* backend (including ${DEEPSEEK_AUTH_TOKEN} mappings),
+        // even when spawning a different agent. Node spawn doesn't expand ${...}, so we expand from daemon env.
+        // If a profile for another agent is accidentally selected, we should not block spawning by validating
+        // irrelevant auth vars (e.g. ANTHROPIC_AUTH_TOKEN when spawning Codex/Gemini).
+        const agentType: 'claude' | 'codex' | 'gemini' =
+          options.agent === 'gemini'
+            ? 'gemini'
+            : options.agent === 'codex'
+              ? 'codex'
+              : 'claude';
+
+        const potentialAuthVars =
+          agentType === 'claude'
+            ? [
+                'ANTHROPIC_AUTH_TOKEN',
+                'CLAUDE_CODE_OAUTH_TOKEN',
+                // Keep other provider keys here too: Claude sessions may be proxied via OpenAI/Azure/Together.
+                'OPENAI_API_KEY',
+                'AZURE_OPENAI_API_KEY',
+                'TOGETHER_API_KEY',
+              ]
+            : agentType === 'codex'
+              ? [
+                  'CODEX_HOME',
+                  'OPENAI_API_KEY',
+                  'AZURE_OPENAI_API_KEY',
+                  'TOGETHER_API_KEY',
+                ]
+              : [
+                  // Gemini supports API key via env vars, or OAuth via local config.
+                  'GEMINI_API_KEY',
+                  'GOOGLE_API_KEY',
+                ];
         const unexpandedAuthVars = potentialAuthVars.filter((varName) => {
           const value = extraEnv[varName];
           // Only fail if variable IS SET and contains unexpanded ${VAR} references
@@ -461,7 +487,8 @@ export async function startDaemon(): Promise<void> {
 
           const errorMessage =
             `Authentication will fail - environment variables not found in daemon: ${missingVarDetails.join('; ')}. ` +
-            `Ensure these variables are set in the daemon's environment (not just your shell) before starting sessions.`;
+            `Ensure these variables are set in the daemon's environment (not just your shell) before starting sessions. ` +
+            `(agent: ${agentType})`;
           logger.warn(`[DAEMON RUN] ${errorMessage}`);
           return {
             type: 'error',
