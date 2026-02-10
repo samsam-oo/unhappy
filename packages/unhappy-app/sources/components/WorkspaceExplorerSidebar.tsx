@@ -17,7 +17,7 @@ import { Modal } from '@/modal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname, useRouter } from 'expo-router';
 import * as React from 'react';
-import { ActivityIndicator, FlatList, LayoutAnimation, Platform, Pressable, UIManager, View } from 'react-native';
+import { ActivityIndicator, LayoutAnimation, Platform, Pressable, UIManager, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
     Easing,
@@ -842,9 +842,9 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
 
     const toggleExpanded = React.useCallback((expandedKey: string) => {
         if (draggingStableIdRef.current) return;
-        if (Platform.OS !== 'web') {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        }
+        // NOTE: Avoid RN `LayoutAnimation` here.
+        // We already use Reanimated `layout` + entering/exiting transitions for rows, and running both
+        // animation systems at once can cause "bouncy/jittery" expand/collapse, especially for worktrees.
         setExpanded((prev) => ({ ...prev, [expandedKey]: !(prev[expandedKey] ?? DEFAULT_EXPANDED) }));
     }, []);
 
@@ -978,9 +978,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
     const toggleAllExpanded = React.useCallback(() => {
         if (draggingStableIdRef.current) return;
         if (!allExpandableKeys.length) return;
-        if (Platform.OS !== 'web') {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        }
+        // See note in `toggleExpanded`: let Reanimated handle layout changes for expand/collapse.
         const nextValue = !allExpanded;
         setExpanded((prev) => {
             const next = { ...prev };
@@ -1256,6 +1254,20 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
         return map;
     }, [sessionById, visibleProjectGroups]);
 
+    // Reanimated layout transitions can be glitchy on web/react-native-web (especially inside FlatList).
+    // We keep native animations, and disable them on web to avoid "bouncy/jittery" expand/collapse.
+    const listItemLayoutAnimation = React.useMemo(() => {
+        if (IS_WEB) return undefined;
+        return LinearTransition.duration(140);
+    }, []);
+    const listItemEntering = React.useMemo(() => {
+        // Enter/exit-only animations are stable enough on web, unlike layout transitions.
+        return FadeIn.duration(IS_WEB ? 110 : 140);
+    }, []);
+    const listItemExiting = React.useMemo(() => {
+        return FadeOut.duration(IS_WEB ? 90 : 120);
+    }, []);
+
     return (
         <View style={styles.container}>
             <View style={styles.sectionHeader}>
@@ -1305,13 +1317,14 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                 }}
                 style={{ flex: 1, position: 'relative' }}
             >
-                <FlatList
+                <Animated.FlatList
                     data={rows}
                     keyExtractor={(row) => {
                         if (row.type === 'project') return `p:${getProjectStableId(row.project)}`;
                         if (row.type === 'worktree') return `w:${getProjectStableId(row.project)}`;
                         return `s:${row.session.id}`;
                     }}
+                    itemLayoutAnimation={listItemLayoutAnimation as any}
                     ListEmptyComponent={() => {
                         return (
                             <View style={styles.emptyState}>
@@ -1426,7 +1439,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                 });
 
                             return (
-                                <Animated.View layout={LinearTransition.duration(140)}>
+                                <View>
                                     <Pressable
                                         ref={headerRef as any}
                                         onLayout={(e) => {
@@ -1603,7 +1616,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             })()} />
                                         </View>
                                     </Pressable>
-                                </Animated.View>
+                                </View>
                             );
                         }
 
@@ -1624,9 +1637,8 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
 
                             return (
                                 <Animated.View
-                                    layout={LinearTransition.duration(140)}
-                                    entering={FadeIn.duration(140)}
-                                    exiting={FadeOut.duration(120)}
+                                    entering={listItemEntering}
+                                    exiting={listItemExiting}
                                 >
                                     <Pressable
                                         onPress={() => toggleExpanded(expandedKey)}
@@ -1739,9 +1751,8 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
             const isSelected = selectedSessionId === row.session.id;
             return (
                 <Animated.View
-                    layout={LinearTransition.duration(140)}
-                    entering={FadeIn.duration(140)}
-                    exiting={FadeOut.duration(120)}
+                    entering={listItemEntering}
+                    exiting={listItemExiting}
                 >
                     <WorkspaceExplorerSessionRow
                         session={row.session}
