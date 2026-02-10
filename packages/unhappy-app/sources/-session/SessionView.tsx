@@ -553,6 +553,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     const updateEffortMode = React.useCallback((mode: ReasoningEffortMode | null) => {
         storage.getState().updateSessionEffortMode(sessionId, mode);
+        sync.applySettings({ lastUsedEffortMode: mode });
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders

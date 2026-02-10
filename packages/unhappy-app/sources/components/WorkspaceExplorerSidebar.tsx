@@ -290,20 +290,18 @@ const stylesheet = StyleSheet.create((theme, runtime) => {
     },
     emptyStateButton: {
         marginTop: 6,
-        paddingHorizontal: 12,
+        paddingHorizontal: 14,
         paddingVertical: 10,
         borderRadius: 10,
-        backgroundColor: theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.chrome.panelBorder,
+        backgroundColor: theme.colors.button.primary.background,
     },
     emptyStateButtonHover: {
-        backgroundColor: theme.colors.chrome.listHoverBackground,
+        opacity: 0.85,
     },
     emptyStateButtonText: {
         fontSize: 12,
         lineHeight: 16,
-        color: theme.colors.text,
+        color: theme.colors.button.primary.tint,
         ...Typography.default('semiBold'),
     },
 
@@ -331,7 +329,9 @@ const stylesheet = StyleSheet.create((theme, runtime) => {
         backgroundColor: theme.colors.surfacePressed,
     },
     rowActive: {
-        backgroundColor: theme.colors.chrome.listActiveBackground,
+        backgroundColor: theme.dark
+            ? 'rgba(0, 122, 255, 0.10)'
+            : 'rgba(14, 99, 156, 0.07)',
     },
     rowMobileBase: {
         borderWidth: StyleSheet.hairlineWidth,
@@ -367,10 +367,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => {
         left: 0,
         top: UI_METRICS.selectionBarInsetV,
         bottom: UI_METRICS.selectionBarInsetV,
-        width: 2,
+        width: 3,
         backgroundColor: theme.colors.chrome.accent,
-        borderTopLeftRadius: 2,
-        borderBottomLeftRadius: 2,
+        borderRadius: 3,
+        ...(Platform.OS === 'web'
+            ? { boxShadow: `0 0 6px ${theme.colors.chrome.accent}50` } as any
+            : {}),
     },
 
     chevron: {
@@ -424,6 +426,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => {
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: theme.colors.status.error,
+        ...(Platform.OS === 'web'
+            ? { boxShadow: '0 0 8px rgba(255, 59, 48, 0.35)' } as any
+            : {
+                  shadowColor: '#FF3B30',
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.35,
+                  shadowRadius: 4,
+                  elevation: 3,
+              }),
     },
     badgeText: {
         fontSize: 12,
@@ -513,9 +524,18 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     const rawSessionTitle = props.session.metadata?.summary?.text?.trim() || 'Session';
     const sessionTitle = truncateWithEllipsis(rawSessionTitle, compact ? 44 : 30);
 
-    // Keep icon colors intentionally monotone. Use selection state (not session status)
-    // to slightly increase contrast.
-    const iconColor = props.selected ? theme.colors.text : theme.colors.textSecondary;
+    const iconColor = React.useMemo(() => {
+        if (props.selected) return theme.colors.text;
+        if (props.session.unread) return theme.colors.chrome.accent;
+        switch (sessionStatus.state) {
+            case 'thinking':
+                return theme.colors.chrome.accent;
+            case 'permission_required':
+                return theme.colors.status.error;
+            default:
+                return theme.colors.textSecondary;
+        }
+    }, [props.selected, props.session.unread, sessionStatus.state, theme]);
 
     const shouldPulseUnreadIcon =
         !!props.session.unread &&
@@ -600,9 +620,9 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
             {props.selected && <View style={styles.selectionBar} />}
             <View style={styles.chevron}>
                 <>
-                    <View style={styles.nestRail} />
+                    <View style={[styles.nestRail, props.selected && { backgroundColor: theme.colors.chrome.accent, opacity: 0.3 }]} />
                     <View style={styles.treeDotWrap} pointerEvents="none">
-                        <View style={styles.treeDot} />
+                        <View style={[styles.treeDot, props.selected && { backgroundColor: theme.colors.chrome.accent, borderColor: theme.colors.chrome.accent }]} />
                     </View>
                 </>
             </View>
@@ -1349,8 +1369,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                             borderRightWidth: StyleSheet.hairlineWidth,
                             borderLeftWidth: groupAccent ? 3 : StyleSheet.hairlineWidth,
                             borderColor: theme.colors.chrome.panelBorder,
-                            // Keep the expand/collapse "group stripe" neutral.
-                            borderLeftColor: groupAccent ? theme.colors.groupped.sectionTitle : theme.colors.chrome.panelBorder,
+                            borderLeftColor: groupAccent ? theme.colors.chrome.accent : theme.colors.chrome.panelBorder,
                             backgroundColor:
                                 row.type === 'project' && row.expanded
                                     ? theme.colors.surfaceHighest
@@ -1528,32 +1547,31 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                         },
                                                     },
                                                 ];
-                                                if (isDirty) {
-                                                    actions.push({
-                                                        key: 'review-diff',
-                                                        label: t('files.diff'),
-                                                        icon: 'file-diff',
-                                                        iconPack: 'octicons',
-                                                        onPress: () => {
-                                                            const group = groupByStableId.get(stableId);
-                                                            const rootActiveIds = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
-                                                            const worktreeActiveIds = group
-                                                                ? group.worktrees.flatMap((wt) => (wt.sessionIds || []).filter((id) => activeSessionIds.has(id)))
-                                                                : [];
-                                                            const pickPreferred = (ids: string[]) => {
-                                                                if (!ids.length) return null;
-                                                                if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
-                                                                const best = ids
-                                                                    .map((id) => sessionById.get(id))
-                                                                    .filter((s): s is Session => Boolean(s))
-                                                                    .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
-                                                                return best ?? ids[0] ?? null;
-                                                            };
-                                                            const preferred = pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
-                                                            if (preferred) router.push(`/session/${preferred}/review`);
-                                                        },
-                                                    });
-                                                }
+                                                actions.push({
+                                                    key: 'review-diff',
+                                                    label: t('files.diff'),
+                                                    icon: 'file-diff',
+                                                    iconPack: 'octicons',
+                                                    disabled: !isDirty,
+                                                    onPress: () => {
+                                                        const group = groupByStableId.get(stableId);
+                                                        const rootActiveIds = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
+                                                        const worktreeActiveIds = group
+                                                            ? group.worktrees.flatMap((wt) => (wt.sessionIds || []).filter((id) => activeSessionIds.has(id)))
+                                                            : [];
+                                                        const pickPreferred = (ids: string[]) => {
+                                                            if (!ids.length) return null;
+                                                            if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
+                                                            const best = ids
+                                                                .map((id) => sessionById.get(id))
+                                                                .filter((s): s is Session => Boolean(s))
+                                                                .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
+                                                            return best ?? ids[0] ?? null;
+                                                        };
+                                                        const preferred = pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
+                                                        if (preferred) router.push(`/session/${preferred}/review`);
+                                                    },
+                                                });
                                                 actions.push({
                                                     key: 'delete',
                                                     label: t('workspaceExplorer.deleteWorkspace'),
@@ -1676,25 +1694,24 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                         },
                                                     },
                                                 ];
-                                                if (isDirty) {
-                                                    actions.push({
-                                                        key: 'review-diff',
-                                                        label: t('files.diff'),
-                                                        icon: 'file-diff',
-                                                        iconPack: 'octicons',
-                                                        onPress: () => {
-                                                            const allIds = row.project.sessionIds || [];
-                                                            const activeIds = allIds.filter((id) => activeSessionIds.has(id));
-                                                            const candidates = activeIds.length ? activeIds : allIds;
-                                                            if (candidates.length === 0) return;
-                                                            const preferred =
-                                                                selectedSessionId && candidates.includes(selectedSessionId)
-                                                                    ? selectedSessionId
-                                                                    : candidates[0];
-                                                            router.push(`/session/${preferred}/review`);
-                                                        },
-                                                    });
-                                                }
+                                                actions.push({
+                                                    key: 'review-diff',
+                                                    label: t('files.diff'),
+                                                    icon: 'file-diff',
+                                                    iconPack: 'octicons',
+                                                    disabled: !isDirty,
+                                                    onPress: () => {
+                                                        const allIds = row.project.sessionIds || [];
+                                                        const activeIds = allIds.filter((id) => activeSessionIds.has(id));
+                                                        const candidates = activeIds.length ? activeIds : allIds;
+                                                        if (candidates.length === 0) return;
+                                                        const preferred =
+                                                            selectedSessionId && candidates.includes(selectedSessionId)
+                                                                ? selectedSessionId
+                                                                : candidates[0];
+                                                        router.push(`/session/${preferred}/review`);
+                                                    },
+                                                });
                                                 actions.push({
                                                     key: 'delete',
                                                     label: t('workspaceExplorer.deleteWorktree'),

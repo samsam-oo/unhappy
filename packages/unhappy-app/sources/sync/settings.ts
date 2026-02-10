@@ -278,16 +278,17 @@ export const SettingsSchema = z.object({
         path: z.string()
     })).describe('Last 10 machine-path combinations, ordered by most recent first'),
     // Per-machine base directories used as the starting point for project selection/browsing.
-    projectBasePaths: z.array(z.object({
-        machineId: z.string(),
-        path: z.string(),
-    })).describe('Per-machine base directories used for project selection'),
-    lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
-    lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
-    lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
-    // Profile management settings
-    profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
-    lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
+	    projectBasePaths: z.array(z.object({
+	        machineId: z.string(),
+	        path: z.string(),
+	    })).describe('Per-machine base directories used for project selection'),
+	    lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
+	    lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
+	    lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
+	    lastUsedEffortMode: z.string().nullable().describe('Last selected reasoning effort mode for new sessions'),
+	    // Profile management settings
+	    profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
+	    lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
     // Favorite directories for quick path selection
     favoriteDirectories: z.array(z.string()).describe('User-defined favorite directories for quick access in path selection'),
     // Favorite machines for quick machine selection
@@ -347,13 +348,14 @@ export const settingsDefaults: Settings = {
     voiceAssistantLanguage: null,
     preferredLanguage: null,
     recentMachinePaths: [],
-    projectBasePaths: [],
-    lastUsedAgent: null,
-    lastUsedPermissionMode: null,
-    lastUsedModelMode: null,
-    // Profile management defaults
-    profiles: [],
-    lastUsedProfile: null,
+	    projectBasePaths: [],
+	    lastUsedAgent: null,
+	    lastUsedPermissionMode: null,
+	    lastUsedModelMode: null,
+	    lastUsedEffortMode: null,
+	    // Profile management defaults
+	    profiles: [],
+	    lastUsedProfile: null,
     // Default favorite directories (real common directories on Unix-like systems)
     favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
     // Favorite machines (empty by default)

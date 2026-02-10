@@ -13,6 +13,7 @@ export interface RowAction {
     icon: string;
     iconPack?: 'ionicons' | 'octicons';
     destructive?: boolean;
+    disabled?: boolean;
     onPress: () => void;
 }
 
@@ -53,19 +54,23 @@ export const RowActionMenu = React.memo(function RowActionMenu(props: RowActionM
         <View style={styles.menuContainer}>
             {actions.map((action) => {
                 const IconComponent = action.iconPack === 'octicons' ? Octicons : Ionicons;
-                const color = action.destructive ? theme.colors.textDestructive : theme.colors.text;
+                const color = action.disabled
+                    ? theme.colors.textSecondary
+                    : action.destructive ? theme.colors.textDestructive : theme.colors.text;
                 return (
                     <Pressable
                         key={action.key}
-                        onPress={() => handleAction(action)}
+                        onPress={() => { if (!action.disabled) handleAction(action); }}
+                        disabled={action.disabled}
                         style={({ hovered, pressed }: any) => [
                             styles.menuItem,
-                            IS_WEB && hovered && styles.menuItemHover,
-                            pressed && styles.menuItemPressed,
+                            action.disabled && styles.menuItemDisabled,
+                            IS_WEB && hovered && !action.disabled && styles.menuItemHover,
+                            pressed && !action.disabled && styles.menuItemPressed,
                         ]}
                     >
                         <IconComponent name={action.icon} size={compact ? 15 : 18} color={color} />
-                        <Text style={[styles.menuItemLabel, action.destructive && styles.menuItemLabelDestructive]}>
+                        <Text style={[styles.menuItemLabel, action.disabled && styles.menuItemLabelDisabled, action.destructive && !action.disabled && styles.menuItemLabelDestructive]}>
                             {action.label}
                         </Text>
                     </Pressable>
@@ -211,6 +216,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => {
     },
     menuItemLabelDestructive: {
         color: theme.colors.textDestructive,
+    },
+    menuItemDisabled: {
+        opacity: 0.45,
+    },
+    menuItemLabelDisabled: {
+        color: theme.colors.textSecondary,
     },
 
     cancelButton: {

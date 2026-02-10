@@ -339,6 +339,7 @@ function NewSessionWizard() {
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
+    const lastUsedEffortMode = useSetting('lastUsedEffortMode');
     const experimentsEnabled = useSetting('experiments');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
@@ -445,7 +446,11 @@ function NewSessionWizard() {
         // Claude/Codex default is "unset" (let the CLI pick its default).
         return null;
     });
-    const [effortMode, setEffortMode] = React.useState<ReasoningEffortMode | null>(null);
+    const [effortMode, setEffortMode] = React.useState<ReasoningEffortMode | null>(() => {
+        const raw = typeof lastUsedEffortMode === 'string' ? lastUsedEffortMode.trim() : '';
+        const valid: ReasoningEffortMode[] = ['low', 'medium', 'high', 'max'];
+        return valid.includes(raw as ReasoningEffortMode) ? (raw as ReasoningEffortMode) : null;
+    });
 
     // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
@@ -496,6 +501,11 @@ function NewSessionWizard() {
         setModelMode(normalized);
         sync.applySettings({ lastUsedModelMode: normalized, lastUsedAgent: agentType });
     }, [agentType]);
+
+    const handleEffortModeChange = React.useCallback((mode: ReasoningEffortMode | null) => {
+        setEffortMode(mode);
+        sync.applySettings({ lastUsedEffortMode: mode });
+    }, []);
 
     //
     // Path selection
@@ -1146,6 +1156,7 @@ function NewSessionWizard() {
                 lastUsedProfile: selectedProfileId,
                 lastUsedPermissionMode: permissionMode,
                 lastUsedModelMode: modelMode,
+                lastUsedEffortMode: effortMode,
             });
 
             // Get environment variables from selected profile
@@ -1288,7 +1299,7 @@ function NewSessionWizard() {
                                 modelMode={modelMode}
                                 onModelModeChange={handleModelModeChange}
                                 effortMode={effortMode}
-                                onEffortModeChange={setEffortMode}
+                                onEffortModeChange={handleEffortModeChange}
                                 connectionStatus={connectionStatus}
                                 machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                                 onMachineClick={handleMachineClick}
@@ -2110,7 +2121,7 @@ function NewSessionWizard() {
                             modelMode={modelMode}
                             onModelModeChange={handleModelModeChange}
                             effortMode={effortMode}
-                            onEffortModeChange={setEffortMode}
+                            onEffortModeChange={handleEffortModeChange}
                             connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}
