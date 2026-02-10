@@ -472,6 +472,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [availableModels, setAvailableModels] = React.useState<string[] | null>(null);
     const [isLoadingModels, setIsLoadingModels] = React.useState(false);
     const [modelLoadError, setModelLoadError] = React.useState<string | null>(null);
+    const isResolvingModel = !!props.onModelModeChange && isLoadingModels && !availableModels;
     const ensureValidSelectedModel = React.useCallback((models: string[]) => {
         if (!props.onModelModeChange) return;
         if (!models || models.length === 0) return;
@@ -576,15 +577,34 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         }
     }, [agentFlavor, props.sessionId, props.machineId, ensureValidSelectedModel]);
 
-    // If the caller supports model selection but nothing is selected yet, fetch and auto-pick.
-    // This prevents the UI from falling back to a fake "Default" state.
+    // If the caller supports model selection, ensure we have a *real* model selected.
+    //
+    // Important: modelMode can be pre-populated (ex: older sessions) with a model id that no longer exists.
+    // In that case we still need to load the available model list once so we can auto-fallback to the first model.
     React.useEffect(() => {
         if (!props.onModelModeChange) return;
-        if (props.modelMode && props.modelMode !== 'default') return;
         if (isLoadingModels) return;
-        // Fire-and-forget; loadModels handles errors internally.
-        void loadModels();
-    }, [props.onModelModeChange, props.modelMode, isLoadingModels, loadModels]);
+        // Avoid infinite background retry loops; user can tap-to-retry from the overlay.
+        if (modelLoadError) return;
+
+        // If we haven't loaded the list yet, do so once in the background.
+        if (!availableModels) {
+            // Fire-and-forget; loadModels handles errors internally.
+            void loadModels();
+            return;
+        }
+
+        // If we do have a list, ensure the current selection is valid (or pick the first).
+        ensureValidSelectedModel(availableModels);
+    }, [
+        props.onModelModeChange,
+        props.modelMode,
+        isLoadingModels,
+        modelLoadError,
+        availableModels,
+        loadModels,
+        ensureValidSelectedModel
+    ]);
 
     const handleAgentTypeSwitch = React.useCallback((next: 'claude' | 'codex' | 'gemini') => {
         if (!props.onAgentTypeChange) return;
@@ -1373,7 +1393,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         size={14}
                                         color={theme.colors.button.secondary.tint}
                                     />
-                                    {agentFlavor === 'codex' && isLoadingModels && (
+                                    {isLoadingModels && (
                                         <ActivityIndicator size="small" color={theme.colors.button.secondary.tint} />
                                     )}
                                     <Text style={{
@@ -1382,7 +1402,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         fontWeight: '600',
                                         ...Typography.default('semiBold'),
                                     }} numberOfLines={1}>
-                                        {props.modelMode && props.modelMode !== 'default' ? props.modelMode : 'Select model'}
+                                        {isLoadingModels && !availableModels
+                                            ? t('common.loading')
+                                            : (props.modelMode && props.modelMode !== 'default'
+                                                ? props.modelMode
+                                                : 'Select model')}
                                     </Text>
                                     <Ionicons
                                         name="chevron-down"
@@ -1485,6 +1509,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     disabled={
                                         props.isSendDisabled ||
                                         props.isSending ||
+                                        isResolvingModel ||
                                         ((props.onAbort && props.showAbortButton) ? isAborting : !hasText)
                                     }
                                 >

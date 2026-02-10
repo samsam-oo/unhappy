@@ -21,10 +21,27 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
     const devModeEnabled = (useLocalSetting('devModeEnabled') || __DEV__);
-    console.log('ToolFullView', devModeEnabled);
+    const isEditorLikeFullView =
+        SpecializedFullView &&
+        (tool.name === 'CodexDiff' || tool.name === 'GeminiDiff' || tool.name === 'CodexPatch' || tool.name === 'GeminiPatch');
+
+    // For editor-like full views (diff/patch), avoid an outer ScrollView so the editor can be full-height
+    // and manage its own scrolling (VSCode/GitHub-style).
+    if (isEditorLikeFullView) {
+        return (
+            <View style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
+                <View style={styles.editorWrapper}>
+                    <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />
+                </View>
+            </View>
+        );
+    }
 
     return (
-        <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
+        <ScrollView
+            style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}
+            contentContainerStyle={styles.scrollContent}
+        >
             <View style={styles.contentWrapper}>
                 {/* Tool-specific content or generic fallback */}
                 {SpecializedFullView ? (
@@ -127,10 +144,21 @@ const styles = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.surface,
         paddingTop: 12,
     },
+    scrollContent: {
+        flexGrow: 1,
+    },
     contentWrapper: {
         maxWidth: layout.maxWidth,
         alignSelf: 'center',
         width: '100%',
+    },
+    editorWrapper: {
+        flex: 1,
+        minHeight: 0,
+        width: '100%',
+        // For editor-like views, avoid maxWidth clamping (especially on web).
+        maxWidth: '100%',
+        alignSelf: 'stretch',
     },
     section: {
         marginBottom: 28,

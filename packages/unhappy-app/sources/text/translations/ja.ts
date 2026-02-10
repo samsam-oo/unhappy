@@ -72,6 +72,7 @@ export const ja: TranslationStructure = {
     optional: '任意',
     saveAs: '名前を付けて保存',
     open: '開く',
+    close: '閉じる',
     commit: 'コミット',
   },
 

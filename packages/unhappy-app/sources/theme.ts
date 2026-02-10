@@ -196,7 +196,8 @@ export const lightTheme = {
             removedBorder: '#D73A49',
             removedText: '#24292E',
             contextBg: '#F6F8FA',
-            contextText: '#586069',
+            // Keep context lines readable (GitHub-style)
+            contextText: '#24292E',
             lineNumberBg: '#F6F8FA',
             lineNumberText: '#959DA5',
             hunkHeaderBg: '#F1F8FF',
@@ -418,7 +419,8 @@ export const darkTheme = {
             removedBorder: '#F85149',
             removedText: '#C9D1D9',
             contextBg: '#161B22',
-            contextText: '#8B949E',
+            // Match GitHub dark diff text (avoid low-contrast muted gray)
+            contextText: '#C9D1D9',
             lineNumberBg: '#161B22',
             lineNumberText: '#6E7681',
             hunkHeaderBg: '#161B22',

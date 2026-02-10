@@ -673,7 +673,8 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
 
     const projects = useProjects();
     // Hide archived sessions in the sidebar list.
-    const sessions = useAllSessions().filter((s) => s.active);
+    const allSessions = useAllSessions();
+    const sessions = React.useMemo(() => allSessions.filter((s) => s.active), [allSessions]);
 
     const selectedSessionId = React.useMemo(() => getSelectedSessionIdFromPathname(pathname), [pathname]);
 
@@ -813,17 +814,27 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
         const baseStableId = `${machineId}:${basePath}`;
 
         setExpanded((prev) => {
-            const next = { ...prev };
-
             const projectKey = getExpandedKey('project', baseStableId);
-            if (next[projectKey] !== true) next[projectKey] = true;
+            const shouldExpandProject = prev[projectKey] !== true;
 
             if (isWorktreePath(path)) {
                 const worktreeKey = getExpandedKey('worktree', stableId);
-                if (next[worktreeKey] !== true) next[worktreeKey] = true;
+                const shouldExpandWorktree = prev[worktreeKey] !== true;
+
+                // Important: avoid returning a new object when nothing changed.
+                // This effect runs whenever `sessionById` changes (which can be frequent),
+                // and returning a fresh object here would cause an infinite re-render loop.
+                if (!shouldExpandProject && !shouldExpandWorktree) return prev;
+
+                return {
+                    ...prev,
+                    ...(shouldExpandProject ? { [projectKey]: true } : {}),
+                    ...(shouldExpandWorktree ? { [worktreeKey]: true } : {}),
+                };
             }
 
-            return next;
+            if (!shouldExpandProject) return prev;
+            return { ...prev, [projectKey]: true };
         });
     }, [selectedSessionId, sessionById]);
 
@@ -1396,6 +1407,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                             const title = getBasename(row.project.key.path);
                             const hasGitStatus = row.project.gitStatus != null;
                             const branch = row.project.gitStatus?.branch;
+                            const isDirty = row.project.gitStatus?.isDirty === true;
                             const attentionCount = attentionCountByStableId.get(stableId) ?? 0;
                             const badgeText = formatBadgeCount(attentionCount);
                             const machineName =
@@ -1541,6 +1553,46 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                 >
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
+                                            )}
+                                            {isDirty && (
+                                                <Pressable
+                                                    hitSlop={10}
+                                                    disabled={deletingWorkspaceId === stableId}
+                                                    onPress={(e: any) => {
+                                                        e?.stopPropagation?.();
+                                                        if (deletingWorkspaceId === stableId) return;
+
+                                                        // Prefer an active root session (exact path match) when available,
+                                                        // otherwise fall back to any active session under a worktree.
+                                                        const group = groupByStableId.get(stableId);
+                                                        const rootActiveIds = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
+
+                                                        const worktreeActiveIds = group
+                                                            ? group.worktrees.flatMap((wt) => (wt.sessionIds || []).filter((id) => activeSessionIds.has(id)))
+                                                            : [];
+
+                                                        const pickPreferred = (ids: string[]) => {
+                                                            if (!ids.length) return null;
+                                                            if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
+                                                            const best = ids
+                                                                .map((id) => sessionById.get(id))
+                                                                .filter((s): s is Session => Boolean(s))
+                                                                .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
+                                                            return best ?? ids[0] ?? null;
+                                                        };
+
+                                                        const preferred = pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
+                                                        if (!preferred) return;
+                                                        router.push(`/session/${preferred}/review`);
+                                                    }}
+                                                    style={({ hovered, pressed }: any) => [
+                                                        styles.rowActionButton,
+                                                        (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
+                                                    ]}
+                                                    accessibilityLabel={t('files.diff')}
+                                                >
+                                                    <Octicons name="file-diff" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
+                                                </Pressable>
                                             )}
                                             <Pressable
                                                 hitSlop={10}
@@ -1711,15 +1763,15 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                             selectedSessionId && candidates.includes(selectedSessionId)
                                                                 ? selectedSessionId
                                                                 : candidates[0];
-                                                        router.push(`/session/${preferred}/files`);
+                                                        router.push(`/session/${preferred}/review`);
                                                     }}
                                                     style={({ hovered, pressed }: any) => [
                                                         styles.rowActionButton,
                                                         (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
                                                     ]}
-                                                    accessibilityLabel={t('common.files')}
+                                                    accessibilityLabel={t('files.diff')}
                                                 >
-                                                    <Octicons name="diff" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
+                                                    <Octicons name="file-diff" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
                                                 </Pressable>
                                             )}
                                             <Pressable

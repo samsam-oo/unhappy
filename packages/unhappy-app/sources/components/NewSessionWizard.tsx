@@ -15,7 +15,6 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
 import { machineListDirectory } from '@/sync/ops';
-import { isMachineOnline } from '@/utils/machineUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -760,6 +759,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const selectedMachine = useMemo(() => {
         return machines.find(m => m.id === selectedMachineId);
     }, [machines, selectedMachineId]);
+    const selectedMachineHomeDir = useMemo(() => {
+        return selectedMachine?.metadata?.homeDir || '/home';
+    }, [selectedMachine?.metadata?.homeDir]);
+    const selectedMachineIsOnline = selectedMachine?.active === true;
 
     // Remote "file explorer" state (directory picker for the selected machine)
     const [browseRoot, setBrowseRoot] = useState<string>('');
@@ -774,6 +777,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const [browseError, setBrowseError] = useState<string | null>(null);
     const [isBrowsing, setIsBrowsing] = useState(false);
     const [browseReloadToken, setBrowseReloadToken] = useState(0);
+    const lastBrowseInitKeyRef = useRef<string | null>(null);
     const [prompt, setPrompt] = useState<string>(initialPrompt);
     const [customPath, setCustomPath] = useState<string>('');
     const [showCustomPathInput, setShowCustomPathInput] = useState<boolean>(false);
@@ -799,10 +803,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
 
         return baseSteps;
-    }, [selectedProfileId]);
+    }, [selectedProfileId, allProfiles]);
 
     // Helper function to check if profile needs API keys
-    const profileNeedsConfiguration = (profileId: string | null): boolean => {
+    function profileNeedsConfiguration(profileId: string | null): boolean {
         if (!profileId) return false; // Manual configuration doesn't need API keys
         const profile = allProfiles.find(p => p.id === profileId);
         if (!profile) return false;
@@ -810,7 +814,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         // Check if profile is one that requires API keys
         const profilesNeedingKeys = ['openai', 'azure-openai', 'azure-openai-codex', 'zai', 'microsoft', 'deepseek'];
         return profilesNeedingKeys.includes(profile.id);
-    };
+    }
 
     // Get required fields for profile configuration
     const getProfileRequiredFields = (profileId: string | null): Array<{key: string, label: string, placeholder: string, isPassword?: boolean}> => {
@@ -853,6 +857,17 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 return [];
         }
     };
+
+    // If we ever land on `profileConfig` when no config is required (e.g. profiles changed),
+    // advance after render instead of setting state during render.
+    useEffect(() => {
+        if (currentStep !== 'profileConfig') return;
+        if (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId)) {
+            const profileIdx = steps.indexOf('profile');
+            const next = profileIdx >= 0 ? steps[profileIdx + 1] : steps[0];
+            if (next && next !== currentStep) setCurrentStep(next);
+        }
+    }, [currentStep, selectedProfileId, steps]);
 
     // Auto-load profile settings and sync with CLI
     React.useEffect(() => {
@@ -904,22 +919,27 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
     // Keep the file explorer in sync with the selected machine.
     useEffect(() => {
-        if (!selectedMachineId) return;
-        const machine = machines.find(m => m.id === selectedMachineId);
-        const homeDir = machine?.metadata?.homeDir || '/home';
+        if (!selectedMachineId) {
+            lastBrowseInitKeyRef.current = null;
+            return;
+        }
+        const homeDir = selectedMachineHomeDir;
+        const initKey = `${selectedMachineId}|${homeDir}`;
+        if (lastBrowseInitKeyRef.current === initKey) return;
+        lastBrowseInitKeyRef.current = initKey;
         setBrowsePath(homeDir);
         setBrowseRoot(homeDir);
         setBrowseEntries([]);
         setBrowseError(null);
         // Force reload (helps when the machine selection changes).
         setBrowseReloadToken(x => x + 1);
-    }, [selectedMachineId, machines]);
+    }, [selectedMachineId, selectedMachineHomeDir]);
 
     useEffect(() => {
         if (currentStep !== 'path') return;
         if (!selectedMachineId) return;
 
-        if (!selectedMachine || !isMachineOnline(selectedMachine)) {
+        if (!selectedMachineIsOnline) {
             setBrowseEntries([]);
             setBrowseError('Machine is offline');
             setIsBrowsing(false);
@@ -932,15 +952,26 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             setBrowseError(null);
 
             const root = normalizeRemotePath(browseRoot || '/');
-            const target = normalizeRemotePath(browsePath || selectedPath || root || '/');
+            const target = normalizeRemotePath(browsePath || root || '/');
 
-            let response = await machineListDirectory(selectedMachineId, target);
+            let response = await machineListDirectory(selectedMachineId, target, {
+                // We only display folder names here; avoid per-entry `stat`.
+                includeStats: false,
+                types: ['directory'],
+                sort: true,
+                maxEntries: 2000,
+            });
             if (cancelled) return;
 
             if (!response.success && root && normalizeRemotePath(target) !== normalizeRemotePath(root)) {
                 const fallback = normalizeRemotePath(root);
                 setBrowsePath(fallback);
-                response = await machineListDirectory(selectedMachineId, fallback);
+                response = await machineListDirectory(selectedMachineId, fallback, {
+                    includeStats: false,
+                    types: ['directory'],
+                    sort: true,
+                    maxEntries: 2000,
+                });
                 if (cancelled) return;
             }
 
@@ -952,8 +983,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
             const directories = (response.entries || [])
                 .filter((e): e is RemoteDirectoryEntry => !!e && e.type === 'directory' && typeof e.name === 'string')
-                .filter(e => e.name !== '.' && e.name !== '..')
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .filter(e => e.name !== '.' && e.name !== '..');
 
             setBrowseEntries(directories);
             setBrowseError(null);
@@ -966,7 +996,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         return () => {
             cancelled = true;
         };
-    }, [currentStep, selectedMachineId, selectedMachine, browsePath, selectedPath, browseRoot, browseReloadToken]);
+    }, [currentStep, selectedMachineId, selectedMachineIsOnline, browsePath, browseRoot, browseReloadToken]);
 
     const currentStepIndex = steps.indexOf(currentStep);
     const isFirstStep = currentStepIndex === 0;
@@ -1389,9 +1419,13 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
             case 'profileConfig':
                 if (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId)) {
-                    // Skip configuration if no profile selected or profile doesn't need configuration
-                    setCurrentStep(steps[currentStepIndex + 1]);
-                    return null;
+                    return (
+                        <View>
+                            <Text style={styles.stepTitle}>Profile Configuration</Text>
+                            <Text style={styles.stepDescription}>Skipping configuration...</Text>
+                            <ActivityIndicator />
+                        </View>
+                    );
                 }
 
                 return (

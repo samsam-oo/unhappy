@@ -6,67 +6,19 @@ import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
-import { storage } from '@/sync/storage';
+import { storage, useSetting } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { FileIcon } from '@/components/FileIcon';
+import { RawDiffView } from '@/components/diff/RawDiffView';
 
 interface FileContent {
     content: string;
     encoding: 'utf8' | 'base64';
     isBinary: boolean;
 }
-
-// Diff display component
-const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
-    const { theme } = useUnistyles();
-    const lines = diffContent.split('\n');
-    
-    return (
-        <View>
-            {lines.map((line, index) => {
-                const baseStyle = { ...Typography.mono(), fontSize: 14, lineHeight: 20 };
-                let lineStyle: any = baseStyle;
-                let backgroundColor = 'transparent';
-                
-                if (line.startsWith('+') && !line.startsWith('+++')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.addedText };
-                    backgroundColor = theme.colors.diff.addedBg;
-                } else if (line.startsWith('-') && !line.startsWith('---')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.removedText };
-                    backgroundColor = theme.colors.diff.removedBg;
-                } else if (line.startsWith('@@')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.hunkHeaderText, fontWeight: '600' };
-                    backgroundColor = theme.colors.diff.hunkHeaderBg;
-                } else if (line.startsWith('+++') || line.startsWith('---')) {
-                    lineStyle = { ...baseStyle, color: theme.colors.text, fontWeight: '600' };
-                } else {
-                    lineStyle = { ...baseStyle, color: theme.colors.diff.contextText };
-                }
-                
-                return (
-                    <View 
-                        key={index} 
-                        style={{ 
-                            backgroundColor, 
-                            paddingHorizontal: 8, 
-                            paddingVertical: 1,
-                            borderLeftWidth: line.startsWith('+') && !line.startsWith('+++') ? 3 : 
-                                           line.startsWith('-') && !line.startsWith('---') ? 3 : 0,
-                            borderLeftColor: line.startsWith('+') && !line.startsWith('+++') ? theme.colors.diff.addedBorder : theme.colors.diff.removedBorder
-                        }}
-                    >
-                        <Text style={lineStyle}>
-                            {line || ' '}
-                        </Text>
-                    </View>
-                );
-            })}
-        </View>
-    );
-};
 
 export default function FileScreen() {
     const route = useRoute();
@@ -89,6 +41,8 @@ export default function FileScreen() {
     const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+    const wrapLines = useSetting('wrapLinesInDiffs');
+    const showLineNumbers = useSetting('showLineNumbers');
 
     // Determine file language from extension
     const getFileLanguage = React.useCallback((path: string): string | null => {
@@ -362,7 +316,7 @@ export default function FileScreen() {
                 </Text>
                 <Text style={{ 
                     fontSize: 14, 
-                    color: '#999',
+                    color: theme.colors.textSecondary,
                     textAlign: 'center',
                     marginTop: 8,
                     ...Typography.default() 
@@ -449,19 +403,62 @@ export default function FileScreen() {
             )}
             
             {/* Content display */}
-            <ScrollView 
-                style={{ flex: 1 }}
-                contentContainerStyle={{ padding: 16 }}
-                showsVerticalScrollIndicator={true}
-            >
+            <View style={{ flex: 1, padding: 12, backgroundColor: theme.colors.surface }}>
                 {displayMode === 'diff' && diffContent ? (
-                    <DiffDisplay diffContent={diffContent} />
+                    <View
+                        style={{
+                            flex: 1,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: theme.colors.chrome.panelBorder,
+                            backgroundColor: theme.colors.chrome.editorBackground,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <ScrollView
+                            style={{ flex: 1 }}
+                            nestedScrollEnabled={true}
+                            showsVerticalScrollIndicator={true}
+                            contentContainerStyle={{ flexGrow: 1 }}
+                        >
+                            {wrapLines ? (
+                                <RawDiffView diff={diffContent} wrapLines={true} showLineNumbers={showLineNumbers} showFileHeaders={false} />
+                            ) : (
+                                <ScrollView
+                                    horizontal
+                                    nestedScrollEnabled={true}
+                                    showsHorizontalScrollIndicator={true}
+                                    contentContainerStyle={{ flexGrow: 1 }}
+                                >
+                                    <RawDiffView diff={diffContent} wrapLines={false} showLineNumbers={showLineNumbers} showFileHeaders={false} />
+                                </ScrollView>
+                            )}
+                        </ScrollView>
+                    </View>
                 ) : displayMode === 'file' && fileContent?.content ? (
-                    <SimpleSyntaxHighlighter 
-                        code={fileContent.content}
-                        language={language}
-                        selectable={true}
-                    />
+                    <View
+                        style={{
+                            flex: 1,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: theme.colors.chrome.panelBorder,
+                            backgroundColor: theme.colors.chrome.editorBackground,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <ScrollView
+                            style={{ flex: 1 }}
+                            nestedScrollEnabled={true}
+                            showsVerticalScrollIndicator={true}
+                            contentContainerStyle={{ padding: 12 }}
+                        >
+                            <SimpleSyntaxHighlighter 
+                                code={fileContent.content}
+                                language={language}
+                                selectable={true}
+                            />
+                        </ScrollView>
+                    </View>
                 ) : displayMode === 'file' && fileContent && !fileContent.content ? (
                     <Text style={{
                         fontSize: 16,
@@ -481,7 +478,7 @@ export default function FileScreen() {
                         {t('files.noChanges')}
                     </Text>
                 ) : null}
-            </ScrollView>
+            </View>
         </View>
     );
 }
@@ -489,8 +486,8 @@ export default function FileScreen() {
 const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        maxWidth: layout.maxWidth,
-        alignSelf: 'center',
+        maxWidth: Platform.OS === 'web' ? undefined : layout.maxWidth,
+        alignSelf: Platform.OS === 'web' ? 'stretch' : 'center',
         width: '100%',
     }
 }));

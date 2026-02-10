@@ -66,6 +66,11 @@ interface SessionWriteFileResponse {
 // List directory operation types
 interface SessionListDirectoryRequest {
     path: string;
+    // Performance knobs; align with daemon `listDirectory` handler.
+    includeStats?: boolean; // default true
+    types?: Array<'file' | 'directory' | 'other'>; // default all
+    sort?: boolean; // default true
+    maxEntries?: number; // optional cap after filtering/sorting
 }
 
 interface DirectoryEntry {
@@ -407,9 +412,13 @@ export async function sessionWriteFile(
 /**
  * List directory contents in the session
  */
-export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
+export async function sessionListDirectory(
+    sessionId: string,
+    path: string,
+    options?: Omit<SessionListDirectoryRequest, 'path'>
+): Promise<SessionListDirectoryResponse> {
     try {
-        const request: SessionListDirectoryRequest = { path };
+        const request: SessionListDirectoryRequest = { path, ...(options ?? {}) };
         const response = await apiSocket.sessionRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
             sessionId,
             'listDirectory',
@@ -429,9 +438,13 @@ export async function sessionListDirectory(sessionId: string, path: string): Pro
  *
  * Note: On the daemon side, this is constrained by the daemon's working directory.
  */
-export async function machineListDirectory(machineId: string, path: string): Promise<SessionListDirectoryResponse> {
+export async function machineListDirectory(
+    machineId: string,
+    path: string,
+    options?: Omit<SessionListDirectoryRequest, 'path'>
+): Promise<SessionListDirectoryResponse> {
     try {
-        const request: SessionListDirectoryRequest = { path };
+        const request: SessionListDirectoryRequest = { path, ...(options ?? {}) };
         const response = await apiSocket.machineRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
             machineId,
             'listDirectory',

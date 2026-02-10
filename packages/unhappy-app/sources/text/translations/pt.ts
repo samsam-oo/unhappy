@@ -45,6 +45,7 @@ export const pt: TranslationStructure = {
     save: 'Salvar',
     saveAs: 'Salvar como',
     open: 'Abrir',
+    close: 'Fechar',
     commit: 'Commit',
     error: 'Erro',
     success: 'Sucesso',

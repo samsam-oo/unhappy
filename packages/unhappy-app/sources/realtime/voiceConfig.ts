@@ -1,6 +1,10 @@
 /**
  * Static voice context configuration
  */
+const ENABLE_VOICE_DEBUG_LOGGING =
+    // Default: off. Turn on explicitly when debugging voice.
+    __DEV__ && process.env.EXPO_PUBLIC_VOICE_DEBUG === '1';
+
 export const VOICE_CONFIG = {
     /** Disable all tool call information from being sent to voice context */
     DISABLE_TOOL_CALLS: false,
@@ -27,5 +31,5 @@ export const VOICE_CONFIG = {
     MAX_HISTORY_MESSAGES: 50,
     
     /** Enable debug logging for voice context updates */
-    ENABLE_DEBUG_LOGGING: true,
+    ENABLE_DEBUG_LOGGING: ENABLE_VOICE_DEBUG_LOGGING,
 } as const;

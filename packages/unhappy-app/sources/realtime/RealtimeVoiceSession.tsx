@@ -5,6 +5,7 @@ import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import type { VoiceSession, VoiceSessionConfig } from './types';
+import { VOICE_CONFIG } from './voiceConfig';
 
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
@@ -90,36 +91,31 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
+    const DEBUG = VOICE_CONFIG.ENABLE_DEBUG_LOGGING;
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: (data) => {
-            console.log('Realtime session connected:', data);
+            if (DEBUG) console.log('Realtime session connected:', data);
             storage.getState().setRealtimeStatus('connected');
             storage.getState().setRealtimeMode('idle');
         },
         onDisconnect: () => {
-            console.log('Realtime session disconnected');
+            if (DEBUG) console.log('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true); // immediate mode change
             storage.getState().clearRealtimeModeDebounce();
         },
-        onMessage: (data) => {
-            console.log('Realtime message:', data);
-        },
         onError: (error) => {
             // Log but don't block app - voice features will be unavailable
             // This prevents initialization errors from showing "Terminals error" on startup
-            console.warn('Realtime voice not available:', error);
+            if (DEBUG) console.warn('Realtime voice not available:', error);
             // Don't set error status during initialization - just set disconnected
             // This allows the app to continue working without voice features
             storage.getState().setRealtimeStatus('disconnected');
             storage.getState().setRealtimeMode('idle', true); // immediate mode change
         },
-        onStatusChange: (data) => {
-            console.log('Realtime status change:', data);
-        },
         onModeChange: (data) => {
-            console.log('Realtime mode change:', data);
+            if (DEBUG) console.log('Realtime mode change:', data);
             
             // Only animate when speaking
             const mode = data.mode as string;
@@ -128,9 +124,11 @@ export const RealtimeVoiceSession: React.FC = () => {
             // Use centralized debounce logic from storage
             storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
         },
-        onDebug: (message) => {
-            console.debug('Realtime debug:', message);
-        }
+        ...(DEBUG ? {
+            onMessage: (data: any) => console.log('Realtime message:', data),
+            onStatusChange: (data: any) => console.log('Realtime status change:', data),
+            onDebug: (message: any) => console.debug('Realtime debug:', message),
+        } : {})
     });
 
     const hasRegistered = useRef(false);

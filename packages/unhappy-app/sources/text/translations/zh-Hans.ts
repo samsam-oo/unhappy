@@ -46,6 +46,7 @@ export const zhHans: TranslationStructure = {
     save: '保存',
     saveAs: '另存为',
     open: '打开',
+    close: '关闭',
     commit: '提交',
     error: '错误',
     success: '成功',

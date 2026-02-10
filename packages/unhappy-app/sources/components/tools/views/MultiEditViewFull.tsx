@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
@@ -8,6 +9,7 @@ import { DiffView } from '@/components/diff/DiffView';
 import { trimIdent } from '@/utils/trimIdent';
 import { t } from '@/text';
 import { useSetting } from '@/sync/storage';
+import { Typography } from '@/constants/Typography';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
@@ -87,19 +89,21 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
     );
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     editHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 8,
+        paddingHorizontal: 12,
+        paddingTop: 10,
     },
     editNumber: {
         fontSize: 14,
-        fontWeight: '600',
-        color: '#5856D6',
+        color: theme.colors.chrome.accent,
+        ...Typography.default('semiBold'),
     },
     replaceAllBadge: {
-        backgroundColor: '#5856D6',
+        backgroundColor: theme.colors.chrome.accent,
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
@@ -107,12 +111,12 @@ const styles = StyleSheet.create({
     },
     replaceAllText: {
         fontSize: 12,
-        color: '#fff',
-        fontWeight: '600',
+        color: theme.colors.button.primary.tint,
+        ...Typography.default('semiBold'),
     },
     separator: {
         height: 1,
-        backgroundColor: '#E5E5EA',
+        backgroundColor: theme.colors.chrome.panelBorder,
         marginVertical: 16,
     },
-});
+}));

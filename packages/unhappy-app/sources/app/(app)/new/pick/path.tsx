@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
@@ -74,9 +74,11 @@ export default function PathPickerScreen() {
     const [browseError, setBrowseError] = useState<string | null>(null);
     const [isBrowsing, setIsBrowsing] = useState(false);
     const [browseReloadToken, setBrowseReloadToken] = useState(0);
+    const lastBrowseInitKeyRef = useRef<string | null>(null);
 
     const machineId = typeof params.machineId === 'string' ? params.machineId : '';
     const machine = useMachine(machineId);
+    const machineIsOnline = machine ? isMachineOnline(machine) : false;
 
     const baseRoot = useMemo(() => {
         if (!machineId) return '';
@@ -112,9 +114,15 @@ export default function PathPickerScreen() {
     }, [baseRoot, browseRootAbs, machineId]);
 
     useEffect(() => {
-        if (!machineId) return;
+        if (!machineId) {
+            lastBrowseInitKeyRef.current = null;
+            return;
+        }
         const initial = (baseRoot || machine?.metadata?.homeDir || '').trim();
         if (!initial) return;
+        const initKey = `${machineId}|${initial}`;
+        if (lastBrowseInitKeyRef.current === initKey) return;
+        lastBrowseInitKeyRef.current = initKey;
         setBrowseRootAbs(initial);
         setBrowseAbsPath(initial);
         setBrowseEntries([]);
@@ -124,7 +132,7 @@ export default function PathPickerScreen() {
 
     useEffect(() => {
         if (!machineId || !machine) return;
-        if (!isMachineOnline(machine)) {
+        if (!machineIsOnline) {
             setBrowseEntries([]);
             setBrowseError('Machine is offline');
             setIsBrowsing(false);
@@ -143,12 +151,23 @@ export default function PathPickerScreen() {
             const target = browseAbsPath || root;
             if (!target) return;
 
-            let response = await machineListDirectory(machineId, target);
+            let response = await machineListDirectory(machineId, target, {
+                // We only display folder names here; avoid per-entry `stat`.
+                includeStats: false,
+                types: ['directory'],
+                sort: true,
+                maxEntries: 2000,
+            });
             if (cancelled) return;
 
             if (!response.success && root && target !== root) {
                 setBrowseAbsPath(root);
-                response = await machineListDirectory(machineId, root);
+                response = await machineListDirectory(machineId, root, {
+                    includeStats: false,
+                    types: ['directory'],
+                    sort: true,
+                    maxEntries: 2000,
+                });
                 if (cancelled) return;
             }
 
@@ -161,7 +180,6 @@ export default function PathPickerScreen() {
             const directories = (response.entries || [])
                 .filter((e) => !!e && e.type === 'directory' && typeof e.name === 'string')
                 .filter((e) => e.name !== '.' && e.name !== '..')
-                .sort((a, b) => a.name.localeCompare(b.name))
                 .map((e) => ({ name: e.name, type: e.type as 'directory' }));
 
             setBrowseEntries(directories);
@@ -175,7 +193,7 @@ export default function PathPickerScreen() {
         return () => {
             cancelled = true;
         };
-    }, [browseAbsPath, browseReloadToken, ensureBrowseRoot, machine, machineId]);
+    }, [browseAbsPath, browseReloadToken, ensureBrowseRoot, machineId, machineIsOnline]);
 
 
     const commitPathAndExit = useCallback((absPath: string) => {

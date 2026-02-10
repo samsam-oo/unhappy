@@ -1,8 +1,8 @@
 import * as React from 'react';
-import { View, ActivityIndicator, Platform, TextInput } from 'react-native';
+import { View, ActivityIndicator, Platform, TextInput, Pressable } from 'react-native';
 import { t } from '@/text';
 import { useRoute } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Octicons } from '@/icons/vector-icons';
 import { Text } from '@/components/StyledText';
@@ -155,7 +155,25 @@ export default function FilesScreen() {
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+        <>
+            <Stack.Screen
+                options={{
+                    headerRight: () => (
+                        <Pressable
+                            accessibilityLabel={t('files.diff')}
+                            onPress={() => router.push(`/session/${sessionId}/review`)}
+                            style={({ pressed }) => ({
+                                marginRight: 12,
+                                opacity: pressed ? 0.7 : 1,
+                                padding: 6,
+                            })}
+                        >
+                            <Octicons name="file-diff" size={18} color={theme.colors.header.tint} />
+                        </Pressable>
+                    ),
+                }}
+            />
+            <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
             
             {/* Search Input - Always Visible */}
             <View style={{
@@ -179,9 +197,11 @@ export default function FilesScreen() {
                         style={{
                             flex: 1,
                             fontSize: 16,
+                            color: theme.colors.input.text,
                             ...Typography.default()
                         }}
                         placeholderTextColor={theme.colors.input.placeholder}
+                        selectionColor={theme.colors.chrome.accent}
                         autoCapitalize="none"
                         autoCorrect={false}
                     />
@@ -412,7 +432,8 @@ export default function FilesScreen() {
                     </>
                 )}
             </ItemList>
-        </View>
+            </View>
+        </>
     );
 }
 

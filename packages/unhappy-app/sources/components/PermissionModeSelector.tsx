@@ -3,6 +3,7 @@ import { Text, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@/icons/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { hapticsLight } from './haptics';
+import { useUnistyles } from 'react-native-unistyles';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
 
@@ -61,7 +62,28 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     onModeChange,
     disabled = false
 }) => {
+    const { theme } = useUnistyles();
     const currentConfig = modeConfig[mode];
+
+    const iconColor = (() => {
+        switch (mode) {
+            case 'acceptEdits':
+                return theme.colors.permission.acceptEdits;
+            case 'plan':
+                return theme.colors.permission.plan;
+            case 'bypassPermissions':
+                return theme.colors.permission.bypass;
+            case 'read-only':
+                return theme.colors.permission.readOnly;
+            case 'safe-yolo':
+                return theme.colors.permission.safeYolo;
+            case 'yolo':
+                return theme.colors.permission.yolo;
+            case 'default':
+            default:
+                return theme.colors.permission.default;
+        }
+    })();
 
     const handleTap = () => {
         hapticsLight();
@@ -78,11 +100,9 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
             style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                // backgroundColor: Platform.select({
-                //     ios: '#F2F2F7',
-                //     android: '#E0E0E0',
-                //     default: '#F2F2F7'
-                // }),
+                backgroundColor: theme.colors.surfaceHigh,
+                borderWidth: 1,
+                borderColor: theme.colors.divider,
                 borderRadius: Platform.select({ default: 16, android: 20 }),
                 paddingHorizontal: 12,
                 paddingVertical: 6,
@@ -93,10 +113,10 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
             }}
         >
             <Ionicons
-                name={'hammer-outline'}
+                name={currentConfig.icon}
                 size={16}
-                color={'black'}
-                style={{ marginRight: 4 }}
+                color={iconColor}
+                style={{ marginRight: 0 }}
             />
             {/* <Text style={{
                 fontSize: 13,

@@ -59,6 +59,7 @@ export const en: TranslationStructure = {
     save: 'Save',
     saveAs: 'Save As',
     open: 'Open',
+    close: 'Close',
     commit: 'Commit',
     error: 'Error',
     success: 'Success',

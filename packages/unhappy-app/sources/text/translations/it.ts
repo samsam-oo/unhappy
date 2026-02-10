@@ -70,6 +70,7 @@ export const it: TranslationStructure = {
     optional: 'opzionale',
     saveAs: 'Salva con nome',
     open: 'Apri',
+    close: 'Chiudi',
     commit: 'Commit',
   },
 

@@ -28,7 +28,14 @@ interface SessionMetadata {
 let shownSessions = new Set<string>();
 let lastFocusSession: string | null = null;
 
+function isVoiceActive(): boolean {
+    const voice = getVoiceSession();
+    return !!voice && isVoiceSessionStarted();
+}
+
 function reportContextualUpdate(update: string | null | undefined) {
+    // Avoid expensive logging + any downstream work when voice isn't running.
+    if (!isVoiceActive()) return;
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
         console.log('🎤 Voice: Reporting contextual update:', update);
     }
@@ -42,6 +49,7 @@ function reportContextualUpdate(update: string | null | undefined) {
 }
 
 function reportTextUpdate(update: string | null | undefined) {
+    if (!isVoiceActive()) return;
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
         console.log('🎤 Voice: Reporting text update:', update);
     }
@@ -55,6 +63,7 @@ function reportTextUpdate(update: string | null | undefined) {
 }
 
 function reportSession(sessionId: string) {
+    if (!isVoiceActive()) return;
     if (shownSessions.has(sessionId)) return;
     shownSessions.add(sessionId);
     const session = storage.getState().sessions[sessionId];
@@ -71,6 +80,7 @@ export const voiceHooks = {
      */
     onSessionOnline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
+        if (!isVoiceActive()) return;
         
         reportSession(sessionId);
         const contextUpdate = formatSessionOnline(sessionId, metadata);
@@ -82,6 +92,7 @@ export const voiceHooks = {
      */
     onSessionOffline(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
+        if (!isVoiceActive()) return;
         
         reportSession(sessionId);
         const contextUpdate = formatSessionOffline(sessionId, metadata);
@@ -94,6 +105,7 @@ export const voiceHooks = {
      */
     onSessionFocus(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_FOCUS) return;
+        if (!isVoiceActive()) return;
         if (lastFocusSession === sessionId) return;
         lastFocusSession = sessionId;
         reportSession(sessionId);
@@ -105,6 +117,7 @@ export const voiceHooks = {
      */
     onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
         if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
+        if (!isVoiceActive()) return;
         
         reportSession(sessionId);
         reportTextUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
@@ -115,6 +128,7 @@ export const voiceHooks = {
      */
     onMessages(sessionId: string, messages: Message[]) {
         if (VOICE_CONFIG.DISABLE_MESSAGES) return;
+        if (!isVoiceActive()) return;
         
         reportSession(sessionId);
         reportContextualUpdate(formatNewMessages(sessionId, messages));
@@ -144,6 +158,7 @@ export const voiceHooks = {
      */
     onReady(sessionId: string) {
         if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
+        if (!isVoiceActive()) return;
         
         reportSession(sessionId);
         reportTextUpdate(formatReadyEvent(sessionId));

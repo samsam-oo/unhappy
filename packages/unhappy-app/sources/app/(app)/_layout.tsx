@@ -103,7 +103,15 @@ export default function RootLayout() {
                 name="session/[id]/files"
                 options={{
                     headerShown: true,
-                    headerTitle: t('common.files'),
+                    headerTitle: t('files.diff'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="session/[id]/review"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('files.diff'),
                     headerBackTitle: t('common.back'),
                 }}
             />
@@ -112,7 +120,7 @@ export default function RootLayout() {
                 options={{
                     headerShown: true,
                     headerTitle: t('common.fileViewer'),
-                    headerBackTitle: t('common.files'),
+                    headerBackTitle: t('files.diff'),
                 }}
             />
             <Stack.Screen

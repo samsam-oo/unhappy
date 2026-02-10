@@ -38,6 +38,29 @@ interface LinePair {
 }
 
 /**
+ * Calculate additions/deletions stats only (no hunks/tokens).
+ *
+ * This is useful for GitHub-style diffstat badges without doing the full
+ * `calculateUnifiedDiff` work twice.
+ */
+export function calculateDiffStats(oldText: string, newText: string): { additions: number; deletions: number } {
+    const lineChanges = diffLines(oldText, newText);
+
+    let additions = 0;
+    let deletions = 0;
+
+    for (const change of lineChanges) {
+        const lines = change.value.split('\n').filter((line, index, arr) =>
+            !(index === arr.length - 1 && line === '')
+        );
+        if (change.added) additions += lines.length;
+        if (change.removed) deletions += lines.length;
+    }
+
+    return { additions, deletions };
+}
+
+/**
  * Calculate unified diff with inline highlighting
  * Similar to git diff algorithm
  */

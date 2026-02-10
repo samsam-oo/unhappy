@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, ViewStyle } from 'react-native';
+import { View, Text, ViewStyle, StyleSheet } from 'react-native';
 import { calculateUnifiedDiff, DiffToken } from '@/components/diff/calculateDiff';
 import { Typography } from '@/constants/Typography';
 import { useUnistyles } from 'react-native-unistyles';
@@ -30,7 +30,6 @@ export const DiffView: React.FC<DiffViewProps> = ({
     style,
     fontScaleX = 1,
 }) => {
-    // Always use light theme colors
     const { theme } = useUnistyles();
     const colors = theme.colors.diff;
 
@@ -41,9 +40,8 @@ export const DiffView: React.FC<DiffViewProps> = ({
 
     // Styles
     const containerStyle: ViewStyle = {
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.chrome.editorBackground,
         borderWidth: 0,
-        flex: 1,
         ...style,
     };
 
@@ -127,67 +125,139 @@ export const DiffView: React.FC<DiffViewProps> = ({
     // Render diff content as separate lines to prevent wrapping
     const renderDiffContent = () => {
         const lines: React.ReactNode[] = [];
+        const LN_COL_W = 44;
+        const SIGN_COL_W = 18;
+        const gutterPaddingX = 8;
         
         hunks.forEach((hunk, hunkIndex) => {
-            // Add hunk header for non-first hunks
-            if (hunkIndex > 0) {
-                lines.push(
-                    <Text 
-                        key={`hunk-header-${hunkIndex}`} 
+            // GitHub-style: show a hunk header for every hunk (including the first).
+            lines.push(
+                <View
+                    key={`hunk-header-${hunkIndex}`} 
+                    style={{
+                        backgroundColor: colors.hunkHeaderBg,
+                        paddingVertical: 8,
+                        borderTopWidth: 1,
+                        borderTopColor: colors.outline,
+                    }}
+                >
+                    <Text
                         numberOfLines={wrapLines ? undefined : 1}
                         style={{
-                            ...Typography.mono(),
+                            ...Typography.mono('semiBold'),
                             fontSize: 12,
+                            lineHeight: 18,
                             color: colors.hunkHeaderText,
-                            backgroundColor: colors.hunkHeaderBg,
-                            paddingVertical: 8,
                             paddingHorizontal: 16,
                             transform: [{ scaleX: fontScaleX }],
                         }}
                     >
                         {`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}
                     </Text>
-                );
-            }
+                </View>
+            );
 
             hunk.lines.forEach((line, lineIndex) => {
                 const isAdded = line.type === 'add';
                 const isRemoved = line.type === 'remove';
                 const textColor = isAdded ? colors.addedText : isRemoved ? colors.removedText : colors.contextText;
                 const bgColor = isAdded ? colors.addedBg : isRemoved ? colors.removedBg : colors.contextBg;
+                const gutterBgColor = bgColor;
+                const borderLeftColor = isAdded ? colors.addedBorder : isRemoved ? colors.removedBorder : 'transparent';
+                const sign = isAdded ? '+' : isRemoved ? '-' : ' ';
                 
-                // Render complete line in a single Text element
                 lines.push(
-                    <Text
+                    <View
                         key={`line-${hunkIndex}-${lineIndex}`}
-                        numberOfLines={wrapLines ? undefined : 1}
                         style={{
-                            ...Typography.mono(),
-                            fontSize: 13,
-                            lineHeight: 20,
                             backgroundColor: bgColor,
-                            transform: [{ scaleX: fontScaleX }],
-                            paddingLeft: 8,
-                            paddingRight: 8,
+                            flexDirection: 'row',
+                            alignItems: 'flex-start',
+                            borderLeftWidth: (isAdded || isRemoved) ? 3 : 0,
+                            borderLeftColor,
+                            borderBottomWidth: StyleSheet.hairlineWidth,
+                            borderBottomColor: colors.outline,
                         }}
                     >
-                        {showLineNumbers && (
-                            <Text style={{
-                                color: colors.lineNumberText,
-                                backgroundColor: colors.lineNumberBg,
-                            }}>
-                                {String(line.type === 'remove' ? line.oldLineNumber :
-                                       line.type === 'add' ? line.newLineNumber :
-                                       line.oldLineNumber).padStart(3, ' ')}
-                            </Text>
-                        )}
-                        {showPlusMinusSymbols && (
-                            <Text style={{ color: textColor }}>
-                                {` ${isAdded ? '+' : isRemoved ? '-' : ' '} `}
-                            </Text>
-                        )}
-                        {renderLineContent(line.content, textColor, line.tokens)}
-                    </Text>
+                        {(showLineNumbers || showPlusMinusSymbols) ? (
+                            <View
+                                style={{
+                                    backgroundColor: gutterBgColor,
+                                    paddingHorizontal: gutterPaddingX,
+                                    paddingVertical: 0,
+                                    flexDirection: 'row',
+                                    alignItems: 'flex-start',
+                                    borderRightWidth: 1,
+                                    borderRightColor: colors.outline,
+                                }}
+                            >
+                                {showLineNumbers ? (
+                                    <>
+                                        <Text
+                                            style={{
+                                                ...Typography.mono(),
+                                                fontSize: 12,
+                                                lineHeight: 20,
+                                                width: LN_COL_W,
+                                                textAlign: 'right',
+                                                color: colors.lineNumberText,
+                                                opacity: 0.9,
+                                            }}
+                                        >
+                                            {line.oldLineNumber ? String(line.oldLineNumber) : ''}
+                                        </Text>
+                                        <Text
+                                            style={{
+                                                ...Typography.mono(),
+                                                fontSize: 12,
+                                                lineHeight: 20,
+                                                width: LN_COL_W,
+                                                textAlign: 'right',
+                                                color: colors.lineNumberText,
+                                                opacity: 0.9,
+                                            }}
+                                        >
+                                            {line.newLineNumber ? String(line.newLineNumber) : ''}
+                                        </Text>
+                                    </>
+                                ) : null}
+                                {showPlusMinusSymbols ? (
+                                    <Text
+                                        style={{
+                                            ...Typography.mono('semiBold'),
+                                            fontSize: 12,
+                                            lineHeight: 20,
+                                            width: SIGN_COL_W,
+                                            textAlign: 'center',
+                                            color: textColor,
+                                            opacity: sign === ' ' ? 0.35 : 0.9,
+                                        }}
+                                    >
+                                        {sign}
+                                    </Text>
+                                ) : null}
+                            </View>
+                        ) : null}
+
+                        <Text
+                            numberOfLines={wrapLines ? undefined : 1}
+                            style={{
+                                ...Typography.mono(),
+                                fontSize: 13,
+                                lineHeight: 20,
+                                color: textColor,
+                                paddingLeft: 10,
+                                paddingRight: 12,
+                                paddingVertical: 0,
+                                transform: [{ scaleX: fontScaleX }],
+                                ...(wrapLines
+                                    ? { flexGrow: 1, flexShrink: 1, flexBasis: 0 }
+                                    : { flexShrink: 0 }),
+                            }}
+                        >
+                            {renderLineContent(line.content, textColor, line.tokens)}
+                        </Text>
+                    </View>
                 );
             });
         });
@@ -196,7 +266,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
     };
 
     return (
-        <View style={[containerStyle, { overflow: 'hidden' }]}>
+        <View style={[containerStyle]}>
             {renderDiffContent()}
         </View>
     );
@@ -239,4 +309,3 @@ export const DiffView: React.FC<DiffViewProps> = ({
     //     </View>
     // );
 };
-

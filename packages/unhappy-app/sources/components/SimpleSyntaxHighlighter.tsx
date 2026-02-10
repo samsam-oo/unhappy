@@ -301,6 +301,8 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
           fontFamily: Typography.mono().fontFamily,
           fontSize: 14,
           lineHeight: 20,
+          // Always set a base color so dark mode never falls back to default black.
+          color: theme.colors.syntaxDefault,
         }}
       >
         {tokens.map((token, index) => (

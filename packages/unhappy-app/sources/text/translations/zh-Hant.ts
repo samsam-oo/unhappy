@@ -46,6 +46,7 @@ export const zhHant: TranslationStructure = {
     save: '儲存',
     saveAs: '另存為',
     open: '打開',
+    close: '關閉',
     commit: '提交',
     error: '錯誤',
     success: '成功',

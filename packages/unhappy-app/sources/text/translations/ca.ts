@@ -44,6 +44,7 @@ export const ca: TranslationStructure = {
     save: 'Desa',
     saveAs: 'Desa com a',
     open: 'Obre',
+    close: 'Tanca',
     commit: 'Commit',
     error: 'Error',
     success: 'Èxit',

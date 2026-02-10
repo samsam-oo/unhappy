@@ -14,6 +14,8 @@ import { MultiEditViewFull } from './MultiEditViewFull';
 import { CodexBashView } from './CodexBashView';
 import { CodexPatchView } from './CodexPatchView';
 import { CodexDiffView } from './CodexDiffView';
+import { PatchChangesViewFull } from './PatchChangesViewFull';
+import { UnifiedDiffViewFull } from './UnifiedDiffViewFull';
 import { AskUserQuestionView } from './AskUserQuestionView';
 import { GeminiEditView } from './GeminiEditView';
 import { GeminiExecuteView } from './GeminiExecuteView';
@@ -50,7 +52,11 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
     Bash: BashViewFull,
     Edit: EditViewFull,
-    MultiEdit: MultiEditViewFull
+    MultiEdit: MultiEditViewFull,
+    CodexPatch: PatchChangesViewFull,
+    GeminiPatch: PatchChangesViewFull,
+    CodexDiff: UnifiedDiffViewFull,
+    GeminiDiff: UnifiedDiffViewFull,
 };
 
 // Helper function to get the appropriate view component for a tool
@@ -78,3 +84,5 @@ export { TaskView } from './TaskView';
 export { AskUserQuestionView } from './AskUserQuestionView';
 export { GeminiEditView } from './GeminiEditView';
 export { GeminiExecuteView } from './GeminiExecuteView';
+export { PatchChangesViewFull } from './PatchChangesViewFull';
+export { UnifiedDiffViewFull } from './UnifiedDiffViewFull';

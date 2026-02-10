@@ -131,7 +131,7 @@ export default function TerminalScreen() {
                     <Item
                         title={t('terminal.publicKey')}
                         detail={`${publicKey.substring(0, 12)}...`}
-                        icon={<Ionicons name="key-outline" size={29} color={theme.colors.radio.active} />}
+                        icon={<Ionicons name="finger-print-outline" size={29} color={theme.colors.radio.active} />}
                         showChevron={false}
                     />
                     <Item

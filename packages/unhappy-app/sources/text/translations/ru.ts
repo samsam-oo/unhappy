@@ -57,6 +57,7 @@ export const ru: TranslationStructure = {
     save: 'Сохранить',
     saveAs: 'Сохранить как',
     open: 'Открыть',
+    close: 'Закрыть',
     commit: 'Коммит',
     error: 'Ошибка',
     success: 'Успешно',
