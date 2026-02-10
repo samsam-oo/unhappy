@@ -1,4 +1,6 @@
 import { Text } from '@/components/StyledText';
+import { RowActionMenu } from '@/components/RowActionMenu';
+import type { RowAction } from '@/components/RowActionMenu';
 import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Ionicons, Octicons } from '@/icons/vector-icons';
@@ -31,63 +33,58 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useCompactLayout, COMPACT_WIDTH_THRESHOLD } from '@/utils/responsive';
 
 const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
 const WORKSPACE_ORDER_KEY = 'happy.workspaceExplorer.workspaceOrder.v1';
 
 const IS_WEB = Platform.OS === 'web';
-const DEFAULT_EXPANDED = false;
+const DEFAULT_EXPANDED = true;
 
 // This view is used both in the desktop sidebar and as the phone "Sessions" main screen.
-// Keep it readable/tappable on mobile while still reasonably dense on web.
-const UI_METRICS = {
-    // Unify web + native. The prior web-compact values made the sidebar feel like a
-    // different component. Prefer one consistent layout.
-    sectionHeaderPaddingV: 10,
-    sectionHeaderMinHeight: 44,
+// Compact layout for wide screens (≥800px); regular layout for narrow/mobile screens.
+function getMetrics(compact: boolean) {
+    return {
+        sectionHeaderPaddingV: compact ? 6 : 10,
+        sectionHeaderMinHeight: compact ? 32 : 44,
+        rowMinHeight: compact ? 30 : 52,
+        rowPaddingV: compact ? 4 : 12,
+        rowPaddingH: compact ? 8 : 14,
+        rowMarginV: compact ? 1 : 3,
+        rowRadius: compact ? 6 : 12,
+        rowGap: compact ? 6 : 12,
+        selectionBarInsetV: compact ? 4 : 10,
+        actionButtonSize: compact ? 24 : 38,
+        actionButtonRadius: compact ? 5 : 10,
+        chevronWidth: compact ? 14 : 22,
+        iconWidth: compact ? 16 : 24,
+        childIndent: 0,
+        grandChildIndent: 0,
+        rowInset1: compact ? 10 : 18,
+        rowInset2: compact ? 26 : 44,
+        nestRailInsetV: compact ? 4 : 10,
+        nestRailWidth: 2,
+        titleFontSize: compact ? 12 : 17,
+        titleLineHeight: compact ? 16 : 22,
+        subtitleFontSize: compact ? 10 : 14,
+        subtitleLineHeight: compact ? 14 : 19,
+        subtitleMarginTop: compact ? 1 : 3,
+    };
+}
 
-    rowMinHeight: 48,
-    rowPaddingV: 10,
-    rowPaddingH: 12,
-    rowMarginV: 2,
-    rowRadius: 10,
-    rowGap: 10,
-
-    selectionBarInsetV: 10,
-
-    actionButtonSize: 34,
-    actionButtonRadius: 9,
-
-    chevronWidth: 20,
-    iconWidth: 22,
-
-    // Prefer inset rows (box moves in), not just indented content.
-    childIndent: 0,
-    grandChildIndent: 0,
-    rowInset1: 16,
-    rowInset2: 40,
-
-    nestRailInsetV: 10,
-    nestRailWidth: 2,
-
-    titleFontSize: 16,
-    titleLineHeight: 20,
-    subtitleFontSize: 13,
-    subtitleLineHeight: 18,
-    subtitleMarginTop: 3,
-} as const;
-
-const UI_ICONS = {
-    spinner: 16,
-    rowIcon: 20,
-    chevron: 18,
-    folder: 18,
-    gitBranch: 13,
-    headerAdd: 20,
-    headerCollapse: 20,
-    rowAdd: 20,
-    reorderHandle: 20,
-} as const;
+function getIcons(compact: boolean) {
+    return {
+        spinner: compact ? 12 : 18,
+        rowIcon: compact ? 14 : 22,
+        chevron: compact ? 12 : 20,
+        folder: compact ? 13 : 20,
+        gitBranch: compact ? 10 : 14,
+        headerAdd: compact ? 16 : 22,
+        headerCollapse: compact ? 16 : 22,
+        rowAdd: compact ? 14 : 22,
+        reorderHandle: compact ? 14 : 22,
+    };
+}
 
 function safeParseJson<T>(value: string | null): T | null {
     if (!value) return null;
@@ -226,7 +223,9 @@ async function saveWorkspaceOrder(order: string[]): Promise<void> {
     }
 }
 
-const stylesheet = StyleSheet.create((theme) => ({
+const stylesheet = StyleSheet.create((theme, runtime) => {
+    const UI_METRICS = getMetrics(Platform.OS === 'web' && runtime.screen.width >= COMPACT_WIDTH_THRESHOLD);
+    return {
     container: {
         flex: 1,
         backgroundColor: theme.colors.chrome.sidebarBackground,
@@ -417,12 +416,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         gap: 6,
     },
-    dangerActionArmed: {
-        backgroundColor: 'rgba(255, 107, 107, 0.24)',
-    },
-    dangerActionArmedHover: {
-        backgroundColor: 'rgba(255, 107, 107, 0.34)',
-    },
     badge: {
         minWidth: 18,
         height: 18,
@@ -481,7 +474,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     grandChildIndent: {
         paddingLeft: UI_METRICS.grandChildIndent,
     },
-}));
+    };
+});
 
 type Row =
     | { type: 'project'; project: Project; expanded: boolean; isVirtual?: boolean; groupStableId: string }
@@ -504,18 +498,11 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
 }) {
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const compact = useCompactLayout();
+    const UI_ICONS = getIcons(compact);
     const navigateToSession = useNavigateToSession();
 
-    const [archiveArmed, setArchiveArmed] = React.useState(false);
-    const armTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    React.useEffect(() => {
-        return () => {
-            if (armTimerRef.current) clearTimeout(armTimerRef.current);
-        };
-    }, []);
-
-    const [archivingSession, performArchive] = useHappyAction(async () => {
+    const [, performArchive] = useHappyAction(async () => {
         const result = await sessionKill(props.session.id);
         if (!result.success) {
             throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
@@ -524,7 +511,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
 
     const sessionStatus = useSessionStatus(props.session);
     const rawSessionTitle = props.session.metadata?.summary?.text?.trim() || 'Session';
-    const sessionTitle = truncateWithEllipsis(rawSessionTitle, Platform.select({ web: 44, default: 30 }) ?? 30);
+    const sessionTitle = truncateWithEllipsis(rawSessionTitle, compact ? 44 : 30);
 
     // Keep icon colors intentionally monotone. Use selection state (not session status)
     // to slightly increase contrast.
@@ -581,13 +568,26 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
         }
     }, [props.session.unread, sessionStatus.state]);
 
+    const sessionActions: RowAction[] = React.useMemo(() => [
+        {
+            key: 'archive',
+            label: t('sessionInfo.archiveSession'),
+            icon: 'archive-outline',
+            destructive: true,
+            onPress: async () => {
+                const confirmed = await Modal.confirm(
+                    t('sessionInfo.archiveSession'),
+                    t('workspaceExplorer.archiveSessionConfirm'),
+                    { destructive: true },
+                );
+                if (confirmed) performArchive();
+            },
+        },
+    ], [performArchive]);
+
     return (
         <Pressable
-            onPress={() => {
-                // If the user taps the row while the action is armed, treat it like a cancel.
-                if (archiveArmed) setArchiveArmed(false);
-                navigateToSession(props.session.id);
-            }}
+            onPress={() => navigateToSession(props.session.id)}
             style={({ hovered, pressed }: any) => [
                 styles.row,
                 props.groupChromeStyle,
@@ -622,42 +622,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
                 </Text>
             </View>
             <View style={styles.projectActions}>
-                <Pressable
-                    hitSlop={10}
-                    disabled={archivingSession}
-                    onPress={(e: any) => {
-                        e?.stopPropagation?.();
-                        if (archivingSession) return;
-
-                        if (!archiveArmed) {
-                            setArchiveArmed(true);
-                            if (armTimerRef.current) clearTimeout(armTimerRef.current);
-                            armTimerRef.current = setTimeout(() => setArchiveArmed(false), 2500);
-                            return;
-                        }
-
-                        if (armTimerRef.current) clearTimeout(armTimerRef.current);
-                        setArchiveArmed(false);
-                        performArchive();
-                    }}
-                    style={({ hovered, pressed }: any) => [
-                        styles.rowActionButton,
-                        (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                        archiveArmed && styles.dangerActionArmed,
-                        archiveArmed && (Platform.OS === 'web' && (hovered || pressed)) && styles.dangerActionArmedHover,
-                    ]}
-                    accessibilityLabel={t('sessionInfo.archiveSession')}
-                >
-                    {archivingSession ? (
-                        <ActivityIndicator size={UI_ICONS.spinner} color={theme.colors.textDestructive} />
-                    ) : (
-                        <Ionicons
-                            name="archive-outline"
-                            size={UI_ICONS.rowIcon}
-                            color={archiveArmed ? theme.colors.textDestructive : theme.colors.textSecondary}
-                        />
-                    )}
-                </Pressable>
+                <RowActionMenu actions={sessionActions} />
             </View>
         </Pressable>
     );
@@ -667,6 +632,9 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
     const bottomPaddingExtra = props?.bottomPaddingExtra ?? 0;
     const styles = stylesheet;
     const { theme } = useUnistyles();
+    const compact = useCompactLayout();
+    const UI_METRICS = getMetrics(compact);
+    const UI_ICONS = getIcons(compact);
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const pathname = usePathname();
@@ -1013,15 +981,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
         return map;
     }, [visibleProjectGroups]);
 
-    const [deleteWorkspaceArmedId, setDeleteWorkspaceArmedId] = React.useState<string | null>(null);
-    const deleteWorkspaceArmTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const [deletingWorkspaceId, setDeletingWorkspaceId] = React.useState<string | null>(null);
-
-    React.useEffect(() => {
-        return () => {
-            if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
-        };
-    }, []);
 
     const archiveSessions = React.useCallback(async (workspaceStableId: string, sessionIds: string[]) => {
         if (draggingStableIdRef.current) return;
@@ -1554,119 +1514,75 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
                                             )}
-                                            {isDirty && (
-                                                <Pressable
-                                                    hitSlop={10}
-                                                    disabled={deletingWorkspaceId === stableId}
-                                                    onPress={(e: any) => {
-                                                        e?.stopPropagation?.();
-                                                        if (deletingWorkspaceId === stableId) return;
-
-                                                        // Prefer an active root session (exact path match) when available,
-                                                        // otherwise fall back to any active session under a worktree.
+                                            <RowActionMenu actions={(() => {
+                                                const actions: RowAction[] = [
+                                                    {
+                                                        key: 'add-session',
+                                                        label: t('newSession.startNewSessionInFolder'),
+                                                        icon: 'add',
+                                                        onPress: () => {
+                                                            router.push({
+                                                                pathname: '/new',
+                                                                params: { machineId: row.project.key.machineId, path: row.project.key.path },
+                                                            });
+                                                        },
+                                                    },
+                                                ];
+                                                if (isDirty) {
+                                                    actions.push({
+                                                        key: 'review-diff',
+                                                        label: t('files.diff'),
+                                                        icon: 'file-diff',
+                                                        iconPack: 'octicons',
+                                                        onPress: () => {
+                                                            const group = groupByStableId.get(stableId);
+                                                            const rootActiveIds = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
+                                                            const worktreeActiveIds = group
+                                                                ? group.worktrees.flatMap((wt) => (wt.sessionIds || []).filter((id) => activeSessionIds.has(id)))
+                                                                : [];
+                                                            const pickPreferred = (ids: string[]) => {
+                                                                if (!ids.length) return null;
+                                                                if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
+                                                                const best = ids
+                                                                    .map((id) => sessionById.get(id))
+                                                                    .filter((s): s is Session => Boolean(s))
+                                                                    .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
+                                                                return best ?? ids[0] ?? null;
+                                                            };
+                                                            const preferred = pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
+                                                            if (preferred) router.push(`/session/${preferred}/review`);
+                                                        },
+                                                    });
+                                                }
+                                                actions.push({
+                                                    key: 'delete',
+                                                    label: t('workspaceExplorer.deleteWorkspace'),
+                                                    icon: 'trash',
+                                                    destructive: true,
+                                                    onPress: async () => {
+                                                        const confirmed = await Modal.confirm(
+                                                            t('workspaceExplorer.deleteWorkspace'),
+                                                            t('workspaceExplorer.deleteWorkspaceConfirm'),
+                                                            { destructive: true },
+                                                        );
+                                                        if (!confirmed) return;
                                                         const group = groupByStableId.get(stableId);
-                                                        const rootActiveIds = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
-
-                                                        const worktreeActiveIds = group
-                                                            ? group.worktrees.flatMap((wt) => (wt.sessionIds || []).filter((id) => activeSessionIds.has(id)))
-                                                            : [];
-
-                                                        const pickPreferred = (ids: string[]) => {
-                                                            if (!ids.length) return null;
-                                                            if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
-                                                            const best = ids
-                                                                .map((id) => sessionById.get(id))
-                                                                .filter((s): s is Session => Boolean(s))
-                                                                .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
-                                                            return best ?? ids[0] ?? null;
-                                                        };
-
-                                                        const preferred = pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
-                                                        if (!preferred) return;
-                                                        router.push(`/session/${preferred}/review`);
-                                                    }}
-                                                    style={({ hovered, pressed }: any) => [
-                                                        styles.rowActionButton,
-                                                        (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                                                    ]}
-                                                    accessibilityLabel={t('files.diff')}
-                                                >
-                                                    <Octicons name="file-diff" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
-                                                </Pressable>
-                                            )}
-                                            <Pressable
-                                                hitSlop={10}
-                                                disabled={deletingWorkspaceId === stableId}
-                                                onPress={(e: any) => {
-                                                    if (draggingStableIdRef.current) return;
-                                                    e?.stopPropagation?.();
-                                                    if (deletingWorkspaceId === stableId) return;
-
-                                                    const armed = deleteWorkspaceArmedId === stableId;
-                                                    if (!armed) {
-                                                        setDeleteWorkspaceArmedId(stableId);
-                                                        if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
-                                                        deleteWorkspaceArmTimerRef.current = setTimeout(() => {
-                                                            setDeleteWorkspaceArmedId((cur: string | null) => (cur === stableId ? null : cur));
-                                                        }, 2500);
-                                                        return;
-                                                    }
-
-                                                    if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
-                                                    setDeleteWorkspaceArmedId(null);
-                                                    const group = groupByStableId.get(stableId);
-                                                    const ids = new Set<string>();
-                                                    if (group) {
-                                                        for (const id of group.project.sessionIds || []) {
-                                                            if (activeSessionIds.has(id)) ids.add(id);
-                                                        }
-                                                        for (const wt of group.worktrees) {
-                                                            for (const id of wt.sessionIds || []) {
+                                                        const ids = new Set<string>();
+                                                        if (group) {
+                                                            for (const id of group.project.sessionIds || []) {
                                                                 if (activeSessionIds.has(id)) ids.add(id);
                                                             }
+                                                            for (const wt of group.worktrees) {
+                                                                for (const id of wt.sessionIds || []) {
+                                                                    if (activeSessionIds.has(id)) ids.add(id);
+                                                                }
+                                                            }
                                                         }
-                                                    }
-                                                    void archiveSessions(stableId, Array.from(ids));
-                                                }}
-                                                style={({ hovered, pressed }: any) => {
-                                                    const armed = deleteWorkspaceArmedId === stableId;
-                                                    return [
-                                                        styles.rowActionButton,
-                                                        (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                                                        armed && styles.dangerActionArmed,
-                                                        armed && (Platform.OS === 'web' && (hovered || pressed)) && styles.dangerActionArmedHover,
-                                                    ];
-                                                }}
-                                                accessibilityLabel="Delete workspace"
-                                            >
-                                                {deletingWorkspaceId === stableId ? (
-                                                    <ActivityIndicator size={UI_ICONS.spinner} color={theme.colors.textDestructive} />
-                                                ) : (
-                                                    <Ionicons
-                                                        name="close-outline"
-                                                        size={UI_ICONS.rowAdd}
-                                                        color={(deleteWorkspaceArmedId === stableId) ? theme.colors.textDestructive : theme.colors.textSecondary}
-                                                    />
-                                                )}
-                                            </Pressable>
-                                            <Pressable
-                                                hitSlop={10}
-                                                onPress={(e: any) => {
-                                                    if (draggingStableIdRef.current) return;
-                                                    e?.stopPropagation?.();
-                                                    router.push({
-                                                        pathname: '/new',
-                                                        params: { machineId: row.project.key.machineId, path: row.project.key.path },
-                                                    });
-                                                }}
-                                                style={({ hovered, pressed }: any) => [
-                                                    styles.rowActionButton,
-                                                    (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                                                ]}
-                                                accessibilityLabel={t('newSession.startNewSessionInFolder')}
-                                            >
-                                                <Ionicons name="add" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
-                                            </Pressable>
+                                                        void archiveSessions(stableId, Array.from(ids));
+                                                    },
+                                                });
+                                                return actions;
+                                            })()} />
                                         </View>
                                     </Pressable>
                                 </Animated.View>
@@ -1746,96 +1662,57 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
                                             )}
-                                            {isDirty && (
-                                                <Pressable
-                                                    hitSlop={10}
-                                                    disabled={deletingWorkspaceId === stableId}
-                                                    onPress={(e: any) => {
-                                                        e?.stopPropagation?.();
-                                                        if (deletingWorkspaceId === stableId) return;
-
-                                                        const allIds = row.project.sessionIds || [];
-                                                        const activeIds = allIds.filter((id) => activeSessionIds.has(id));
-                                                        const candidates = activeIds.length ? activeIds : allIds;
-                                                        if (candidates.length === 0) return;
-
-                                                        const preferred =
-                                                            selectedSessionId && candidates.includes(selectedSessionId)
-                                                                ? selectedSessionId
-                                                                : candidates[0];
-                                                        router.push(`/session/${preferred}/review`);
-                                                    }}
-                                                    style={({ hovered, pressed }: any) => [
-                                                        styles.rowActionButton,
-                                                        (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                                                    ]}
-                                                    accessibilityLabel={t('files.diff')}
-                                                >
-                                                    <Octicons name="file-diff" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
-                                                </Pressable>
-                                            )}
-                                            <Pressable
-                                                hitSlop={10}
-                                                disabled={deletingWorkspaceId === stableId}
-                                                onPress={(e: any) => {
-                                                    if (draggingStableIdRef.current) return;
-                                                    e?.stopPropagation?.();
-                                                    if (deletingWorkspaceId === stableId) return;
-
-                                                    const wtStableId = stableId;
-                                                    const armed = deleteWorkspaceArmedId === wtStableId;
-                                                    if (!armed) {
-                                                        setDeleteWorkspaceArmedId(wtStableId);
-                                                        if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
-                                                        deleteWorkspaceArmTimerRef.current = setTimeout(() => {
-                                                            setDeleteWorkspaceArmedId((cur: string | null) => (cur === wtStableId ? null : cur));
-                                                        }, 2500);
-                                                        return;
-                                                    }
-
-                                                    if (deleteWorkspaceArmTimerRef.current) clearTimeout(deleteWorkspaceArmTimerRef.current);
-                                                    setDeleteWorkspaceArmedId(null);
-                                                    const ids = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
-                                                    void archiveSessions(wtStableId, ids);
-                                                }}
-                                                style={({ hovered, pressed }: any) => {
-                                                    const armed = deleteWorkspaceArmedId === stableId;
-                                                    return [
-                                                        styles.rowActionButton,
-                                                        (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                                                        armed && styles.dangerActionArmed,
-                                                        armed && (Platform.OS === 'web' && (hovered || pressed)) && styles.dangerActionArmedHover,
-                                                    ];
-                                                }}
-                                                accessibilityLabel="Delete worktree"
-                                            >
-                                                {deletingWorkspaceId === stableId ? (
-                                                    <ActivityIndicator size={UI_ICONS.spinner} color={theme.colors.textDestructive} />
-                                                ) : (
-                                                    <Ionicons
-                                                        name="close-outline"
-                                                        size={UI_ICONS.rowAdd}
-                                                        color={(deleteWorkspaceArmedId === stableId) ? theme.colors.textDestructive : theme.colors.textSecondary}
-                                                    />
-                                                )}
-                                            </Pressable>
-                                            <Pressable
-                                                hitSlop={10}
-                                                onPress={(e: any) => {
-                                                    e?.stopPropagation?.();
-                                                    router.push({
-                                                        pathname: '/new',
-                                                        params: { machineId: row.project.key.machineId, path: row.project.key.path },
+                                            <RowActionMenu actions={(() => {
+                                                const actions: RowAction[] = [
+                                                    {
+                                                        key: 'add-session',
+                                                        label: t('newSession.startNewSessionInFolder'),
+                                                        icon: 'add',
+                                                        onPress: () => {
+                                                            router.push({
+                                                                pathname: '/new',
+                                                                params: { machineId: row.project.key.machineId, path: row.project.key.path },
+                                                            });
+                                                        },
+                                                    },
+                                                ];
+                                                if (isDirty) {
+                                                    actions.push({
+                                                        key: 'review-diff',
+                                                        label: t('files.diff'),
+                                                        icon: 'file-diff',
+                                                        iconPack: 'octicons',
+                                                        onPress: () => {
+                                                            const allIds = row.project.sessionIds || [];
+                                                            const activeIds = allIds.filter((id) => activeSessionIds.has(id));
+                                                            const candidates = activeIds.length ? activeIds : allIds;
+                                                            if (candidates.length === 0) return;
+                                                            const preferred =
+                                                                selectedSessionId && candidates.includes(selectedSessionId)
+                                                                    ? selectedSessionId
+                                                                    : candidates[0];
+                                                            router.push(`/session/${preferred}/review`);
+                                                        },
                                                     });
-                                                }}
-                                                style={({ hovered, pressed }: any) => [
-                                                    styles.rowActionButton,
-                                                    (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
-                                                ]}
-                                                accessibilityLabel={t('newSession.startNewSessionInFolder')}
-                                            >
-                                                <Ionicons name="add" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
-                                            </Pressable>
+                                                }
+                                                actions.push({
+                                                    key: 'delete',
+                                                    label: t('workspaceExplorer.deleteWorktree'),
+                                                    icon: 'trash',
+                                                    destructive: true,
+                                                    onPress: async () => {
+                                                        const confirmed = await Modal.confirm(
+                                                            t('workspaceExplorer.deleteWorktree'),
+                                                            t('workspaceExplorer.deleteWorktreeConfirm'),
+                                                            { destructive: true },
+                                                        );
+                                                        if (!confirmed) return;
+                                                        const ids = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
+                                                        void archiveSessions(stableId, ids);
+                                                    },
+                                                });
+                                                return actions;
+                                            })()} />
                                         </View>
                                     </Pressable>
                                 </Animated.View>

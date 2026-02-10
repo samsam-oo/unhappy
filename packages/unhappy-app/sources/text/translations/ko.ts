@@ -1051,4 +1051,12 @@ export const ko: TranslationStructure = {
       cancel: '취소',
     },
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: '워크스페이스 삭제',
+    deleteWorkspaceConfirm: '이 워크스페이스를 삭제하시겠습니까? 모든 세션이 보관됩니다.',
+    deleteWorktree: '워크트리 삭제',
+    deleteWorktreeConfirm: '이 워크트리를 삭제하시겠습니까? 모든 세션이 보관됩니다.',
+    archiveSessionConfirm: '이 세션을 보관하시겠습니까?',
+  },
 } as const;

@@ -1083,4 +1083,12 @@ export const ja: TranslationStructure = {
       `${name}さんと友達になりました`,
     friendAcceptedGeneric: '友達リクエストが承認されました',
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: 'ワークスペースを削除',
+    deleteWorkspaceConfirm: 'このワークスペースを削除しますか？すべてのセッションがアーカイブされます。',
+    deleteWorktree: 'ワークツリーを削除',
+    deleteWorktreeConfirm: 'このワークツリーを削除しますか？すべてのセッションがアーカイブされます。',
+    archiveSessionConfirm: 'このセッションをアーカイブしますか？',
+  },
 } as const;

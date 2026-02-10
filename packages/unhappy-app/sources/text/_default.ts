@@ -1079,6 +1079,14 @@ export const en = {
       cancel: 'Cancel',
     },
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: 'Delete workspace',
+    deleteWorkspaceConfirm: 'Are you sure you want to delete this workspace? All sessions will be archived.',
+    deleteWorktree: 'Delete worktree',
+    deleteWorktreeConfirm: 'Are you sure you want to delete this worktree? All sessions will be archived.',
+    archiveSessionConfirm: 'Are you sure you want to archive this session?',
+  },
 } as const;
 
 export type Translations = typeof en;

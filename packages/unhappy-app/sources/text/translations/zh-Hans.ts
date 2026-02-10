@@ -1048,4 +1048,12 @@ export const zhHans: TranslationStructure = {
       `您现在与 ${name} 成为了好友`,
     friendAcceptedGeneric: '好友请求已接受',
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: '删除工作区',
+    deleteWorkspaceConfirm: '确定要删除此工作区吗？所有会话将被归档。',
+    deleteWorktree: '删除工作树',
+    deleteWorktreeConfirm: '确定要删除此工作树吗？所有会话将被归档。',
+    archiveSessionConfirm: '确定要归档此会话吗？',
+  },
 } as const;

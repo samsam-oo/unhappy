@@ -63,6 +63,17 @@ export function useIsTablet(): boolean {
     return deviceType === 'tablet';
 }
 
+// Width threshold for compact layout (matches lg breakpoint)
+export const COMPACT_WIDTH_THRESHOLD = 800;
+
+// Hook to detect if a compact layout should be used based on screen width.
+// On native mobile, always returns false (touch-friendly layout).
+export function useCompactLayout(): boolean {
+    const { width } = useWindowDimensions();
+    if (Platform.OS !== 'web') return false;
+    return width >= COMPACT_WIDTH_THRESHOLD;
+}
+
 // Hook to detect landscape orientation
 export function useIsLandscape(): boolean {
     const { width, height } = useWindowDimensions();

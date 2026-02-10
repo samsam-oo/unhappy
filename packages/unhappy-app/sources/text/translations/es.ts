@@ -1100,6 +1100,14 @@ export const es: TranslationStructure = {
       cancel: 'Cancelar',
     },
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: 'Eliminar espacio de trabajo',
+    deleteWorkspaceConfirm: '¿Estás seguro de que deseas eliminar este espacio de trabajo? Todas las sesiones serán archivadas.',
+    deleteWorktree: 'Eliminar worktree',
+    deleteWorktreeConfirm: '¿Estás seguro de que deseas eliminar este worktree? Todas las sesiones serán archivadas.',
+    archiveSessionConfirm: '¿Estás seguro de que deseas archivar esta sesión?',
+  },
 } as const;
 
 export type TranslationsEs = typeof es;

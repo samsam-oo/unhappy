@@ -1050,4 +1050,12 @@ export const zhHant: TranslationStructure = {
       cancel: '取消',
     },
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: '刪除工作區',
+    deleteWorkspaceConfirm: '確定要刪除此工作區嗎？所有工作階段將被封存。',
+    deleteWorktree: '刪除工作樹',
+    deleteWorktreeConfirm: '確定要刪除此工作樹嗎？所有工作階段將被封存。',
+    archiveSessionConfirm: '確定要封存此工作階段嗎？',
+  },
 } as const;

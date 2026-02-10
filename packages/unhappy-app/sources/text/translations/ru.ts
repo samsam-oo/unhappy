@@ -1119,6 +1119,14 @@ export const ru: TranslationStructure = {
       cancel: 'Отмена',
     },
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: 'Удалить рабочее пространство',
+    deleteWorkspaceConfirm: 'Вы уверены, что хотите удалить это рабочее пространство? Все сессии будут архивированы.',
+    deleteWorktree: 'Удалить рабочее дерево',
+    deleteWorktreeConfirm: 'Вы уверены, что хотите удалить это рабочее дерево? Все сессии будут архивированы.',
+    archiveSessionConfirm: 'Вы уверены, что хотите архивировать эту сессию?',
+  },
 } as const;
 
 export type TranslationsRu = typeof ru;

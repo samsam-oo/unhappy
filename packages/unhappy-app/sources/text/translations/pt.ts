@@ -1099,6 +1099,14 @@ export const pt: TranslationStructure = {
       `Agora você é amigo de ${name}`,
     friendAcceptedGeneric: 'Pedido de amizade aceito',
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: 'Excluir espaço de trabalho',
+    deleteWorkspaceConfirm: 'Tem certeza de que deseja excluir este espaço de trabalho? Todas as sessões serão arquivadas.',
+    deleteWorktree: 'Excluir worktree',
+    deleteWorktreeConfirm: 'Tem certeza de que deseja excluir este worktree? Todas as sessões serão arquivadas.',
+    archiveSessionConfirm: 'Tem certeza de que deseja arquivar esta sessão?',
+  },
 } as const;
 
 export type TranslationsPt = typeof pt;

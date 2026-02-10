@@ -1122,6 +1122,14 @@ export const pl: TranslationStructure = {
       cancel: 'Anuluj',
     },
   },
+
+  workspaceExplorer: {
+    deleteWorkspace: 'Usuń przestrzeń roboczą',
+    deleteWorkspaceConfirm: 'Czy na pewno chcesz usunąć tę przestrzeń roboczą? Wszystkie sesje zostaną zarchiwizowane.',
+    deleteWorktree: 'Usuń worktree',
+    deleteWorktreeConfirm: 'Czy na pewno chcesz usunąć ten worktree? Wszystkie sesje zostaną zarchiwizowane.',
+    archiveSessionConfirm: 'Czy na pewno chcesz zarchiwizować tę sesję?',
+  },
 } as const;
 
 export type TranslationsPl = typeof pl;
