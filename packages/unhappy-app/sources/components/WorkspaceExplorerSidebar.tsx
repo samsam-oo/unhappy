@@ -1628,6 +1628,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                             const title = getBasename(row.project.key.path);
                             const hasGitStatus = row.project.gitStatus != null;
                             const branch = row.project.gitStatus?.branch;
+                            const isDirty = row.project.gitStatus?.isDirty === true;
                             const attentionCount = attentionCountByStableId.get(stableId) ?? 0;
                             const badgeText = formatBadgeCount(attentionCount);
                             const machineName =
@@ -1692,6 +1693,34 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                 >
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
+                                            )}
+                                            {isDirty && (
+                                                <Pressable
+                                                    hitSlop={10}
+                                                    disabled={deletingWorkspaceId === stableId}
+                                                    onPress={(e: any) => {
+                                                        e?.stopPropagation?.();
+                                                        if (deletingWorkspaceId === stableId) return;
+
+                                                        const allIds = row.project.sessionIds || [];
+                                                        const activeIds = allIds.filter((id) => activeSessionIds.has(id));
+                                                        const candidates = activeIds.length ? activeIds : allIds;
+                                                        if (candidates.length === 0) return;
+
+                                                        const preferred =
+                                                            selectedSessionId && candidates.includes(selectedSessionId)
+                                                                ? selectedSessionId
+                                                                : candidates[0];
+                                                        router.push(`/session/${preferred}/files`);
+                                                    }}
+                                                    style={({ hovered, pressed }: any) => [
+                                                        styles.rowActionButton,
+                                                        (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
+                                                    ]}
+                                                    accessibilityLabel={t('common.files')}
+                                                >
+                                                    <Octicons name="diff" size={UI_ICONS.rowAdd} color={theme.colors.textSecondary} />
+                                                </Pressable>
                                             )}
                                             <Pressable
                                                 hitSlop={10}

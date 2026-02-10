@@ -89,6 +89,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    const bashCommand =
+        toolName === 'Bash' && typeof toolInput?.command === 'string' && toolInput.command.trim().length > 0
+            ? toolInput.command.trim()
+            : null;
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
@@ -302,6 +306,41 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             color: theme.colors.textSecondary,
             lineHeight: 16,
         },
+        commandPreview: {
+            marginBottom: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 8,
+            borderRadius: Platform.select({ web: 8, default: 10 }),
+            backgroundColor: theme.colors.surfaceHighest,
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+            ...Platform.select({
+                web: {
+                    width: 'fit-content' as any,
+                    maxWidth: 360,
+                    alignSelf: 'flex-start',
+                },
+                default: {
+                    width: '100%',
+                    alignSelf: 'stretch',
+                },
+            }),
+        },
+        commandPreviewLabel: {
+            fontSize: 11,
+            color: theme.colors.textSecondary,
+            marginBottom: 4,
+            ...Platform.select({
+                ios: { fontWeight: '600' as any },
+                default: { fontWeight: '600' as any },
+            }),
+        },
+        commandPreviewText: {
+            fontSize: 12,
+            color: theme.colors.text,
+            fontFamily: 'monospace',
+            lineHeight: 16,
+        },
         optionItem: {
             backgroundColor: theme.colors.surfaceHighest,
             borderRadius: Platform.select({ web: 8, default: 10 }),
@@ -455,6 +494,14 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
         return (
             <View style={styles.container}>
+                {bashCommand ? (
+                    <View style={styles.commandPreview}>
+                        <Text style={styles.commandPreviewLabel}>Command</Text>
+                        <Text style={styles.commandPreviewText} selectable numberOfLines={4}>
+                            {bashCommand}
+                        </Text>
+                    </View>
+                ) : null}
                 <View style={styles.buttonContainer}>
                     <OptionButton
                         label={t('common.yes')}
@@ -506,6 +553,14 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     return (
         <View style={styles.container}>
+            {bashCommand ? (
+                <View style={styles.commandPreview}>
+                    <Text style={styles.commandPreviewLabel}>Command</Text>
+                    <Text style={styles.commandPreviewText} selectable numberOfLines={4}>
+                        {bashCommand}
+                    </Text>
+                </View>
+            ) : null}
             <View style={styles.buttonContainer}>
                 <OptionButton
                     label={t('common.yes')}

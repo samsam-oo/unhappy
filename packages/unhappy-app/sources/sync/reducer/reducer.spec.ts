@@ -1802,6 +1802,51 @@ describe('reducer', () => {
             expect(message?.tool?.permission?.id).toBe('tool-1');
         });
 
+        it('should backfill permission tool arguments from AgentState when existing tool message has empty input', () => {
+            const state = createReducer();
+
+            // Simulate a permission-request tool card arriving without arguments (e.g. options missing).
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: {},
+                    description: 'permission-request',
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
+
+            reducer(state, [toolMessage]);
+
+            // Later, AgentState arrives with the real arguments (this is what the UI should show).
+            const agentState: AgentState = {
+                requests: {
+                    'tool-1': {
+                        tool: 'Bash',
+                        arguments: { command: 'ls -la' },
+                        createdAt: 900
+                    }
+                }
+            };
+
+            const result = reducer(state, [], agentState);
+            expect(result.messages).toHaveLength(1);
+
+            const messageId = state.toolIdToMessageId.get('tool-1');
+            expect(messageId).toBeDefined();
+            const message = state.messages.get(messageId!);
+
+            expect(message?.tool?.permission?.status).toBe('pending');
+            expect(message?.tool?.input).toEqual({ command: 'ls -la' });
+        });
+
         it('should match permissions when tool messages are loaded AFTER AgentState', () => {
             const state = createReducer();
             

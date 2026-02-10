@@ -341,6 +341,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         console.log(`[REDUCER] Phase 0: Processing AgentState`);
     }
     if (agentState) {
+        const isEmptyInput = (input: unknown) => {
+            if (input === null || input === undefined) return true;
+            if (typeof input !== 'object') return false;
+            if (Array.isArray(input)) return input.length === 0;
+            return Object.keys(input as any).length === 0;
+        };
+
         // Process pending permission requests
         if (agentState.requests) {
             for (const [permId, request] of Object.entries(agentState.requests)) {
@@ -354,15 +361,38 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 if (existingMessageId) {
                     // Update existing tool message with permission info
                     const message = state.messages.get(existingMessageId);
-                    if (message?.tool && !message.tool.permission) {
-                        if (ENABLE_LOGGING) {
-                            console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
+                    if (message?.tool) {
+                        let didChange = false;
+
+                        if (!message.tool.permission) {
+                            if (ENABLE_LOGGING) {
+                                console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
+                            }
+                            message.tool.permission = {
+                                id: permId,
+                                status: 'pending'
+                            };
+                            didChange = true;
                         }
-                        message.tool.permission = {
-                            id: permId,
-                            status: 'pending'
-                        };
-                        changed.add(existingMessageId);
+
+                        // Backfill tool input from AgentState. This fixes a race where:
+                        // - a permission-request message is received with empty/missing tool args
+                        // - later, AgentState includes the real arguments (e.g. Bash.command)
+                        // Without this, the UI can show a permission prompt with no command.
+                        if (isEmptyInput(message.tool.input) && !isEmptyInput(request.arguments)) {
+                            message.tool.input = request.arguments;
+                            didChange = true;
+                        }
+
+                        // Keep tool name consistent with AgentState when available.
+                        if (typeof request.tool === 'string' && request.tool && message.tool.name !== request.tool) {
+                            message.tool.name = request.tool;
+                            didChange = true;
+                        }
+
+                        if (didChange) {
+                            changed.add(existingMessageId);
+                        }
                     }
                 } else {
                     if (ENABLE_LOGGING) {
