@@ -10,6 +10,7 @@ import { sessionKill } from '@/sync/ops';
 import { useAllSessions, useProjects } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
+import { gitStatusSync } from '@/sync/gitStatusSync';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
 import { useSessionStatus } from '@/utils/sessionUtils';
@@ -704,6 +705,13 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
     }, []);
 
     const [expanded, setExpanded] = React.useState<Record<string, boolean>>(initialExpanded);
+    const [menuLoading, setMenuLoading] = React.useState<Record<string, boolean>>({});
+    const mountedRef = React.useRef(true);
+    React.useEffect(() => {
+        return () => {
+            mountedRef.current = false;
+        };
+    }, []);
 
     const activeSessionIds = React.useMemo(() => new Set(sessions.map((s) => s.id)), [sessions]);
 
@@ -1568,7 +1576,42 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
                                             )}
-                                            <RowActionMenu actions={(() => {
+                                            {(() => {
+                                                const group = groupByStableId.get(stableId);
+                                                const rootActiveIds = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
+                                                const worktreeActiveIds = group
+                                                    ? group.worktrees.flatMap((wt) => (wt.sessionIds || []).filter((id) => activeSessionIds.has(id)))
+                                                    : [];
+                                                const pickPreferred = (ids: string[]) => {
+                                                    if (!ids.length) return null;
+                                                    if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
+                                                    const best = ids
+                                                        .map((id) => sessionById.get(id))
+                                                        .filter((s): s is Session => Boolean(s))
+                                                        .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
+                                                    return best ?? ids[0] ?? null;
+                                                };
+                                                const preferredReviewSessionId =
+                                                    pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
+                                                const loadingKey = `project:${stableId}`;
+                                                const isMenuLoading = menuLoading[loadingKey] === true;
+
+                                                return (
+                                            <RowActionMenu
+                                                onOpen={() => {
+                                                    if (!preferredReviewSessionId) return;
+                                                    // Ensure git status is fresh before deciding whether to show the "Changes" action.
+                                                    if (menuLoading[loadingKey]) return;
+                                                    setMenuLoading((prev) => ({ ...prev, [loadingKey]: true }));
+                                                    void gitStatusSync
+                                                        .getSync(preferredReviewSessionId)
+                                                        .invalidateAndAwait()
+                                                        .finally(() => {
+                                                            if (!mountedRef.current) return;
+                                                            setMenuLoading((prev) => ({ ...prev, [loadingKey]: false }));
+                                                        });
+                                                }}
+                                                actions={(() => {
                                                 const actions: RowAction[] = [
                                                     {
                                                         key: 'add-session',
@@ -1587,24 +1630,11 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     label: t('files.diff'),
                                                     icon: 'file-diff',
                                                     iconPack: 'octicons',
-                                                    disabled: !isDirty,
+                                                    loading: isMenuLoading,
+                                                    disabled: isMenuLoading || !isDirty || !preferredReviewSessionId,
                                                     onPress: () => {
-                                                        const group = groupByStableId.get(stableId);
-                                                        const rootActiveIds = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
-                                                        const worktreeActiveIds = group
-                                                            ? group.worktrees.flatMap((wt) => (wt.sessionIds || []).filter((id) => activeSessionIds.has(id)))
-                                                            : [];
-                                                        const pickPreferred = (ids: string[]) => {
-                                                            if (!ids.length) return null;
-                                                            if (selectedSessionId && ids.includes(selectedSessionId)) return selectedSessionId;
-                                                            const best = ids
-                                                                .map((id) => sessionById.get(id))
-                                                                .filter((s): s is Session => Boolean(s))
-                                                                .sort((a, b) => b.updatedAt - a.updatedAt)[0]?.id;
-                                                            return best ?? ids[0] ?? null;
-                                                        };
-                                                        const preferred = pickPreferred(rootActiveIds) ?? pickPreferred(worktreeActiveIds);
-                                                        if (preferred) router.push(`/session/${preferred}/review`);
+                                                        if (!preferredReviewSessionId) return;
+                                                        router.push(`/session/${preferredReviewSessionId}/review`);
                                                     },
                                                 });
                                                 actions.push({
@@ -1635,7 +1665,10 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     },
                                                 });
                                                 return actions;
-                                            })()} />
+                                            })()}
+                                            />
+                                                );
+                                            })()}
                                         </View>
                                     </Pressable>
                                 </View>
@@ -1714,7 +1747,34 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
                                             )}
-                                            <RowActionMenu actions={(() => {
+                                            {(() => {
+                                                const allIds = row.project.sessionIds || [];
+                                                const activeIds = allIds.filter((id) => activeSessionIds.has(id));
+                                                const candidates = activeIds.length ? activeIds : allIds;
+                                                const preferredReviewSessionId =
+                                                    candidates.length === 0
+                                                        ? null
+                                                        : (selectedSessionId && candidates.includes(selectedSessionId))
+                                                            ? selectedSessionId
+                                                            : candidates[0];
+                                                const loadingKey = `worktree:${stableId}`;
+                                                const isMenuLoading = menuLoading[loadingKey] === true;
+
+                                                return (
+                                            <RowActionMenu
+                                                onOpen={() => {
+                                                    if (!preferredReviewSessionId) return;
+                                                    if (menuLoading[loadingKey]) return;
+                                                    setMenuLoading((prev) => ({ ...prev, [loadingKey]: true }));
+                                                    void gitStatusSync
+                                                        .getSync(preferredReviewSessionId)
+                                                        .invalidateAndAwait()
+                                                        .finally(() => {
+                                                            if (!mountedRef.current) return;
+                                                            setMenuLoading((prev) => ({ ...prev, [loadingKey]: false }));
+                                                        });
+                                                }}
+                                                actions={(() => {
                                                 const actions: RowAction[] = [
                                                     {
                                                         key: 'add-session',
@@ -1733,17 +1793,11 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     label: t('files.diff'),
                                                     icon: 'file-diff',
                                                     iconPack: 'octicons',
-                                                    disabled: !isDirty,
+                                                    loading: isMenuLoading,
+                                                    disabled: isMenuLoading || !isDirty || !preferredReviewSessionId,
                                                     onPress: () => {
-                                                        const allIds = row.project.sessionIds || [];
-                                                        const activeIds = allIds.filter((id) => activeSessionIds.has(id));
-                                                        const candidates = activeIds.length ? activeIds : allIds;
-                                                        if (candidates.length === 0) return;
-                                                        const preferred =
-                                                            selectedSessionId && candidates.includes(selectedSessionId)
-                                                                ? selectedSessionId
-                                                                : candidates[0];
-                                                        router.push(`/session/${preferred}/review`);
+                                                        if (!preferredReviewSessionId) return;
+                                                        router.push(`/session/${preferredReviewSessionId}/review`);
                                                     },
                                                 });
                                                 actions.push({
@@ -1763,7 +1817,10 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     },
                                                 });
                                                 return actions;
-                                            })()} />
+                                            })()}
+                                            />
+                                                );
+                                            })()}
                                         </View>
                                     </Pressable>
                                 </Animated.View>

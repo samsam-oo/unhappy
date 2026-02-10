@@ -4,7 +4,7 @@ import { Ionicons, Octicons } from '@/icons/vector-icons';
 import { t } from '@/text';
 import { COMPACT_WIDTH_THRESHOLD, useCompactLayout } from '@/utils/responsive';
 import * as React from 'react';
-import { Modal, Platform, Pressable, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, TouchableWithoutFeedback, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export interface RowAction {
@@ -14,6 +14,7 @@ export interface RowAction {
     iconPack?: 'ionicons' | 'octicons';
     destructive?: boolean;
     disabled?: boolean;
+    loading?: boolean;
     onPress: () => void;
 }
 
@@ -29,7 +30,7 @@ interface RowActionMenuProps {
 const IS_WEB = Platform.OS === 'web';
 
 export const RowActionMenu = React.memo(function RowActionMenu(props: RowActionMenuProps) {
-    const { actions } = props;
+    const { actions, onOpen } = props;
     const { theme } = useUnistyles();
     const compact = useCompactLayout();
     const styles = stylesheet;
@@ -39,12 +40,12 @@ export const RowActionMenu = React.memo(function RowActionMenu(props: RowActionM
 
     const handleOpen = React.useCallback((e?: any) => {
         e?.stopPropagation?.();
-        props.onOpen?.();
+        onOpen?.();
         triggerRef.current?.measureInWindow((x, y, width, height) => {
             setAnchor({ x, y, width, height });
             setVisible(true);
         });
-    }, [props]);
+    }, [onOpen]);
 
     const handleClose = React.useCallback(() => {
         setVisible(false);
@@ -60,23 +61,29 @@ export const RowActionMenu = React.memo(function RowActionMenu(props: RowActionM
         <View style={styles.menuContainer}>
             {actions.map((action) => {
                 const IconComponent = action.iconPack === 'octicons' ? Octicons : Ionicons;
-                const color = action.disabled
+                const isDisabled = action.disabled || action.loading;
+                const color = isDisabled
                     ? theme.colors.textSecondary
                     : action.destructive ? theme.colors.textDestructive : theme.colors.text;
+                const iconSize = compact ? 15 : 18;
                 return (
                     <Pressable
                         key={action.key}
-                        onPress={() => { if (!action.disabled) handleAction(action); }}
-                        disabled={action.disabled}
+                        onPress={() => { if (!isDisabled) handleAction(action); }}
+                        disabled={isDisabled}
                         style={({ hovered, pressed }: any) => [
                             styles.menuItem,
-                            action.disabled && styles.menuItemDisabled,
-                            IS_WEB && hovered && !action.disabled && styles.menuItemHover,
-                            pressed && !action.disabled && styles.menuItemPressed,
+                            isDisabled && styles.menuItemDisabled,
+                            IS_WEB && hovered && !isDisabled && styles.menuItemHover,
+                            pressed && !isDisabled && styles.menuItemPressed,
                         ]}
                     >
-                        <IconComponent name={action.icon} size={compact ? 15 : 18} color={color} />
-                        <Text style={[styles.menuItemLabel, action.disabled && styles.menuItemLabelDisabled, action.destructive && !action.disabled && styles.menuItemLabelDestructive]}>
+                        {action.loading ? (
+                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                        ) : (
+                            <IconComponent name={action.icon} size={iconSize} color={color} />
+                        )}
+                        <Text style={[styles.menuItemLabel, isDisabled && styles.menuItemLabelDisabled, action.destructive && !isDisabled && styles.menuItemLabelDestructive]}>
                             {action.label}
                         </Text>
                     </Pressable>

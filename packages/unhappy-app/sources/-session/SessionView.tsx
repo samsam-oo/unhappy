@@ -299,6 +299,11 @@ function SessionHeaderActions(props: {
     if (isCompactPhone) {
         return (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                {/*
+                 * TODO: temporarily disabled (will re-enable later).
+                 * Open/Commit header actions
+                 */}
+                {/*
                 <HeaderIconButton
                     label={t('common.open')}
                     icon={<Ionicons name="folder-outline" size={20} color={theme.colors.header.tint} />}
@@ -309,6 +314,7 @@ function SessionHeaderActions(props: {
                     icon={<Ionicons name="git-commit-outline" size={20} color={theme.colors.header.tint} />}
                     onPress={() => props.setMenu(props.menu === 'commit' ? null : 'commit')}
                 />
+                */}
                 <HeaderIconButton
                     label={t('tabs.settings')}
                     icon={<Ionicons name="settings-outline" size={20} color={theme.colors.header.tint} />}
@@ -320,6 +326,11 @@ function SessionHeaderActions(props: {
 
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            {/*
+             * TODO: temporarily disabled (will re-enable later).
+             * Open/Commit header actions
+             */}
+            {/*
             <HeaderPillButton
                 label={t('common.open')}
                 icon={<Ionicons name="folder-outline" size={16} color={theme.colors.header.tint} />}
@@ -332,6 +343,7 @@ function SessionHeaderActions(props: {
                 expanded={props.menu === 'commit'}
                 onPress={() => props.setMenu(props.menu === 'commit' ? null : 'commit')}
             />
+            */}
 
             <HeaderIconButton
                 label={t('tabs.settings')}
