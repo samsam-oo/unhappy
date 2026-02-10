@@ -626,6 +626,37 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         setOverlayKind(null);
     }, [props.onModelModeChange]);
 
+    const permissionModeLabel = React.useMemo(() => {
+        const mode = props.permissionMode ?? 'default';
+        if (isCodex) {
+            return mode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                mode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                    mode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                        mode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : '';
+        }
+        if (isGemini) {
+            return mode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                mode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
+                    mode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
+                        mode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : '';
+        }
+        return mode === 'default' ? t('agentInput.permissionMode.default') :
+            mode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                mode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                    mode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : '';
+    }, [isCodex, isGemini, props.permissionMode]);
+
+    const permissionModeColor = React.useMemo(() => {
+        const mode = props.permissionMode ?? 'default';
+        return mode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+            mode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                mode === 'plan' ? theme.colors.permission.plan :
+                    mode === 'read-only' ? theme.colors.permission.readOnly :
+                        mode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                            mode === 'yolo' ? theme.colors.permission.yolo :
+                                theme.colors.button.secondary.tint;
+    }, [props.permissionMode, theme.colors]);
+
     const effectiveEffortLabel: string = props.effortMode ?? 'Default';
     const handleEffortPress = React.useCallback(() => {
         if (!props.onEffortModeChange) return;
@@ -979,12 +1010,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </>
                 )}
 
-                {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || props.permissionMode) && (
+                {/* Connection status and context warning */}
+                {(props.connectionStatus || contextWarning) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
+                        justifyContent: 'flex-start',
                         paddingHorizontal: 16,
                         paddingBottom: 4,
                         minHeight: 20, // Fixed minimum height to prevent jumping
@@ -1084,53 +1115,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 }}>
                                     {props.connectionStatus ? '• ' : ''}{contextWarning.text}
                                 </Text>
-                            )}
-                        </View>
-                        <View style={{
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            minWidth: 150, // Fixed minimum width to prevent layout shift
-                        }}>
-                            {props.permissionMode && (
-                                <Pressable
-                                    disabled={!props.onPermissionModeChange}
-                                    onPress={openPermissionOverlay}
-                                    hitSlop={{ top: 5, bottom: 10, left: 5, right: 5 }}
-                                    style={({ pressed, hovered }: any) => ({
-                                        opacity: props.onPermissionModeChange
-                                            ? ((Platform.OS === 'web' && (hovered || pressed)) || pressed ? 0.7 : 1)
-                                            : 1
-                                    })}
-                                >
-                                    <Text style={{
-                                        fontSize: 11,
-                                        color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-                                            props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                                props.permissionMode === 'plan' ? theme.colors.permission.plan :
-                                                    props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
-                                                        props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                                                            props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                                theme.colors.textSecondary, // Use secondary text color for default
-                                        ...Typography.default()
-                                    }}>
-                                        {isCodex ? (
-                                            props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                                                props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                                    props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                        props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
-                                        ) : isGemini ? (
-                                            props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                                                props.permissionMode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
-                                                    props.permissionMode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
-                                                        props.permissionMode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : ''
-                                        ) : (
-                                            props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
-                                                props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                                    props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                        props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
-                                        )}
-                                    </Text>
-                                </Pressable>
                             )}
                         </View>
                     </View>
@@ -1325,6 +1309,48 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={styles.actionButtonsLeft}>
+                            {/* Permission mode (YOLO / approvals) */}
+                            {props.permissionMode && (
+                                <Pressable
+                                    disabled={!props.onPermissionModeChange}
+                                    onPress={openPermissionOverlay}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    style={({ pressed, hovered }: any) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: props.onPermissionModeChange
+                                            ? ((Platform.OS === 'web' && (hovered || pressed)) || pressed ? 0.7 : 1)
+                                            : 1,
+                                        gap: 6,
+                                        flexShrink: 0,
+                                    })}
+                                >
+                                    <Ionicons
+                                        name="shield-checkmark-outline"
+                                        size={14}
+                                        color={permissionModeColor}
+                                    />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: permissionModeColor,
+                                        fontWeight: '600',
+                                        ...Typography.default('semiBold'),
+                                    }} numberOfLines={1}>
+                                        {permissionModeLabel}
+                                    </Text>
+                                    <Ionicons
+                                        name="chevron-down"
+                                        size={14}
+                                        color={permissionModeColor}
+                                    />
+                                </Pressable>
+                            )}
+
                             {/* Model */}
                             {props.onModelModeChange && (
                                 <Pressable

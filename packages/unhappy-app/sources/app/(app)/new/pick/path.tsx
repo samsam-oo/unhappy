@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, View, Text, ScrollView, Pressable } from 'react-native';
+import { ActivityIndicator, View, Text, ScrollView, Pressable, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -356,10 +356,38 @@ export default function PathPickerScreen() {
 	                                                );
 	                                            })()}
 	                                        </View>
-	                                    </View>
-	                                );
-	                            })()}
+                                    </View>
+                                );
+                            })()}
+                            headerStyle={{
+                                // Default ItemGroup header has a heavy top padding (esp. iOS) which makes this
+                                // "File Explorer" block feel top-heavy. Balance it by reducing top padding
+                                // and giving a bit more breathing room below the breadcrumbs.
+                                paddingTop: Platform.select({ ios: 18, web: 10, default: 14 }),
+                                paddingBottom: Platform.select({ ios: 12, web: 10, default: 12 }),
+                            }}
 	                        >
+	                            <Item
+	                                title="이 폴더로 선택"
+	                                subtitle={baseRoot ? pathRelativeToBase(browseAbsPath, baseRoot) : (browseAbsPath || '.')}
+	                                subtitleLines={1}
+	                                rightElement={
+	                                    <Ionicons
+	                                        name="checkmark-circle"
+	                                        size={20}
+	                                        color={theme.colors.chrome?.accent ?? theme.colors.textLink}
+	                                    />
+	                                }
+	                                disabled={!browseAbsPath}
+	                                onPress={() => {
+	                                    if (browseAbsPath) commitPathAndExit(browseAbsPath);
+	                                }}
+	                                showChevron={false}
+	                                pressableStyle={{
+	                                    backgroundColor: theme.colors.surfaceSelected,
+	                                }}
+	                            />
+
 	                            {browseError && (
 	                                <Item
 	                                    title="Unable to load folders"
@@ -426,27 +454,6 @@ export default function PathPickerScreen() {
 	                                    }}
 	                                />
 	                            ))}
-
-	                            <Item
-	                                title="이 폴더로 선택"
-	                                subtitle={baseRoot ? pathRelativeToBase(browseAbsPath, baseRoot) : (browseAbsPath || '.')}
-	                                subtitleLines={1}
-	                                rightElement={
-	                                    <Ionicons
-	                                        name="checkmark-circle"
-	                                        size={20}
-	                                        color={theme.colors.chrome?.accent ?? theme.colors.textLink}
-	                                    />
-	                                }
-	                                disabled={!browseAbsPath}
-	                                onPress={() => {
-	                                    if (browseAbsPath) commitPathAndExit(browseAbsPath);
-	                                }}
-	                                showChevron={false}
-	                                pressableStyle={{
-	                                    backgroundColor: theme.colors.surfaceSelected,
-	                                }}
-	                            />
 	                        </ItemGroup>
                     </View>
                 </ScrollView>

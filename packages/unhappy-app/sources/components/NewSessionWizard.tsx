@@ -1887,7 +1887,36 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 	                                    </View>
 	                                );
 	                            })()}
+                            headerStyle={{
+                                // Balance vertical rhythm: the default ItemGroup header is top-heavy (esp. iOS),
+                                // which makes this "File Explorer" block feel like it has extra top margin but
+                                // not enough space before the folder list.
+                                paddingTop: Platform.select({ ios: 18, web: 10, default: 14 }),
+                                paddingBottom: Platform.select({ ios: 12, web: 10, default: 12 }),
+                            }}
 	                        >
+	                            <Item
+	                                title="이 폴더로 선택"
+	                                subtitle={remotePathRelativeToRoot(browsePath, browseRoot || browsePath)}
+	                                subtitleLines={1}
+	                                rightElement={
+	                                    <Ionicons
+	                                        name="checkmark-circle"
+	                                        size={22}
+	                                        color={theme.colors.chrome?.accent ?? theme.colors.textLink}
+	                                    />
+	                                }
+	                                onPress={() => {
+	                                    setSelectedPath(browsePath);
+	                                    setShowCustomPathInput(false);
+	                                    setCurrentStep('prompt');
+	                                }}
+	                                showChevron={false}
+	                                pressableStyle={{
+	                                    backgroundColor: theme.colors.surfaceSelected,
+	                                }}
+	                            />
+
 	                            {browseError && (
 	                                <Item
 	                                    title="Unable to load folders"
@@ -1952,28 +1981,6 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 	                                    }}
 	                                />
 	                            ))}
-
-	                            <Item
-	                                title="이 폴더로 선택"
-	                                subtitle={remotePathRelativeToRoot(browsePath, browseRoot || browsePath)}
-	                                subtitleLines={1}
-	                                rightElement={
-	                                    <Ionicons
-	                                        name="checkmark-circle"
-	                                        size={22}
-	                                        color={theme.colors.chrome?.accent ?? theme.colors.textLink}
-	                                    />
-	                                }
-	                                onPress={() => {
-	                                    setSelectedPath(browsePath);
-	                                    setShowCustomPathInput(false);
-	                                    setCurrentStep('prompt');
-	                                }}
-	                                showChevron={false}
-	                                pressableStyle={{
-	                                    backgroundColor: theme.colors.surfaceSelected,
-	                                }}
-	                            />
 	                        </ItemGroup>
 
                         {/* Common Directories */}
