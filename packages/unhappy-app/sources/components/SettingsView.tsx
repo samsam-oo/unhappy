@@ -1,33 +1,30 @@
-import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
-import { Image } from 'expo-image';
-import * as React from 'react';
-import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@/icons/vector-icons';
-import Constants from 'expo-constants';
 import { useAuth } from '@/auth/AuthContext';
-import { Typography } from "@/constants/Typography";
+import { Avatar } from '@/components/Avatar';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
-import { useLocalSettingMutable, useSetting } from '@/sync/storage';
-import { sync } from '@/sync/sync';
-import { isUsingCustomServer } from '@/sync/serverConfig';
-import { trackWhatsNewClicked } from '@/track';
-import { Modal } from '@/modal';
-import { useMultiClick } from '@/hooks/useMultiClick';
-import { useAllMachines } from '@/sync/storage';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { Text } from '@/components/StyledText';
+import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useHappyAction } from '@/hooks/useHappyAction';
-import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
+import { useMultiClick } from '@/hooks/useMultiClick';
+import { Ionicons } from '@/icons/vector-icons';
+import { Modal } from '@/modal';
+import { disconnectGitHub, getGitHubOAuthParams } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
-import { useProfile } from '@/sync/storage';
-import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
-import { Avatar } from '@/components/Avatar';
+import { getAvatarUrl, getBio, getDisplayName } from '@/sync/profile';
+import { isUsingCustomServer } from '@/sync/serverConfig';
+import { useAllMachines, useLocalSettingMutable, useProfile, useSetting } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { trackWhatsNewClicked } from '@/track';
+import { isMachineOnline } from '@/utils/machineUtils';
+import Constants from 'expo-constants';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import * as React from 'react';
+import { Linking, Platform, View } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
@@ -362,7 +359,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.privacyPolicy')}
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
-                        const url = 'https://happy.engineering/privacy/';
+                        const url = 'https://unhappy.im/privacy/';
                         const supported = await Linking.canOpenURL(url);
                         if (supported) {
                             await Linking.openURL(url);

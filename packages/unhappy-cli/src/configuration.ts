@@ -33,7 +33,7 @@ class Configuration {
     // Server configuration - priority: parameter > environment > default
     this.serverUrl = process.env.UNHAPPY_SERVER_URL || 'https://api.unhappy.im';
     this.webappUrl =
-      process.env.UNHAPPY_WEBAPP_URL || 'https://app.happy.engineering';
+      process.env.UNHAPPY_WEBAPP_URL || 'https://app.unhappy.im';
 
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2);

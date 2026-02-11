@@ -95,7 +95,7 @@ unhappy gemini project get          # Show current Google Cloud Project ID
 ### Unhappy Configuration
 
 - `UNHAPPY_SERVER_URL` - Custom server URL (default: https://api.unhappy.im)
-- `UNHAPPY_WEBAPP_URL` - Custom web app URL (default: https://app.happy.engineering)
+- `UNHAPPY_WEBAPP_URL` - Custom web app URL (default: https://app.unhappy.im)
 - `UNHAPPY_HOME_DIR` - Custom home directory for Unhappy data (default: ~/.unhappy)
 - `UNHAPPY_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
 - `UNHAPPY_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)

@@ -22,10 +22,10 @@ const CO_AUTHORED_CREDITS = (() =>
     <main commit message>
 
     Generated with [Claude Code](https://claude.ai/code)
-    via [Unhappy](https://happy.engineering)
+    via [Unhappy](https://unhappy.im)
 
     Co-Authored-By: Claude <noreply@anthropic.com>
-    Co-Authored-By: Unhappy <yesreply@happy.engineering>
+    Co-Authored-By: Unhappy <yesreply@unhappy.im>
 `))();
 
 /**
