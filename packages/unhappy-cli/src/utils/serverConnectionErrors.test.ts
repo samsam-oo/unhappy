@@ -48,6 +48,7 @@ interface TestHandleConfig<T = { id: string }> {
     onNotify?: (msg: string) => void;
     onCleanup?: () => void;
     initialDelayMs?: number;
+    retryDelayMs?: number;
 }
 
 /**
@@ -65,7 +66,8 @@ function createTestHandle<T = { id: string }>(config: TestHandleConfig<T> = {}) 
         onNotify,
         onCleanup,
         healthCheck: config.healthCheck ?? (async () => { /* success */ }),
-        initialDelayMs: config.initialDelayMs ?? 1
+        initialDelayMs: config.initialDelayMs ?? 1,
+        computeRetryDelayMs: () => config.retryDelayMs ?? 10
     });
 
     return { handle, onReconnected, onNotify, onCleanup };
@@ -77,7 +79,7 @@ function createTestHandle<T = { id: string }>(config: TestHandleConfig<T> = {}) 
  */
 async function waitForReconnection(
     handle: ReturnType<typeof startOfflineReconnection>,
-    timeoutMs: number = 15000
+    timeoutMs: number = 5000
 ): Promise<boolean> {
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
@@ -168,7 +170,7 @@ describe('startOfflineReconnection', () => {
             expect(onReconnected).toHaveBeenCalledOnce();
 
             handle.cancel();
-        }, 20000);
+        }, 10000);
 
         it('should retry when onReconnected throws', async () => {
             let callCount = 0;
@@ -186,7 +188,7 @@ describe('startOfflineReconnection', () => {
             expect(onReconnected).toHaveBeenCalledTimes(2);
 
             handle.cancel();
-        }, 20000);
+        }, 10000);
 
         it('should increment failure count on each retry', async () => {
             let attemptCount = 0;
@@ -197,14 +199,13 @@ describe('startOfflineReconnection', () => {
 
             const { handle } = createTestHandle({ healthCheck });
 
-            // With real exponential backoff (5s + 10s delays with jitter),
-            // we need ~20s to reach attempt 3
-            await waitForReconnection(handle, 25000);
+            // Test delay is injected via createTestHandle(), so attempt 3 should arrive quickly.
+            await waitForReconnection(handle, 5000);
 
             expect(attemptCount).toBe(3);
 
             handle.cancel();
-        }, 30000);
+        }, 10000);
     });
 
     describe('cancellation', () => {
@@ -294,7 +295,7 @@ describe('startOfflineReconnection', () => {
             expect(handle.isReconnected()).toBe(true);
 
             handle.cancel();
-        }, 20000);
+        }, 10000);
 
         it('should retry on 503 service unavailable', async () => {
             let attemptCount = 0;
@@ -310,7 +311,7 @@ describe('startOfflineReconnection', () => {
             expect(attemptCount).toBeGreaterThanOrEqual(2);
 
             handle.cancel();
-        }, 20000);
+        }, 10000);
 
         it('should retry on non-axios network errors', async () => {
             let attemptCount = 0;
@@ -330,7 +331,7 @@ describe('startOfflineReconnection', () => {
             expect(attemptCount).toBeGreaterThanOrEqual(2);
 
             handle.cancel();
-        }, 20000);
+        }, 10000);
 
         it('should retry on ETIMEDOUT errors', async () => {
             let attemptCount = 0;
@@ -350,7 +351,7 @@ describe('startOfflineReconnection', () => {
             expect(attemptCount).toBeGreaterThanOrEqual(2);
 
             handle.cancel();
-        }, 20000);
+        }, 10000);
 
         it('should NOT stop retrying on 403 forbidden (not auth failure)', async () => {
             let attemptCount = 0;
@@ -371,7 +372,7 @@ describe('startOfflineReconnection', () => {
             expect(onNotify).toHaveBeenCalledWith('✅ Reconnected! Session syncing in background.');
 
             handle.cancel();
-        }, 20000);
+        }, 10000);
     });
 
     describe('edge cases', () => {

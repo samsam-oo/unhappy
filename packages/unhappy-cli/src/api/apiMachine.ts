@@ -401,6 +401,81 @@ export class ApiMachineClient {
     });
   }
 
+  /**
+   * Best-effort daemon state update for shutdown paths.
+   * Performs a single emitWithAck attempt with timeout and never retries forever.
+   *
+   * Returns true only when server acknowledges with success.
+   */
+  async updateDaemonStateOnce(
+    handler: (state: DaemonState | null) => DaemonState,
+    opts?: { timeoutMs?: number },
+  ): Promise<boolean> {
+    const timeoutMs = opts?.timeoutMs ?? 1500;
+
+    try {
+      const updated = handler(this.machine.daemonState);
+      const answerPromise = this.socket.emitWithAck('machine-update-state', {
+        machineId: this.machine.id,
+        daemonState: encodeBase64(
+          encrypt(
+            this.machine.encryptionKey,
+            this.machine.encryptionVariant,
+            updated,
+          ),
+        ),
+        expectedVersion: this.machine.daemonStateVersion,
+      });
+
+      const timeoutPromise = new Promise<{ result: 'timeout' }>((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve({ result: 'timeout' });
+        }, timeoutMs);
+        timeout.unref?.();
+      });
+
+      const answer: any = await Promise.race([answerPromise, timeoutPromise]);
+
+      if (!answer || answer.result === 'timeout') {
+        logger.debug('[API MACHINE] Daemon state one-shot update timed out');
+        return false;
+      }
+
+      if (answer.result === 'success') {
+        this.machine.daemonState = decrypt(
+          this.machine.encryptionKey,
+          this.machine.encryptionVariant,
+          decodeBase64(answer.daemonState),
+        );
+        this.machine.daemonStateVersion = answer.version;
+        logger.debug('[API MACHINE] Daemon state one-shot update succeeded');
+        return true;
+      }
+
+      if (answer.result === 'version-mismatch') {
+        if (answer.version > this.machine.daemonStateVersion) {
+          this.machine.daemonStateVersion = answer.version;
+          this.machine.daemonState = decrypt(
+            this.machine.encryptionKey,
+            this.machine.encryptionVariant,
+            decodeBase64(answer.daemonState),
+          );
+        }
+        logger.debug(
+          '[API MACHINE] Daemon state one-shot update got version mismatch',
+        );
+      }
+
+      return false;
+    } catch (error) {
+      logger.debug(
+        '[API MACHINE] Daemon state one-shot update failed',
+        error,
+      );
+      return false;
+    }
+  }
+
   connect() {
     const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
     logger.debug(`[API MACHINE] Connecting to ${serverUrl}`);

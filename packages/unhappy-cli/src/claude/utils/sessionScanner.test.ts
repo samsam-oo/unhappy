@@ -145,6 +145,33 @@ describe('sessionScanner', () => {
       expect(content).toContain('readme.md')
     }
   })
+
+  it('cleanup should stop watchers and ignore later file appends', async () => {
+    scanner = await createSessionScanner({
+      sessionId: null,
+      workingDirectory: testDir,
+      onMessage: (msg) => collectedMessages.push(msg)
+    })
+
+    const fixture = await readFile(join(__dirname, '__fixtures__', '0-say-lol-session.jsonl'), 'utf-8')
+    const lines = fixture.split('\n').filter(line => line.trim())
+
+    const sessionId = 'cleanup-stop-test-session'
+    const sessionFile = join(projectDir, `${sessionId}.jsonl`)
+
+    await writeFile(sessionFile, lines[0] + '\n')
+    scanner.onNewSession(sessionId)
+    await new Promise(resolve => setTimeout(resolve, 150))
+    expect(collectedMessages).toHaveLength(1)
+
+    await scanner.cleanup()
+    scanner = null
+
+    await appendFile(sessionFile, lines[1] + '\n')
+    await new Promise(resolve => setTimeout(resolve, 250))
+
+    expect(collectedMessages).toHaveLength(1)
+  })
   
   it('should not process duplicate assistant messages with same message ID', async () => {
     // Currently broken unclear if we need this or not post migrating to sdk & removeing deduplication

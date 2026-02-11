@@ -100,26 +100,41 @@ export async function startDaemon(): Promise<void> {
     source: 'unhappy-app' | 'unhappy-cli' | 'os-signal' | 'exception',
     errorMessage?: string,
   ) => void;
+  let startupFallbackExitTimer: NodeJS.Timeout | null = null;
+  let startupCompleted = false;
+  let shutdownAlreadyRequested = false;
   let resolvesWhenShutdownRequested = new Promise<{
     source: 'unhappy-app' | 'unhappy-cli' | 'os-signal' | 'exception';
     errorMessage?: string;
   }>((resolve) => {
     requestShutdown = (source, errorMessage) => {
+      if (shutdownAlreadyRequested) {
+        logger.debug(
+          '[DAEMON RUN] Shutdown already requested, ignoring duplicate request',
+        );
+        return;
+      }
+      shutdownAlreadyRequested = true;
+
       logger.debug(
         `[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`,
       );
 
-      // Fallback - in case startup malfunctions - we will force exit the process with code 1
-      setTimeout(async () => {
-        logger.debug(
-          '[DAEMON RUN] Startup malfunctioned, forcing exit with code 1',
-        );
+      // Fallback only while startup is still in progress.
+      // Once startup is complete, graceful shutdown must own process exit.
+      if (!startupCompleted) {
+        startupFallbackExitTimer = setTimeout(async () => {
+          logger.debug(
+            '[DAEMON RUN] Startup malfunctioned, forcing exit with code 1',
+          );
 
-        // Give time for logs to be flushed
-        await new Promise((resolve) => setTimeout(resolve, 100));
+          // Give time for logs to be flushed
+          await new Promise((resolve) => setTimeout(resolve, 100));
 
-        process.exit(1);
-      }, 1_000);
+          process.exit(1);
+        }, 1_000);
+        startupFallbackExitTimer.unref?.();
+      }
 
       // Start graceful shutdown
       resolve({ source, errorMessage });
@@ -1001,6 +1016,11 @@ export async function startDaemon(): Promise<void> {
         `[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`,
       );
 
+      if (startupFallbackExitTimer) {
+        clearTimeout(startupFallbackExitTimer);
+        startupFallbackExitTimer = null;
+      }
+
       // Clear health check interval
       if (restartOnStaleVersionAndHeartbeat) {
         clearInterval(restartOnStaleVersionAndHeartbeat);
@@ -1008,15 +1028,23 @@ export async function startDaemon(): Promise<void> {
       }
 
       // Update daemon state before shutting down
-      await apiMachine.updateDaemonState((state: DaemonState | null) => ({
-        ...state,
-        status: 'shutting-down',
-        shutdownRequestedAt: Date.now(),
-        shutdownSource: source,
-      }));
-
-      // Give time for metadata update to send
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      const shutdownStateUpdated = await apiMachine.updateDaemonStateOnce(
+        (state: DaemonState | null) => ({
+          ...state,
+          status: 'shutting-down',
+          shutdownRequestedAt: Date.now(),
+          shutdownSource: source,
+        }),
+        { timeoutMs: 1500 },
+      );
+      if (!shutdownStateUpdated) {
+        logger.debug(
+          '[DAEMON RUN] Failed to persist shutdown state in time, continuing shutdown',
+        );
+      } else {
+        // Give time for metadata update to send
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
 
       apiMachine.shutdown();
       await stopControlServer();
@@ -1031,6 +1059,7 @@ export async function startDaemon(): Promise<void> {
     logger.debug(
       '[DAEMON RUN] Daemon started successfully, waiting for shutdown request',
     );
+    startupCompleted = true;
 
     // Wait for shutdown request
     const shutdownRequest = await resolvesWhenShutdownRequested;

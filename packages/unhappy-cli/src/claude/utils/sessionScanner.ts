@@ -32,6 +32,7 @@ export async function createSessionScanner(opts: {
     let currentSessionId: string | null = null;
     let watchers = new Map<string, (() => void)>();
     let processedMessageKeys = new Set<string>();
+    let cleaningUp = false;
 
     // Mark existing messages as processed and start watching the initial session
     if (opts.sessionId) {
@@ -48,6 +49,9 @@ export async function createSessionScanner(opts: {
 
     // Main sync function
     const sync = new InvalidateSync(async () => {
+        if (cleaningUp) {
+            return;
+        }
         // logger.debug(`[SESSION_SCANNER] Syncing...`);
 
         // Collect session ids - include ALL sessions that have watchers
@@ -68,10 +72,16 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
+            if (cleaningUp) {
+                return;
+            }
             const sessionMessages = await readSessionLog(projectDir, session);
             let skipped = 0;
             let sent = 0;
             for (let file of sessionMessages) {
+                if (cleaningUp) {
+                    return;
+                }
                 let key = messageKey(file);
                 if (processedMessageKeys.has(key)) {
                     skipped++;
@@ -89,6 +99,9 @@ export async function createSessionScanner(opts: {
 
         // Move pending sessions to finished sessions (but keep processing them via watchers)
         for (let p of sessions) {
+            if (cleaningUp) {
+                return;
+            }
             if (pendingSessions.has(p)) {
                 pendingSessions.delete(p);
                 finishedSessions.add(p);
@@ -97,6 +110,9 @@ export async function createSessionScanner(opts: {
 
         // Update watchers for all sessions
         for (let p of sessions) {
+            if (cleaningUp) {
+                return;
+            }
             if (!watchers.has(p)) {
                 logger.debug(`[SESSION_SCANNER] Starting watcher for session: ${p}`);
                 watchers.set(p, startFileWatcher(join(projectDir, `${p}.jsonl`), () => { sync.invalidate(); }));
@@ -111,15 +127,20 @@ export async function createSessionScanner(opts: {
     // Public interface
     return {
         cleanup: async () => {
+            cleaningUp = true;
             clearInterval(intervalId);
+            // Drain any in-flight sync so it observes `cleaningUp` and stops creating watchers.
+            await sync.invalidateAndAwait();
+            sync.stop();
             for (let w of watchers.values()) {
                 w();
             }
             watchers.clear();
-            await sync.invalidateAndAwait();
-            sync.stop();
         },
         onNewSession: (sessionId: string) => {
+            if (cleaningUp) {
+                return;
+            }
             if (currentSessionId === sessionId) {
                 logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
                 return;

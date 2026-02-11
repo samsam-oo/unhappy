@@ -47,6 +47,9 @@ function getSessionLogPath(): string {
 
 class Logger {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
+  private remoteLogRequestsInFlight = 0
+  private static readonly REMOTE_LOG_TIMEOUT_MS = 1_500
+  private static readonly REMOTE_LOG_MAX_IN_FLIGHT = 8
 
   constructor(
     public readonly logFilePath = getSessionLogPath()
@@ -180,11 +183,21 @@ class Logger {
 
   private async sendToRemoteServer(level: string, message: string, ...args: unknown[]): Promise<void> {
     if (!this.dangerouslyUnencryptedServerLoggingUrl) return
+    if (this.remoteLogRequestsInFlight >= Logger.REMOTE_LOG_MAX_IN_FLIGHT) {
+      return
+    }
+    this.remoteLogRequestsInFlight += 1
+    const abortController = new AbortController()
+    const timeout = setTimeout(() => {
+      abortController.abort()
+    }, Logger.REMOTE_LOG_TIMEOUT_MS)
+    timeout.unref?.()
     
     try {
       await fetch(this.dangerouslyUnencryptedServerLoggingUrl + '/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           level,
@@ -197,6 +210,9 @@ class Logger {
       })
     } catch (error) {
       // Silently fail to avoid disrupting the session
+    } finally {
+      clearTimeout(timeout)
+      this.remoteLogRequestsInFlight = Math.max(0, this.remoteLogRequestsInFlight - 1)
     }
   }
 
