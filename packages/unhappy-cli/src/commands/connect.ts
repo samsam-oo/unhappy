@@ -76,7 +76,7 @@ ${chalk.bold('Examples:')}
 ${chalk.bold('Notes:')} 
   • You must be authenticated with Unhappy first (run 'happy auth login')
   • API keys are encrypted and stored securely in Unhappy cloud
-  • You can manage your stored keys at app.happy.engineering
+  • You can manage your stored keys at app.unhappy.im
 `);
 }
 

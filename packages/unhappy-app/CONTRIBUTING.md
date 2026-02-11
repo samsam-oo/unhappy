@@ -192,7 +192,7 @@ This controls:
 
 Only **production** variant has deep linking configured:
 
-- **Production**: `https://app.happy.engineering/*`
+- **Production**: `https://app.unhappy.im/*`
 - **Development**: No deep linking
 - **Preview**: No deep linking
 

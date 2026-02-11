@@ -302,7 +302,7 @@ export async function runDoctorCommand(
     console.log(
       `Report issues: ${chalk.blue('https://github.com/samsam-oo/unhappy-cli/issues')}`,
     );
-    console.log(`Documentation: ${chalk.blue('https://happy.engineering/')}`);
+    console.log(`Documentation: ${chalk.blue('https://unhappy.im/')}`);
   }
 
   console.log(chalk.green('\n✅ Doctor diagnosis complete!\n'));
