@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { emitReadyIfIdle } from '../runCodex';
+import { emitReadyIfIdle, resolveCodexTurnEffort } from '../runCodex';
 
 describe('emitReadyIfIdle', () => {
     it('emits ready and notification when queue is idle', () => {
@@ -59,5 +59,23 @@ describe('emitReadyIfIdle', () => {
 
         expect(emitted).toBe(false);
         expect(sendReady).not.toHaveBeenCalled();
+    });
+});
+
+describe('resolveCodexTurnEffort', () => {
+    it('maps explicit effort levels to codex app-server values', () => {
+        expect(resolveCodexTurnEffort({ effort: 'low' })).toBe('low');
+        expect(resolveCodexTurnEffort({ effort: 'medium' })).toBe('medium');
+        expect(resolveCodexTurnEffort({ effort: 'high' })).toBe('high');
+        expect(resolveCodexTurnEffort({ effort: 'max' })).toBe('xhigh');
+    });
+
+    it('returns null when UI explicitly resets effort to Auto', () => {
+        expect(resolveCodexTurnEffort({ effortResetToDefault: true })).toBeNull();
+        expect(resolveCodexTurnEffort({ effort: 'high', effortResetToDefault: true })).toBeNull();
+    });
+
+    it('returns undefined when there is no explicit override', () => {
+        expect(resolveCodexTurnEffort({})).toBeUndefined();
     });
 });

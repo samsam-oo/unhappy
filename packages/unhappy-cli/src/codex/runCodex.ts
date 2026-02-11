@@ -44,6 +44,36 @@ type ReadyEventOptions = {
   notify?: () => void;
 };
 
+export type ReasoningEffortMode = 'low' | 'medium' | 'high' | 'max';
+
+type CodexTurnEffortOverride =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | null
+  | undefined;
+
+export function resolveCodexTurnEffort(mode: {
+  effort?: ReasoningEffortMode;
+  effortResetToDefault?: boolean;
+}): CodexTurnEffortOverride {
+  if (mode.effortResetToDefault) {
+    // Explicitly reset app-server thread effort back to provider default.
+    return null;
+  }
+  switch (mode.effort) {
+    case 'low':
+    case 'medium':
+    case 'high':
+      return mode.effort;
+    case 'max':
+      return 'xhigh';
+    default:
+      return undefined;
+  }
+}
+
 /**
  * Notify connected clients when Codex finishes processing and the queue is idle.
  * Returns true when a ready event was emitted.
@@ -154,11 +184,11 @@ export async function runCodex(opts: {
 }): Promise<void> {
   // Use shared PermissionMode type for cross-agent compatibility
   type PermissionMode = import('@/api/types').PermissionMode;
-  type ReasoningEffortMode = 'low' | 'medium' | 'high' | 'max';
   interface EnhancedMode {
     permissionMode: PermissionMode;
     model?: string;
     effort?: ReasoningEffortMode;
+    effortResetToDefault?: boolean;
   }
 
   //
@@ -258,6 +288,7 @@ export async function runCodex(opts: {
       permissionMode: mode.permissionMode,
       model: mode.model,
       effort: mode.effort,
+      effortResetToDefault: mode.effortResetToDefault,
     }),
   );
 
@@ -309,8 +340,10 @@ export async function runCodex(opts: {
 
     // Resolve reasoning effort; explicit null resets to default (undefined)
     let messageEffort = currentEffort;
+    let messageEffortResetToDefault = false;
     if (message.meta?.hasOwnProperty('effort')) {
       const raw = message.meta.effort;
+      messageEffortResetToDefault = raw === null;
       const normalized =
         raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max'
           ? (raw as ReasoningEffortMode)
@@ -318,7 +351,11 @@ export async function runCodex(opts: {
       messageEffort = normalized;
       currentEffort = messageEffort;
       logger.debug(
-        `[Codex] Effort updated from user message: ${messageEffort || 'reset to default'}`,
+        `[Codex] Effort updated from user message: ${
+          messageEffortResetToDefault
+            ? 'reset to default (explicit null)'
+            : messageEffort || 'reset to default'
+        }`,
       );
     } else {
       logger.debug(
@@ -352,6 +389,7 @@ export async function runCodex(opts: {
       permissionMode: messagePermissionMode || 'default',
       model: messageModel,
       effort: messageEffort,
+      effortResetToDefault: messageEffortResetToDefault,
     };
     messageQueue.push(message.content.text, enhancedMode);
   });
@@ -1246,18 +1284,7 @@ export async function runCodex(opts: {
               return 'workspace-write' as const; // Safe default
           }
         })();
-        const codexReasoningEffort = (() => {
-          switch (message.mode.effort) {
-            case 'low':
-            case 'medium':
-            case 'high':
-              return message.mode.effort;
-            case 'max':
-              return 'xhigh';
-            default:
-              return undefined;
-          }
-        })();
+        const codexReasoningEffort = resolveCodexTurnEffort(message.mode);
 
         if (!wasCreated) {
           const startConfig: CodexSessionConfig = {
@@ -1291,7 +1318,7 @@ export async function runCodex(opts: {
             'approval-policy': approvalPolicy,
             config: {
               mcp_servers: mcpServers,
-              ...(codexReasoningEffort
+              ...(codexReasoningEffort !== undefined
                 ? { model_reasoning_effort: codexReasoningEffort }
                 : {}),
             },
