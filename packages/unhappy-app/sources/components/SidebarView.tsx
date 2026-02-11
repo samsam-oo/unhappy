@@ -192,7 +192,7 @@ export const SidebarView = React.memo(() => {
     const { width: windowWidth } = useWindowDimensions();
     const sidebarWidth = Math.min(Math.max(Math.floor(windowWidth * 0.26), 240), 320);
     // Keep the title in flow when the header is tight to avoid overlap with right-side icons.
-    const shouldLeftJustify = settings.experiments || sidebarWidth < 300;
+    const shouldLeftJustify = sidebarWidth < 300;
     const actionIconSize = Platform.select({ web: 20, default: 28 });
     const actionImageSize = Platform.select({ web: 20, default: 32 });
     const showFab = Platform.OS !== 'web' && !isRunningOnMac();
@@ -245,19 +245,6 @@ export const SidebarView = React.memo(() => {
 
                     {/* Navigation icons */}
                     <View style={styles.rightContainer}>
-                        {settings.experiments && (
-                            <Pressable
-                                onPress={() => router.push('/(app)/zen')}
-                                hitSlop={15}
-                            >
-                                <Image
-                                    source={require('@/assets/images/brutalist/Brutalism 3.png')}
-                                    contentFit="contain"
-                                    style={[{ width: actionImageSize, height: actionImageSize }]}
-                                    tintColor={theme.colors.header.tint}
-                                />
-                            </Pressable>
-                        )}
                         {ENABLE_INBOX && (
                             <Pressable
                                 onPress={() => router.push('/(app)/inbox')}
@@ -286,12 +273,7 @@ export const SidebarView = React.memo(() => {
                             onPress={() => router.push('/settings')}
                             hitSlop={15}
                         >
-                            <Image
-                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
-                                contentFit="contain"
-                                style={[{ width: actionImageSize, height: actionImageSize }]}
-                                tintColor={theme.colors.header.tint}
-                            />
+                            <Ionicons name="settings-outline" size={actionIconSize} color={theme.colors.header.tint} />
                         </Pressable>
                         <Pressable
                             onPress={handleNewSession}

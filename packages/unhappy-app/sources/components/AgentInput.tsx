@@ -1617,16 +1617,18 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
 }
 
 function EffortBatteryIcon(props: { effort: ReasoningEffortMode | null; color: string }) {
+    if (props.effort == null) {
+        return <Ionicons name="sparkles" size={16} color={props.color} />;
+    }
+
     const filled =
-        props.effort == null
-            ? 0
-            : props.effort === 'low'
-                ? 1
-                : props.effort === 'medium'
-                    ? 2
-                    : props.effort === 'high'
-                        ? 3
-                        : 4;
+        props.effort === 'low'
+            ? 1
+            : props.effort === 'medium'
+                ? 2
+                : props.effort === 'high'
+                    ? 3
+                    : 4;
     const dim = (idx: number) => idx >= filled;
     const barStyle = (idx: number) => ({
         flex: 1,
@@ -1662,7 +1664,6 @@ function EffortBatteryIcon(props: { effort: ReasoningEffortMode | null; color: s
                     marginLeft: 1.5,
                     borderRadius: 1,
                     backgroundColor: props.color,
-                    opacity: props.effort == null ? 0.25 : 1,
                 }}
             />
         </View>
