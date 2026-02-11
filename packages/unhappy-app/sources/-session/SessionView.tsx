@@ -669,7 +669,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         position: 'absolute',
                         top: 8, // Position at top of content area (padding handled by parent)
                         alignSelf: 'center',
-                        backgroundColor: '#FFF3CD',
+                        backgroundColor: theme.colors.box.warning.background,
+                        borderWidth: 1,
+                        borderColor: theme.colors.box.warning.border,
                         borderRadius: 100, // Fully rounded pill
                         paddingHorizontal: 14,
                         paddingVertical: 7,
@@ -683,15 +685,15 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         elevation: 4,
                     }}
                 >
-                    <Ionicons name="warning-outline" size={14} color="#FF9500" style={{ marginRight: 6 }} />
+                    <Ionicons name="warning-outline" size={14} color={theme.colors.box.warning.text} style={{ marginRight: 6 }} />
                     <Text style={{
                         fontSize: 12,
-                        color: '#856404',
+                        color: theme.colors.box.warning.text,
                         fontWeight: '600'
                     }}>
                         {t('sessionInfo.cliVersionOutdated')}
                     </Text>
-                    <Ionicons name="close" size={14} color="#856404" style={{ marginLeft: 8 }} />
+                    <Ionicons name="close" size={14} color={theme.colors.box.warning.text} style={{ marginLeft: 8 }} />
                 </Pressable>
             )}
 
@@ -716,7 +718,9 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                             width: 44,
                             height: 44,
                             borderRadius: 22,
-                            backgroundColor: `rgba(${theme.dark ? '28, 23, 28' : '255, 255, 255'}, 0.9)`,
+                            backgroundColor: theme.dark ? 'rgba(20, 21, 22, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+                            borderWidth: 1,
+                            borderColor: theme.colors.divider,
                             alignItems: 'center',
                             justifyContent: 'center',
                             ...Platform.select({
@@ -736,7 +740,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                         <Ionicons
                             name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
                             size={Platform.select({ ios: 28, default: 24 })}
-                            color="#000"
+                            color={theme.colors.text}
                         />
                     </Pressable>
                 )

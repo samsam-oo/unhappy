@@ -260,13 +260,13 @@ export const darkTheme = {
         //
 
         // Dark theme: light text on near-black surfaces (web).
-        text: Platform.select({ web: '#D4D4D4', default: '#ffffff' }),
-        textDestructive: Platform.select({ ios: '#FF453A', default: '#F48FB1' }),
-        textSecondary: Platform.select({ ios: '#8E8E93', web: '#9D9D9D', default: '#CAC4D0' }),
+        text: '#D4D4D4',
+        textDestructive: '#FF453A',
+        textSecondary: '#9D9D9D',
         textLink: '#2BACCC',
         deleteAction: '#FF6B6B', // Delete/remove button color (same in both themes)
         warningCritical: '#FF453A',
-        warning: Platform.select({ web: '#9D9D9D', default: '#8E8E93' }),
+        warning: '#9D9D9D',
         success: '#32D74B',
         // PC-first dark palette: keep mobile aligned with web/desktop.
         // Base: near-black with subtle surface steps (VS Code-ish).
@@ -274,7 +274,7 @@ export const darkTheme = {
         surfaceRipple: 'rgba(255, 255, 255, 0.08)',
         surfacePressed: '#17181A',
         surfaceSelected: '#1B1C1E',
-        surfacePressedOverlay: Platform.select({ ios: '#2C2C2E', default: 'transparent' }),
+        surfacePressedOverlay: 'rgba(255, 255, 255, 0.06)',
         // iOS dark theme is #1c1c1e for items, and #000 for the background
         surfaceHigh: '#141516',
         surfaceHighest: '#1B1C1E',
@@ -312,8 +312,8 @@ export const darkTheme = {
         },
         groupped: {
             background: '#0B0B0C',
-            chevron: Platform.select({ ios: '#48484A', web: '#9D9D9D', default: '#CAC4D0' }),
-            sectionTitle: Platform.select({ ios: '#8E8E93', web: '#9D9D9D', default: '#CAC4D0' }),
+            chevron: '#9D9D9D',
+            sectionTitle: '#9D9D9D',
         },
         fab: {
             background: '#FFFFFF',
@@ -330,7 +330,7 @@ export const darkTheme = {
         },
         button: {
             primary: {
-                background: Platform.select({ web: '#0E639C', default: '#000000' }), // Desktop-ish blue on web
+                background: '#0E639C',
                 tint: '#FFFFFF',
                 disabled: '#C0C0C0',
             },
@@ -340,8 +340,8 @@ export const darkTheme = {
         },
         input: {
             background: '#141516',
-            text: Platform.select({ web: '#D4D4D4', default: '#FFFFFF' }),
-            placeholder: Platform.select({ web: '#9D9D9D', default: '#8E8E93' }),
+            text: '#D4D4D4',
+            placeholder: '#9D9D9D',
         },
         box: {
             warning: {
@@ -433,7 +433,7 @@ export const darkTheme = {
         },
 
         // Message View colors
-        userMessageBackground: Platform.select({ web: '#141516', default: '#2C2C2E' }),
+        userMessageBackground: '#141516',
         userMessageText: '#FFFFFF',
         agentMessageText: '#FFFFFF',
         agentEventText: '#8E8E93',

@@ -11,8 +11,10 @@ import { trackFriendsConnect } from '@/track';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { useSearch } from '@/hooks/useSearch';
+import { useUnistyles } from 'react-native-unistyles';
 
 export default function SearchFriendsScreen() {
+    const { theme } = useUnistyles();
     const { credentials } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [processingUserId, setProcessingUserId] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export default function SearchFriendsScreen() {
                         <TextInput
                             style={styles.searchInput}
                             placeholder={t('friends.searchPlaceholder')}
-                            placeholderTextColor="#999999"
+                            placeholderTextColor={theme.colors.input.placeholder}
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             autoCapitalize="none"
@@ -95,7 +97,7 @@ export default function SearchFriendsScreen() {
                         
                         {isSearching && (
                             <View style={styles.searchingIndicator}>
-                                <ActivityIndicator size="small" color="#2BACCC" />
+                                <ActivityIndicator size="small" color={theme.colors.textLink} />
                             </View>
                         )}
                     </View>
@@ -107,7 +109,7 @@ export default function SearchFriendsScreen() {
                     <View style={styles.resultsSection}>
                         {isSearching && searchResults.length === 0 ? (
                             <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#2BACCC" />
+                                <ActivityIndicator size="large" color={theme.colors.textLink} />
                                 <Text style={styles.loadingText}>{t('friends.searching')}</Text>
                             </View>
                         ) : searchResults.length > 0 ? (
