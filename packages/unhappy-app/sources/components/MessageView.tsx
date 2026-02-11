@@ -140,7 +140,6 @@ function AgentTextBlock(props: {
           metadata={props.metadata}
           messages={[]}
           variant="chat"
-          onPress={() => { }}
         />
       </View>
     );

@@ -125,6 +125,12 @@ function parseShellResult(result: unknown): { stdout: string | null; stderr: str
 }
 
 function extractReasoningPreview(result: unknown): string | null {
+    const truncatePreview = (text: string): string => (
+        text.length > MAX_REASONING_PREVIEW_CHARS
+            ? `${text.slice(0, MAX_REASONING_PREVIEW_CHARS)}\n...`
+            : text
+    );
+
     if (result === null || result === undefined) {
         return null;
     }
@@ -137,9 +143,7 @@ function extractReasoningPreview(result: unknown): string | null {
             toPreviewText(obj.message) ??
             toPreviewText(obj.reasoning);
         if (fromObject && fromObject.trim()) {
-            return fromObject.length > MAX_REASONING_PREVIEW_CHARS
-                ? `${fromObject.slice(0, MAX_REASONING_PREVIEW_CHARS)}\n...`
-                : fromObject;
+            return truncatePreview(fromObject);
         }
     }
 
@@ -148,9 +152,7 @@ function extractReasoningPreview(result: unknown): string | null {
         return null;
     }
 
-    return direct.length > MAX_REASONING_PREVIEW_CHARS
-        ? `${direct.slice(0, MAX_REASONING_PREVIEW_CHARS)}\n...`
-        : direct;
+    return truncatePreview(direct);
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
@@ -386,7 +388,8 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
         // For command tools: tap toggles collapse, long-press opens full tool details.
         const onChatPress = canToggleCollapse ? toggleCollapse : handlePress;
-        const onChatLongPress = canToggleCollapse ? handlePress : undefined;
+        const onChatLongPress = canToggleCollapse && isPressable ? handlePress : undefined;
+        const isChatInteractive = isPressable || canToggleCollapse;
 
         const collapsedErrorLine =
             tool.state === 'error' && tool.result
@@ -395,7 +398,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
         return (
             <View style={styles.chatContainer}>
-                {isPressable ? (
+                {isChatInteractive ? (
                     <TouchableOpacity
                         style={styles.chatPressable}
                         onPress={onChatPress}
@@ -413,7 +416,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </View>
                             )}
                             <View style={styles.chatHeaderRight}>
-                                {statusIcon}
                                 {canToggleCollapse ? (
                                     <Ionicons
                                         name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -421,6 +423,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                         color={theme.colors.textSecondary}
                                     />
                                 ) : null}
+                                {statusIcon}
                             </View>
                         </View>
                         {collapsedErrorLine && !expanded ? (
@@ -443,7 +446,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </View>
                             )}
                             <View style={styles.chatHeaderRight}>
-                                {statusIcon}
                                 {canToggleCollapse ? (
                                     <Ionicons
                                         name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -451,6 +453,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                         color={theme.colors.textSecondary}
                                     />
                                 ) : null}
+                                {statusIcon}
                             </View>
                         </View>
                         {collapsedErrorLine && !expanded ? (
@@ -644,7 +647,6 @@ const styles = StyleSheet.create((theme) => ({
 	        flexDirection: 'row',
 	        alignItems: 'center',
 	        gap: 8,
-            width: '100%',
 	    },
     chatHeaderLeft: {
         flexDirection: 'row',
@@ -657,7 +659,6 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        marginLeft: 'auto',
     },
     chatIconDot: {
         width: 6,
