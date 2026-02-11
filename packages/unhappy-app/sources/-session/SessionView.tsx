@@ -637,7 +637,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-            onFileViewerPress={() => router.push({ pathname: '/session/[id]/files', params: { id: sessionId } })}
+            onFileViewerPress={() => router.push({ pathname: '/session/[id]/review', params: { id: sessionId } })}
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
