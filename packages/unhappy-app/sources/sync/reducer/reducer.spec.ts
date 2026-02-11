@@ -1492,6 +1492,103 @@ describe('reducer', () => {
             expect(toolMsg?.tool?.result).toBe('First result');
         });
 
+        it('should append streaming tool output without completing the tool', () => {
+            const state = createReducer();
+
+            const toolCall: NormalizedMessage = {
+                id: 'msg-tool',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-stream',
+                    name: 'Bash',
+                    input: { command: 'long-running-command' },
+                    description: null,
+                    uuid: 'tool-stream-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            reducer(state, [toolCall]);
+
+            const streamChunk1: NormalizedMessage = {
+                id: 'msg-stream-1',
+                localId: null,
+                createdAt: 1100,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'tool-stream',
+                    content: 'line 1\n',
+                    is_error: false,
+                    is_stream: true,
+                    uuid: 'stream-uuid-1',
+                    parentUUID: null
+                }]
+            };
+
+            const streamResult1 = reducer(state, [streamChunk1]);
+            expect(streamResult1.messages).toHaveLength(1);
+            if (streamResult1.messages[0].kind === 'tool-call') {
+                expect(streamResult1.messages[0].tool.state).toBe('running');
+                expect(streamResult1.messages[0].tool.result).toBe('line 1\n');
+                expect(streamResult1.messages[0].tool.completedAt).toBeNull();
+            }
+
+            const streamChunk2: NormalizedMessage = {
+                id: 'msg-stream-2',
+                localId: null,
+                createdAt: 1200,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'tool-stream',
+                    content: 'line 2\n',
+                    is_error: false,
+                    is_stream: true,
+                    uuid: 'stream-uuid-2',
+                    parentUUID: null
+                }]
+            };
+
+            const streamResult2 = reducer(state, [streamChunk2]);
+            expect(streamResult2.messages).toHaveLength(1);
+            if (streamResult2.messages[0].kind === 'tool-call') {
+                expect(streamResult2.messages[0].tool.state).toBe('running');
+                expect(streamResult2.messages[0].tool.result).toBe('line 1\nline 2\n');
+                expect(streamResult2.messages[0].tool.completedAt).toBeNull();
+            }
+
+            const finalResult: NormalizedMessage = {
+                id: 'msg-final',
+                localId: null,
+                createdAt: 1300,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'tool-stream',
+                    content: 'final output',
+                    is_error: false,
+                    uuid: 'stream-final-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            const completed = reducer(state, [finalResult]);
+            expect(completed.messages).toHaveLength(1);
+            if (completed.messages[0].kind === 'tool-call') {
+                expect(completed.messages[0].tool.state).toBe('completed');
+                expect(completed.messages[0].tool.result).toBe('final output');
+                expect(completed.messages[0].tool.completedAt).toBe(1300);
+            }
+        });
+
         it('should handle permission updates after tool execution started', () => {
             const state = createReducer();
             

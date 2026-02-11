@@ -7,7 +7,7 @@ import { Metadata } from '@/sync/storageTypes';
 import { getToolFullViewComponent } from './views/_all';
 import { layout } from '../layout';
 import { useLocalSetting } from '@/sync/storage';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 
 interface ToolFullViewProps {
@@ -21,6 +21,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
     const devModeEnabled = (useLocalSetting('devModeEnabled') || __DEV__);
+    const { theme } = useUnistyles();
     const isEditorLikeFullView =
         SpecializedFullView &&
         (tool.name === 'CodexDiff' || tool.name === 'GeminiDiff' || tool.name === 'CodexPatch' || tool.name === 'GeminiPatch');
@@ -53,7 +54,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                     {tool.description && (
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
-                                <Ionicons name="information-circle" size={20} color="#5856D6" />
+                                <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.description')}</Text>
                             </View>
                             <Text style={styles.description}>{tool.description}</Text>
@@ -63,7 +64,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                     {tool.input && (
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
-                                <Ionicons name="log-in" size={20} color="#5856D6" />
+                                <Ionicons name="arrow-forward-circle-outline" size={16} color={theme.colors.textSecondary} />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.inputParams')}</Text>
                             </View>
                             <CodeView code={JSON.stringify(tool.input, null, 2)} />
@@ -74,7 +75,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                     {tool.state === 'completed' && tool.result && (
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
-                                <Ionicons name="log-out" size={20} color="#34C759" />
+                                <Ionicons name="arrow-back-circle-outline" size={16} color={theme.colors.success} />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.output')}</Text>
                             </View>
                             <CodeView
@@ -87,7 +88,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                     {tool.state === 'error' && tool.result && (
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
-                                <Ionicons name="close-circle" size={20} color="#FF3B30" />
+                                <Ionicons name="alert-circle-outline" size={16} color={theme.colors.box.error.text} />
                                 <Text style={styles.sectionTitle}>{t('tools.fullView.error')}</Text>
                             </View>
                             <View style={styles.errorContainer}>
@@ -114,7 +115,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                 {devModeEnabled && (
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
-                            <Ionicons name="code-slash" size={20} color="#FF9500" />
+                            <Ionicons name="code-slash-outline" size={16} color={theme.colors.textSecondary} />
                             <Text style={styles.sectionTitle}>{t('tools.fullView.rawJsonDevMode')}</Text>
                         </View>
                         <CodeView 
@@ -142,10 +143,11 @@ const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         backgroundColor: theme.colors.surface,
-        paddingTop: 12,
+        paddingTop: 16,
     },
     scrollContent: {
         flexGrow: 1,
+        paddingBottom: 40,
     },
     contentWrapper: {
         maxWidth: layout.maxWidth,
@@ -161,11 +163,11 @@ const styles = StyleSheet.create((theme) => ({
         alignSelf: 'stretch',
     },
     section: {
-        marginBottom: 28,
+        marginBottom: 24,
         paddingHorizontal: 4,
     },
     sectionFullWidth: {
-        marginBottom: 28,
+        marginBottom: 24,
         paddingHorizontal: 0,
     },
     sectionHeader: {
@@ -175,14 +177,20 @@ const styles = StyleSheet.create((theme) => ({
         gap: 8,
     },
     sectionTitle: {
-        fontSize: 17,
+        fontSize: 14,
         fontWeight: '600',
-        color: theme.colors.text,
+        color: theme.colors.textSecondary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     description: {
         fontSize: 14,
-        lineHeight: 20,
-        color: theme.colors.textSecondary,
+        lineHeight: 22,
+        color: theme.colors.text,
+        backgroundColor: theme.colors.surfaceHigh,
+        borderRadius: 10,
+        padding: 14,
+        overflow: 'hidden',
     },
     toolId: {
         fontSize: 12,
@@ -191,7 +199,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     errorContainer: {
         backgroundColor: theme.colors.box.error.background,
-        borderRadius: 8,
+        borderRadius: 12,
         padding: 16,
         borderWidth: 1,
         borderColor: theme.colors.box.error.border,
@@ -199,17 +207,22 @@ const styles = StyleSheet.create((theme) => ({
     errorText: {
         fontSize: 14,
         color: theme.colors.box.error.text,
-        lineHeight: 20,
+        lineHeight: 22,
     },
     emptyOutputContainer: {
         alignItems: 'center',
-        paddingVertical: 48,
-        gap: 12,
+        paddingVertical: 40,
+        paddingHorizontal: 24,
+        gap: 8,
+        backgroundColor: theme.dark ? 'rgba(52,199,89,0.06)' : 'rgba(52,199,89,0.04)',
+        borderRadius: 16,
+        marginHorizontal: 4,
     },
     emptyOutputText: {
         fontSize: 16,
         fontWeight: '600',
         color: theme.colors.text,
+        marginTop: 4,
     },
     emptyOutputSubtext: {
         fontSize: 14,

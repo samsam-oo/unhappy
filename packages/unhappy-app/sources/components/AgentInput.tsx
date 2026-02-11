@@ -326,7 +326,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     actionButtonsLeft: {
         flexDirection: 'row',
-        flexWrap: Platform.select({ web: 'nowrap' as const, default: 'wrap' as const }),
+        flexWrap: Platform.select({ web: 'nowrap' as const, default: 'wrap-reverse' as const }),
         gap: 4,
         flex: 1,
         overflow: 'hidden',

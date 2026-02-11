@@ -108,6 +108,41 @@ function isCodexToolResponseError(resp: any): boolean {
   return false;
 }
 
+function isExecOutputStreamEvent(msg: any): boolean {
+  const type = typeof msg?.type === 'string' ? msg.type : '';
+  if (!type) return false;
+  if (type === 'exec_command_end') return false;
+
+  return (
+    type === 'terminal-output' ||
+    type === 'terminal_output' ||
+    type === 'exec_command_output' ||
+    type === 'exec_command_output_delta' ||
+    type === 'exec_command_stdout' ||
+    type === 'exec_command_stderr' ||
+    (type.startsWith('exec_command_') && type.includes('output'))
+  );
+}
+
+function extractExecOutputChunk(msg: any): string | null {
+  const candidates = [
+    msg?.data,
+    msg?.delta,
+    msg?.output,
+    msg?.stdout,
+    msg?.stderr,
+    msg?.formatted_output,
+  ];
+
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Main entry point for the codex command with ink UI
  */
@@ -798,6 +833,28 @@ export async function runCodex(opts: {
     session.sendCodexMessage(message);
   });
   client.setPermissionHandler(permissionHandler);
+  const activeExecCallIds: string[] = [];
+  const rememberExecCallId = (callId: string) => {
+    if (!callId) return;
+    const idx = activeExecCallIds.indexOf(callId);
+    if (idx !== -1) {
+      activeExecCallIds.splice(idx, 1);
+    }
+    activeExecCallIds.push(callId);
+  };
+  const forgetExecCallId = (callId: string) => {
+    if (!callId) return;
+    const idx = activeExecCallIds.indexOf(callId);
+    if (idx !== -1) {
+      activeExecCallIds.splice(idx, 1);
+    }
+  };
+  const getLatestExecCallId = (): string | null => {
+    return activeExecCallIds.length > 0
+      ? activeExecCallIds[activeExecCallIds.length - 1]
+      : null;
+  };
+
   client.setHandler((msg: any) => {
     // Avoid logging the full raw Codex event payloads (can be huge and include prompt contents).
     const msgType = typeof msg?.type === 'string' ? msg.type : 'unknown';
@@ -945,6 +1002,7 @@ export async function runCodex(opts: {
     ) {
       let { call_id, type, ...inputs } = msg;
       const canonicalCallId = client.canonicalizeToolCallId(call_id, inputs);
+      rememberExecCallId(canonicalCallId);
       session.sendCodexMessage({
         type: 'tool-call',
         name: 'CodexBash',
@@ -956,12 +1014,37 @@ export async function runCodex(opts: {
     if (msg.type === 'exec_command_end') {
       let { call_id, type, ...output } = msg;
       const canonicalCallId = client.canonicalizeToolCallId(call_id);
+      forgetExecCallId(canonicalCallId);
       session.sendCodexMessage({
         type: 'tool-call-result',
         callId: canonicalCallId,
         output: output,
         id: randomUUID(),
       });
+    }
+    if (isExecOutputStreamEvent(msg)) {
+      const outputChunk = extractExecOutputChunk(msg);
+      if (outputChunk) {
+        const rawCallId =
+          typeof msg.call_id === 'string' && msg.call_id.trim()
+            ? msg.call_id
+            : typeof msg.callId === 'string' && msg.callId.trim()
+              ? msg.callId
+              : null;
+
+        const canonicalCallId = rawCallId
+          ? client.canonicalizeToolCallId(rawCallId)
+          : getLatestExecCallId();
+
+        if (canonicalCallId) {
+          session.sendCodexMessage({
+            type: 'terminal-output',
+            callId: canonicalCallId,
+            data: outputChunk,
+            id: randomUUID(),
+          });
+        }
+      }
     }
     if (msg.type === 'token_count') {
       session.sendCodexMessage({

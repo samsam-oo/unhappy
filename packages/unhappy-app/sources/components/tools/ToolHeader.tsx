@@ -47,7 +47,9 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
         <View style={styles.container}>
             <View style={styles.titleContainer}>
                 <View style={styles.titleRow}>
-                    {icon}
+                    <View style={styles.iconBadge}>
+                        {icon}
+                    </View>
                     <Text style={styles.title} numberOfLines={1}>{toolTitle}</Text>
                 </View>
                 {subtitle && (
@@ -71,16 +73,24 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'column',
         alignItems: 'center',
         flexGrow: 1,
-        flexBasis: 0
+        flexBasis: 0,
     },
     titleRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
+        gap: 7,
+    },
+    iconBadge: {
+        width: 26,
+        height: 26,
+        borderRadius: 7,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
     },
     title: {
-        fontSize: 14,
-        fontWeight: '500',
+        fontSize: 15,
+        fontWeight: '600',
         color: theme.colors.text,
         textAlign: 'center',
     },
@@ -89,5 +99,6 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
         textAlign: 'center',
         marginTop: 2,
+        opacity: 0.8,
     },
 }));

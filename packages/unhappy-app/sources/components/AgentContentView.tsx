@@ -1,6 +1,6 @@
 import { useHeaderHeight } from '@/utils/responsive';
 import * as React from 'react';
-import { View } from 'react-native';
+import { View, Keyboard, Pressable } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,9 +28,12 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ i
                         style={[{ position: 'absolute', top: safeArea.top + headerHeight, left: 0, right: 0, bottom: 0 }]}
                         contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}
                         keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
                         alwaysBounceVertical={false}
                     >
-                        {placeholder}
+                        <Pressable onPress={() => Keyboard.dismiss()} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            {placeholder}
+                        </Pressable>
                     </ScrollView>
                 )}
             </View>

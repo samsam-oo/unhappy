@@ -369,6 +369,7 @@ type NormalizedAgentContent =
         tool_use_id: string;
         content: any;
         is_error: boolean;
+        is_stream?: boolean;
         uuid: string;
         parentUUID: string | null;
         permissions?: {
@@ -407,6 +408,23 @@ export type NormalizedMessage = ({
     meta?: MessageMeta,
     usage?: UsageData,
 };
+
+function getTerminalOutputToolUseId(data: any): string | null {
+    if (!data || typeof data !== 'object') return null;
+    if (typeof data.callId === 'string' && data.callId.trim()) return data.callId;
+    if (typeof data.toolUseId === 'string' && data.toolUseId.trim()) return data.toolUseId;
+    if (typeof data.tool_use_id === 'string' && data.tool_use_id.trim()) return data.tool_use_id;
+    return null;
+}
+
+function getTerminalOutputChunk(data: any): any {
+    if (!data || typeof data !== 'object') return '';
+    if (data.data !== undefined) return data.data;
+    if (data.output !== undefined) return data.output;
+    if (data.text !== undefined) return data.text;
+    if (data.message !== undefined) return data.message;
+    return '';
+}
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
     // Zod transform handles normalization during validation
@@ -581,7 +599,6 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 raw.content.data.type === 'task_started' ||
                 raw.content.data.type === 'task_complete' ||
                 raw.content.data.type === 'turn_aborted' ||
-                raw.content.data.type === 'terminal-output' ||
                 raw.content.data.type === 'permission-request' ||
                 raw.content.data.type === 'file-edit' ||
                 raw.content.data.type === 'thinking' ||
@@ -657,6 +674,29 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         content: raw.content.data.output,
                         is_error: false,
                         uuid: raw.content.data.id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'terminal-output') {
+                const toolUseId = getTerminalOutputToolUseId(raw.content.data);
+                if (!toolUseId) {
+                    return null;
+                }
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: toolUseId,
+                        content: getTerminalOutputChunk(raw.content.data),
+                        is_error: false,
+                        is_stream: true,
+                        uuid: typeof (raw.content.data as any).id === 'string' ? (raw.content.data as any).id : id,
                         parentUUID: null
                     }],
                     meta: raw.meta
@@ -808,6 +848,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         tool_use_id: raw.content.data.callId,
                         content: raw.content.data.data,
                         is_error: false,
+                        is_stream: true,
                         uuid: id,
                         parentUUID: null
                     }],

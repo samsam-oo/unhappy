@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput, Keyboard } from 'react-native';
 import Constants from 'expo-constants';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
@@ -1282,7 +1282,7 @@ function NewSessionWizard() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
                 style={styles.container}
             >
-                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <Pressable style={{ flex: 1, justifyContent: 'flex-end' }} onPress={() => Keyboard.dismiss()}>
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
@@ -1317,7 +1317,7 @@ function NewSessionWizard() {
                             />
                         </View>
                     </View>
-                </View>
+                </Pressable>
             </KeyboardAvoidingView>
         );
     }
@@ -1338,6 +1338,7 @@ function NewSessionWizard() {
                     style={styles.scrollContainer}
                     contentContainerStyle={styles.contentContainer}
                     keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
                 >
                 <View style={[
                     { paddingHorizontal: screenWidth > 700 ? 16 : 8 }

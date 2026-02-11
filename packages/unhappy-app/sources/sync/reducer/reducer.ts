@@ -815,6 +815,15 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         continue;
                     }
 
+                    if (c.is_stream) {
+                        if (message.tool.state !== 'running') {
+                            continue;
+                        }
+                        message.tool.result = appendStreamChunk(message.tool.result, c.content);
+                        changed.add(messageId);
+                        continue;
+                    }
+
                     if (message.tool.state !== 'running') {
                         continue;
                     }
@@ -957,18 +966,23 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     state.sidechainToolIdToMessageId.set(c.id, mid);
                 } else if (c.type === 'tool-result') {
                     // Process tool result in sidechain - update BOTH messages
+                    const isStreamChunk = !!c.is_stream;
 
                     // Update the sidechain tool message
                     let sidechainMessageId = state.sidechainToolIdToMessageId.get(c.tool_use_id);
                     if (sidechainMessageId) {
                         let sidechainMessage = state.messages.get(sidechainMessageId);
                         if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
-                            sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
-                            sidechainMessage.tool.result = c.content;
-                            sidechainMessage.tool.completedAt = msg.createdAt;
+                            if (isStreamChunk) {
+                                sidechainMessage.tool.result = appendStreamChunk(sidechainMessage.tool.result, c.content);
+                            } else {
+                                sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
+                                sidechainMessage.tool.result = c.content;
+                                sidechainMessage.tool.completedAt = msg.createdAt;
+                            }
                             
                             // Update permission data if provided by backend
-                            if (c.permissions) {
+                            if (!isStreamChunk && c.permissions) {
                                 // Merge with existing permission to preserve decision field from agentState
                                 if (sidechainMessage.tool.permission) {
                                     const existingDecision = sidechainMessage.tool.permission.decision;
@@ -1000,12 +1014,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     if (permissionMessageId) {
                         let permissionMessage = state.messages.get(permissionMessageId);
                         if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
-                            permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
-                            permissionMessage.tool.result = c.content;
-                            permissionMessage.tool.completedAt = msg.createdAt;
+                            if (isStreamChunk) {
+                                permissionMessage.tool.result = appendStreamChunk(permissionMessage.tool.result, c.content);
+                            } else {
+                                permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
+                                permissionMessage.tool.result = c.content;
+                                permissionMessage.tool.completedAt = msg.createdAt;
+                            }
                             
                             // Update permission data if provided by backend
-                            if (c.permissions) {
+                            if (!isStreamChunk && c.permissions) {
                                 // Merge with existing permission to preserve decision field from agentState
                                 if (permissionMessage.tool.permission) {
                                     const existingDecision = permissionMessage.tool.permission.decision;
@@ -1114,6 +1132,55 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
 function allocateId() {
     return Math.random().toString(36).substring(2, 15);
+}
+
+function normalizeToolOutputChunk(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+        return String(value);
+    }
+    if (Array.isArray(value)) {
+        const parts = value
+            .map((item) => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item === 'object' && typeof (item as any).text === 'string') {
+                    return (item as any).text;
+                }
+                return null;
+            })
+            .filter((part): part is string => typeof part === 'string' && part.length > 0);
+        if (parts.length > 0) {
+            return parts.join('\n');
+        }
+        return '';
+    }
+    if (typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        if (typeof obj.stdout === 'string') return obj.stdout;
+        if (typeof obj.output === 'string') return obj.output;
+        if (typeof obj.content === 'string') return obj.content;
+        if (typeof obj.data === 'string') return obj.data;
+        if (typeof obj.message === 'string') return obj.message;
+        if (typeof obj.error === 'string') return obj.error;
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return String(value);
+        }
+    }
+    return String(value);
+}
+
+function appendStreamChunk(current: unknown, chunk: unknown): string {
+    const chunkText = normalizeToolOutputChunk(chunk);
+    if (!chunkText) {
+        return normalizeToolOutputChunk(current);
+    }
+
+    const currentText = normalizeToolOutputChunk(current);
+    if (!currentText) return chunkText;
+    return `${currentText}${chunkText}`;
 }
 
 function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {

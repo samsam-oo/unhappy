@@ -1,6 +1,6 @@
 import { useHeaderHeight } from '@/utils/responsive';
 import * as React from 'react';
-import { View } from 'react-native';
+import { View, Keyboard, Pressable } from 'react-native';
 import { useKeyboardHandler, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -46,13 +46,16 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ i
                     </Animated.View>
                 )}
                 {placeholder && (
-                    <Animated.ScrollView 
+                    <Animated.ScrollView
                         style={[{ position: 'absolute', top: safeArea.top + headerHeight, left: 0, right: 0, bottom: 0 }, animatePlaceholderdStyle]}
                         contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}
                         keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="interactive"
                         alwaysBounceVertical={false}
                     >
-                        {placeholder}
+                        <Pressable onPress={() => Keyboard.dismiss()} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                            {placeholder}
+                        </Pressable>
                     </Animated.ScrollView>
                 )}
             </View>

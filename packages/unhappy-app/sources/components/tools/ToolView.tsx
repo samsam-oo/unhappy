@@ -32,6 +32,95 @@ interface ToolViewProps {
     variant?: 'default' | 'chat';
 }
 
+function extractCodexCommand(input: any): string | null {
+    const parsedCmd = input?.parsed_cmd;
+    if (Array.isArray(parsedCmd) && parsedCmd.length > 0 && typeof parsedCmd[0]?.cmd === 'string') {
+        return parsedCmd[0].cmd;
+    }
+
+    if (Array.isArray(input?.command)) {
+        const cmdArray = input.command as unknown[];
+        if (
+            cmdArray.length >= 3 &&
+            (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') &&
+            cmdArray[1] === '-lc' &&
+            typeof cmdArray[2] === 'string'
+        ) {
+            return cmdArray[2];
+        }
+        const joined = cmdArray.map((part) => String(part)).join(' ').trim();
+        return joined || null;
+    }
+
+    return null;
+}
+
+function toPreviewText(value: unknown): string | null {
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+        return String(value);
+    }
+    if (Array.isArray(value)) {
+        const parts = value
+            .map((item) => {
+                if (typeof item === 'string') return item;
+                if (item && typeof item === 'object' && typeof (item as any).text === 'string') {
+                    return (item as any).text;
+                }
+                return null;
+            })
+            .filter((part): part is string => typeof part === 'string' && part.length > 0);
+        return parts.length > 0 ? parts.join('\n') : null;
+    }
+    if (value && typeof value === 'object' && typeof (value as any).text === 'string') {
+        return (value as any).text;
+    }
+    return null;
+}
+
+function parseShellResult(result: unknown): { stdout: string | null; stderr: string | null; error: string | null } {
+    if (result === null || result === undefined) {
+        return { stdout: null, stderr: null, error: null };
+    }
+
+    if (typeof result === 'string') {
+        return { stdout: result, stderr: null, error: null };
+    }
+
+    if (typeof result !== 'object') {
+        return { stdout: String(result), stderr: null, error: null };
+    }
+
+    const parsed = knownTools.Bash.result.safeParse(result);
+    if (parsed.success) {
+        return {
+            stdout: parsed.data.stdout ?? null,
+            stderr: parsed.data.stderr ?? null,
+            error: null,
+        };
+    }
+
+    const obj = result as Record<string, unknown>;
+    const stdout =
+        toPreviewText(obj.stdout) ??
+        toPreviewText(obj.output) ??
+        toPreviewText(obj.content) ??
+        toPreviewText(obj.data) ??
+        toPreviewText(obj.message);
+    const stderr = toPreviewText(obj.stderr);
+    const error = toPreviewText(obj.error);
+
+    if (stdout || stderr || error) {
+        return { stdout: stdout ?? null, stderr: stderr ?? null, error: error ?? null };
+    }
+
+    try {
+        return { stdout: JSON.stringify(result), stderr: null, error: null };
+    } catch {
+        return { stdout: String(result), stderr: null, error: null };
+    }
+}
+
 export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
@@ -207,31 +296,36 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 if (typeof tool.input?.command === 'string') {
                     command = tool.input.command;
                 }
-                if (tool.state === 'completed' && tool.result) {
+                if (tool.state === 'completed' || tool.state === 'running') {
+                    const parsed = parseShellResult(tool.result);
+                    stdout = parsed.stdout;
+                    stderr = parsed.stderr;
+                } else if (tool.state === 'error') {
                     if (typeof tool.result === 'string') {
-                        stdout = tool.result;
+                        error = tool.result;
                     } else {
-                        const parsed = knownTools.Bash.result.safeParse(tool.result);
-                        if (parsed.success) {
-                            stdout = parsed.data.stdout ?? null;
-                            stderr = parsed.data.stderr ?? null;
-                        } else {
-                            stdout = JSON.stringify(tool.result);
-                        }
+                        const parsed = parseShellResult(tool.result);
+                        stdout = parsed.stdout;
+                        stderr = parsed.stderr;
+                        error = parsed.error;
                     }
-                } else if (tool.state === 'error' && typeof tool.result === 'string') {
-                    error = tool.result;
                 }
             } else if (tool.name === 'CodexBash') {
-                // Prefer parsed_cmd[0].cmd (it is already de-wrapped from "bash -lc").
-                const parsedCmd = tool.input?.parsed_cmd;
-                if (Array.isArray(parsedCmd) && parsedCmd.length > 0 && typeof parsedCmd[0]?.cmd === 'string') {
-                    command = parsedCmd[0].cmd;
-                } else if (Array.isArray(tool.input?.command)) {
-                    command = tool.input.command.join(' ');
-                }
-                if (tool.state === 'error' && typeof tool.result === 'string') {
-                    error = tool.result;
+                command = extractCodexCommand(tool.input);
+                if (tool.state === 'completed' || tool.state === 'running') {
+                    const parsed = parseShellResult(tool.result);
+                    stdout = parsed.stdout;
+                    stderr = parsed.stderr;
+                    error = parsed.error;
+                } else if (tool.state === 'error') {
+                    if (typeof tool.result === 'string') {
+                        error = tool.result;
+                    } else {
+                        const parsed = parseShellResult(tool.result);
+                        stdout = parsed.stdout;
+                        stderr = parsed.stderr;
+                        error = parsed.error;
+                    }
                 }
             }
         }
@@ -336,7 +430,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             error={error}
                             maxHeight={240}
                             fullWidth
-                            hideEmptyOutput
+                            hideEmptyOutput={tool.state === 'running'}
                             variant="plain"
                         />
                     </View>

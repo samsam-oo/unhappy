@@ -1488,5 +1488,65 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
                 }
             }
         });
+
+        it('END-TO-END: maps codex terminal-output to streaming tool-result', () => {
+            const codexTerminalOutput = {
+                role: 'agent' as const,
+                content: {
+                    type: 'codex' as const,
+                    data: {
+                        type: 'terminal-output' as const,
+                        callId: 'tool-stream-1',
+                        data: 'line 1\n',
+                        id: 'codex-stream-evt-1'
+                    }
+                }
+            };
+
+            const normalized = normalizeRawMessage('msg-stream-1', null, 1234, codexTerminalOutput as any);
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content).toHaveLength(1);
+                const streamItem = normalized.content[0];
+                expect(streamItem.type).toBe('tool-result');
+                if (streamItem.type === 'tool-result') {
+                    expect(streamItem.tool_use_id).toBe('tool-stream-1');
+                    expect(streamItem.content).toBe('line 1\n');
+                    expect(streamItem.is_stream).toBe(true);
+                    expect(streamItem.is_error).toBe(false);
+                }
+            }
+        });
+
+        it('END-TO-END: maps acp terminal-output to streaming tool-result', () => {
+            const acpTerminalOutput = {
+                role: 'agent' as const,
+                content: {
+                    type: 'acp' as const,
+                    provider: 'codex' as const,
+                    data: {
+                        type: 'terminal-output' as const,
+                        callId: 'tool-stream-2',
+                        data: 'chunk'
+                    }
+                }
+            };
+
+            const normalized = normalizeRawMessage('msg-stream-2', null, 2345, acpTerminalOutput as any);
+
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content).toHaveLength(1);
+                const streamItem = normalized.content[0];
+                expect(streamItem.type).toBe('tool-result');
+                if (streamItem.type === 'tool-result') {
+                    expect(streamItem.tool_use_id).toBe('tool-stream-2');
+                    expect(streamItem.content).toBe('chunk');
+                    expect(streamItem.is_stream).toBe(true);
+                    expect(streamItem.is_error).toBe(false);
+                }
+            }
+        });
     });
 });
