@@ -47,9 +47,8 @@ type ContinueSessionOptions = {
   };
 };
 
-type AppServerReasoningEffort = NonNullable<
-  NonNullable<ContinueSessionOptions['overrides']>['effort']
->;
+type AppServerReasoningEffort =
+  NonNullable<ContinueSessionOptions['overrides']>['effort'];
 
 type CodexToolCallLike = {
   id: RequestId;
@@ -78,6 +77,7 @@ function createAbortError(): Error {
 }
 
 function mapEffortFromLegacyConfig(value: unknown): AppServerReasoningEffort | undefined {
+  if (value === null) return null;
   if (typeof value !== 'string') return undefined;
   if (
     value === 'none' ||
@@ -242,9 +242,9 @@ export class CodexAppServerClient {
     if (!this.connected) await this.connect();
     await this.ensureThread(config, options?.signal);
 
-    const effort =
-      mapEffortFromLegacyConfig(isRecord(config.config) ? config.config.model_reasoning_effort : undefined) ??
-      undefined;
+    const effort = mapEffortFromLegacyConfig(
+      isRecord(config.config) ? config.config.model_reasoning_effort : undefined,
+    );
 
     return this.startTurn(config.prompt, {
       signal: options?.signal,
