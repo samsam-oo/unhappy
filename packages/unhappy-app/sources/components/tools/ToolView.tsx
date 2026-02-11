@@ -16,6 +16,12 @@ import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
 import { t } from '@/text';
 import { CommandView } from '../CommandView';
+import {
+    dedupeShellOutputAgainstError,
+    parseShellOutput,
+    resolveShellErrorMessage,
+    toToolPreviewText,
+} from './shellOutput';
 
 // Enable LayoutAnimation on Android once for this module.
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -58,72 +64,6 @@ function extractCodexCommand(input: any): string | null {
     return null;
 }
 
-function toPreviewText(value: unknown): string | null {
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-        return String(value);
-    }
-    if (Array.isArray(value)) {
-        const parts = value
-            .map((item) => {
-                if (typeof item === 'string') return item;
-                if (item && typeof item === 'object' && typeof (item as any).text === 'string') {
-                    return (item as any).text;
-                }
-                return null;
-            })
-            .filter((part): part is string => typeof part === 'string' && part.length > 0);
-        return parts.length > 0 ? parts.join('\n') : null;
-    }
-    if (value && typeof value === 'object' && typeof (value as any).text === 'string') {
-        return (value as any).text;
-    }
-    return null;
-}
-
-function parseShellResult(result: unknown): { stdout: string | null; stderr: string | null; error: string | null } {
-    if (result === null || result === undefined) {
-        return { stdout: null, stderr: null, error: null };
-    }
-
-    if (typeof result === 'string') {
-        return { stdout: result, stderr: null, error: null };
-    }
-
-    if (typeof result !== 'object') {
-        return { stdout: String(result), stderr: null, error: null };
-    }
-
-    const parsed = knownTools.Bash.result.safeParse(result);
-    if (parsed.success) {
-        return {
-            stdout: parsed.data.stdout ?? null,
-            stderr: parsed.data.stderr ?? null,
-            error: null,
-        };
-    }
-
-    const obj = result as Record<string, unknown>;
-    const stdout =
-        toPreviewText(obj.stdout) ??
-        toPreviewText(obj.output) ??
-        toPreviewText(obj.content) ??
-        toPreviewText(obj.data) ??
-        toPreviewText(obj.message);
-    const stderr = toPreviewText(obj.stderr);
-    const error = toPreviewText(obj.error);
-
-    if (stdout || stderr || error) {
-        return { stdout: stdout ?? null, stderr: stderr ?? null, error: error ?? null };
-    }
-
-    try {
-        return { stdout: JSON.stringify(result), stderr: null, error: null };
-    } catch {
-        return { stdout: String(result), stderr: null, error: null };
-    }
-}
-
 function extractReasoningPreview(result: unknown): string | null {
     const truncatePreview = (text: string): string => (
         text.length > MAX_REASONING_PREVIEW_CHARS
@@ -138,16 +78,16 @@ function extractReasoningPreview(result: unknown): string | null {
     if (typeof result === 'object') {
         const obj = result as Record<string, unknown>;
         const fromObject =
-            toPreviewText(obj.content) ??
-            toPreviewText(obj.text) ??
-            toPreviewText(obj.message) ??
-            toPreviewText(obj.reasoning);
+            toToolPreviewText(obj.content) ??
+            toToolPreviewText(obj.text) ??
+            toToolPreviewText(obj.message) ??
+            toToolPreviewText(obj.reasoning);
         if (fromObject && fromObject.trim()) {
             return truncatePreview(fromObject);
         }
     }
 
-    const direct = toPreviewText(result);
+    const direct = toToolPreviewText(result);
     if (!direct || !direct.trim()) {
         return null;
     }
@@ -334,34 +274,29 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 if (typeof tool.input?.command === 'string') {
                     command = tool.input.command;
                 }
-                if (tool.state === 'completed' || tool.state === 'running') {
-                    const parsed = parseShellResult(tool.result);
+                if (tool.state === 'completed' || tool.state === 'running' || tool.state === 'error') {
+                    const parsed = parseShellOutput(tool.result);
                     stdout = parsed.stdout;
                     stderr = parsed.stderr;
-                } else if (tool.state === 'error') {
-                    if (typeof tool.result === 'string') {
-                        error = tool.result;
-                    } else {
-                        const parsed = parseShellResult(tool.result);
-                        stdout = parsed.stdout;
-                        stderr = parsed.stderr;
-                        error = parsed.error;
+                    if (tool.state === 'error') {
+                        error = resolveShellErrorMessage(tool.result, parsed);
+                        const deduped = dedupeShellOutputAgainstError(parsed, error);
+                        stdout = deduped.stdout;
+                        stderr = deduped.stderr;
                     }
                 }
             } else if (tool.name === 'CodexBash') {
                 command = extractCodexCommand(tool.input);
-                if (tool.state === 'completed' || tool.state === 'running') {
-                    const parsed = parseShellResult(tool.result);
+                if (tool.state === 'completed' || tool.state === 'running' || tool.state === 'error') {
+                    const parsed = parseShellOutput(tool.result);
                     stdout = parsed.stdout;
                     stderr = parsed.stderr;
-                    error = parsed.error;
-                } else if (tool.state === 'error') {
-                    if (typeof tool.result === 'string') {
-                        error = tool.result;
+                    if (tool.state === 'error') {
+                        error = resolveShellErrorMessage(tool.result, parsed);
+                        const deduped = dedupeShellOutputAgainstError(parsed, error);
+                        stdout = deduped.stdout;
+                        stderr = deduped.stderr;
                     } else {
-                        const parsed = parseShellResult(tool.result);
-                        stdout = parsed.stdout;
-                        stderr = parsed.stderr;
                         error = parsed.error;
                     }
                 }

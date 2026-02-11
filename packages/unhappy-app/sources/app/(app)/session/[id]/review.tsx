@@ -22,7 +22,12 @@ export default function SessionReviewScreen() {
 
     React.useEffect(() => {
         let cancelled = false;
-        if (!sessionId) return;
+        if (!sessionId) {
+            setFiles(null);
+            setError(t('errors.sessionNotFound'));
+            setIsLoading(false);
+            return;
+        }
 
         const run = async () => {
             try {

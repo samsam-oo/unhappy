@@ -92,13 +92,37 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
+function normalizeRouteParam(value: string | string[] | undefined): string | null {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+    }
+    if (Array.isArray(value) && typeof value[0] === 'string') {
+        const trimmed = value[0].trim();
+        return trimmed.length > 0 ? trimmed : null;
+    }
+    return null;
+}
+
 export default React.memo(() => {
-    const { id: sessionId, messageId } = useLocalSearchParams<{ id: string; messageId: string }>();
+    const params = useLocalSearchParams<{ id?: string | string[]; messageId?: string | string[] }>();
+    const sessionId = normalizeRouteParam(params.id);
+    const messageId = normalizeRouteParam(params.messageId);
+    const safeSessionId = sessionId ?? '';
+    const safeMessageId = messageId ?? '';
     const router = useRouter();
-    const session = useSession(sessionId!);
-    const { isLoaded: messagesLoaded } = useSessionMessages(sessionId!);
-    const message = useMessage(sessionId!, messageId!);
+    const session = useSession(safeSessionId);
+    const { isLoaded: messagesLoaded } = useSessionMessages(safeSessionId);
+    const message = useMessage(safeSessionId, safeMessageId);
     const { theme } = useUnistyles();
+
+    if (!sessionId || !messageId) {
+        return (
+            <View style={stylesheet.loadingContainer}>
+                <Text style={stylesheet.eventText}>Invalid session or message route.</Text>
+            </View>
+        );
+    }
 
     // Trigger session visibility when component mounts
     React.useEffect(() => {

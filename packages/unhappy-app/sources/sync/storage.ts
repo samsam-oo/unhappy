@@ -119,6 +119,12 @@ function getOrInitWorktreeDiscoveryState(workspaceKey: string): WorktreeDiscover
     return created;
 }
 
+function isMissingDirectoryError(resp: ListDirectoryResponse | null | undefined): boolean {
+    if (!resp || resp.success !== false || typeof resp.error !== 'string') return false;
+    const lower = resp.error.toLowerCase();
+    return lower.includes('enoent') || lower.includes('no such file or directory') || lower.includes('not found');
+}
+
 async function discoverWorktreesForWorkspace(candidate: WorktreeDiscoveryCandidate): Promise<void> {
     const state = getOrInitWorktreeDiscoveryState(candidate.workspaceKey);
     const now = Date.now();
@@ -153,9 +159,11 @@ async function discoverWorktreesForWorkspace(candidate: WorktreeDiscoveryCandida
                 req
             );
 
-        // Treat "directory doesn't exist" as a successful scan with zero worktrees.
         if (!resp || resp.success !== true) {
-            state.lastSuccessAt = Date.now();
+            // Missing worktree root is a valid state (zero worktrees). Other failures should retry soon.
+            if (isMissingDirectoryError(resp)) {
+                state.lastSuccessAt = Date.now();
+            }
             return;
         }
 
@@ -179,8 +187,7 @@ async function discoverWorktreesForWorkspace(candidate: WorktreeDiscoveryCandida
             storage.getState().bumpProjectsRevision();
         }
     } catch {
-        // Best-effort: don't thrash the socket on repeated failures/timeouts.
-        state.lastSuccessAt = Date.now();
+        // Keep `lastSuccessAt` unchanged so transient failures retry after retry window.
     } finally {
         state.inFlight = false;
     }
