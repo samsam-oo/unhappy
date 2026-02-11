@@ -1,8 +1,7 @@
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, TextInput, Pressable } from 'react-native';
 import { t } from '@/text';
-import { useRoute } from '@react-navigation/native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Octicons } from '@/icons/vector-icons';
 import { Text } from '@/components/StyledText';
@@ -17,9 +16,9 @@ import { layout } from '@/components/layout';
 import { FileIcon } from '@/components/FileIcon';
 
 export default function FilesScreen() {
-    const route = useRoute();
     const router = useRouter();
-    const sessionId = (route.params! as any).id as string;
+    const { id: rawSessionId } = useLocalSearchParams<{ id?: string }>();
+    const sessionId = typeof rawSessionId === 'string' ? rawSessionId : '';
     
     const [gitStatusFiles, setGitStatusFiles] = React.useState<GitStatusFiles | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
@@ -34,6 +33,11 @@ export default function FilesScreen() {
     
     // Load git status files
     const loadGitStatusFiles = React.useCallback(async () => {
+        if (!sessionId) {
+            setGitStatusFiles(null);
+            setIsLoading(false);
+            return;
+        }
         try {
             setIsLoading(true);
             const result = await getGitStatusFiles(sessionId);
@@ -88,9 +92,11 @@ export default function FilesScreen() {
     }, [searchQuery, gitStatusFiles, sessionId, isLoading]);
 
     const handleFilePress = React.useCallback((file: GitFileStatus | FileItem) => {
-        // Navigate to file viewer with the file path (base64 encoded for special characters)
-        const encodedPath = btoa(file.fullPath);
-        router.push(`/session/${sessionId}/file?path=${encodedPath}`);
+        if (!sessionId) return;
+        router.push({
+            pathname: '/session/[id]/file',
+            params: { id: sessionId, path: file.fullPath },
+        });
     }, [router, sessionId]);
 
     const renderFileIcon = (file: GitFileStatus) => {
@@ -154,6 +160,16 @@ export default function FilesScreen() {
         return <FileIcon fileName={file.fileName} size={29} />;
     };
 
+    if (!sessionId) {
+        return (
+            <View style={[styles.container, { backgroundColor: theme.colors.surface, justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 14, ...Typography.default() }}>
+                    {t('common.error')}
+                </Text>
+            </View>
+        );
+    }
+
     return (
         <>
             <Stack.Screen
@@ -161,7 +177,12 @@ export default function FilesScreen() {
                     headerRight: () => (
                         <Pressable
                             accessibilityLabel={t('files.diff')}
-                            onPress={() => router.push(`/session/${sessionId}/review`)}
+                            onPress={() =>
+                                router.push({
+                                    pathname: '/session/[id]/review',
+                                    params: { id: sessionId },
+                                })
+                            }
                             style={({ pressed }) => ({
                                 marginRight: 12,
                                 opacity: pressed ? 0.7 : 1,

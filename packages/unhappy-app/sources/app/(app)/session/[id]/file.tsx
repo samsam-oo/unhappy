@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
-import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
@@ -21,20 +20,25 @@ interface FileContent {
 }
 
 export default function FileScreen() {
-    const route = useRoute();
     const { theme } = useUnistyles();
-    const { id: sessionId } = useLocalSearchParams<{ id: string }>();
-    const searchParams = useLocalSearchParams();
-    const encodedPath = searchParams.path as string;
-    let filePath = '';
-    
-    // Decode base64 path with error handling
-    try {
-        filePath = encodedPath ? atob(encodedPath) : '';
-    } catch (error) {
-        console.error('Failed to decode file path:', error);
-        filePath = encodedPath || ''; // Fallback to original path if decoding fails
-    }
+    const { id: rawSessionId, path: rawPath } = useLocalSearchParams<{ id?: string; path?: string }>();
+    const sessionId = typeof rawSessionId === 'string' ? rawSessionId : '';
+    const filePath = React.useMemo(() => {
+        const path = typeof rawPath === 'string' ? rawPath : '';
+        if (!path) return '';
+
+        // Backward compatibility: older builds used base64-encoded `path`.
+        try {
+            const legacyDecoded = atob(path);
+            if (legacyDecoded.includes('/') || legacyDecoded.includes('\\')) {
+                return legacyDecoded;
+            }
+        } catch {
+            // Not a legacy base64-encoded path.
+        }
+
+        return path;
+    }, [rawPath]);
     
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
@@ -123,11 +127,17 @@ export default function FileScreen() {
         
         const loadFile = async () => {
             try {
+                if (!sessionId || !filePath) {
+                    setError('File not found');
+                    setIsLoading(false);
+                    return;
+                }
+
                 setIsLoading(true);
                 setError(null);
                 
                 // Get session metadata for git commands
-                const session = storage.getState().sessions[sessionId!];
+                const session = storage.getState().sessions[sessionId];
                 const sessionPath = session?.metadata?.path;
                 
                 // Check if file is likely binary before trying to read

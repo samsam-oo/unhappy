@@ -221,9 +221,6 @@ export const it: TranslationStructure = {
     privacyPolicy: 'Informativa sulla privacy',
     termsOfService: 'Termini di servizio',
     eula: 'EULA',
-    supportUs: 'Sostienici',
-    supportUsSubtitlePro: 'Grazie per il tuo supporto!',
-    supportUsSubtitle: 'Sostieni lo sviluppo del progetto',
     scanQrCodeToAuthenticate: 'Scansiona il codice QR per autenticarti',
     githubConnected: ({ login }: { login: string }) =>
       `Connesso come @${login}`,

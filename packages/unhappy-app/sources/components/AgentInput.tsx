@@ -90,8 +90,8 @@ const SUPPORTED_CLAUDE_MODELS = new Set([
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
-        paddingBottom: Platform.select({ web: 6, default: 8 }),
-        paddingTop: Platform.select({ web: 6, default: 8 }),
+        paddingBottom: Platform.select({ web: 4, default: 6 }),
+        paddingTop: Platform.select({ web: 4, default: 6 }),
     },
     innerContainer: {
         width: '100%',
@@ -102,7 +102,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         borderRadius: Platform.select({ web: theme.borderRadius.md, default: 16, android: 20 }),
         overflow: 'hidden',
         paddingVertical: 2,
-        paddingBottom: 8,
+        paddingBottom: 6,
         paddingHorizontal: 8,
         ...(Platform.OS === 'web'
             ? {
@@ -320,16 +320,24 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     // Button styles
     actionButtonsContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         justifyContent: 'space-between',
         paddingHorizontal: 0,
     },
     actionButtonsLeft: {
         flexDirection: 'row',
-        gap: 8,
+        flexWrap: Platform.select({ web: 'nowrap' as const, default: 'wrap' as const }),
+        gap: 4,
         flex: 1,
         overflow: 'hidden',
     },
+    actionButtonItem: Platform.select({
+        web: {},
+        default: {
+            flexBasis: '48%',
+            flexGrow: 1,
+        },
+    }),
     actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1337,163 +1345,168 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         <View style={styles.actionButtonsLeft}>
                             {/* Permission mode (YOLO / approvals) */}
                             {props.permissionMode && (
-                                <Pressable
-                                    disabled={!props.onPermissionModeChange}
-                                    onPress={openPermissionOverlay}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    style={({ pressed, hovered }: any) => ({
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        justifyContent: 'center',
-                                        height: 32,
-                                        opacity: props.onPermissionModeChange
-                                            ? ((Platform.OS === 'web' && (hovered || pressed)) || pressed ? 0.7 : 1)
-                                            : 1,
-                                        gap: 6,
-                                        flexShrink: 0,
-                                    })}
-                                >
-                                    <Ionicons
-                                        name="shield-checkmark-outline"
-                                        size={14}
-                                        color={permissionModeColor}
-                                    />
-                                    <Text style={{
-                                        fontSize: 13,
-                                        color: permissionModeColor,
-                                        fontWeight: '600',
-                                        ...Typography.default('semiBold'),
-                                    }} numberOfLines={1}>
-                                        {permissionModeLabel}
-                                    </Text>
-                                    <Ionicons
-                                        name="chevron-down"
-                                        size={14}
-                                        color={permissionModeColor}
-                                    />
-                                </Pressable>
+                                <View style={styles.actionButtonItem}>
+                                    <Pressable
+                                        disabled={!props.onPermissionModeChange}
+                                        onPress={openPermissionOverlay}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={({ pressed, hovered }: any) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            height: 32,
+                                            opacity: props.onPermissionModeChange
+                                                ? ((Platform.OS === 'web' && (hovered || pressed)) || pressed ? 0.7 : 1)
+                                                : 1,
+                                            gap: 6,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name="shield-checkmark-outline"
+                                            size={14}
+                                            color={permissionModeColor}
+                                        />
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: permissionModeColor,
+                                            fontWeight: '600',
+                                            ...Typography.default('semiBold'),
+                                        }} numberOfLines={1}>
+                                            {permissionModeLabel}
+                                        </Text>
+                                        <Ionicons
+                                            name="chevron-down"
+                                            size={14}
+                                            color={permissionModeColor}
+                                        />
+                                    </Pressable>
+                                </View>
                             )}
 
                             {/* Model */}
                             {props.onModelModeChange && (
-                                <Pressable
-                                    onPress={openModelOverlay as any}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    style={(p) => ({
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        justifyContent: 'center',
-                                        height: 32,
-                                        opacity: p.pressed ? 0.7 : 1,
-                                        gap: 6,
-                                    })}
-                                >
-                                    <Ionicons
-                                        name="cube-outline"
-                                        size={14}
-                                        color={theme.colors.button.secondary.tint}
-                                    />
-                                    {isLoadingModels && (
-                                        <ActivityIndicator size="small" color={theme.colors.button.secondary.tint} />
-                                    )}
-                                    <Text style={{
-                                        fontSize: 13,
-                                        color: theme.colors.button.secondary.tint,
-                                        fontWeight: '600',
-                                        ...Typography.default('semiBold'),
-                                    }} numberOfLines={1}>
-                                        {isLoadingModels && !availableModels
-                                            ? t('common.loading')
-                                            : (props.modelMode && props.modelMode !== 'default'
-                                                ? props.modelMode
-                                                : 'Select model')}
-                                    </Text>
-                                    <Ionicons
-                                        name="chevron-down"
-                                        size={14}
-                                        color={theme.colors.button.secondary.tint}
-                                    />
-                                </Pressable>
-                            )}
-
-                            {/* Reasoning effort */}
-                            {props.onEffortModeChange && (
-                                <Pressable
-                                    onPress={handleEffortPress}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Reasoning effort: ${effectiveEffortLabel}`}
-                                    accessibilityHint={`Cycles effort. Current: ${effortChipLabel}.`}
-                                    style={(p) => ({
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        justifyContent: 'center',
-                                        height: 32,
-                                        opacity: p.pressed ? 0.7 : 1,
-                                        gap: 6,
-                                    })}
-                                >
-                                    <EffortBatteryIcon effort={props.effortMode ?? null} color={theme.colors.button.secondary.tint} />
-                                    <Text
-                                        style={{
+                                <View style={styles.actionButtonItem}>
+                                    <Pressable
+                                        onPress={openModelOverlay as any}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                            gap: 6,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name="cube-outline"
+                                            size={14}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                        {isLoadingModels && (
+                                            <ActivityIndicator size="small" color={theme.colors.button.secondary.tint} />
+                                        )}
+                                        <Text style={{
                                             fontSize: 13,
                                             color: theme.colors.button.secondary.tint,
                                             fontWeight: '600',
                                             ...Typography.default('semiBold'),
-                                        }}
-                                        numberOfLines={1}
+                                        }} numberOfLines={1}>
+                                            {isLoadingModels && !availableModels
+                                                ? t('common.loading')
+                                                : (props.modelMode && props.modelMode !== 'default'
+                                                    ? props.modelMode
+                                                    : 'Select model')}
+                                        </Text>
+                                        <Ionicons
+                                            name="chevron-down"
+                                            size={14}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                    </Pressable>
+                                </View>
+                            )}
+
+                            {/* Reasoning effort */}
+                            {props.onEffortModeChange && (
+                                <View style={styles.actionButtonItem}>
+                                    <Pressable
+                                        onPress={handleEffortPress}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Reasoning effort: ${effectiveEffortLabel}`}
+                                        accessibilityHint={`Cycles effort. Current: ${effortChipLabel}.`}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                            gap: 6,
+                                        })}
                                     >
-                                        {effortChipLabel}
-                                    </Text>
-                                </Pressable>
+                                        <EffortBatteryIcon effort={props.effortMode ?? null} color={theme.colors.button.secondary.tint} />
+                                        <Text
+                                            style={{
+                                                fontSize: 13,
+                                                color: theme.colors.button.secondary.tint,
+                                                fontWeight: '600',
+                                                ...Typography.default('semiBold'),
+                                            }}
+                                            numberOfLines={1}
+                                        >
+                                            {effortChipLabel}
+                                        </Text>
+                                    </Pressable>
+                                </View>
                             )}
 
                             {/* Agent selector (new session only) */}
                             {props.agentType && props.onAgentClick && (
-                                <Pressable
-                                    onPress={() => {
-                                        hapticsLight();
-                                        props.onAgentClick?.();
-                                    }}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    style={(p) => ({
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                                        paddingHorizontal: 10,
-                                        paddingVertical: 6,
-                                        justifyContent: 'center',
-                                        height: 32,
-                                        opacity: p.pressed ? 0.7 : 1,
-                                        gap: 6,
-                                    })}
-                                >
-                                    <Octicons
-                                        name="cpu"
-                                        size={14}
-                                        color={theme.colors.button.secondary.tint}
-                                    />
-                                    <Text style={{
-                                        fontSize: 13,
-                                        color: theme.colors.button.secondary.tint,
-                                        fontWeight: '600',
-                                        ...Typography.default('semiBold'),
-                                    }}>
-                                        {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
-                                    </Text>
-                                </Pressable>
+                                <View style={styles.actionButtonItem}>
+                                    <Pressable
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onAgentClick?.();
+                                        }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                            gap: 6,
+                                        })}
+                                    >
+                                        <Octicons
+                                            name="cpu"
+                                            size={14}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                        <Text style={{
+                                            fontSize: 13,
+                                            color: theme.colors.button.secondary.tint,
+                                            fontWeight: '600',
+                                            ...Typography.default('semiBold'),
+                                        }}>
+                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
+                                        </Text>
+                                    </Pressable>
+                                </View>
                             )}
 
-                            <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                            <View style={styles.actionButtonItem}>
+                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                            </View>
                         </View>
 
                         {/* Send / Abort (stop) */}

@@ -10,7 +10,7 @@ import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { machineBash, sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting, setCurrentViewedSessionId, getCurrentViewedSessionId } from '@/sync/storage';
+import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, setCurrentViewedSessionId, getCurrentViewedSessionId } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session, type ReasoningEffortMode } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -536,7 +536,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const modelMode: string | null = session.modelMode ?? (isGeminiSession ? 'gemini-2.5-pro' : null);
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
-    const experiments = useSetting('experiments');
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -638,7 +637,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-            onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            onFileViewerPress={() => router.push({ pathname: '/session/[id]/files', params: { id: sessionId } })}
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}
             autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
