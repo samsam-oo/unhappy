@@ -1,451 +1,1046 @@
 /**
- * Codex MCP Client - Simple wrapper for Codex tools
+ * Codex App-Server client.
+ *
+ * This keeps the same surface as the previous MCP client so runCodex can
+ * continue to consume legacy `codex/event` payloads with minimal churn.
  */
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { logger } from '@/ui/logger';
 import type { PermissionResult } from '@/utils/BasePermissionHandler';
 import { randomUUID } from 'crypto';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import type { CodexSessionConfig, CodexToolResponse } from './types';
-import { getCodexMcpCommand } from './utils/codexMcpCommand';
 import { ToolCallIdCanonicalizer } from './utils/toolCallIdCanonicalizer';
-import { z } from 'zod';
 
 export { determineCodexMcpSubcommand } from './utils/codexMcpCommand';
 
-const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
+const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days
+const SHUTDOWN_TIMEOUT_MS = 3000;
+const AGENT_MESSAGE_DEDUPE_WINDOW_MS = 15000;
+
+type RequestId = number | string;
+
+type PendingRpc = {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timer: NodeJS.Timeout;
+};
+
+type TurnState = {
+  id: string;
+  status: 'completed' | 'interrupted' | 'failed' | 'inProgress';
+  error?: { message?: string | null } | null;
+};
+
+type ContinueSessionOptions = {
+  signal?: AbortSignal;
+  overrides?: {
+    approvalPolicy?: 'untrusted' | 'on-failure' | 'on-request' | 'never' | null;
+    sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access' | null;
+    model?: string | null;
+    effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null;
+    summary?: 'auto' | 'concise' | 'detailed' | 'none' | null;
+    personality?: 'none' | 'friendly' | 'pragmatic' | null;
+    cwd?: string | null;
+    outputSchema?: unknown;
+  };
+};
+
+type AppServerReasoningEffort = NonNullable<
+  NonNullable<ContinueSessionOptions['overrides']>['effort']
+>;
+
+type CodexToolCallLike = {
+  id: RequestId;
+  method?: unknown;
+  params?: unknown;
+  result?: unknown;
+  error?: { message?: string } | string;
+};
 
 export type CodexPermissionHandlerLike = {
-    handleToolCall(
-        toolCallId: string,
-        toolName: string,
-        input: unknown,
-    ): Promise<PermissionResult>;
+  handleToolCall(
+    toolCallId: string,
+    toolName: string,
+    input: unknown,
+  ): Promise<PermissionResult>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return !!value && typeof value === 'object';
+  return !!value && typeof value === 'object';
+}
+
+function createAbortError(): Error {
+  const error = new Error('The operation was aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+function mapEffortFromLegacyConfig(value: unknown): AppServerReasoningEffort | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (
+    value === 'none' ||
+    value === 'minimal' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh'
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function mapSandboxPolicy(
+  sandbox: 'read-only' | 'workspace-write' | 'danger-full-access' | null | undefined,
+  cwd: string,
+): unknown {
+  if (sandbox === 'read-only') {
+    return { type: 'readOnly' };
+  }
+  if (sandbox === 'danger-full-access') {
+    return { type: 'dangerFullAccess' };
+  }
+  return {
+    type: 'workspaceWrite',
+    writableRoots: [cwd],
+    networkAccess: false,
+  };
+}
+
+function mapPermissionDecisionToNewApi(
+  decision: PermissionResult['decision'],
+): 'accept' | 'acceptForSession' | 'decline' | 'cancel' {
+  if (decision === 'approved') return 'accept';
+  if (decision === 'approved_for_session') return 'acceptForSession';
+  if (decision === 'denied') return 'decline';
+  return 'cancel';
+}
+
+function mapPermissionDecisionToLegacyApi(
+  decision: PermissionResult['decision'],
+): 'approved' | 'approved_for_session' | 'denied' | 'abort' {
+  if (decision === 'approved') return 'approved';
+  if (decision === 'approved_for_session') return 'approved_for_session';
+  if (decision === 'denied') return 'denied';
+  return 'abort';
+}
+
+function normalizeError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  if (typeof error === 'string') return new Error(error);
+  if (isRecord(error) && typeof error.message === 'string') return new Error(error.message);
+  return new Error('Unknown error');
 }
 
 export class CodexMcpClient {
-    private client: Client;
-    private transport: StdioClientTransport | null = null;
-    private connected: boolean = false;
-    private sessionId: string | null = null;
-    private conversationId: string | null = null;
-    private handler: ((event: unknown) => void) | null = null;
-    private permissionHandler: CodexPermissionHandlerLike | null = null;
-    private toolCallIds = new ToolCallIdCanonicalizer();
+  private child: ChildProcessWithoutNullStreams | null = null;
+  private connected = false;
+  private sessionId: string | null = null;
+  private conversationId: string | null = null;
+  private handler: ((event: unknown) => void) | null = null;
+  private permissionHandler: CodexPermissionHandlerLike | null = null;
+  private toolCallIds = new ToolCallIdCanonicalizer();
+  private buffer = '';
+  private nextRequestId = 1;
+  private pendingRequests = new Map<RequestId, PendingRpc>();
+  private pendingTurnCompletions = new Map<
+    string,
+    { resolve: (turn: TurnState) => void; reject: (error: Error) => void }
+  >();
+  private completedTurns = new Map<string, TurnState>();
+  private preferredResumeThreadId: string | null = null;
+  private sawLegacyCodexEvents = false;
+  private recentAgentMessageKeys = new Map<string, number>();
 
-    constructor() {
-        this.client = new Client(
-            { name: 'happy-codex-client', version: '1.0.0' },
-            { capabilities: { elicitation: {} } }
+  setHandler(handler: ((event: unknown) => void) | null): void {
+    this.handler = handler;
+  }
+
+  setPermissionHandler(handler: CodexPermissionHandlerLike): void {
+    this.permissionHandler = handler;
+  }
+
+  /**
+   * Hint the client to attempt `thread/resume` with this id before creating a new thread.
+   */
+  setPreferredResumeThreadId(threadId: string | null): void {
+    this.preferredResumeThreadId = threadId && threadId.trim() ? threadId.trim() : null;
+  }
+
+  canonicalizeToolCallId(callId: unknown, inputs?: unknown): string {
+    return this.toolCallIds.canonicalize(callId, inputs);
+  }
+
+  async connect(): Promise<void> {
+    if (this.connected) return;
+
+    logger.debug('[CodexAppServer] Connecting to codex app-server');
+    this.child = spawn('codex', ['app-server'], {
+      env: Object.keys(process.env).reduce((acc, key) => {
+        const value = process.env[key];
+        if (typeof value === 'string') acc[key] = value;
+        return acc;
+      }, {} as Record<string, string>),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    this.child.stdout.on('data', (chunk: Buffer | string) => {
+      this.handleStdout(chunk.toString());
+    });
+
+    this.child.stderr.on('data', (chunk: Buffer | string) => {
+      const text = chunk.toString().trim();
+      if (!text) return;
+      logger.debug(`[CodexAppServer][stderr] ${text}`);
+    });
+
+    this.child.on('exit', (code, signal) => {
+      const reason = `codex app-server exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`;
+      this.failAllPending(new Error(reason));
+      this.connected = false;
+      this.child = null;
+    });
+
+    this.child.on('error', (error) => {
+      this.failAllPending(normalizeError(error));
+    });
+
+    try {
+      await this.callRpc(
+        'initialize',
+        {
+          clientInfo: { name: 'happy-codex-client', version: '1.0.0' },
+          capabilities: { experimentalApi: true },
+        },
+        { timeout: 30000 },
+      );
+      this.notify('initialized', undefined);
+      this.connected = true;
+      logger.debug('[CodexAppServer] Connected');
+    } catch (error) {
+      await this.disconnect();
+      throw normalizeError(error);
+    }
+  }
+
+  async startSession(
+    config: CodexSessionConfig,
+    options?: { signal?: AbortSignal },
+  ): Promise<CodexToolResponse> {
+    if (!this.connected) await this.connect();
+    await this.ensureThread(config, options?.signal);
+
+    const effort =
+      mapEffortFromLegacyConfig(isRecord(config.config) ? config.config.model_reasoning_effort : undefined) ??
+      undefined;
+
+    return this.startTurn(config.prompt, {
+      signal: options?.signal,
+      overrides: {
+        approvalPolicy: config['approval-policy'] ?? undefined,
+        sandbox: config.sandbox ?? undefined,
+        model: config.model ?? undefined,
+        effort,
+        cwd: config.cwd ?? process.cwd(),
+      },
+    });
+  }
+
+  async continueSession(
+    prompt: string,
+    options?: ContinueSessionOptions,
+  ): Promise<CodexToolResponse> {
+    if (!this.connected) await this.connect();
+    if (!this.sessionId) {
+      throw new Error('No active session. Call startSession first.');
+    }
+    return this.startTurn(prompt, options);
+  }
+
+  private async ensureThread(config: CodexSessionConfig, signal?: AbortSignal): Promise<void> {
+    if (this.sessionId) {
+      return;
+    }
+
+    const cfg = isRecord(config.config) ? { ...config.config } : undefined;
+    const resumePath =
+      cfg && typeof cfg.experimental_resume === 'string' && cfg.experimental_resume.trim()
+        ? cfg.experimental_resume.trim()
+        : null;
+
+    if (cfg && 'experimental_resume' in cfg) {
+      delete cfg.experimental_resume;
+    }
+
+    const resumeThreadId =
+      this.preferredResumeThreadId ?? this.extractThreadIdFromResumePath(resumePath);
+
+    const baseParams = {
+      cwd: config.cwd ?? process.cwd(),
+      approvalPolicy: config['approval-policy'] ?? undefined,
+      sandbox: config.sandbox ?? undefined,
+      model: config.model ?? undefined,
+      baseInstructions: config['base-instructions'] ?? undefined,
+      developerInstructions: config['developer-instructions'] ?? undefined,
+      config: cfg && Object.keys(cfg).length > 0 ? cfg : undefined,
+    };
+
+    if (resumeThreadId) {
+      try {
+        logger.debug('[CodexAppServer] Attempting thread/resume:', resumeThreadId);
+        const resumeResp = await this.callRpc('thread/resume', {
+          ...baseParams,
+          threadId: resumeThreadId,
+          ...(resumePath ? { path: resumePath } : {}),
+        }, {
+          signal,
+          timeout: DEFAULT_TIMEOUT,
+        });
+        this.extractIdentifiers(resumeResp);
+        this.preferredResumeThreadId = null;
+        return;
+      } catch (error) {
+        logger.debug('[CodexAppServer] thread/resume failed, falling back to thread/start', error);
+      }
+    }
+
+    const startResp = await this.callRpc('thread/start', baseParams, {
+      signal,
+      timeout: DEFAULT_TIMEOUT,
+    });
+    this.extractIdentifiers(startResp);
+  }
+
+  private async startTurn(
+    prompt: string,
+    options?: ContinueSessionOptions,
+  ): Promise<CodexToolResponse> {
+    if (!this.sessionId) {
+      throw new Error('No active session. Call startSession first.');
+    }
+
+    const cwd = options?.overrides?.cwd ?? process.cwd();
+    const turnParams: Record<string, unknown> = {
+      threadId: this.sessionId,
+      input: [{ type: 'text', text: prompt }],
+    };
+
+    if (options?.overrides?.approvalPolicy !== undefined) {
+      turnParams.approvalPolicy = options.overrides.approvalPolicy;
+    }
+    if (options?.overrides?.sandbox !== undefined) {
+      turnParams.sandboxPolicy = mapSandboxPolicy(options.overrides.sandbox, cwd);
+    }
+    if (options?.overrides?.model !== undefined) {
+      turnParams.model = options.overrides.model;
+    }
+    if (options?.overrides?.effort !== undefined) {
+      turnParams.effort = options.overrides.effort;
+    }
+    if (options?.overrides?.summary !== undefined) {
+      turnParams.summary = options.overrides.summary;
+    }
+    if (options?.overrides?.personality !== undefined) {
+      turnParams.personality = options.overrides.personality;
+    }
+    if (options?.overrides?.cwd !== undefined) {
+      turnParams.cwd = options.overrides.cwd;
+    }
+    if (options?.overrides?.outputSchema !== undefined) {
+      turnParams.outputSchema = options.overrides.outputSchema;
+    }
+
+    const turnStartResp = await this.callRpc('turn/start', turnParams, {
+      signal: options?.signal,
+      timeout: DEFAULT_TIMEOUT,
+    });
+
+    const turnStart = isRecord(turnStartResp) && isRecord(turnStartResp.turn)
+      ? (turnStartResp.turn as TurnState)
+      : null;
+    if (!turnStart || typeof turnStart.id !== 'string') {
+      return {
+        content: [{ type: 'text', text: 'Invalid turn/start response' }],
+        structuredContent: {
+          threadId: this.sessionId,
+          content: 'Invalid turn/start response',
+        },
+        isError: true,
+      };
+    }
+
+    const completedTurn = await this.waitForTurnCompletion(turnStart, options?.signal);
+    if (completedTurn.status === 'failed') {
+      const message =
+        completedTurn.error && typeof completedTurn.error.message === 'string'
+          ? completedTurn.error.message
+          : 'Turn failed';
+      return {
+        content: [{ type: 'text', text: message }],
+        structuredContent: {
+          threadId: this.sessionId,
+          content: message,
+        },
+        isError: true,
+      };
+    }
+    if (completedTurn.status === 'interrupted') {
+      const error = createAbortError();
+      throw error;
+    }
+
+    return {
+      content: [{ type: 'text', text: 'ok' }],
+      structuredContent: {
+        threadId: this.sessionId,
+        content: 'ok',
+      },
+    };
+  }
+
+  private async waitForTurnCompletion(
+    turn: TurnState,
+    signal?: AbortSignal,
+  ): Promise<TurnState> {
+    if (turn.status !== 'inProgress') {
+      return turn;
+    }
+
+    const existing = this.completedTurns.get(turn.id);
+    if (existing) {
+      this.completedTurns.delete(turn.id);
+      return existing;
+    }
+
+    const turnPromise = new Promise<TurnState>((resolve, reject) => {
+      this.pendingTurnCompletions.set(turn.id, { resolve, reject });
+    });
+
+    const abortPromise = new Promise<never>((_, reject) => {
+      if (!signal) return;
+      const onAbort = () => {
+        void this.interruptTurn(turn.id).catch((error) => {
+          logger.debug('[CodexAppServer] turn/interrupt failed', error);
+        });
+        reject(createAbortError());
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+      turnPromise.finally(() => {
+        signal.removeEventListener('abort', onAbort);
+      }).catch(() => {});
+    });
+
+    try {
+      if (!signal) return await turnPromise;
+      return await Promise.race([turnPromise, abortPromise]);
+    } finally {
+      this.pendingTurnCompletions.delete(turn.id);
+    }
+  }
+
+  private async interruptTurn(turnId: string): Promise<void> {
+    if (!this.sessionId) return;
+    try {
+      await this.callRpc('turn/interrupt', {
+        threadId: this.sessionId,
+        turnId,
+      }, {
+        timeout: 30000,
+      });
+    } catch (error) {
+      logger.debug('[CodexAppServer] turn/interrupt call error', error);
+    }
+  }
+
+  private handleStdout(chunk: string): void {
+    this.buffer += chunk;
+    while (true) {
+      const newLineIdx = this.buffer.indexOf('\n');
+      if (newLineIdx < 0) break;
+      const line = this.buffer.slice(0, newLineIdx).trim();
+      this.buffer = this.buffer.slice(newLineIdx + 1);
+      if (!line) continue;
+
+      let message: unknown;
+      try {
+        message = JSON.parse(line);
+      } catch (error) {
+        logger.debug('[CodexAppServer] Ignoring non-JSON line from app-server:', line, error);
+        continue;
+      }
+      this.handleJsonRpc(message);
+    }
+  }
+
+  private handleJsonRpc(message: unknown): void {
+    if (!isRecord(message)) return;
+
+    const hasMethod = typeof message.method === 'string';
+    const hasId = typeof message.id === 'number' || typeof message.id === 'string';
+
+    if (hasMethod && hasId) {
+      void this.handleServerRequest(message as CodexToolCallLike);
+      return;
+    }
+    if (hasMethod) {
+      this.handleServerNotification(message);
+      return;
+    }
+    if (hasId) {
+      this.handleClientResponse(message as CodexToolCallLike);
+      return;
+    }
+  }
+
+  private handleClientResponse(response: CodexToolCallLike): void {
+    const pending = this.pendingRequests.get(response.id);
+    if (!pending) {
+      return;
+    }
+    this.pendingRequests.delete(response.id);
+    clearTimeout(pending.timer);
+
+    if (response.error) {
+      const message =
+        typeof response.error === 'string'
+          ? response.error
+          : typeof response.error.message === 'string'
+            ? response.error.message
+            : 'JSON-RPC error';
+      pending.reject(new Error(message));
+      return;
+    }
+
+    pending.resolve(response.result);
+  }
+
+  private async handleServerRequest(request: CodexToolCallLike): Promise<void> {
+    const method = typeof request.method === 'string' ? request.method : '';
+    const params = isRecord(request.params) ? request.params : {};
+
+    try {
+      if (method === 'item/commandExecution/requestApproval') {
+        const callId = typeof params.itemId === 'string' && params.itemId.trim()
+          ? params.itemId
+          : randomUUID();
+
+        this.toolCallIds.registerAliases(callId, [callId]);
+        const decision = await this.requestPermission(
+          callId,
+          'CodexBash',
+          {
+            command: params.command,
+            cwd: params.cwd,
+            parsed_cmd: params.commandActions,
+            commandActions: params.commandActions,
+            reason: params.reason,
+          },
         );
 
-        this.client.setNotificationHandler(z.object({
-            method: z.literal('codex/event'),
-            params: z.object({
-                msg: z.any()
-            })
-        }).passthrough(), (data) => {
-            const msg = data.params.msg;
-            this.updateIdentifiersFromEvent(msg);
-            this.toolCallIds.maybeRecordExecApproval(msg);
-            this.handler?.(msg);
+        this.sendResponse(request.id, {
+          decision: mapPermissionDecisionToNewApi(decision),
         });
-    }
+        return;
+      }
 
-    setHandler(handler: ((event: unknown) => void) | null): void {
-        this.handler = handler;
-    }
+      if (method === 'item/fileChange/requestApproval') {
+        const callId = typeof params.itemId === 'string' && params.itemId.trim()
+          ? params.itemId
+          : randomUUID();
+        this.toolCallIds.registerAliases(callId, [callId]);
 
-    /**
-     * Set the permission handler for tool approval
-     */
-    setPermissionHandler(handler: CodexPermissionHandlerLike): void {
-        this.permissionHandler = handler;
-    }
-
-    /**
-     * Return the canonical tool call id to use for UI/state sync.
-     * If we can correlate the event `call_id` to a recent elicitation (command+cwd),
-     * this will unify permission and tool execution under the same id.
-     */
-    canonicalizeToolCallId(callId: unknown, inputs?: unknown): string {
-        return this.toolCallIds.canonicalize(callId, inputs);
-    }
-
-    async connect(): Promise<void> {
-        if (this.connected) return;
-
-        const mcpCommand = getCodexMcpCommand();
-
-        if (mcpCommand === null) {
-            throw new Error(
-                'Codex CLI not found or not executable.\n' +
-                '\n' +
-                'To install codex:\n' +
-                '  npm install -g @openai/codex\n' +
-                '\n' +
-                'Alternatively, use Claude:\n' +
-                '  happy claude'
-            );
-        }
-
-        logger.debug(`[CodexMCP] Connecting to Codex MCP server using command: codex ${mcpCommand}`);
-
-        this.transport = new StdioClientTransport({
-            command: 'codex',
-            args: [mcpCommand],
-            env: Object.keys(process.env).reduce((acc, key) => {
-                const value = process.env[key];
-                if (typeof value === 'string') acc[key] = value;
-                return acc;
-            }, {} as Record<string, string>)
-        });
-
-        // Register request handlers for Codex permission methods
-        this.registerPermissionHandlers();
-
-        await this.client.connect(this.transport);
-        this.connected = true;
-
-        logger.debug('[CodexMCP] Connected to Codex');
-    }
-
-    private registerPermissionHandlers(): void {
-        // Register handler for exec command approval requests
-        this.client.setRequestHandler(
-            ElicitRequestSchema,
-            async (request) => {
-                logger.debugLargeJson('[CodexMCP] Received elicitation request params:', request.params);
-
-                // Load params
-                const params = request.params as unknown as {
-                    message?: unknown;
-                    codex_elicitation?: unknown;
-                    codex_mcp_tool_call_id?: unknown;
-                    codex_event_id?: unknown;
-                    codex_call_id?: unknown;
-                    codex_command?: unknown;
-                    codex_cwd?: unknown;
-                    // Future/alternate key names (keep permissive).
-                    callId?: unknown;
-                    tool_call_id?: unknown;
-                };
-                const toolName = 'CodexBash';
-
-                // If no permission handler set, deny by default
-                if (!this.permissionHandler) {
-                    logger.debug('[CodexMCP] No permission handler set, denying by default');
-                    return {
-                        action: 'decline' as const,
-                        decision: 'denied' as const,
-                    };
-                }
-
-                try {
-                    // Codex versions / MCP servers have varied field names for the tool call id.
-                    // This id MUST match the tool-call id used later in events/results so the app's approval can resolve the pending request.
-                    // Prefer ids that appear as the eventual exec_* event `call_id`.
-                    // Empirically, `codex_call_id` is the best match; MCP-level ids can differ.
-                    const candidates = [
-                        params.codex_call_id,
-                        params.callId,
-                        params.tool_call_id,
-                        params.codex_mcp_tool_call_id,
-                        params.codex_event_id, // last resort: better than "undefined"
-                    ];
-                    const toolCallId =
-                        candidates.find((v) => typeof v === 'string' && v.trim().length > 0) as string | undefined;
-
-                    // Newer Codex emits an exec_approval_request event with the stable `call_id`,
-                    // then sends a generic `elicitation/create` request with only a human-readable message.
-                    // To keep the app's invariant (permissionId === toolCallId), we try to pair the
-                    // elicitation with the most recent exec approval event.
-                    const pairedExec = !toolCallId
-                        ? this.toolCallIds.consumeMostRecentExecApproval(params.message)
-                        : null;
-
-                    // If Codex doesn't give us a usable id and we can't pair, generate one to avoid
-                    // collisions ("undefined") and infinite waiting on the mobile UI.
-                    const effectiveToolCallId = toolCallId || pairedExec?.callId || randomUUID();
-                    if (!toolCallId && !pairedExec?.callId) {
-                        logger.debug('[CodexMCP] Missing tool call id in elicitation params; generated:', effectiveToolCallId, {
-                            keys: params && typeof params === 'object' ? Object.keys(params as any) : null,
-                        });
-                    } else {
-                        logger.debug('[CodexMCP] Elicitation tool call id selected:', effectiveToolCallId);
-                    }
-
-                    const command = pairedExec?.command ?? (Array.isArray(params.codex_command) ? params.codex_command : []);
-                    const cwd = pairedExec?.cwd ?? (typeof params.codex_cwd === 'string' ? params.codex_cwd : '');
-
-                    // Make all observed ids resolve to the canonical id we will use in AgentState/tool messages.
-                    this.toolCallIds.registerAliases(effectiveToolCallId, [...candidates, pairedExec?.callId]);
-                    // If we had to generate an id, keep a short-lived record so we can associate
-                    // the subsequent exec_* event call_id to this permission request.
-                    if (!toolCallId && !pairedExec?.callId) {
-                        this.toolCallIds.rememberGeneratedElicitation(effectiveToolCallId, command, cwd);
-                    }
-
-                    // Request permission through the handler
-                    const result = await this.permissionHandler.handleToolCall(
-                        effectiveToolCallId,
-                        toolName,
-                        {
-                            command,
-                            cwd,
-                            ...(pairedExec?.parsed_cmd ? { parsed_cmd: pairedExec.parsed_cmd } : {}),
-                        }
-                    );
-
-                    logger.debug('[CodexMCP] Permission result:', result);
-                    const action =
-                        result.decision === 'approved' || result.decision === 'approved_for_session'
-                            ? 'accept'
-                            : result.decision === 'denied'
-                                ? 'decline'
-                                : 'cancel';
-                    return {
-                        action,
-                        decision: result.decision
-                    }
-                } catch (error) {
-                    logger.debug('[CodexMCP] Error handling permission request:', error);
-                    return {
-                        action: 'decline' as const,
-                        decision: 'denied' as const,
-                        reason: error instanceof Error ? error.message : 'Permission request failed'
-                    };
-                }
-            }
+        const decision = await this.requestPermission(
+          callId,
+          'CodexPatch',
+          {
+            grantRoot: params.grantRoot,
+            reason: params.reason,
+          },
         );
 
-        logger.debug('[CodexMCP] Permission handlers registered');
-    }
-
-    async startSession(config: CodexSessionConfig, options?: { signal?: AbortSignal }): Promise<CodexToolResponse> {
-        if (!this.connected) await this.connect();
-
-        logger.debug('[CodexMCP] Starting Codex session:', config);
-
-        const response = await this.client.callTool({
-            name: 'codex',
-            arguments: config as any
-        }, undefined, {
-            signal: options?.signal,
-            timeout: DEFAULT_TIMEOUT,
-            // maxTotalTimeout: 10000000000 
+        this.sendResponse(request.id, {
+          decision: mapPermissionDecisionToNewApi(decision),
         });
+        return;
+      }
 
-        logger.debug('[CodexMCP] startSession response:', response);
+      // Backward-compatible fallback (legacy approval request method names).
+      if (method === 'execCommandApproval') {
+        const callId = typeof params.callId === 'string' && params.callId.trim()
+          ? params.callId
+          : randomUUID();
+        this.toolCallIds.registerAliases(callId, [callId]);
 
-        // Extract session / conversation identifiers from response if present
-        this.extractIdentifiers(response);
+        const decision = await this.requestPermission(
+          callId,
+          'CodexBash',
+          {
+            command: params.command,
+            cwd: params.cwd,
+            parsed_cmd: params.parsedCmd,
+            reason: params.reason,
+          },
+        );
 
-        return response as CodexToolResponse;
-    }
-
-    async continueSession(prompt: string, options?: { signal?: AbortSignal }): Promise<CodexToolResponse> {
-        if (!this.connected) await this.connect();
-
-        if (!this.sessionId) {
-            throw new Error('No active session. Call startSession first.');
-        }
-
-        if (!this.conversationId) {
-            // Some Codex deployments reuse the session ID as the conversation identifier
-            this.conversationId = this.sessionId;
-            logger.debug('[CodexMCP] conversationId missing, defaulting to sessionId:', this.conversationId);
-        }
-
-        // Modern Codex MCP uses `threadId`. Keep `conversationId` for backward compatibility.
-        const args = { threadId: this.sessionId, conversationId: this.conversationId, prompt };
-        logger.debug('[CodexMCP] Continuing Codex session:', args);
-
-        const response = await this.client.callTool({
-            name: 'codex-reply',
-            arguments: args
-        }, undefined, {
-            signal: options?.signal,
-            timeout: DEFAULT_TIMEOUT
+        this.sendResponse(request.id, {
+          decision: mapPermissionDecisionToLegacyApi(decision),
         });
+        return;
+      }
 
-        logger.debug('[CodexMCP] continueSession response:', response);
-        this.extractIdentifiers(response);
+      if (method === 'applyPatchApproval') {
+        const callId = typeof params.callId === 'string' && params.callId.trim()
+          ? params.callId
+          : randomUUID();
+        this.toolCallIds.registerAliases(callId, [callId]);
 
-        return response as CodexToolResponse;
+        const decision = await this.requestPermission(
+          callId,
+          'CodexPatch',
+          {
+            fileChanges: params.fileChanges,
+            reason: params.reason,
+            grantRoot: params.grantRoot,
+          },
+        );
+
+        this.sendResponse(request.id, {
+          decision: mapPermissionDecisionToLegacyApi(decision),
+        });
+        return;
+      }
+
+      this.sendError(request.id, -32601, `Unsupported server request method: ${method}`);
+    } catch (error) {
+      logger.debug('[CodexAppServer] Failed handling server request', error);
+      this.sendError(
+        request.id,
+        -32603,
+        error instanceof Error ? error.message : 'Server request failed',
+      );
+    }
+  }
+
+  private handleServerNotification(notification: Record<string, unknown>): void {
+    const method = typeof notification.method === 'string' ? notification.method : '';
+    const params = isRecord(notification.params) ? notification.params : {};
+
+    if (method.startsWith('codex/event/')) {
+      this.sawLegacyCodexEvents = true;
+      const conversationId = params.conversationId;
+      if (typeof conversationId === 'string' && conversationId.trim()) {
+        this.conversationId = conversationId;
+        if (!this.sessionId) this.sessionId = conversationId;
+      }
+
+      const msg = params.msg;
+      if (msg !== undefined) {
+        this.updateIdentifiersFromEvent(msg);
+        this.toolCallIds.maybeRecordExecApproval(msg);
+        let shouldForward = true;
+        if (
+          isRecord(msg) &&
+          msg.type === 'agent_message' &&
+          typeof msg.message === 'string'
+        ) {
+          shouldForward = !this.shouldSuppressAgentMessage({
+            message: msg.message,
+            turnId: params.id,
+            conversationId:
+              typeof conversationId === 'string' ? conversationId : this.conversationId,
+          });
+        }
+        if (shouldForward) {
+          this.handler?.(msg);
+        } else {
+          logger.debug('[CodexAppServer] Suppressed duplicate agent_message from codex/event');
+        }
+      }
+      return;
     }
 
-
-    private updateIdentifiersFromEvent(event: unknown): void {
-        if (!isRecord(event)) {
-            return;
-        }
-
-        const candidates: Array<Record<string, unknown>> = [event];
-        const data = event.data;
-        if (isRecord(data)) {
-            candidates.push(data);
-        }
-
-        for (const candidate of candidates) {
-            const sessionId =
-                candidate.session_id ??
-                candidate.sessionId ??
-                candidate.thread_id ??
-                candidate.threadId;
-            if (typeof sessionId === 'string' && sessionId.trim()) {
-                this.sessionId = sessionId;
-                logger.debug('[CodexMCP] Session ID extracted from event:', this.sessionId);
-            }
-
-            const conversationId = candidate.conversation_id ?? candidate.conversationId;
-            if (typeof conversationId === 'string' && conversationId.trim()) {
-                this.conversationId = conversationId;
-                logger.debug('[CodexMCP] Conversation ID extracted from event:', this.conversationId);
-            }
-        }
+    if (method === 'thread/started') {
+      const thread = isRecord(params.thread) ? params.thread : null;
+      const threadId = thread && typeof thread.id === 'string' ? thread.id : null;
+      if (threadId) {
+        this.sessionId = threadId;
+        this.conversationId = threadId;
+      }
+      return;
     }
 
-    private extractIdentifiers(response: unknown): void {
-        if (!isRecord(response)) {
-            return;
+    if (method === 'turn/completed') {
+      const turn = isRecord(params.turn) ? (params.turn as TurnState) : null;
+      if (turn && typeof turn.id === 'string') {
+        const waiter = this.pendingTurnCompletions.get(turn.id);
+        if (waiter) {
+          waiter.resolve(turn);
+        } else {
+          this.completedTurns.set(turn.id, turn);
         }
-
-        const structured = response.structuredContent;
-        const structuredThreadId = isRecord(structured)
-            ? (structured.threadId ?? structured.thread_id)
-            : undefined;
-        if (typeof structuredThreadId === 'string' && structuredThreadId.trim()) {
-            this.sessionId = structuredThreadId;
-            logger.debug('[CodexMCP] Session ID extracted from structuredContent.threadId:', this.sessionId);
+        // When legacy codex/event stream is available, it already emits turn_aborted.
+        if (turn.status === 'interrupted' && !this.sawLegacyCodexEvents) {
+          this.handler?.({ type: 'turn_aborted' });
         }
-
-        const meta = isRecord(response.meta) ? response.meta : ({} as Record<string, unknown>);
-        const metaSessionId = meta.sessionId;
-        if (typeof metaSessionId === 'string' && metaSessionId.trim()) {
-            this.sessionId = metaSessionId;
-            logger.debug('[CodexMCP] Session ID extracted:', this.sessionId);
-        } else if (typeof response.sessionId === 'string' && response.sessionId.trim()) {
-            this.sessionId = response.sessionId;
-            logger.debug('[CodexMCP] Session ID extracted:', this.sessionId);
-        } else if (typeof response.threadId === 'string' && response.threadId.trim()) {
-            // Some servers may return threadId at top-level.
-            this.sessionId = response.threadId;
-            logger.debug('[CodexMCP] Session ID extracted from response.threadId:', this.sessionId);
-        }
-
-        const metaConversationId = meta.conversationId;
-        if (typeof metaConversationId === 'string' && metaConversationId.trim()) {
-            this.conversationId = metaConversationId;
-            logger.debug('[CodexMCP] Conversation ID extracted:', this.conversationId);
-        } else if (typeof response.conversationId === 'string' && response.conversationId.trim()) {
-            this.conversationId = response.conversationId;
-            logger.debug('[CodexMCP] Conversation ID extracted:', this.conversationId);
-        }
-
-        const content = response.content;
-        if (Array.isArray(content)) {
-            for (const item of content) {
-                if (!isRecord(item)) continue;
-
-                if (!this.sessionId && typeof item.sessionId === 'string' && item.sessionId.trim()) {
-                    this.sessionId = item.sessionId;
-                    logger.debug('[CodexMCP] Session ID extracted from content:', this.sessionId);
-                }
-                if (
-                    !this.conversationId &&
-                    typeof item.conversationId === 'string' &&
-                    item.conversationId.trim()
-                ) {
-                    this.conversationId = item.conversationId;
-                    logger.debug('[CodexMCP] Conversation ID extracted from content:', this.conversationId);
-                }
-            }
-        }
+      }
+      return;
     }
 
-    getSessionId(): string | null {
-        return this.sessionId;
+    // Fallback mapping in case legacy codex/event wrappers are unavailable.
+    if (
+      method === 'turn/diff/updated' &&
+      typeof params.diff === 'string' &&
+      !this.sawLegacyCodexEvents
+    ) {
+      this.handler?.({ type: 'turn_diff', unified_diff: params.diff });
+      return;
     }
 
-    getConversationId(): string | null {
-        return this.conversationId;
-    }
-
-    hasActiveSession(): boolean {
-        return this.sessionId !== null;
-    }
-
-    clearSession(): void {
-        // Store the previous session ID before clearing for potential resume
-        const previousSessionId = this.sessionId;
-        this.sessionId = null;
-        this.conversationId = null;
-        logger.debug('[CodexMCP] Session cleared, previous sessionId:', previousSessionId);
-    }
-
-    /**
-     * Store the current session ID without clearing it, useful for abort handling
-     */
-    storeSessionForResume(): string | null {
-        logger.debug('[CodexMCP] Storing session for potential resume:', this.sessionId);
-        return this.sessionId;
-    }
-
-    /**
-     * Force close the Codex MCP transport and clear all session identifiers.
-     * Use this for permanent shutdown (e.g. kill/exit). Prefer `disconnect()` for
-     * transient connection resets where you may want to keep the session id.
-     */
-    async forceCloseSession(): Promise<void> {
-        logger.debug('[CodexMCP] Force closing session');
-        try {
-            await this.disconnect();
-        } finally {
-            this.clearSession();
+    if (
+      method === 'item/completed' &&
+      isRecord(params.item) &&
+      !this.sawLegacyCodexEvents
+    ) {
+      const item = params.item;
+      if (item.type === 'agentMessage' && typeof item.text === 'string') {
+        const shouldForward = !this.shouldSuppressAgentMessage({
+          message: item.text,
+          turnId: params.turnId,
+          conversationId:
+            typeof params.threadId === 'string' ? params.threadId : this.conversationId,
+        });
+        if (shouldForward) {
+          this.handler?.({ type: 'agent_message', message: item.text });
+        } else {
+          logger.debug('[CodexAppServer] Suppressed duplicate agent_message from item/completed');
         }
-        logger.debug('[CodexMCP] Session force-closed');
+      }
+    }
+  }
+
+  private shouldSuppressAgentMessage(input: {
+    message: string;
+    turnId?: unknown;
+    conversationId?: string | null;
+  }): boolean {
+    const text = input.message.trim();
+    if (!text) return false;
+
+    const turnId =
+      typeof input.turnId === 'string' || typeof input.turnId === 'number'
+        ? String(input.turnId)
+        : '';
+    const conversationId =
+      (typeof input.conversationId === 'string' && input.conversationId.trim()) ||
+      this.conversationId ||
+      '';
+
+    const key = `${conversationId}|${turnId}|${text}`;
+    const now = Date.now();
+    const cutoff = now - AGENT_MESSAGE_DEDUPE_WINDOW_MS;
+
+    for (const [k, ts] of this.recentAgentMessageKeys) {
+      if (ts < cutoff) this.recentAgentMessageKeys.delete(k);
     }
 
-    async disconnect(): Promise<void> {
-        if (!this.connected) return;
+    const seenAt = this.recentAgentMessageKeys.get(key);
+    this.recentAgentMessageKeys.set(key, now);
+    return typeof seenAt === 'number' && now - seenAt <= AGENT_MESSAGE_DEDUPE_WINDOW_MS;
+  }
 
-        // Capture pid in case we need to force-kill
-        const pid = this.transport?.pid ?? null;
-        logger.debug(`[CodexMCP] Disconnecting; child pid=${pid ?? 'none'}`);
-
-        try {
-            // Ask client to close the transport
-            logger.debug('[CodexMCP] client.close begin');
-            await this.client.close();
-            logger.debug('[CodexMCP] client.close done');
-        } catch (e) {
-            logger.debug('[CodexMCP] Error closing client, attempting transport close directly', e);
-            try { 
-                logger.debug('[CodexMCP] transport.close begin');
-                await this.transport?.close?.(); 
-                logger.debug('[CodexMCP] transport.close done');
-            } catch {}
-        }
-
-        // As a last resort, if child still exists, send SIGKILL
-        if (pid) {
-            try {
-                process.kill(pid, 0); // check if alive
-                logger.debug('[CodexMCP] Child still alive, sending SIGKILL');
-                try { process.kill(pid, 'SIGKILL'); } catch {}
-            } catch { /* not running */ }
-        }
-
-        this.transport = null;
-        this.connected = false;
-        // Preserve session/conversation identifiers for potential reconnection / recovery flows.
-        logger.debug(`[CodexMCP] Disconnected; session ${this.sessionId ?? 'none'} preserved`);
+  private async requestPermission(
+    toolCallId: string,
+    toolName: string,
+    input: unknown,
+  ): Promise<PermissionResult['decision']> {
+    if (!this.permissionHandler) {
+      logger.debug('[CodexAppServer] No permission handler set, denying by default');
+      return 'denied';
     }
+    const result = await this.permissionHandler.handleToolCall(toolCallId, toolName, input);
+    return result.decision;
+  }
+
+  private callRpc(
+    method: string,
+    params: unknown,
+    options?: { signal?: AbortSignal; timeout?: number },
+  ): Promise<unknown> {
+    const child = this.child;
+    if (!child || child.killed) {
+      return Promise.reject(new Error('Codex app-server process is not running'));
+    }
+
+    const id: RequestId = this.nextRequestId++;
+    const timeoutMs = options?.timeout ?? DEFAULT_TIMEOUT;
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(id);
+        reject(new Error(`JSON-RPC request timed out: ${method}`));
+      }, timeoutMs);
+
+      const onAbort = () => {
+        this.pendingRequests.delete(id);
+        clearTimeout(timer);
+        reject(createAbortError());
+      };
+
+      if (options?.signal) {
+        if (options.signal.aborted) {
+          clearTimeout(timer);
+          reject(createAbortError());
+          return;
+        }
+        options.signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      this.pendingRequests.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          if (options?.signal) options.signal.removeEventListener('abort', onAbort);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          if (options?.signal) options.signal.removeEventListener('abort', onAbort);
+          reject(error);
+        },
+        timer,
+      });
+
+      this.send({
+        jsonrpc: '2.0',
+        id,
+        method,
+        params,
+      });
+    });
+  }
+
+  private notify(method: string, params: unknown): void {
+    this.send({
+      jsonrpc: '2.0',
+      method,
+      ...(params !== undefined ? { params } : {}),
+    });
+  }
+
+  private sendResponse(id: RequestId, result: unknown): void {
+    this.send({
+      jsonrpc: '2.0',
+      id,
+      result,
+    });
+  }
+
+  private sendError(id: RequestId, code: number, message: string): void {
+    this.send({
+      jsonrpc: '2.0',
+      id,
+      error: { code, message },
+    });
+  }
+
+  private send(payload: unknown): void {
+    if (!this.child || this.child.killed) return;
+    this.child.stdin.write(`${JSON.stringify(payload)}\n`);
+  }
+
+  private failAllPending(error: Error): void {
+    for (const [, pending] of this.pendingRequests) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.pendingRequests.clear();
+
+    for (const [, waiter] of this.pendingTurnCompletions) {
+      waiter.reject(error);
+    }
+    this.pendingTurnCompletions.clear();
+  }
+
+  private extractThreadIdFromResumePath(path: string | null): string | null {
+    if (!path) return null;
+    const match = path.match(/-([0-9a-fA-F-]{36})\.jsonl$/);
+    if (!match) return null;
+    return match[1];
+  }
+
+  private updateIdentifiersFromEvent(event: unknown): void {
+    if (!isRecord(event)) {
+      return;
+    }
+
+    const candidates: Array<Record<string, unknown>> = [event];
+    const data = event.data;
+    if (isRecord(data)) {
+      candidates.push(data);
+    }
+
+    for (const candidate of candidates) {
+      const sessionId =
+        candidate.session_id ??
+        candidate.sessionId ??
+        candidate.thread_id ??
+        candidate.threadId ??
+        candidate.conversation_id ??
+        candidate.conversationId;
+      if (typeof sessionId === 'string' && sessionId.trim()) {
+        this.sessionId = sessionId;
+      }
+
+      const conversationId = candidate.conversation_id ?? candidate.conversationId;
+      if (typeof conversationId === 'string' && conversationId.trim()) {
+        this.conversationId = conversationId;
+      }
+    }
+  }
+
+  private extractIdentifiers(response: unknown): void {
+    if (!isRecord(response)) {
+      return;
+    }
+
+    const thread = isRecord(response.thread) ? response.thread : null;
+    if (thread && typeof thread.id === 'string' && thread.id.trim()) {
+      this.sessionId = thread.id;
+      this.conversationId = thread.id;
+    }
+
+    const structured = response.structuredContent;
+    const structuredThreadId = isRecord(structured)
+      ? (structured.threadId ?? structured.thread_id)
+      : undefined;
+    if (typeof structuredThreadId === 'string' && structuredThreadId.trim()) {
+      this.sessionId = structuredThreadId;
+    }
+
+    const meta = isRecord(response.meta) ? response.meta : ({} as Record<string, unknown>);
+    const metaSessionId = meta.sessionId;
+    if (typeof metaSessionId === 'string' && metaSessionId.trim()) {
+      this.sessionId = metaSessionId;
+    } else if (typeof response.sessionId === 'string' && response.sessionId.trim()) {
+      this.sessionId = response.sessionId;
+    } else if (typeof response.threadId === 'string' && response.threadId.trim()) {
+      this.sessionId = response.threadId;
+    }
+
+    const metaConversationId = meta.conversationId;
+    if (typeof metaConversationId === 'string' && metaConversationId.trim()) {
+      this.conversationId = metaConversationId;
+    } else if (typeof response.conversationId === 'string' && response.conversationId.trim()) {
+      this.conversationId = response.conversationId;
+    }
+
+    const content = response.content;
+    if (Array.isArray(content)) {
+      for (const item of content) {
+        if (!isRecord(item)) continue;
+
+        if (!this.sessionId && typeof item.sessionId === 'string' && item.sessionId.trim()) {
+          this.sessionId = item.sessionId;
+        }
+        if (
+          !this.conversationId &&
+          typeof item.conversationId === 'string' &&
+          item.conversationId.trim()
+        ) {
+          this.conversationId = item.conversationId;
+        }
+      }
+    }
+
+    if (this.sessionId && !this.conversationId) {
+      this.conversationId = this.sessionId;
+    }
+  }
+
+  getSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  getConversationId(): string | null {
+    return this.conversationId;
+  }
+
+  hasActiveSession(): boolean {
+    return this.sessionId !== null;
+  }
+
+  clearSession(): void {
+    const previousSessionId = this.sessionId;
+    this.sessionId = null;
+    this.conversationId = null;
+    this.completedTurns.clear();
+    this.pendingTurnCompletions.clear();
+    this.sawLegacyCodexEvents = false;
+    this.recentAgentMessageKeys.clear();
+    logger.debug('[CodexAppServer] Session cleared, previous sessionId:', previousSessionId);
+  }
+
+  storeSessionForResume(): string | null {
+    logger.debug('[CodexAppServer] Storing session for potential resume:', this.sessionId);
+    return this.sessionId;
+  }
+
+  async forceCloseSession(): Promise<void> {
+    logger.debug('[CodexAppServer] Force closing session');
+    try {
+      await this.disconnect();
+    } finally {
+      this.clearSession();
+    }
+    logger.debug('[CodexAppServer] Session force-closed');
+  }
+
+  async disconnect(): Promise<void> {
+    const child = this.child;
+    if (!child) {
+      this.connected = false;
+      return;
+    }
+
+    this.connected = false;
+    this.child = null;
+
+    try {
+      child.stdin.end();
+    } catch {}
+
+    if (child.killed) {
+      return;
+    }
+
+    const exited = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      child.once('exit', () => finish(true));
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        finish(true);
+        return;
+      }
+
+      setTimeout(() => finish(false), SHUTDOWN_TIMEOUT_MS);
+    });
+
+    if (!exited) {
+      try {
+        child.kill('SIGKILL');
+      } catch {}
+    }
+  }
 }
