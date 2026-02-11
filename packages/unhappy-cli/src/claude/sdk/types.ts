@@ -164,6 +164,11 @@ export interface QueryOptions {
     executable?: string
     executableArgs?: string[]
     maxTurns?: number
+    /**
+     * Maximum thinking token budget for Claude reasoning blocks.
+     * Only supported in print/stream-json mode.
+     */
+    maxThinkingTokens?: number
     mcpServers?: Record<string, unknown>
     pathToClaudeCodeExecutable?: string
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'

@@ -30,7 +30,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import React from 'react';
-import { CodexMcpClient } from './codexMcpClient';
+import { CodexAppServerClient } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
 import { DiffProcessor } from './utils/diffProcessor';
 import { CodexPermissionHandler } from './utils/permissionHandler';
@@ -605,7 +605,7 @@ export async function runCodex(opts: {
   // Start Context
   //
 
-  const client = new CodexMcpClient();
+  const client = new CodexAppServerClient();
   let lastPersistedCodexSessionId: string | null = null;
   let lastReportedAgentSessionId: string | null = null;
   let lastReportedAgentConversationId: string | null = null;
@@ -825,6 +825,17 @@ export async function runCodex(opts: {
   }
   permissionHandler = new CodexPermissionHandler(session);
   const reasoningProcessor = new ReasoningProcessor((message) => {
+    // Stream reasoning deltas as terminal-output so mobile can append in real-time.
+    if (message && typeof message === 'object' && message.type === 'tool-stream') {
+      session.sendCodexMessage({
+        type: 'terminal-output',
+        callId: message.callId,
+        data: message.output,
+        id: message.id,
+      });
+      return;
+    }
+
     // Callback to send messages directly from the processor
     session.sendCodexMessage(message);
   });
@@ -969,6 +980,10 @@ export async function runCodex(opts: {
       }
     }
     if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
+      // Some providers/turns omit a final `agent_reasoning` event.
+      // Flush any buffered reasoning so it still appears in UI before task end.
+      reasoningProcessor.complete();
+
       if (thinking) {
         logger.debug('thinking completed');
         thinking = false;

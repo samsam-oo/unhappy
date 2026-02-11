@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CodexMcpClient } from '../codexMcpClient';
+import { CodexAppServerClient } from '../codexAppServerClient';
 
 describe('Codex app-server dedupe', () => {
   it('suppresses duplicate agent_message events for same turn/content', () => {
-    const client = new CodexMcpClient();
+    const client = new CodexAppServerClient();
     const anyClient: any = client;
     const seen: string[] = [];
 
@@ -39,4 +39,3 @@ describe('Codex app-server dedupe', () => {
     expect(seen).toEqual(['duplicate-text']);
   });
 });
-

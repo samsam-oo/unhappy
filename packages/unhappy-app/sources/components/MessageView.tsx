@@ -1,7 +1,6 @@
-import { useSetting } from "@/sync/storage";
 import { Metadata } from "@/sync/storageTypes";
 import { sync } from '@/sync/sync';
-import { AgentTextMessage, Message, ToolCallMessage, UserTextMessage } from "@/sync/typesMessage";
+import { AgentTextMessage, Message, ToolCall, ToolCallMessage, UserTextMessage } from "@/sync/typesMessage";
 import { AgentEvent } from "@/sync/typesRaw";
 import { t } from '@/text';
 import * as React from "react";
@@ -10,6 +9,28 @@ import { StyleSheet } from 'react-native-unistyles';
 import { layout } from "./layout";
 import { MarkdownView, Option } from "./markdown/MarkdownView";
 import { ToolView } from "./tools/ToolView";
+
+function normalizeThinkingText(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withoutPrefix = trimmed
+    .replace(/^\*?Thinking\.\.\.\*?/i, '')
+    .trim();
+
+  const withoutWrapper =
+    withoutPrefix.startsWith('*') && withoutPrefix.endsWith('*') && withoutPrefix.length > 1
+      ? withoutPrefix.slice(1, -1).trim()
+      : withoutPrefix;
+
+  return withoutWrapper
+    .split('\n')
+    .map((line) => line.replace(/^\*+|\*+$/g, '').trimEnd())
+    .join('\n')
+    .trim();
+}
 
 export const MessageView = (props: {
   message: Message;
@@ -43,7 +64,7 @@ function RenderBlock(props: {
       return <UserTextBlock message={props.message} sessionId={props.sessionId} />;
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} metadata={props.metadata} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -87,15 +108,42 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
+  metadata: Metadata | null;
 }) {
-  const experiments = useSetting('experiments');
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
 
-  // Hide thinking messages unless experiments is enabled
-  if (props.message.isThinking && !experiments) {
-    return null;
+  const isThinkingText =
+    props.message.isThinking || /^\*?Thinking\.\.\./i.test(props.message.text.trim());
+
+  if (isThinkingText) {
+    const thinkingBody = normalizeThinkingText(props.message.text);
+    const syntheticThinkingTool: ToolCall = {
+      name: 'think',
+      state: 'completed',
+      input: { title: 'Thinking...' },
+      createdAt: props.message.createdAt,
+      startedAt: props.message.createdAt,
+      completedAt: props.message.createdAt,
+      description: 'Thinking...',
+      result: {
+        content: thinkingBody || props.message.text,
+        status: 'completed',
+      },
+    };
+
+    return (
+      <View style={styles.toolContainer}>
+        <ToolView
+          tool={syntheticThinkingTool}
+          metadata={props.metadata}
+          messages={[]}
+          variant="chat"
+          onPress={() => { }}
+        />
+      </View>
+    );
   }
 
   return (

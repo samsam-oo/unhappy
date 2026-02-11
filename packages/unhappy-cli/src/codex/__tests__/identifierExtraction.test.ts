@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CodexMcpClient } from '../codexMcpClient';
+import { CodexAppServerClient } from '../codexAppServerClient';
 
 describe('Codex identifiers extraction', () => {
   it('extracts session id from structuredContent.threadId', () => {
-    const c = new CodexMcpClient();
+    const c = new CodexAppServerClient();
     const anyC: any = c;
 
     anyC.extractIdentifiers({
@@ -15,7 +15,7 @@ describe('Codex identifiers extraction', () => {
   });
 
   it('extracts session id from event.session_id and event.thread_id', () => {
-    const c = new CodexMcpClient();
+    const c = new CodexAppServerClient();
     const anyC: any = c;
 
     anyC.updateIdentifiersFromEvent({ type: 'session_configured', session_id: 'sess-1' });
@@ -26,11 +26,10 @@ describe('Codex identifiers extraction', () => {
   });
 
   it('extracts conversation id from event.conversation_id', () => {
-    const c = new CodexMcpClient();
+    const c = new CodexAppServerClient();
     const anyC: any = c;
 
     anyC.updateIdentifiersFromEvent({ conversation_id: 'conv-1' });
     expect(c.getConversationId()).toBe('conv-1');
   });
 });
-

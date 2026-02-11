@@ -32,6 +32,9 @@ interface ToolViewProps {
     variant?: 'default' | 'chat';
 }
 
+const REASONING_TOOL_NAMES = new Set(['CodexReasoning', 'GeminiReasoning', 'think']);
+const MAX_REASONING_PREVIEW_CHARS = 4000;
+
 function extractCodexCommand(input: any): string | null {
     const parsedCmd = input?.parsed_cmd;
     if (Array.isArray(parsedCmd) && parsedCmd.length > 0 && typeof parsedCmd[0]?.cmd === 'string') {
@@ -121,11 +124,41 @@ function parseShellResult(result: unknown): { stdout: string | null; stderr: str
     }
 }
 
+function extractReasoningPreview(result: unknown): string | null {
+    if (result === null || result === undefined) {
+        return null;
+    }
+
+    if (typeof result === 'object') {
+        const obj = result as Record<string, unknown>;
+        const fromObject =
+            toPreviewText(obj.content) ??
+            toPreviewText(obj.text) ??
+            toPreviewText(obj.message) ??
+            toPreviewText(obj.reasoning);
+        if (fromObject && fromObject.trim()) {
+            return fromObject.length > MAX_REASONING_PREVIEW_CHARS
+                ? `${fromObject.slice(0, MAX_REASONING_PREVIEW_CHARS)}\n...`
+                : fromObject;
+        }
+    }
+
+    const direct = toPreviewText(result);
+    if (!direct || !direct.trim()) {
+        return null;
+    }
+
+    return direct.length > MAX_REASONING_PREVIEW_CHARS
+        ? `${direct.slice(0, MAX_REASONING_PREVIEW_CHARS)}\n...`
+        : direct;
+}
+
 export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
     const { theme } = useUnistyles();
     const isShellLikeTool = tool.name === 'Bash' || tool.name === 'CodexBash';
+    const isReasoningTool = REASONING_TOOL_NAMES.has(tool.name);
     const isPermissionPending = tool.permission?.status === 'pending';
     const [chatExpanded, setChatExpanded] = React.useState(() => {
         // If we're actively asking the user for consent (pending permission), keep the preview open.
@@ -273,7 +306,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         // Build a nice, short label. Prefer the tool's "description" line when available.
         // Example: "터미널 • git status" feels closer to an activity line than just "터미널".
         let chatLabel = toolTitle;
-        if (knownTool && typeof knownTool.extractDescription === 'function') {
+        if (isReasoningTool) {
+            chatLabel = 'Thinking...';
+        } else if (knownTool && typeof knownTool.extractDescription === 'function') {
             const desc = knownTool.extractDescription({ tool, metadata: props.metadata });
             if (typeof desc === 'string' && desc.trim()) {
                 chatLabel = desc;
@@ -282,14 +317,15 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             chatLabel = description;
         }
 
-        // Optional collapse/expand preview for shell commands.
-        // If we're asking for consent (pending permission), force the preview open and hide the collapse icon.
+        // Optional collapse/expand preview for shell commands and reasoning streams.
+        // If we're asking for consent (pending permission), force the command preview open and hide the collapse icon.
         const isShellLike = isShellLikeTool;
 
         let command: string | null = null;
         let stdout: string | null = null;
         let stderr: string | null = null;
         let error: string | null = null;
+        let reasoningPreview: string | null = null;
 
         if (isShellLike) {
             if (tool.name === 'Bash') {
@@ -329,9 +365,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 }
             }
         }
+        if (isReasoningTool) {
+            reasoningPreview = extractReasoningPreview(tool.result);
+        }
 
-        const canShowPreview = isShellLike && !!command;
-        const forceExpanded = canShowPreview && isPermissionPending;
+        const canShowCommandPreview = isShellLike && !!command;
+        const canShowReasoningPreview = isReasoningTool && !!reasoningPreview;
+        const canShowPreview = canShowCommandPreview || canShowReasoningPreview;
+        const forceExpanded = canShowCommandPreview && isPermissionPending;
         const expanded = chatExpanded || forceExpanded;
         const canToggleCollapse = canShowPreview && !forceExpanded;
 
@@ -372,6 +413,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </View>
                             )}
                             <View style={styles.chatHeaderRight}>
+                                {statusIcon}
                                 {canToggleCollapse ? (
                                     <Ionicons
                                         name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -379,7 +421,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                         color={theme.colors.textSecondary}
                                     />
                                 ) : null}
-                                {statusIcon}
                             </View>
                         </View>
                         {collapsedErrorLine && !expanded ? (
@@ -402,6 +443,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 </View>
                             )}
                             <View style={styles.chatHeaderRight}>
+                                {statusIcon}
                                 {canToggleCollapse ? (
                                     <Ionicons
                                         name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -409,7 +451,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                         color={theme.colors.textSecondary}
                                     />
                                 ) : null}
-                                {statusIcon}
                             </View>
                         </View>
                         {collapsedErrorLine && !expanded ? (
@@ -423,16 +464,20 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
                 {canShowPreview && expanded ? (
                     <View style={styles.chatPreview}>
-                        <CommandView
-                            command={command!}
-                            stdout={stdout}
-                            stderr={stderr}
-                            error={error}
-                            maxHeight={240}
-                            fullWidth
-                            hideEmptyOutput={tool.state === 'running'}
-                            variant="plain"
-                        />
+                        {canShowCommandPreview ? (
+                            <CommandView
+                                command={command!}
+                                stdout={stdout}
+                                stderr={stderr}
+                                error={error}
+                                maxHeight={240}
+                                fullWidth
+                                hideEmptyOutput={tool.state === 'running'}
+                                variant="plain"
+                            />
+                        ) : (
+                            <Text style={styles.chatReasoningPreviewText}>{reasoningPreview}</Text>
+                        )}
                     </View>
                 ) : null}
 
@@ -599,6 +644,7 @@ const styles = StyleSheet.create((theme) => ({
 	        flexDirection: 'row',
 	        alignItems: 'center',
 	        gap: 8,
+            width: '100%',
 	    },
     chatHeaderLeft: {
         flexDirection: 'row',
@@ -611,6 +657,7 @@ const styles = StyleSheet.create((theme) => ({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
+        marginLeft: 'auto',
     },
     chatIconDot: {
         width: 6,
@@ -640,6 +687,12 @@ const styles = StyleSheet.create((theme) => ({
 	        borderLeftColor: theme.colors.divider,
             flex: 1,
 	    },
+    chatReasoningPreviewText: {
+        fontSize: 12,
+        lineHeight: 18,
+        color: theme.colors.text,
+        opacity: 0.9,
+    },
     chatError: {
         marginTop: 4,
     },

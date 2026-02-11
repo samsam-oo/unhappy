@@ -272,6 +272,7 @@ export function query(config: {
             executable = 'node',
             executableArgs = [],
             maxTurns,
+            maxThinkingTokens,
             mcpServers,
             pathToClaudeCodeExecutable = getDefaultClaudeCodePath(),
             permissionMode = 'default',
@@ -296,6 +297,9 @@ export function query(config: {
     if (customSystemPrompt) args.push('--system-prompt', customSystemPrompt)
     if (appendSystemPrompt) args.push('--append-system-prompt', appendSystemPrompt)
     if (maxTurns) args.push('--max-turns', maxTurns.toString())
+    if (typeof maxThinkingTokens === 'number' && Number.isFinite(maxThinkingTokens) && maxThinkingTokens > 0) {
+        args.push('--max-thinking-tokens', Math.floor(maxThinkingTokens).toString())
+    }
     if (model) args.push('--model', model)
     if (canCallTool) {
         if (typeof prompt === 'string') {

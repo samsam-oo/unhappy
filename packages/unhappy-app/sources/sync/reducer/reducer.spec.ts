@@ -1589,6 +1589,147 @@ describe('reducer', () => {
             }
         });
 
+        it('should preserve streamed reasoning when final tool result content is empty', () => {
+            const state = createReducer();
+
+            const reasoningToolCall: NormalizedMessage = {
+                id: 'msg-reasoning-tool',
+                localId: null,
+                createdAt: 1000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'reasoning-1',
+                    name: 'CodexReasoning',
+                    input: { title: 'Planning' },
+                    description: null,
+                    uuid: 'reasoning-tool-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            reducer(state, [reasoningToolCall]);
+
+            const streamChunk: NormalizedMessage = {
+                id: 'msg-reasoning-stream',
+                localId: null,
+                createdAt: 1100,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'reasoning-1',
+                    content: 'Investigating parser edge-case',
+                    is_error: false,
+                    is_stream: true,
+                    uuid: 'reasoning-stream-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            reducer(state, [streamChunk]);
+
+            const emptyFinalResult: NormalizedMessage = {
+                id: 'msg-reasoning-final',
+                localId: null,
+                createdAt: 1200,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'reasoning-1',
+                    content: {
+                        content: '',
+                        status: 'completed'
+                    },
+                    is_error: false,
+                    uuid: 'reasoning-final-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            const result = reducer(state, [emptyFinalResult]);
+            expect(result.messages).toHaveLength(1);
+
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.state).toBe('completed');
+                expect(result.messages[0].tool.result).toEqual({
+                    content: 'Investigating parser edge-case',
+                    status: 'completed'
+                });
+            }
+        });
+
+        it('should recover reasoning content when stream chunk arrives after empty final result', () => {
+            const state = createReducer();
+
+            const reasoningToolCall: NormalizedMessage = {
+                id: 'msg-reasoning-tool-late',
+                localId: null,
+                createdAt: 2000,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-call',
+                    id: 'reasoning-late-1',
+                    name: 'CodexReasoning',
+                    input: { title: 'Investigating' },
+                    description: null,
+                    uuid: 'reasoning-late-tool-uuid',
+                    parentUUID: null
+                }]
+            };
+            reducer(state, [reasoningToolCall]);
+
+            const emptyFinalResult: NormalizedMessage = {
+                id: 'msg-reasoning-final-late',
+                localId: null,
+                createdAt: 2100,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'reasoning-late-1',
+                    content: {
+                        content: '',
+                        status: 'completed'
+                    },
+                    is_error: false,
+                    uuid: 'reasoning-late-final-uuid',
+                    parentUUID: null
+                }]
+            };
+            reducer(state, [emptyFinalResult]);
+
+            const lateStreamChunk: NormalizedMessage = {
+                id: 'msg-reasoning-stream-late',
+                localId: null,
+                createdAt: 2200,
+                role: 'agent',
+                isSidechain: false,
+                content: [{
+                    type: 'tool-result',
+                    tool_use_id: 'reasoning-late-1',
+                    content: 'Late stream still has the real reasoning',
+                    is_error: false,
+                    is_stream: true,
+                    uuid: 'reasoning-late-stream-uuid',
+                    parentUUID: null
+                }]
+            };
+
+            const result = reducer(state, [lateStreamChunk]);
+            expect(result.messages).toHaveLength(1);
+            if (result.messages[0].kind === 'tool-call') {
+                expect(result.messages[0].tool.state).toBe('completed');
+                expect(result.messages[0].tool.result).toEqual({
+                    content: 'Late stream still has the real reasoning',
+                    status: 'completed'
+                });
+            }
+        });
+
         it('should handle permission updates after tool execution started', () => {
             const state = createReducer();
             

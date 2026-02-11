@@ -39,6 +39,16 @@ export interface ReasoningToolResult {
 }
 
 /**
+ * Streaming delta update for an in-progress reasoning tool call.
+ */
+export interface ReasoningToolStream {
+    type: 'tool-stream';
+    callId: string;
+    output: string;
+    id: string;
+}
+
+/**
  * Plain reasoning message without a title.
  */
 export interface ReasoningMessage {
@@ -47,7 +57,7 @@ export interface ReasoningMessage {
     id: string;
 }
 
-export type ReasoningOutput = ReasoningToolCall | ReasoningToolResult | ReasoningMessage;
+export type ReasoningOutput = ReasoningToolCall | ReasoningToolResult | ReasoningToolStream | ReasoningMessage;
 
 /**
  * Abstract base class for reasoning processors.
@@ -65,6 +75,7 @@ export abstract class BaseReasoningProcessor {
     protected currentCallId: string | null = null;
     protected toolCallStarted: boolean = false;
     protected currentTitle: string | null = null;
+    protected emittedContentLength: number = 0;
     protected onMessage: ((message: any) => void) | null = null;
 
     /**
@@ -76,6 +87,13 @@ export abstract class BaseReasoningProcessor {
      * Returns the log prefix for this processor.
      */
     protected abstract getLogPrefix(): string;
+
+    /**
+     * Fallback title for reasoning sections that do not include explicit **Title** markers.
+     */
+    protected getUntitledSectionTitle(): string {
+        return 'Reasoning';
+    }
 
     constructor(onMessage?: (message: any) => void) {
         this.onMessage = onMessage || null;
@@ -114,6 +132,11 @@ export abstract class BaseReasoningProcessor {
             } else if (this.accumulator.length > 0) {
                 // This is untitled reasoning, just accumulate as content
                 this.contentBuffer = this.accumulator;
+                // Start a synthetic reasoning tool call so untitled reasoning is still visible in UI.
+                if (!this.toolCallStarted) {
+                    this.currentCallId = this.currentCallId || randomUUID();
+                    this.sendToolCallStart(this.getUntitledSectionTitle());
+                }
             }
         } else if (this.inTitleCapture) {
             // We're capturing the title
@@ -151,7 +174,13 @@ export abstract class BaseReasoningProcessor {
         } else {
             // Untitled reasoning, just accumulate
             this.contentBuffer = this.accumulator;
+            if (!this.toolCallStarted) {
+                this.currentCallId = this.currentCallId || randomUUID();
+                this.sendToolCallStart(this.getUntitledSectionTitle());
+            }
         }
+
+        this.emitStreamDeltaIfNeeded();
     }
 
     /**
@@ -175,6 +204,36 @@ export abstract class BaseReasoningProcessor {
         logger.debug(`${this.getLogPrefix()} Sending tool call start for: "${title}"`);
         this.onMessage?.(toolCall);
         this.toolCallStarted = true;
+    }
+
+    /**
+     * Emit newly accumulated reasoning content as a streaming chunk.
+     */
+    protected emitStreamDeltaIfNeeded(): void {
+        if (!this.toolCallStarted || !this.currentCallId) {
+            return;
+        }
+
+        const content = this.contentBuffer || '';
+        if (content.length <= this.emittedContentLength) {
+            return;
+        }
+
+        const delta = content.slice(this.emittedContentLength);
+        if (!delta) {
+            return;
+        }
+
+        const streamMessage: ReasoningToolStream = {
+            type: 'tool-stream',
+            callId: this.currentCallId,
+            output: delta,
+            id: randomUUID(),
+        };
+
+        logger.debug(`${this.getLogPrefix()} Streaming reasoning delta (${delta.length} chars)`);
+        this.onMessage?.(streamMessage);
+        this.emittedContentLength = content.length;
     }
 
     /**
@@ -202,6 +261,15 @@ export abstract class BaseReasoningProcessor {
             }
         }
 
+        // Some providers send title-only final payloads while actual reasoning arrived via deltas.
+        // In that case, preserve buffered content so final tool result does not overwrite stream text with empty content.
+        if (this.toolCallStarted && (!content || !content.trim())) {
+            const buffered = this.contentBuffer?.trim();
+            if (buffered) {
+                content = buffered;
+            }
+        }
+
         logger.debug(`${this.getLogPrefix()} Complete reasoning - Title: "${title}", Has content: ${content.length > 0}`);
 
         if (title && !this.toolCallStarted) {
@@ -209,8 +277,17 @@ export abstract class BaseReasoningProcessor {
             this.currentCallId = this.currentCallId || randomUUID();
             this.sendToolCallStart(title);
         }
+        if (!title && content.trim() && !this.toolCallStarted) {
+            // Final payload may contain untitled reasoning only; still show as a reasoning tool card.
+            this.currentCallId = this.currentCallId || randomUUID();
+            this.sendToolCallStart(this.getUntitledSectionTitle());
+        }
 
         if (this.toolCallStarted && this.currentCallId) {
+            // Keep streaming output aligned with final content for UI previews.
+            this.contentBuffer = content;
+            this.emitStreamDeltaIfNeeded();
+
             // Send tool call result for titled reasoning
             const toolResult: ReasoningToolResult = {
                 type: 'tool-call-result',
@@ -261,6 +338,8 @@ export abstract class BaseReasoningProcessor {
      */
     protected finishCurrentToolCall(status: 'completed' | 'canceled'): void {
         if (this.toolCallStarted && this.currentCallId) {
+            this.emitStreamDeltaIfNeeded();
+
             // Send tool call result with canceled status
             const toolResult: ReasoningToolResult = {
                 type: 'tool-call-result',
@@ -288,6 +367,7 @@ export abstract class BaseReasoningProcessor {
         this.currentCallId = null;
         this.toolCallStarted = false;
         this.currentTitle = null;
+        this.emittedContentLength = 0;
     }
 
     /**

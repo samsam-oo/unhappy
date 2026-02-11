@@ -816,11 +816,23 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     }
 
                     if (c.is_stream) {
-                        if (message.tool.state !== 'running') {
+                        if (message.tool.state === 'running') {
+                            message.tool.result = appendStreamChunk(message.tool.result, c.content);
+                            changed.add(messageId);
                             continue;
                         }
-                        message.tool.result = appendStreamChunk(message.tool.result, c.content);
-                        changed.add(messageId);
+
+                        if (message.tool.state === 'completed') {
+                            const mergedLateChunk = appendLateReasoningStreamChunk(
+                                message.tool.name,
+                                message.tool.result,
+                                c.content
+                            );
+                            if (mergedLateChunk !== message.tool.result) {
+                                message.tool.result = mergedLateChunk;
+                                changed.add(messageId);
+                            }
+                        }
                         continue;
                     }
 
@@ -830,7 +842,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                     // Update tool state and result
                     message.tool.state = c.is_error ? 'error' : 'completed';
-                    message.tool.result = c.content;
+                    message.tool.result = mergeFinalReasoningResultWithStream(
+                        message.tool.name,
+                        message.tool.result,
+                        c.content
+                    );
                     message.tool.completedAt = msg.createdAt;
 
                     // Update permission data if provided by backend
@@ -972,12 +988,27 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     let sidechainMessageId = state.sidechainToolIdToMessageId.get(c.tool_use_id);
                     if (sidechainMessageId) {
                         let sidechainMessage = state.messages.get(sidechainMessageId);
-                        if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
+                        if (sidechainMessage && sidechainMessage.tool) {
                             if (isStreamChunk) {
-                                sidechainMessage.tool.result = appendStreamChunk(sidechainMessage.tool.result, c.content);
-                            } else {
+                                if (sidechainMessage.tool.state === 'running') {
+                                    sidechainMessage.tool.result = appendStreamChunk(sidechainMessage.tool.result, c.content);
+                                } else if (sidechainMessage.tool.state === 'completed') {
+                                    const mergedLateChunk = appendLateReasoningStreamChunk(
+                                        sidechainMessage.tool.name,
+                                        sidechainMessage.tool.result,
+                                        c.content
+                                    );
+                                    if (mergedLateChunk !== sidechainMessage.tool.result) {
+                                        sidechainMessage.tool.result = mergedLateChunk;
+                                    }
+                                }
+                            } else if (sidechainMessage.tool.state === 'running') {
                                 sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
-                                sidechainMessage.tool.result = c.content;
+                                sidechainMessage.tool.result = mergeFinalReasoningResultWithStream(
+                                    sidechainMessage.tool.name,
+                                    sidechainMessage.tool.result,
+                                    c.content
+                                );
                                 sidechainMessage.tool.completedAt = msg.createdAt;
                             }
                             
@@ -1013,42 +1044,63 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     let permissionMessageId = state.toolIdToMessageId.get(c.tool_use_id);
                     if (permissionMessageId) {
                         let permissionMessage = state.messages.get(permissionMessageId);
-                        if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
+                        if (permissionMessage && permissionMessage.tool) {
+                            let didUpdatePermissionMessage = false;
                             if (isStreamChunk) {
-                                permissionMessage.tool.result = appendStreamChunk(permissionMessage.tool.result, c.content);
-                            } else {
+                                if (permissionMessage.tool.state === 'running') {
+                                    permissionMessage.tool.result = appendStreamChunk(permissionMessage.tool.result, c.content);
+                                    didUpdatePermissionMessage = true;
+                                } else if (permissionMessage.tool.state === 'completed') {
+                                    const mergedLateChunk = appendLateReasoningStreamChunk(
+                                        permissionMessage.tool.name,
+                                        permissionMessage.tool.result,
+                                        c.content
+                                    );
+                                    if (mergedLateChunk !== permissionMessage.tool.result) {
+                                        permissionMessage.tool.result = mergedLateChunk;
+                                        didUpdatePermissionMessage = true;
+                                    }
+                                }
+                            } else if (permissionMessage.tool.state === 'running') {
                                 permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
-                                permissionMessage.tool.result = c.content;
+                                permissionMessage.tool.result = mergeFinalReasoningResultWithStream(
+                                    permissionMessage.tool.name,
+                                    permissionMessage.tool.result,
+                                    c.content
+                                );
                                 permissionMessage.tool.completedAt = msg.createdAt;
-                            }
-                            
-                            // Update permission data if provided by backend
-                            if (!isStreamChunk && c.permissions) {
-                                // Merge with existing permission to preserve decision field from agentState
-                                if (permissionMessage.tool.permission) {
-                                    const existingDecision = permissionMessage.tool.permission.decision;
-                                    permissionMessage.tool.permission = {
-                                        ...permissionMessage.tool.permission,
-                                        id: c.tool_use_id,
-                                        status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                        date: c.permissions.date,
-                                        mode: c.permissions.mode,
-                                        allowedTools: c.permissions.allowedTools,
-                                        decision: c.permissions.decision || existingDecision
-                                    };
-                                } else {
-                                    permissionMessage.tool.permission = {
-                                        id: c.tool_use_id,
-                                        status: c.permissions.result === 'approved' ? 'approved' : 'denied',
-                                        date: c.permissions.date,
-                                        mode: c.permissions.mode,
-                                        allowedTools: c.permissions.allowedTools,
-                                        decision: c.permissions.decision
-                                    };
+                                didUpdatePermissionMessage = true;
+
+                                // Update permission data if provided by backend
+                                if (c.permissions) {
+                                    // Merge with existing permission to preserve decision field from agentState
+                                    if (permissionMessage.tool.permission) {
+                                        const existingDecision = permissionMessage.tool.permission.decision;
+                                        permissionMessage.tool.permission = {
+                                            ...permissionMessage.tool.permission,
+                                            id: c.tool_use_id,
+                                            status: c.permissions.result === 'approved' ? 'approved' : 'denied',
+                                            date: c.permissions.date,
+                                            mode: c.permissions.mode,
+                                            allowedTools: c.permissions.allowedTools,
+                                            decision: c.permissions.decision || existingDecision
+                                        };
+                                    } else {
+                                        permissionMessage.tool.permission = {
+                                            id: c.tool_use_id,
+                                            status: c.permissions.result === 'approved' ? 'approved' : 'denied',
+                                            date: c.permissions.date,
+                                            mode: c.permissions.mode,
+                                            allowedTools: c.permissions.allowedTools,
+                                            decision: c.permissions.decision
+                                        };
+                                    }
                                 }
                             }
-                            
-                            changed.add(permissionMessageId);
+
+                            if (didUpdatePermissionMessage) {
+                                changed.add(permissionMessageId);
+                            }
                         }
                     }
                 }
@@ -1181,6 +1233,72 @@ function appendStreamChunk(current: unknown, chunk: unknown): string {
     const currentText = normalizeToolOutputChunk(current);
     if (!currentText) return chunkText;
     return `${currentText}${chunkText}`;
+}
+
+function isReasoningToolName(toolName: string): boolean {
+    return toolName === 'CodexReasoning' || toolName === 'GeminiReasoning' || toolName === 'think';
+}
+
+function mergeFinalReasoningResultWithStream(toolName: string, current: unknown, incoming: unknown): unknown {
+    if (!isReasoningToolName(toolName)) {
+        return incoming;
+    }
+
+    if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
+        return incoming;
+    }
+
+    const incomingRecord = incoming as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(incomingRecord, 'content')) {
+        return incoming;
+    }
+
+    const incomingContent = normalizeToolOutputChunk(incomingRecord.content);
+    if (incomingContent.trim().length > 0) {
+        return incoming;
+    }
+
+    const streamedContent = normalizeToolOutputChunk(current);
+    if (streamedContent.trim().length === 0) {
+        return incoming;
+    }
+
+    return {
+        ...incomingRecord,
+        content: streamedContent,
+    };
+}
+
+function appendLateReasoningStreamChunk(toolName: string, current: unknown, chunk: unknown): unknown {
+    if (!isReasoningToolName(toolName)) {
+        return current;
+    }
+
+    const chunkText = normalizeToolOutputChunk(chunk);
+    if (!chunkText) {
+        return current;
+    }
+
+    if (current && typeof current === 'object' && !Array.isArray(current)) {
+        const currentRecord = current as Record<string, unknown>;
+        if (Object.prototype.hasOwnProperty.call(currentRecord, 'content')) {
+            const existingContent = normalizeToolOutputChunk(currentRecord.content);
+            if (existingContent.trim().length > 0) {
+                return current;
+            }
+            return {
+                ...currentRecord,
+                content: appendStreamChunk(currentRecord.content, chunkText),
+            };
+        }
+    }
+
+    const existing = normalizeToolOutputChunk(current);
+    if (existing.trim().length > 0) {
+        return current;
+    }
+
+    return appendStreamChunk(current, chunkText);
 }
 
 function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {

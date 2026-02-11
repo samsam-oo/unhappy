@@ -568,6 +568,15 @@ export async function runGemini(opts: {
 
   // Create reasoning processor for handling thinking/reasoning chunks
   const reasoningProcessor = new GeminiReasoningProcessor((message) => {
+    if (message && typeof message === 'object' && message.type === 'tool-stream') {
+      session.sendAgentMessage('gemini', {
+        type: 'terminal-output',
+        callId: message.callId,
+        data: message.output,
+      });
+      return;
+    }
+
     // Callback to send messages directly from the processor
     session.sendAgentMessage('gemini', message);
   });

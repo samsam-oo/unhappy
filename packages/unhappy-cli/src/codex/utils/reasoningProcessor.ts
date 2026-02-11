@@ -38,7 +38,7 @@ export class ReasoningProcessor extends BaseReasoningProcessor {
     /**
      * Complete the reasoning section with final text.
      */
-    complete(fullText: string): void {
+    complete(fullText?: string): void {
         this.completeReasoning(fullText);
     }
 }

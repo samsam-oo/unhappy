@@ -16,6 +16,28 @@ import type { JsRuntime } from "./runClaude";
 // Preserve the initial environment value so we can restore when the UI resets effort.
 const BASE_CLAUDE_CODE_EFFORT_LEVEL = process.env.CLAUDE_CODE_EFFORT_LEVEL;
 
+const THINKING_TOKENS_BY_EFFORT: Record<'low' | 'medium' | 'high' | 'max', number> = {
+    low: 1024,
+    medium: 4096,
+    high: 8192,
+    max: 16384,
+};
+
+function resolveMaxThinkingTokens(
+    effort: 'low' | 'medium' | 'high' | 'max' | undefined
+): number {
+    // Keep Claude reasoning visible by default; use medium when effort is not explicitly set.
+    return THINKING_TOKENS_BY_EFFORT[effort ?? 'medium'];
+}
+
+function normalizeEffort(
+    effort: string | undefined
+): 'low' | 'medium' | 'high' | 'max' | undefined {
+    return effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'max'
+        ? effort
+        : undefined;
+}
+
 export async function claudeRemote(opts: {
 
     // Fixed parameters
@@ -128,6 +150,8 @@ export async function claudeRemote(opts: {
         delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
     }
 
+    const maxThinkingTokens = resolveMaxThinkingTokens(normalizeEffort(desiredEffort));
+
     const sdkOptions: QueryOptions = {
         cwd: opts.path,
         resume: startFrom ?? undefined,
@@ -140,6 +164,7 @@ export async function claudeRemote(opts: {
         allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
         disallowedTools: initial.mode.disallowedTools,
         canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
+        maxThinkingTokens,
         executable: opts.jsRuntime ?? 'node',
         abort: opts.signal,
         pathToClaudeCodeExecutable: (() => {

@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Box, Text, useStdout, useInput } from 'ink'
 import { MessageBuffer, type BufferedMessage } from './messageBuffer'
+import { MessageFormatCache, takeLastMessages } from './rendering'
+import { useBufferedMessages } from './useBufferedMessages'
 
 interface RemoteModeDisplayProps {
     messageBuffer: MessageBuffer
@@ -10,28 +12,37 @@ interface RemoteModeDisplayProps {
 }
 
 export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuffer, logPath, onExit, onSwitchToLocal }) => {
-    const [messages, setMessages] = useState<BufferedMessage[]>([])
     const [confirmationMode, setConfirmationMode] = useState<'exit' | 'switch' | null>(null)
     const [actionInProgress, setActionInProgress] = useState<'exiting' | 'switching' | null>(null)
     const confirmationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+    const formatCacheRef = useRef(new MessageFormatCache())
     const { stdout } = useStdout()
     const terminalWidth = stdout.columns || 80
     const terminalHeight = stdout.rows || 24
+    const maxVisibleMessages = Math.max(1, terminalHeight - 10)
+    const maxLineLength = Math.max(1, terminalWidth - 10)
+    const { messages, version } = useBufferedMessages(messageBuffer)
 
     useEffect(() => {
-        setMessages(messageBuffer.getMessages())
-        
-        const unsubscribe = messageBuffer.onUpdate((newMessages) => {
-            setMessages(newMessages)
-        })
-
         return () => {
-            unsubscribe()
             if (confirmationTimeoutRef.current) {
                 clearTimeout(confirmationTimeoutRef.current)
             }
         }
-    }, [messageBuffer])
+    }, [])
+
+    const visibleMessages = useMemo(
+        () => takeLastMessages(messages, maxVisibleMessages),
+        [messages, version, maxVisibleMessages]
+    )
+
+    const renderedMessages = useMemo(() => {
+        formatCacheRef.current.prune(visibleMessages)
+        return visibleMessages.map((message) => ({
+            message,
+            formatted: formatCacheRef.current.format(message, maxLineLength)
+        }))
+    }, [visibleMessages, version, maxLineLength])
 
     const resetConfirmation = useCallback(() => {
         setConfirmationMode(null)
@@ -105,19 +116,6 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
         }
     }
 
-    const formatMessage = (msg: BufferedMessage): string => {
-        const lines = msg.content.split('\n')
-        const maxLineLength = terminalWidth - 10 // Account for borders and padding
-        return lines.map(line => {
-            if (line.length <= maxLineLength) return line
-            const chunks: string[] = []
-            for (let i = 0; i < line.length; i += maxLineLength) {
-                chunks.push(line.slice(i, i + maxLineLength))
-            }
-            return chunks.join('\n')
-        }).join('\n')
-    }
-
     return (
         <Box flexDirection="column" width={terminalWidth} height={terminalHeight}>
             {/* Main content area with logs */}
@@ -136,14 +134,13 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
                 </Box>
                 
                 <Box flexDirection="column" height={terminalHeight - 10} overflow="hidden">
-                    {messages.length === 0 ? (
+                    {renderedMessages.length === 0 ? (
                         <Text color="gray" dimColor>Waiting for messages...</Text>
                     ) : (
-                        // Show only the last messages that fit in the available space
-                        messages.slice(-Math.max(1, terminalHeight - 10)).map((msg) => (
-                            <Box key={msg.id} flexDirection="column" marginBottom={1}>
-                                <Text color={getMessageColor(msg.type)} dimColor>
-                                    {formatMessage(msg)}
+                        renderedMessages.map(({ message, formatted }) => (
+                            <Box key={message.id} flexDirection="column" marginBottom={1}>
+                                <Text color={getMessageColor(message.type)} dimColor>
+                                    {formatted}
                                 </Text>
                             </Box>
                         ))

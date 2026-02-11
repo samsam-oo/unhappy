@@ -35,7 +35,7 @@ export class MessageBuffer {
                     ...oldMessage,
                     content: oldMessage.content + contentDelta
                 };
-                // Replace the old message with the new one
+                // Replace the old message in place to avoid large array copies while streaming
                 this.messages[i] = updatedMessage;
                 this.notifyListeners()
                 return
@@ -62,7 +62,7 @@ export class MessageBuffer {
     }
 
     getMessages(): BufferedMessage[] {
-        return [...this.messages]
+        return this.messages
     }
 
     clear(): void {
@@ -82,7 +82,7 @@ export class MessageBuffer {
     }
 
     private notifyListeners(): void {
-        const messages = this.getMessages()
+        const messages = this.messages
         this.listeners.forEach(listener => listener(messages))
     }
 }

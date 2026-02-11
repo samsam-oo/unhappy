@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { determineCodexMcpSubcommand } from '../codexMcpClient';
+import { determineCodexMcpSubcommand } from '../codexAppServerClient';
 
 describe('determineCodexMcpSubcommand', () => {
   it('returns null when version cannot be parsed', () => {
@@ -21,4 +21,3 @@ describe('determineCodexMcpSubcommand', () => {
     expect(determineCodexMcpSubcommand('codex-cli 1.0.0')).toBe('mcp-server');
   });
 });
-

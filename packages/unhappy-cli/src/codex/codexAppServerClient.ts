@@ -1,7 +1,7 @@
 /**
  * Codex App-Server client.
  *
- * This keeps the same surface as the previous MCP client so runCodex can
+ * This keeps the same surface as the previous Codex transport so runCodex can
  * continue to consume legacy `codex/event` payloads with minimal churn.
  */
 
@@ -134,7 +134,17 @@ function normalizeError(error: unknown): Error {
   return new Error('Unknown error');
 }
 
-export class CodexMcpClient {
+function getFirstNonEmptyString(values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.length > 0) return value;
+    }
+  }
+  return null;
+}
+
+export class CodexAppServerClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private connected = false;
   private sessionId: string | null = null;
@@ -665,6 +675,11 @@ export class CodexMcpClient {
       return;
     }
 
+    // Fallback mapping for newer app-server streams where legacy codex/event wrappers are absent.
+    if (!this.sawLegacyCodexEvents && this.mapReasoningFromNewApi(method, params)) {
+      return;
+    }
+
     if (method === 'thread/started') {
       const thread = isRecord(params.thread) ? params.thread : null;
       const threadId = thread && typeof thread.id === 'string' ? thread.id : null;
@@ -722,6 +737,92 @@ export class CodexMcpClient {
         }
       }
     }
+  }
+
+  private mapReasoningFromNewApi(
+    method: string,
+    params: Record<string, unknown>,
+  ): boolean {
+    const methodLower = method.toLowerCase();
+    const item = isRecord(params.item) ? params.item : null;
+    const itemType = item && typeof item.type === 'string' ? item.type : null;
+    const itemTypeLower = itemType ? itemType.toLowerCase() : '';
+    const hintsReasoningType =
+      methodLower.includes('reason') ||
+      methodLower.includes('thought') ||
+      itemTypeLower.includes('reason') ||
+      itemTypeLower.includes('thought');
+
+    const hasExplicitReasoningField =
+      item?.reasoning !== undefined ||
+      item?.thought !== undefined ||
+      item?.reasoningDelta !== undefined ||
+      item?.thoughtDelta !== undefined ||
+      params.reasoning !== undefined ||
+      params.thought !== undefined ||
+      params.reasoningDelta !== undefined ||
+      params.thoughtDelta !== undefined;
+
+    // Parse common reasoning payload shapes from newer app-server notifications.
+    const delta = getFirstNonEmptyString([
+      item?.delta,
+      item?.textDelta,
+      item?.contentDelta,
+      item?.chunk,
+      params.delta,
+      params.textDelta,
+      params.contentDelta,
+      params.chunk,
+      params.reasoningDelta,
+      params.thoughtDelta,
+    ]);
+    const text = getFirstNonEmptyString([
+      item?.text,
+      item?.content,
+      item?.reasoning,
+      item?.thought,
+      params.text,
+      params.content,
+      params.reasoning,
+      params.thought,
+    ]);
+
+    // Guard against misclassifying generic item/completed assistant text as reasoning.
+    // Only map when method/type indicates reasoning, or explicit reasoning fields are present.
+    if (!hintsReasoningType && !hasExplicitReasoningField) {
+      return false;
+    }
+
+    let emitted = false;
+
+    if (methodLower.endsWith('/started') || methodLower.includes('reasoning/started')) {
+      this.handler?.({ type: 'agent_reasoning_section_break' });
+      emitted = true;
+    }
+
+    if (delta) {
+      this.handler?.({ type: 'agent_reasoning_delta', delta });
+      emitted = true;
+    }
+
+    // Some app-server builds stream reasoning text via generic `text/content` fields on update events.
+    // Treat that as a delta when explicit reasoning signals are present.
+    if (
+      !delta &&
+      text &&
+      !(methodLower.endsWith('/completed') || methodLower === 'item/completed')
+    ) {
+      this.handler?.({ type: 'agent_reasoning_delta', delta: text });
+      emitted = true;
+    }
+
+    // Emit a final reasoning text when completion-like notifications arrive.
+    if (text && (methodLower.endsWith('/completed') || methodLower === 'item/completed')) {
+      this.handler?.({ type: 'agent_reasoning', text });
+      emitted = true;
+    }
+
+    return emitted;
   }
 
   private shouldSuppressAgentMessage(input: {
