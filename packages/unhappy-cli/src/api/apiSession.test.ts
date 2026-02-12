@@ -20,10 +20,13 @@ describe('ApiSessionClient connection handling', () => {
 
         // Mock socket.io client
         mockSocket = {
+            connected: true,
             connect: vi.fn(),
             on: vi.fn(),
             off: vi.fn(),
-            disconnect: vi.fn()
+            disconnect: vi.fn(),
+            emit: vi.fn(),
+            emitWithAck: vi.fn()
         };
 
         mockIo.mockReturnValue(mockSocket);
@@ -63,6 +66,47 @@ describe('ApiSessionClient connection handling', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
         expect(mockSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+    });
+
+    it('should still update metadata for summary when socket is disconnected', () => {
+        mockSocket.connected = false;
+        const client = new ApiSessionClient('fake-token', mockSession);
+        const updateMetadataSpy = vi
+            .spyOn(client, 'updateMetadata')
+            .mockImplementation(() => {});
+
+        client.sendClaudeSessionMessage({
+            type: 'summary',
+            summary: 'New title',
+            leafUuid: 'leaf-1'
+        } as any);
+
+        expect(updateMetadataSpy).toHaveBeenCalledTimes(1);
+        expect(mockSocket.emit).not.toHaveBeenCalled();
+    });
+
+    it('should not update metadata for non-summary when socket is disconnected', () => {
+        mockSocket.connected = false;
+        const client = new ApiSessionClient('fake-token', mockSession);
+        const updateMetadataSpy = vi
+            .spyOn(client, 'updateMetadata')
+            .mockImplementation(() => {});
+
+        client.sendClaudeSessionMessage({
+            type: 'assistant',
+            message: {
+                usage: {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0
+                },
+                model: 'test-model'
+            }
+        } as any);
+
+        expect(updateMetadataSpy).not.toHaveBeenCalled();
+        expect(mockSocket.emit).not.toHaveBeenCalled();
     });
 
     afterEach(() => {

@@ -193,6 +193,8 @@ export class ApiSessionClient extends EventEmitter {
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
         let content: MessageContent;
+        const isSummaryMessage =
+            body.type === 'summary' && 'summary' in body && 'leafUuid' in body;
 
         // Check if body is already a MessageContent (has role property)
         if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
@@ -222,6 +224,18 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
 
+        // Update metadata with summary even when the socket is temporarily disconnected.
+        // Session title in the app is derived from metadata.summary.
+        if (isSummaryMessage) {
+            this.updateMetadata((metadata) => ({
+                ...metadata,
+                summary: {
+                    text: body.summary,
+                    updatedAt: Date.now()
+                }
+            }));
+        }
+
         // Check if socket is connected before sending
         if (!this.socket.connected) {
             logger.debug('[API] Socket not connected, cannot send Claude session message. Message will be lost:', { type: body.type });
@@ -241,17 +255,6 @@ export class ApiSessionClient extends EventEmitter {
             } catch (error) {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
-        }
-
-        // Update metadata with summary if this is a summary message
-        if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
-            this.updateMetadata((metadata) => ({
-                ...metadata,
-                summary: {
-                    text: body.summary,
-                    updatedAt: Date.now()
-                }
-            }));
         }
     }
 
