@@ -54,6 +54,8 @@ export class ApiSessionClient extends EventEmitter {
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
     private encryptionVariant: 'legacy' | 'dataKey';
+    private pendingSummaryMetadataUpdate: { text: string; updatedAt: number } | null = null;
+    private summaryMetadataSyncInFlight = false;
 
     constructor(token: string, session: Session) {
         super()
@@ -102,6 +104,7 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
             this.rpcHandlerManager.onSocketConnect(this.socket);
+            void this.flushPendingSummaryMetadataUpdate();
         })
 
         // Set up global RPC request handler
@@ -226,8 +229,12 @@ export class ApiSessionClient extends EventEmitter {
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
 
         // Keep local metadata snapshot fresh for push/title generation even when offline.
-        // Server metadata update is sent only when socket is connected.
+        // Queue server metadata sync so title updates are not lost before socket connect.
         if (isSummaryMessage) {
+            this.pendingSummaryMetadataUpdate = {
+                text: body.summary,
+                updatedAt: summaryUpdatedAt
+            };
             if (this.metadata) {
                 this.metadata = {
                     ...this.metadata,
@@ -237,15 +244,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
                 };
             }
-            if (this.socket.connected) {
-                this.updateMetadata((metadata) => ({
-                    ...metadata,
-                    summary: {
-                        text: body.summary,
-                        updatedAt: summaryUpdatedAt
-                    }
-                }));
-            }
+            void this.flushPendingSummaryMetadataUpdate();
         }
 
         // Check if socket is connected before sending
@@ -404,8 +403,8 @@ export class ApiSessionClient extends EventEmitter {
      * Update session metadata
      * @param handler - Handler function that returns the updated metadata
      */
-    updateMetadata(handler: (metadata: Metadata) => Metadata) {
-        this.metadataLock.inLock(async () => {
+    updateMetadata(handler: (metadata: Metadata) => Metadata): Promise<void> {
+        return this.metadataLock.inLock(async () => {
             await backoff(async () => {
                 let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
                 const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
@@ -423,6 +422,56 @@ export class ApiSessionClient extends EventEmitter {
                 }
             });
         });
+    }
+
+    private async flushPendingSummaryMetadataUpdate(): Promise<void> {
+        if (this.summaryMetadataSyncInFlight) {
+            return;
+        }
+        if (!this.socket.connected) {
+            return;
+        }
+        if (!this.pendingSummaryMetadataUpdate) {
+            return;
+        }
+
+        this.summaryMetadataSyncInFlight = true;
+        try {
+            while (this.socket.connected && this.pendingSummaryMetadataUpdate) {
+                const pending = this.pendingSummaryMetadataUpdate;
+                const beforeVersion = this.metadataVersion;
+
+                await this.updateMetadata((metadata) => ({
+                    ...metadata,
+                    summary: {
+                        text: pending.text,
+                        updatedAt: pending.updatedAt
+                    }
+                }));
+
+                // Only clear pending marker if a metadata version change was observed.
+                // If server returned a hard error, keep it queued for retry.
+                if (
+                    this.pendingSummaryMetadataUpdate &&
+                    this.pendingSummaryMetadataUpdate.text === pending.text &&
+                    this.pendingSummaryMetadataUpdate.updatedAt === pending.updatedAt &&
+                    this.metadataVersion > beforeVersion
+                ) {
+                    this.pendingSummaryMetadataUpdate = null;
+                } else {
+                    break;
+                }
+            }
+        } catch (error) {
+            logger.debug('[API] Failed to flush pending summary metadata update:', error);
+        } finally {
+            this.summaryMetadataSyncInFlight = false;
+            if (this.socket.connected && this.pendingSummaryMetadataUpdate) {
+                setTimeout(() => {
+                    void this.flushPendingSummaryMetadataUpdate();
+                }, 500);
+            }
+        }
     }
 
     /**

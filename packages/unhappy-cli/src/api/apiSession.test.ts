@@ -73,7 +73,7 @@ describe('ApiSessionClient connection handling', () => {
         const client = new ApiSessionClient('fake-token', mockSession);
         const updateMetadataSpy = vi
             .spyOn(client, 'updateMetadata')
-            .mockImplementation(() => {});
+            .mockResolvedValue();
 
         client.sendClaudeSessionMessage({
             type: 'summary',
@@ -91,7 +91,7 @@ describe('ApiSessionClient connection handling', () => {
         const client = new ApiSessionClient('fake-token', mockSession);
         const updateMetadataSpy = vi
             .spyOn(client, 'updateMetadata')
-            .mockImplementation(() => {});
+            .mockResolvedValue();
 
         client.sendClaudeSessionMessage({
             type: 'assistant',
@@ -108,6 +108,45 @@ describe('ApiSessionClient connection handling', () => {
 
         expect(updateMetadataSpy).not.toHaveBeenCalled();
         expect(mockSocket.emit).not.toHaveBeenCalled();
+    });
+
+    it('should flush queued summary metadata after socket reconnects', async () => {
+        mockSocket.connected = false;
+        mockSocket.emitWithAck.mockImplementation(
+            async (_event: string, payload: any) => ({
+                result: 'success',
+                version: payload.expectedVersion + 1,
+                metadata: payload.metadata
+            })
+        );
+
+        const client = new ApiSessionClient('fake-token', mockSession);
+        client.sendClaudeSessionMessage({
+            type: 'summary',
+            summary: 'Queued title',
+            leafUuid: 'leaf-2'
+        } as any);
+
+        expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+        expect(client.getMetadataSnapshot()?.summary?.text).toBe('Queued title');
+
+        const connectHandler = mockSocket.on.mock.calls.find(
+            ([event]: [string, Function]) => event === 'connect'
+        )?.[1];
+        expect(connectHandler).toBeTypeOf('function');
+
+        mockSocket.connected = true;
+        connectHandler();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mockSocket.emitWithAck).toHaveBeenCalledWith(
+            'update-metadata',
+            expect.objectContaining({
+                sid: 'test-session-id',
+                expectedVersion: 0
+            })
+        );
     });
 
     afterEach(() => {
