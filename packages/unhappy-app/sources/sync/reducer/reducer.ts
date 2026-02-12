@@ -691,6 +691,31 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-call') {
+                    const isEmptyInput = (input: unknown) => {
+                        if (input === null || input === undefined) return true;
+                        if (typeof input !== 'object') return false;
+                        if (Array.isArray(input)) return input.length === 0;
+                        return Object.keys(input as any).length === 0;
+                    };
+                    const hasChangeMap = (input: unknown) => {
+                        if (!input || typeof input !== 'object') return false;
+                        const changes = (input as any).changes;
+                        return !!changes && typeof changes === 'object' && Object.keys(changes).length > 0;
+                    };
+                    const hasUnifiedDiff = (input: unknown) => {
+                        if (!input || typeof input !== 'object') return false;
+                        const unified = (input as any).unified_diff;
+                        return typeof unified === 'string' && unified.trim().length > 0;
+                    };
+                    const shouldBackfillInput = (current: unknown, incoming: unknown) => {
+                        if (incoming === null || incoming === undefined) return false;
+                        if (isEmptyInput(current) && !isEmptyInput(incoming)) return true;
+                        // Permission placeholders can carry partial args (non-empty) but miss diff payload.
+                        if (hasChangeMap(incoming) && !hasChangeMap(current)) return true;
+                        if (hasUnifiedDiff(incoming) && !hasUnifiedDiff(current)) return true;
+                        return false;
+                    };
+
                     // Direct lookup by tool ID (since permission ID = tool ID now)
                     const existingMessageId = state.toolIdToMessageId.get(c.id);
 
@@ -704,6 +729,19 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             message.realID = msg.id;
                             message.tool.description = c.description;
                             message.tool.startedAt = msg.createdAt;
+                            // Backfill tool input from actual tool-call payload.
+                            // Permission placeholders may have partial args but miss `changes`/`unified_diff`,
+                            // which breaks embedded diff previews.
+                            if (shouldBackfillInput(message.tool.input, c.input)) {
+                                if (message.tool.input && typeof message.tool.input === 'object' && c.input && typeof c.input === 'object') {
+                                    message.tool.input = {
+                                        ...(message.tool.input as Record<string, unknown>),
+                                        ...(c.input as Record<string, unknown>),
+                                    };
+                                } else {
+                                    message.tool.input = c.input;
+                                }
+                            }
                             // If permission was approved and shown as completed (no tool), now it's running
                             if (message.tool.permission?.status === 'approved' && message.tool.state === 'completed') {
                                 message.tool.state = 'running';

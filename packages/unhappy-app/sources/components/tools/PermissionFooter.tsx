@@ -19,9 +19,17 @@ interface PermissionFooterProps {
     toolName: string;
     toolInput?: any;
     metadata?: any;
+    showCommandPreview?: boolean;
 }
 
-export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName, toolInput, metadata }) => {
+export const PermissionFooter: React.FC<PermissionFooterProps> = ({
+    permission,
+    sessionId,
+    toolName,
+    toolInput,
+    metadata,
+    showCommandPreview = false,
+}) => {
     const { theme } = useUnistyles();
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
@@ -89,11 +97,25 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
-    const bashCommand =
-        toolName === 'Bash' && typeof toolInput?.command === 'string' && toolInput.command.trim().length > 0
-            ? toolInput.command.trim()
-            : null;
+    const commandPreview = React.useMemo(() => {
+        if (!showCommandPreview || !toolInput) return null;
 
+        const rawCommand =
+            toolInput.command ??
+            toolInput.cmd ??
+            (Array.isArray(toolInput.parsed_cmd) ? toolInput.parsed_cmd[0]?.cmd : undefined);
+
+        if (typeof rawCommand === 'string') {
+            const trimmed = rawCommand.trim();
+            return trimmed.length > 0 ? trimmed : null;
+        }
+        if (Array.isArray(rawCommand)) {
+            const command = rawCommand.map((part) => String(part)).join(' ').trim();
+            return command.length > 0 ? command : null;
+        }
+
+        return null;
+    }, [showCommandPreview, toolInput]);
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
         if (!isPermissionIdValid) {
@@ -494,11 +516,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
         return (
             <View style={styles.container}>
-                {bashCommand ? (
+                {commandPreview ? (
                     <View style={styles.commandPreview}>
                         <Text style={styles.commandPreviewLabel}>Command</Text>
                         <Text style={styles.commandPreviewText} selectable numberOfLines={4}>
-                            {bashCommand}
+                            {commandPreview}
                         </Text>
                     </View>
                 ) : null}
@@ -553,11 +575,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     return (
         <View style={styles.container}>
-            {bashCommand ? (
+            {commandPreview ? (
                 <View style={styles.commandPreview}>
                     <Text style={styles.commandPreviewLabel}>Command</Text>
                     <Text style={styles.commandPreviewText} selectable numberOfLines={4}>
-                        {bashCommand}
+                        {commandPreview}
                     </Text>
                 </View>
             ) : null}

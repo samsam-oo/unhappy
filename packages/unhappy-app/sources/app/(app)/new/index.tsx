@@ -38,6 +38,7 @@ import { StatusDot } from '@/components/StatusDot';
 import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import type { ReasoningEffortMode } from '@/sync/storageTypes';
+import { SHOW_GEMINI_UI } from '@/config';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -369,7 +370,7 @@ function NewSessionWizard() {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
             // Only allow gemini if experiments are enabled
-            if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
+            if (tempSessionData.agentType === 'gemini' && (!experimentsEnabled || !SHOW_GEMINI_UI)) {
                 return 'claude';
             }
             return tempSessionData.agentType;
@@ -378,7 +379,7 @@ function NewSessionWizard() {
             return lastUsedAgent;
         }
         // Only allow gemini if experiments are enabled
-        if (lastUsedAgent === 'gemini' && experimentsEnabled) {
+        if (lastUsedAgent === 'gemini' && experimentsEnabled && SHOW_GEMINI_UI) {
             return lastUsedAgent;
         }
         return 'claude';
@@ -390,7 +391,7 @@ function NewSessionWizard() {
         setAgentType(prev => {
             // Cycle: claude -> codex -> gemini (if experiments) -> claude
             if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return experimentsEnabled ? 'gemini' : 'claude';
+            if (prev === 'codex') return (experimentsEnabled && SHOW_GEMINI_UI) ? 'gemini' : 'claude';
             return 'claude';
         });
     }, [experimentsEnabled]);
@@ -572,7 +573,7 @@ function NewSessionWizard() {
             const availableAgent: 'claude' | 'codex' | 'gemini' =
                 cliAvailability.claude === true ? 'claude' :
                 cliAvailability.codex === true ? 'codex' :
-                (cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
+                (SHOW_GEMINI_UI && cliAvailability.gemini === true && experimentsEnabled) ? 'gemini' :
                 'claude'; // Fallback to claude (will fail at spawn with clear error)
 
             console.warn(`[AgentSelection] ${agentType} not available, switching to ${availableAgent}`);
@@ -809,7 +810,7 @@ function NewSessionWizard() {
                 const requiredAgent = supportedCLIs[0] as 'claude' | 'codex' | 'gemini';
                 // Check if this agent is available and allowed
                 const isAvailable = cliAvailability[requiredAgent] !== false;
-                const isAllowed = requiredAgent !== 'gemini' || experimentsEnabled;
+                const isAllowed = requiredAgent !== 'gemini' || (SHOW_GEMINI_UI && experimentsEnabled);
 
                 if (isAvailable && isAllowed) {
                     setAgentType(requiredAgent);
@@ -908,7 +909,7 @@ function NewSessionWizard() {
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: true, gemini: true },
+            compatibility: { claude: true, codex: true, gemini: SHOW_GEMINI_UI },
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -1268,7 +1269,7 @@ function NewSessionWizard() {
             cliStatus: includeCLI ? {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
-                ...(experimentsEnabled && { gemini: cliAvailability.gemini }),
+                ...(SHOW_GEMINI_UI && experimentsEnabled && { gemini: cliAvailability.gemini }),
             } : undefined,
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
@@ -1418,7 +1419,7 @@ function NewSessionWizard() {
                                                 codex
                                             </Text>
                                         </View>
-                                        {experimentsEnabled && (
+                                        {SHOW_GEMINI_UI && experimentsEnabled && (
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                                 <Text style={{ fontSize: 11, color: cliAvailability.gemini ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
                                                     {cliAvailability.gemini ? '✓' : '✗'}
@@ -1588,7 +1589,7 @@ function NewSessionWizard() {
                                 </View>
                             )}
 
-                            {selectedMachineId && cliAvailability.gemini === false && experimentsEnabled && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
+                            {selectedMachineId && cliAvailability.gemini === false && SHOW_GEMINI_UI && experimentsEnabled && !isWarningDismissed('gemini') && !hiddenBanners.gemini && (
                                 <View style={{
                                     backgroundColor: theme.colors.box.warning.background,
                                     borderRadius: 10,

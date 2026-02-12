@@ -18,14 +18,21 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
     const pendingRequests = session?.agentState?.requests
         ? Object.entries(session.agentState.requests)
         : [];
-    const hasVisiblePendingPermission =
-        messages.some(
-            (m) => m.kind === 'tool-call' && m.tool.permission?.status === 'pending'
-        );
-    const visiblePendingCount =
-        messages.filter(
-            (m) => m.kind === 'tool-call' && m.tool.permission?.status === 'pending'
-        ).length;
+    const visiblePendingPermissionIds = new Set<string>();
+    for (const message of messages) {
+        if (message.kind !== 'tool-call') continue;
+        const permission = message.tool.permission;
+        if (
+            permission?.status === 'pending' &&
+            typeof permission.id === 'string' &&
+            permission.id.trim().length > 0
+        ) {
+            visiblePendingPermissionIds.add(permission.id);
+        }
+    }
+    const hiddenPendingRequests = pendingRequests.filter(
+        ([id]) => !visiblePendingPermissionIds.has(id)
+    );
 
     const containerStyle: ViewStyle = {
         alignItems: 'center',
@@ -63,25 +70,23 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
                 </View>
             )}
 
-            {/* Fallback: if we have pending permission requests but no tool card is showing the permission footer,
-                surface the first request here so the user can unblock "infinite loading" tools. */}
-            {!controlledByUser && pendingRequests.length > 0 && session ? (
+            {/* Fallback: show only pending requests that are not already visible in tool cards. */}
+            {!controlledByUser && hiddenPendingRequests.length > 0 && session ? (
                 <>
                     {/* If multiple commands are waiting for approval, pin them here so they don't "disappear" off-screen. */}
-                    {(!hasVisiblePendingPermission || visiblePendingCount < pendingRequests.length) ? (
-                        <>
-                            {pendingRequests.map(([id, req]) => (
-                                <PermissionFooter
-                                    key={id}
-                                    permission={{ id, status: 'pending' }}
-                                    sessionId={props.sessionId}
-                                    toolName={req.tool}
-                                    toolInput={req.arguments}
-                                    metadata={session.metadata}
-                                />
-                            ))}
-                        </>
-                    ) : null}
+                    <>
+                        {hiddenPendingRequests.map(([id, req]) => (
+                            <PermissionFooter
+                                key={id}
+                                permission={{ id, status: 'pending' }}
+                                sessionId={props.sessionId}
+                                toolName={req.tool}
+                                toolInput={req.arguments}
+                                metadata={session.metadata}
+                                showCommandPreview
+                            />
+                        ))}
+                    </>
                 </>
             ) : null}
         </View>

@@ -1,20 +1,17 @@
-import * as React from 'react';
-import { Text, View, TouchableOpacity, ActivityIndicator, Platform, LayoutAnimation, UIManager } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@/icons/vector-icons';
-import { getToolViewComponent } from './views/_all';
-import { Message, ToolCall } from '@/sync/typesMessage';
-import { CodeView } from '../CodeView';
-import { ToolSectionView } from './ToolSectionView';
-import { useElapsedTime } from '@/hooks/useElapsedTime';
-import { ToolError } from './ToolError';
 import { knownTools } from '@/components/tools/knownTools';
-import { Metadata } from '@/sync/storageTypes';
-import { useRouter } from 'expo-router';
 import { PermissionFooter } from '@/components/tools/PermissionFooter';
-import { parseToolUseError } from '@/utils/toolErrorParser';
-import { formatMCPTitle } from './views/MCPToolView';
+import { Typography } from '@/constants/Typography';
+import { useElapsedTime } from '@/hooks/useElapsedTime';
+import { Ionicons, Octicons } from '@/icons/vector-icons';
+import { Metadata } from '@/sync/storageTypes';
+import { Message, ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { parseToolUseError } from '@/utils/toolErrorParser';
+import { useRouter } from 'expo-router';
+import * as React from 'react';
+import { ActivityIndicator, LayoutAnimation, Platform, Text, TouchableOpacity, UIManager, View } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { CodeView } from '../CodeView';
 import { CommandView } from '../CommandView';
 import {
     dedupeShellOutputAgainstError,
@@ -22,6 +19,10 @@ import {
     resolveShellErrorMessage,
     toToolPreviewText,
 } from './shellOutput';
+import { ToolError } from './ToolError';
+import { ToolSectionView } from './ToolSectionView';
+import { getToolFullViewComponent, getToolViewComponent } from './views/_all';
+import { formatMCPTitle } from './views/MCPToolView';
 
 // Enable LayoutAnimation on Android once for this module.
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -40,6 +41,170 @@ interface ToolViewProps {
 
 const REASONING_TOOL_NAMES = new Set(['CodexReasoning', 'GeminiReasoning', 'think']);
 const MAX_REASONING_PREVIEW_CHARS = 4000;
+const CHANGE_SUMMARY_TOOL_NAMES = new Set(['CodexPatch', 'GeminiPatch', 'CodexDiff', 'GeminiDiff']);
+const MAX_CHANGE_PREVIEW_FILES = 8;
+
+function toBasename(path: string): string {
+    const normalized = path.replace(/\\/g, '/');
+    const parts = normalized.split('/').filter(Boolean);
+    return parts[parts.length - 1] || normalized || path;
+}
+
+function formatChangeSummary(lines: string[]): string | null {
+    if (lines.length === 0) return null;
+    return lines.join('\n');
+}
+
+function extractPatchChangePreview(input: unknown): string | null {
+    if (!input || typeof input !== 'object') return null;
+    const rawChanges = (input as Record<string, unknown>).changes;
+    if (!rawChanges || typeof rawChanges !== 'object') return null;
+
+    const entries = Object.entries(rawChanges as Record<string, unknown>);
+    if (entries.length === 0) return null;
+
+    let addCount = 0;
+    let modifyCount = 0;
+    let deleteCount = 0;
+    const detailLines: string[] = [];
+
+    for (const [path, value] of entries) {
+        const change = (value && typeof value === 'object')
+            ? value as Record<string, unknown>
+            : {};
+
+        let kind: 'A' | 'M' | 'D' = 'M';
+        if (change.add !== undefined) {
+            kind = 'A';
+            addCount += 1;
+        } else if (change.delete !== undefined) {
+            kind = 'D';
+            deleteCount += 1;
+        } else {
+            modifyCount += 1;
+        }
+
+        detailLines.push(`${kind} ${toBasename(path)}`);
+    }
+
+    const fileWord = entries.length === 1 ? 'file' : 'files';
+    const summaryLines = [
+        `${entries.length} ${fileWord} changed (A${addCount} M${modifyCount} D${deleteCount})`,
+        ...detailLines.slice(0, MAX_CHANGE_PREVIEW_FILES),
+    ];
+
+    const hiddenCount = detailLines.length - MAX_CHANGE_PREVIEW_FILES;
+    if (hiddenCount > 0) {
+        summaryLines.push(`... +${hiddenCount} more`);
+    }
+
+    return formatChangeSummary(summaryLines);
+}
+
+type DiffFileStat = {
+    path: string;
+    added: number;
+    deleted: number;
+};
+
+function extractUnifiedDiffPreview(input: unknown): string | null {
+    if (!input || typeof input !== 'object') return null;
+
+    const obj = input as Record<string, unknown>;
+    const unifiedDiff = typeof obj.unified_diff === 'string' ? obj.unified_diff : '';
+    const fallbackPath = typeof obj.filePath === 'string' ? obj.filePath : null;
+
+    if (!unifiedDiff && !fallbackPath) return null;
+
+    const byPath = new Map<string, DiffFileStat>();
+    const ensure = (path: string): DiffFileStat => {
+        const existing = byPath.get(path);
+        if (existing) return existing;
+        const created: DiffFileStat = { path, added: 0, deleted: 0 };
+        byPath.set(path, created);
+        return created;
+    };
+
+    let currentPath: string | null = fallbackPath;
+    if (currentPath) ensure(currentPath);
+
+    for (const line of unifiedDiff.split('\n')) {
+        if (line.startsWith('diff --git ')) {
+            const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+            if (match) {
+                currentPath = match[2] || match[1] || null;
+                if (currentPath) ensure(currentPath);
+            }
+            continue;
+        }
+
+        if (line.startsWith('+++ ')) {
+            let nextPath = line.replace(/^\+\+\+\s+/, '');
+            nextPath = nextPath.replace(/^b\//, '');
+            if (nextPath && nextPath !== '/dev/null') {
+                currentPath = nextPath;
+                ensure(currentPath);
+            }
+            continue;
+        }
+
+        if (!currentPath) continue;
+
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+            ensure(currentPath).added += 1;
+            continue;
+        }
+        if (line.startsWith('-') && !line.startsWith('---')) {
+            ensure(currentPath).deleted += 1;
+            continue;
+        }
+    }
+
+    const files = Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
+    if (files.length === 0) return null;
+
+    const totalAdded = files.reduce((sum, f) => sum + f.added, 0);
+    const totalDeleted = files.reduce((sum, f) => sum + f.deleted, 0);
+
+    const fileWord = files.length === 1 ? 'file' : 'files';
+    const summaryLines = [
+        `${files.length} ${fileWord} changed (+${totalAdded} -${totalDeleted})`,
+        ...files.slice(0, MAX_CHANGE_PREVIEW_FILES).map((f) => (
+            f.added === 0 && f.deleted === 0
+                ? `M ${toBasename(f.path)}`
+                : `M ${toBasename(f.path)} (+${f.added} -${f.deleted})`
+        )),
+    ];
+
+    const hiddenCount = files.length - MAX_CHANGE_PREVIEW_FILES;
+    if (hiddenCount > 0) {
+        summaryLines.push(`... +${hiddenCount} more`);
+    }
+
+    return formatChangeSummary(summaryLines);
+}
+
+function extractChangePreview(tool: ToolCall): string | null {
+    if (tool.name === 'CodexPatch' || tool.name === 'GeminiPatch') {
+        return extractPatchChangePreview(tool.input);
+    }
+    if (tool.name === 'CodexDiff' || tool.name === 'GeminiDiff') {
+        return extractUnifiedDiffPreview(tool.input);
+    }
+    return null;
+}
+
+function canRenderRichChangePreview(tool: ToolCall): boolean {
+    if (tool.name === 'CodexPatch' || tool.name === 'GeminiPatch') {
+        const changes = (tool.input as any)?.changes;
+        return !!changes && typeof changes === 'object' && Object.keys(changes).length > 0;
+    }
+    if (tool.name === 'CodexDiff' || tool.name === 'GeminiDiff') {
+        const unified = (tool.input as any)?.unified_diff;
+        return typeof unified === 'string' && unified.trim().length > 0;
+    }
+    return false;
+}
 
 function extractCodexCommand(input: any): string | null {
     const parsedCmd = input?.parsed_cmd;
@@ -101,6 +266,8 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { theme } = useUnistyles();
     const isShellLikeTool = tool.name === 'Bash' || tool.name === 'CodexBash';
     const isReasoningTool = REASONING_TOOL_NAMES.has(tool.name);
+    const isChangeSummaryTool = CHANGE_SUMMARY_TOOL_NAMES.has(tool.name);
+    const ChangeFullPreviewView = isChangeSummaryTool ? getToolFullViewComponent(tool.name) : null;
     const isPermissionPending = tool.permission?.status === 'pending';
     const [chatExpanded, setChatExpanded] = React.useState(() => {
         // If we're actively asking the user for consent (pending permission), keep the preview open.
@@ -249,7 +416,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         // Example: "터미널 • git status" feels closer to an activity line than just "터미널".
         let chatLabel = toolTitle;
         if (isReasoningTool) {
-            chatLabel = 'Thinking...';
+            const reasoningTitle =
+                typeof tool.input?.title === 'string' ? tool.input.title.trim() : '';
+            chatLabel = reasoningTitle || 'Thinking...';
         } else if (knownTool && typeof knownTool.extractDescription === 'function') {
             const desc = knownTool.extractDescription({ tool, metadata: props.metadata });
             if (typeof desc === 'string' && desc.trim()) {
@@ -268,6 +437,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         let stderr: string | null = null;
         let error: string | null = null;
         let reasoningPreview: string | null = null;
+        let changesPreview: string | null = null;
+        const hasRichChangesPreview =
+            isChangeSummaryTool &&
+            !!ChangeFullPreviewView &&
+            canRenderRichChangePreview(tool);
 
         if (isShellLike) {
             if (tool.name === 'Bash') {
@@ -305,10 +479,14 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         if (isReasoningTool) {
             reasoningPreview = extractReasoningPreview(tool.result);
         }
+        if (isChangeSummaryTool && !hasRichChangesPreview) {
+            changesPreview = extractChangePreview(tool);
+        }
 
         const canShowCommandPreview = isShellLike && !!command;
         const canShowReasoningPreview = isReasoningTool && !!reasoningPreview;
-        const canShowPreview = canShowCommandPreview || canShowReasoningPreview;
+        const canShowChangesPreview = isChangeSummaryTool && (hasRichChangesPreview || !!changesPreview);
+        const canShowPreview = canShowCommandPreview || canShowReasoningPreview || canShowChangesPreview;
         const forceExpanded = canShowCommandPreview && isPermissionPending;
         const expanded = chatExpanded || forceExpanded;
         const canToggleCollapse = canShowPreview && !forceExpanded;
@@ -413,8 +591,19 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 hideEmptyOutput={tool.state === 'running'}
                                 variant="plain"
                             />
-                        ) : (
+                        ) : canShowReasoningPreview ? (
                             <Text style={styles.chatReasoningPreviewText}>{reasoningPreview}</Text>
+                        ) : hasRichChangesPreview && ChangeFullPreviewView ? (
+                            <View style={styles.chatChangesPreviewContainer}>
+                                <ChangeFullPreviewView
+                                    tool={tool}
+                                    metadata={props.metadata}
+                                    messages={props.messages ?? []}
+                                    sessionId={sessionId}
+                                />
+                            </View>
+                        ) : (
+                            <Text style={styles.chatChangesPreviewText}>{changesPreview}</Text>
                         )}
                     </View>
                 ) : null}
@@ -628,6 +817,19 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 18,
         color: theme.colors.text,
         opacity: 0.9,
+    },
+    chatChangesPreviewText: {
+        fontSize: 12,
+        lineHeight: 18,
+        color: theme.colors.text,
+        opacity: 0.9,
+        ...Typography.mono(),
+    },
+    chatChangesPreviewContainer: {
+        minHeight: 220,
+        maxHeight: Platform.OS === 'web' ? 360 : 520,
+        borderRadius: 10,
+        overflow: 'visible',
     },
     chatError: {
         marginTop: 4,

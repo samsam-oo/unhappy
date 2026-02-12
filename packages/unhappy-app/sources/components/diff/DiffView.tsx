@@ -124,6 +124,31 @@ export const DiffView: React.FC<DiffViewProps> = ({
 
     // Render diff content as separate lines to prevent wrapping
     const renderDiffContent = () => {
+        if (hunks.length === 0) {
+            return (
+                <View
+                    style={{
+                        paddingHorizontal: 16,
+                        paddingVertical: 18,
+                        borderTopWidth: StyleSheet.hairlineWidth,
+                        borderTopColor: colors.outline,
+                    }}
+                >
+                    <Text
+                        style={{
+                            ...Typography.mono(),
+                            fontSize: 12,
+                            lineHeight: 18,
+                            color: colors.contextText,
+                            opacity: 0.72,
+                        }}
+                    >
+                        No textual diff content available.
+                    </Text>
+                </View>
+            );
+        }
+
         const lines: React.ReactNode[] = [];
         const LN_COL_W = 44;
         const SIGN_COL_W = 18;

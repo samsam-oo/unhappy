@@ -21,6 +21,7 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata, type ReasoningEffortMode } from '@/sync/storageTypes';
+import { SHOW_GEMINI_UI } from '@/config';
 
 interface AgentInputProps {
     value: string;
@@ -656,7 +657,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const permissionModeLabel = React.useMemo(() => {
         const mode = props.permissionMode ?? 'default';
-        if (isCodex) {
+        if (isCodex || (isGemini && !SHOW_GEMINI_UI)) {
             return mode === 'default' ? t('agentInput.codexPermissionMode.default') :
                 mode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
                     mode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
@@ -830,13 +831,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {overlayKind === 'permission' ? (
                                     <View style={styles.overlaySection}>
                                         <Text style={styles.overlaySectionTitle}>
-                                            {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
+                                            {(isCodex || (isGemini && !SHOW_GEMINI_UI))
+                                                ? t('agentInput.codexPermissionMode.title')
+                                                : isGemini
+                                                    ? t('agentInput.geminiPermissionMode.title')
+                                                    : t('agentInput.permissionMode.title')}
                                         </Text>
                                         {((isCodex || isGemini)
                                             ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
                                             : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
                                         ).map((mode) => {
-                                            const modeConfig = isCodex ? {
+                                            const modeConfig = (isCodex || (isGemini && !SHOW_GEMINI_UI)) ? {
                                                 'default': { label: t('agentInput.codexPermissionMode.default') },
                                                 'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
                                                 'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
@@ -925,7 +930,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 paddingHorizontal: Platform.select({ web: 12, default: 16 }),
                                                 paddingBottom: 8,
                                             }}>
-                                                {(['claude', 'codex', 'gemini'] as const).map((k) => {
+                                                {(
+                                                    SHOW_GEMINI_UI
+                                                        ? (['claude', 'codex', 'gemini'] as const)
+                                                        : (['claude', 'codex'] as const)
+                                                ).map((k) => {
                                                     // Only show Gemini when the caller has Gemini enabled (ex: experiments flag).
                                                     if (k === 'gemini' && props.connectionStatus?.cliStatus?.gemini === undefined) return null;
                                                     const active = agentFlavor === k;
@@ -1114,7 +1123,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     codex
                                                 </Text>
                                             </View>
-                                            {props.connectionStatus.cliStatus.gemini !== undefined && (
+                                            {SHOW_GEMINI_UI && props.connectionStatus.cliStatus.gemini !== undefined && (
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                                     <Text style={{
                                                         fontSize: 11,
@@ -1386,7 +1395,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             )}
 
                             {/* Model */}
-                            {props.onModelModeChange && (
+                            {props.onModelModeChange && (SHOW_GEMINI_UI || agentFlavor !== 'gemini') && (
                                 <View style={styles.actionButtonItem}>
                                     <Pressable
                                         onPress={openModelOverlay as any}
@@ -1498,7 +1507,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             fontWeight: '600',
                                             ...Typography.default('semiBold'),
                                         }}>
-                                            {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
+                                            {props.agentType === 'claude'
+                                                ? t('agentInput.agent.claude')
+                                                : props.agentType === 'codex' || !SHOW_GEMINI_UI
+                                                    ? t('agentInput.agent.codex')
+                                                    : t('agentInput.agent.gemini')}
                                         </Text>
                                     </Pressable>
                                 </View>
