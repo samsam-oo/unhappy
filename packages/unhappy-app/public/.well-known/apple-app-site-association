@@ -3,7 +3,7 @@
     "details": [
       {
         "appIDs": [
-          "466DQWDR8C.com.ex3ndr.happy"
+          "466DQWDR8C.im.unhappy.app"
         ],
         "components": [
           {
@@ -16,7 +16,7 @@
   },
   "activitycontinuation": {
     "apps": [
-      "466DQWDR8C.com.ex3ndr.happy"
+      "466DQWDR8C.im.unhappy.app"
     ]
   }
 }

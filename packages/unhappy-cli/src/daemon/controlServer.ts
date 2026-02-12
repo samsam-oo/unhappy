@@ -16,13 +16,13 @@ export function startDaemonControlServer({
   stopSession,
   spawnSession,
   requestShutdown,
-  onHappySessionWebhook
+  onUnhappySessionWebhook
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
-  onHappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
+  onUnhappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -51,7 +51,7 @@ export function startDaemonControlServer({
       const { sessionId, metadata } = request.body;
 
       logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
-      onHappySessionWebhook(sessionId, metadata);
+      onUnhappySessionWebhook(sessionId, metadata);
 
       return { status: 'ok' as const };
     });

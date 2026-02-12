@@ -8,7 +8,7 @@ The Unhappy app supports three build variants across **iOS, Android, and macOS d
 | --------------- | ------------------------ | ----------------- | -------------------------------------------- |
 | **Development** | `im.unhappy.app.develop` | Unhappy (Develop) | Local development with hot reload            |
 | **Preview**     | `im.unhappy.app.preview` | Unhappy (Preview) | Beta testing & OTA updates before production |
-| **Production**  | `com.ex3ndr.happy`       | Unhappy           | Public App Store release                     |
+| **Production**  | `im.unhappy.app`         | Unhappy           | Public App Store release                     |
 
 **Why Preview?**
 
@@ -224,7 +224,7 @@ npm run start:local-server
 
 This sets:
 
-- `EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005`
+- `EXPO_PUBLIC_UNHAPPY_SERVER_URL=http://localhost:3005`
 - `EXPO_PUBLIC_DEBUG=1`
 - Debug logging enabled
 
@@ -302,7 +302,7 @@ const variant = process.env.APP_ENV || 'development';
 const bundleId = {
   development: 'im.unhappy.app.develop',
   preview: 'im.unhappy.app.preview',
-  production: 'com.ex3ndr.happy',
+  production: 'im.unhappy.app',
 }[variant];
 ```
 

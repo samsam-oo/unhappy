@@ -3,7 +3,7 @@
  */
 
 const adjectives = [
-    'clever', 'happy', 'swift', 'bright', 'calm',
+    'clever', 'unhappy', 'swift', 'bright', 'calm',
     'bold', 'quiet', 'brave', 'wise', 'eager',
     'gentle', 'quick', 'sharp', 'smooth', 'fresh'
 ];

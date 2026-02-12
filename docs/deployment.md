@@ -53,7 +53,7 @@ Key notes:
 ## Kubernetes manifests
 Example manifests live in `packages/unhappy-server/deploy`:
 - `handy.yaml`: Deployment + Service + ExternalSecrets for the server.
-- `happy-redis.yaml`: Redis StatefulSet + Service + ConfigMap.
+- `unhappy-redis.yaml`: Redis StatefulSet + Service + ConfigMap.
 
 The deployment config expects:
 - Prometheus scraping annotations on port `9090`.

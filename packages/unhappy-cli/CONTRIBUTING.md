@@ -351,6 +351,6 @@ yarn release       # Interactive version bump, changelog, publish
 This runs tests, builds, and publishes to npm. The published package includes:
 
 - `unhappy` - Main CLI command
-- `happy-mcp` - MCP bridge command
+- `unhappy-mcp` - MCP bridge command
 
 **Note:** `unhappy-dev` is intentionally excluded from the npm package - it's for local development only.

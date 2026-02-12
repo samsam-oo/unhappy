@@ -357,10 +357,10 @@ function SessionInfoContent({ session }: { session: Session }) {
                                 showChevron={false}
                             />
                         )}
-                        {session.metadata.happyHomeDir && (
+                        {session.metadata.unhappyHomeDir && (
                             <Item
                                 title={t('sessionInfo.happyHome')}
-                                subtitle={formatPathRelativeToProjectBase(session.metadata.happyHomeDir, session.metadata.machineId, session.metadata.homeDir)}
+                                subtitle={formatPathRelativeToProjectBase(session.metadata.unhappyHomeDir, session.metadata.machineId, session.metadata.homeDir)}
                                 icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />

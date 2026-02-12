@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * CLI entry point for happy command
+ * CLI entry point for unhappy command
  *
  * Simple argument parsing without any CLI framework dependencies
  */
@@ -37,7 +37,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
   if (!args.includes('--version')) {
-    logger.debug('Starting happy CLI with args: ', process.argv);
+    logger.debug('Starting unhappy CLI with args: ', process.argv);
   }
 
   // Check if first argument is a subcommand
@@ -128,7 +128,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
     // Handle gemini subcommands
     const geminiSubcommand = args[1];
 
-    // Handle "happy gemini model set <model>" command
+    // Handle "unhappy gemini model set <model>" command
     if (geminiSubcommand === 'model' && args[2] === 'set' && args[3]) {
       const modelName = args[3];
       const validModels = [
@@ -187,7 +187,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       }
     }
 
-    // Handle "happy gemini model get" command
+    // Handle "unhappy gemini model get" command
     if (geminiSubcommand === 'model' && args[2] === 'get') {
       try {
         const { existsSync, readFileSync } = require('fs');
@@ -228,7 +228,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       }
     }
 
-    // Handle "happy gemini project set <project-id>" command
+    // Handle "unhappy gemini project set <project-id>" command
     if (geminiSubcommand === 'project' && args[2] === 'set' && args[3]) {
       const projectId = args[3];
 
@@ -274,7 +274,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       }
     }
 
-    // Handle "happy gemini project get" command
+    // Handle "unhappy gemini project get" command
     if (geminiSubcommand === 'project' && args[2] === 'get') {
       try {
         const { readGeminiLocalConfig } = await import('@/gemini/utils/config');
@@ -301,7 +301,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
           console.log(
             'If you see "Authentication required" error, you may need to set a project:',
           );
-          console.log('  happy gemini project set <your-project-id>');
+          console.log('  unhappy gemini project set <your-project-id>');
           console.log('');
           console.log('This is required for Google Workspace accounts.');
           console.log(
@@ -315,9 +315,9 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       }
     }
 
-    // Handle "happy gemini project" (no subcommand) - show help
+    // Handle "unhappy gemini project" (no subcommand) - show help
     if (geminiSubcommand === 'project' && !args[2]) {
-      console.log('Usage: happy gemini project <command>');
+      console.log('Usage: unhappy gemini project <command>');
       console.log('');
       console.log('Commands:');
       console.log('  set <project-id>   Set Google Cloud Project ID');
@@ -377,7 +377,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
     // Keep for backward compatibility - redirect to auth logout
     console.log(
       chalk.yellow(
-        'Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n',
+        'Note: "unhappy logout" is deprecated. Use "unhappy auth logout" instead.\n',
       ),
     );
     try {
@@ -509,20 +509,20 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       }
     } else {
       console.log(`
-${chalk.bold('happy daemon')} - Daemon management
+${chalk.bold('unhappy daemon')} - Daemon management
 
 ${chalk.bold('Usage:')}
-  happy daemon start              Start the daemon (detached)
-  happy daemon stop               Stop the daemon (sessions stay alive)
-  happy daemon status             Show daemon status
-  happy daemon list               List active sessions
+  unhappy daemon start              Start the daemon (detached)
+  unhappy daemon stop               Stop the daemon (sessions stay alive)
+  unhappy daemon status             Show daemon status
+  unhappy daemon list               List active sessions
 
-  If you want to kill all happy related processes run 
-  ${chalk.cyan('happy doctor clean')}
+  If you want to kill all unhappy related processes run
+  ${chalk.cyan('unhappy doctor clean')}
 
 ${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
 
-${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor clean')}
+${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('unhappy doctor clean')}
 `);
     }
     return;
@@ -550,7 +550,7 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         showVersion = true;
         // Also pass through to claude (will show after our version)
         unknownArgs.push(arg);
-      } else if (arg === '--happy-starting-mode') {
+      } else if (arg === '--happy-starting-mode' || arg === '--unhappy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i]);
       } else if (arg === '--yolo') {
         // Shortcut for --dangerously-skip-permissions
@@ -635,35 +635,35 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     // Show help
     if (showHelp) {
       console.log(`
-${chalk.bold('happy')} - Claude Code On the Go
+${chalk.bold('unhappy')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
-  happy [options]         Start Claude with mobile control
-  happy auth              Manage authentication
-  happy codex             Start Codex mode
-  happy gemini            Start Gemini mode (ACP)
-  happy connect           Connect AI vendor API keys
-  happy notify            Send push notification
-  happy daemon            Manage background service that allows
+  unhappy [options]         Start Claude with mobile control
+  unhappy auth              Manage authentication
+  unhappy codex             Start Codex mode
+  unhappy gemini            Start Gemini mode (ACP)
+  unhappy connect           Connect AI vendor API keys
+  unhappy notify            Send push notification
+  unhappy daemon            Manage background service that allows
                             to spawn new sessions away from your computer
-  happy doctor            System diagnostics & troubleshooting
+  unhappy doctor            System diagnostics & troubleshooting
 
 ${chalk.bold('Examples:')}
-  happy                    Start session
-  happy --yolo             Start with bypassing permissions
-                            happy sugar for --dangerously-skip-permissions
-  happy --chrome           Enable Chrome browser access for this session
-  happy --no-chrome        Disable Chrome even if default is on
-  happy --js-runtime bun   Use bun instead of node to spawn Claude Code
-  happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+  unhappy                    Start session
+  unhappy --yolo             Start with bypassing permissions
+                            unhappy sugar for --dangerously-skip-permissions
+  unhappy --chrome           Enable Chrome browser access for this session
+  unhappy --no-chrome        Disable Chrome even if default is on
+  unhappy --js-runtime bun   Use bun instead of node to spawn Claude Code
+  unhappy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
                            Use a custom API endpoint (e.g., claude-code-router)
-  happy auth login --force Authenticate
-  happy doctor             Run diagnostics
+  unhappy auth login --force Authenticate
+  unhappy doctor             Run diagnostics
 
 ${chalk.bold('Unhappy supports ALL Claude options!')}
-  Use any claude flag with happy as you would with claude. Our favorite:
+  Use any claude flag with unhappy as you would with claude. Our favorite:
 
-  happy --resume
+  unhappy --resume
 
 ${chalk.gray('─'.repeat(60))}
 ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
@@ -689,7 +689,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Show version
     if (showVersion) {
-      console.log(`happy version: ${packageJson.version}`);
+      console.log(`unhappy version: ${packageJson.version}`);
       // Don't exit - continue to pass --version to Claude Code
     }
 
@@ -758,20 +758,20 @@ async function handleNotifyCommand(args: string[]): Promise<void> {
 
   if (showHelp) {
     console.log(`
-${chalk.bold('happy notify')} - Send notification
+${chalk.bold('unhappy notify')} - Send notification
 
 ${chalk.bold('Usage:')}
-  happy notify -p <message> [-t <title>]    Send notification with custom message and optional title
-  happy notify -h, --help                   Show this help
+  unhappy notify -p <message> [-t <title>]    Send notification with custom message and optional title
+  unhappy notify -h, --help                   Show this help
 
 ${chalk.bold('Options:')}
   -p <message>    Notification message (required)
   -t <title>      Notification title (optional, defaults to "Unhappy")
 
 ${chalk.bold('Examples:')}
-  happy notify -p "Deployment complete!"
-  happy notify -p "System update complete" -t "Server Status"
-  happy notify -t "Alert" -p "Database connection restored"
+  unhappy notify -p "Deployment complete!"
+  unhappy notify -p "System update complete" -t "Server Status"
+  unhappy notify -t "Alert" -p "Database connection restored"
 `);
     return;
   }
@@ -782,7 +782,7 @@ ${chalk.bold('Examples:')}
         'Error: Message is required. Use -p "your message" to specify the notification text.',
       ),
     );
-    console.log(chalk.gray('Run "happy notify --help" for usage information.'));
+    console.log(chalk.gray('Run "unhappy notify --help" for usage information.'));
     process.exit(1);
   }
 
@@ -791,7 +791,7 @@ ${chalk.bold('Examples:')}
   if (!credentials) {
     console.error(
       chalk.red(
-        'Error: Not authenticated. Please run "happy auth login" first.',
+        'Error: Not authenticated. Please run "unhappy auth login" first.',
       ),
     );
     process.exit(1);

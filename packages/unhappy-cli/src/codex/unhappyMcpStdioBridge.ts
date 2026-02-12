@@ -37,7 +37,7 @@ async function main() {
   if (!baseUrl) {
     // Write to stderr; never stdout.
     process.stderr.write(
-      '[happy-mcp] Missing target URL. Set UNHAPPY_HTTP_MCP_URL or pass --url <http://127.0.0.1:PORT>\n',
+      '[unhappy-mcp] Missing target URL. Set UNHAPPY_HTTP_MCP_URL or pass --url <http://127.0.0.1:PORT>\n',
     );
     process.exit(2);
   }
@@ -47,7 +47,7 @@ async function main() {
   async function ensureHttpClient(): Promise<Client> {
     if (httpClient) return httpClient;
     const client = new Client(
-      { name: 'happy-stdio-bridge', version: '1.0.0' },
+      { name: 'unhappy-stdio-bridge', version: '1.0.0' },
       { capabilities: {} },
     );
 
@@ -105,7 +105,7 @@ async function main() {
 main().catch((err) => {
   try {
     process.stderr.write(
-      `[happy-mcp] Fatal: ${err instanceof Error ? err.message : String(err)}\n`,
+      `[unhappy-mcp] Fatal: ${err instanceof Error ? err.message : String(err)}\n`,
     );
   } finally {
     process.exit(1);

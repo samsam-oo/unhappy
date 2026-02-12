@@ -68,6 +68,6 @@ Unhappy Coder is an open-source mobile app that lets developers control AI codin
 
 - GitHub: https://github.com/samsam-oo/unhappy
 - Website: https://unhappy.im
-- iOS App: https://apps.apple.com/us/app/happy-claude-code-client/id6748571505
-- Android App: https://play.google.com/store/apps/details?id=com.ex3ndr.happy
+- iOS App: https://apps.apple.com/us/app/unhappy-claude-code-client/id6748571505
+- Android App: https://play.google.com/store/apps/details?id=im.unhappy.app
 - Web App: https://app.unhappy.im/

@@ -17,10 +17,10 @@ describe('applySuggestion', () => {
         it('should replace : emoji at end of text', () => {
             const content = 'I feel :hap';
             const selection = { start: 11, end: 11 };
-            const result = applySuggestion(content, selection, ':happy:');
+            const result = applySuggestion(content, selection, ':smile:');
             
             expect(result).toEqual({
-                text: 'I feel :happy: ',
+                text: 'I feel :smile: ',
                 cursorPosition: 15
             });
         });

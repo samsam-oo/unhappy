@@ -90,7 +90,7 @@ export async function stopDaemonHttp(): Promise<void> {
 
 /**
  * The version check is still quite naive.
- * For instance we are not handling the case where we upgraded happy,
+ * For instance we are not handling the case where we upgraded unhappy,
  * the daemon is still running, and it recieves a new message to spawn a new session.
  * This is a tough case - we need to somehow figure out to restart ourselves,
  * yet still handle the original request.
@@ -113,7 +113,7 @@ export async function stopDaemonHttp(): Promise<void> {
  * Not just a boolean.
  * 
  * We can destructure the response on the caller for richer output.
- * For instance when running `happy daemon status` we can show more information.
+ * For instance when running `unhappy daemon status` we can show more information.
  */
 export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
   const state = await readDaemonState();

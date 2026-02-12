@@ -48,13 +48,13 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
 
 function showAuthHelp(): void {
   console.log(`
-${chalk.bold('happy auth')} - Authentication management
+${chalk.bold('unhappy auth')} - Authentication management
 
 ${chalk.bold('Usage:')}
-  happy auth login [--force]    Authenticate with Unhappy
-  happy auth logout             Remove authentication and machine data
-  happy auth status             Show authentication status
-  happy auth help               Show this help message
+  unhappy auth login [--force]    Authenticate with Unhappy
+  unhappy auth logout             Remove authentication and machine data
+  unhappy auth status             Show authentication status
+  unhappy auth help               Show this help message
 
 ${chalk.bold('Options:')}
   --force    Clear credentials, machine ID, and stop daemon before re-auth
@@ -107,7 +107,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
       console.log(chalk.gray(`  Host: ${os.hostname()}`));
       console.log(
-        chalk.gray(`  Use 'happy auth login --force' to re-authenticate`),
+        chalk.gray(`  Use 'unhappy auth login --force' to re-authenticate`),
       );
       return;
     } else if (existingCreds && !settings?.machineId) {
@@ -138,7 +138,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
 
 async function handleAuthLogout(): Promise<void> {
   // "auth logout will essentially clear the private key that originally came from the phone"
-  const happyDir = configuration.happyHomeDir;
+  const happyDir = configuration.unhappyHomeDir;
 
   // Check if authenticated
   const credentials = await readCredentials();
@@ -175,13 +175,13 @@ async function handleAuthLogout(): Promise<void> {
         console.log(chalk.gray('Stopped daemon'));
       } catch {}
 
-      // Remove entire happy directory (as current logout does)
+      // Remove entire unhappy directory (as current logout does)
       if (existsSync(happyDir)) {
         rmSync(happyDir, { recursive: true, force: true });
       }
 
       console.log(chalk.green('✓ Successfully logged out'));
-      console.log(chalk.gray('  Run "happy auth login" to authenticate again'));
+      console.log(chalk.gray('  Run "unhappy auth login" to authenticate again'));
     } catch (error) {
       throw new Error(
         `Failed to logout: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -200,7 +200,7 @@ async function handleAuthStatus(): Promise<void> {
 
   if (!credentials) {
     console.log(chalk.red('✗ Not authenticated'));
-    console.log(chalk.gray('  Run "happy auth login" to authenticate'));
+    console.log(chalk.gray('  Run "unhappy auth login" to authenticate'));
     return;
   }
 
@@ -217,11 +217,11 @@ async function handleAuthStatus(): Promise<void> {
     console.log(chalk.gray(`  Host: ${os.hostname()}`));
   } else {
     console.log(chalk.yellow('⚠️  Machine not registered'));
-    console.log(chalk.gray('  Run "happy auth login --force" to fix this'));
+    console.log(chalk.gray('  Run "unhappy auth login --force" to fix this'));
   }
 
   // Data location
-  console.log(chalk.gray(`\n  Data directory: ${configuration.happyHomeDir}`));
+  console.log(chalk.gray(`\n  Data directory: ${configuration.unhappyHomeDir}`));
 
   // Daemon status
   try {

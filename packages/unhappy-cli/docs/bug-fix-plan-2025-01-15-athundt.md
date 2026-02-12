@@ -20,7 +20,7 @@ Error: --session-id cannot be used with --continue or --resume
 
 **Root Cause Analysis**:
 
-- This is a Claude Code 2.0.64+ design constraint, NOT a happy-cli bug
+- This is a Claude Code 2.0.64+ design constraint, NOT a unhappy-cli bug
 - Unhappy-CLI generates a NEW session ID and adds `--session-id <uuid>` for all local sessions
 - When user passes `--continue`, Claude Code sees: `--continue --session-id <uuid>` → REJECTS
 - The conflict occurs ONLY in local mode (claudeLocal.ts), not remote mode
@@ -30,7 +30,7 @@ Error: --session-id cannot be used with --continue or --resume
 1. **Local Mode (Path with conflict)**:
 
    ```
-   user: happy --continue
+   user: unhappy --continue
    → index.ts (claudeArgs = ["--continue"])
    → runClaude.ts
    → loop.ts
@@ -43,10 +43,10 @@ Error: --session-id cannot be used with --continue or --resume
 
 2. **Remote Mode (No conflict)**:
    ```
-   user: happy --continue
+   user: unhappy --continue
    → ... → claudeRemote.ts → SDK query.ts
    → SDK passes --continue to Claude
-   → No --session-id added by happy-cli
+   → No --session-id added by unhappy-cli
    → Works fine
    ```
 

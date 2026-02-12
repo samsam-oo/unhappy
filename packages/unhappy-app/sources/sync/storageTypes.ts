@@ -23,7 +23,7 @@ export const MetadataSchema = z.object({
   tools: z.array(z.string()).optional(),
   slashCommands: z.array(z.string()).optional(),
   homeDir: z.string().optional(), // User's home directory on the machine
-  happyHomeDir: z.string().optional(), // Unhappy configuration directory
+  unhappyHomeDir: z.string().optional(), // Unhappy configuration directory
   hostPid: z.number().optional(), // Process ID of the session
   flavor: z.string().nullish(), // Session flavor/variant identifier
 });
@@ -138,7 +138,7 @@ export const MachineMetadataSchema = z.object({
   host: z.string(),
   platform: z.string(),
   happyCliVersion: z.string(),
-  happyHomeDir: z.string(), // Directory for Unhappy auth, settings, logs (usually .happy/ or .happy-dev/)
+  unhappyHomeDir: z.string(), // Directory for Unhappy auth, settings, logs (usually .unhappy/ or .unhappy-dev/)
   homeDir: z.string(), // User's home directory (matches CLI field name)
   // Optional fields that may be added in future versions
   username: z.string().optional(),

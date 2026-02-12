@@ -108,7 +108,7 @@ function unlink() {
         const stat = fs.lstatSync(binTarget);
         if (stat.isSymbolicLink()) {
             const linkTarget = fs.readlinkSync(binTarget);
-            if (linkTarget === binSource || linkTarget.includes('happy-cli')) {
+            if (linkTarget === binSource || linkTarget.includes('unhappy-cli')) {
                 fs.unlinkSync(binTarget);
                 console.log('\n✅ Removed unhappy-dev development symlink');
                 console.log('\nTo restore npm version: npm install -g unhappy-cli');

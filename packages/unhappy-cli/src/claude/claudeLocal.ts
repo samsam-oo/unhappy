@@ -55,7 +55,7 @@ export async function claudeLocal(opts: {
     let startFrom = opts.sessionId;
 
     // Handle session-related flags from claudeArgs to ensure transparent behavior
-    // We intercept these flags to use happy-cli's session storage rather than Claude's default
+    // We intercept these flags to use unhappy-cli's session storage rather than Claude's default
     //
     // Supported patterns:
     // --continue / -c           : Resume last session in current directory

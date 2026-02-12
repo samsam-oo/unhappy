@@ -44,8 +44,8 @@ export const initialMachineMetadata: MachineMetadata = {
   platform: os.platform(),
   happyCliVersion: packageJson.version,
   homeDir: os.homedir(),
-  happyHomeDir: configuration.happyHomeDir,
-  happyLibDir: projectPath(),
+  unhappyHomeDir: configuration.unhappyHomeDir,
+  unhappyLibDir: projectPath(),
 };
 
 // Get environment variables for a profile, filtered for agent compatibility
@@ -230,8 +230,8 @@ export async function startDaemon(): Promise<void> {
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
 
-    // Handle webhook from happy session reporting itself
-    const onHappySessionWebhook = (
+    // Handle webhook from unhappy session reporting itself
+    const onUnhappySessionWebhook = (
       sessionId: string,
       sessionMetadata: Metadata,
     ) => {
@@ -273,7 +273,7 @@ export async function startDaemon(): Promise<void> {
       } else if (!existingSession) {
         // New session started externally
         const trackedSession: TrackedSession = {
-          startedBy: 'happy directly - likely by user from terminal',
+          startedBy: 'unhappy directly - likely by user from terminal',
           happySessionId: sessionId,
           happySessionMetadataFromLocalWebhook: sessionMetadata,
           pid,
@@ -362,7 +362,7 @@ export async function startDaemon(): Promise<void> {
           if (options.agent === 'codex') {
             // Use a stable CODEX_HOME so Codex transcripts can be resumed after restarts.
             // We still (re)write auth.json before spawning to avoid startup races.
-            const codexHomeDir = join(configuration.happyHomeDir, 'codex-home');
+            const codexHomeDir = join(configuration.unhappyHomeDir, 'codex-home');
             try {
               await fs.mkdir(codexHomeDir, { recursive: true, mode: 0o700 });
             } catch {}
@@ -548,14 +548,14 @@ export async function startDaemon(): Promise<void> {
               : options.agent === 'codex'
                 ? 'codex'
                 : 'claude';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --unhappy-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
           // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
           // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
           // 3. tmux needs explicit environment via -e flags to ensure all variables are available
-          const windowName = `happy-${Date.now()}-${agent}`;
+          const windowName = `unhappy-${Date.now()}-${agent}`;
           const tmuxEnv: Record<string, string> = {};
 
           // Add all daemon environment variables (filtering out undefined)
@@ -665,7 +665,7 @@ export async function startDaemon(): Promise<void> {
           }
           const args = [
             agentCommand,
-            '--happy-starting-mode',
+            '--unhappy-starting-mode',
             'remote',
             '--started-by',
             'daemon',
@@ -850,7 +850,7 @@ export async function startDaemon(): Promise<void> {
         stopSession,
         spawnSession,
         requestShutdown: () => requestShutdown('unhappy-cli'),
-        onHappySessionWebhook,
+        onUnhappySessionWebhook,
       });
 
     // Write initial daemon state (no lock needed for state file)

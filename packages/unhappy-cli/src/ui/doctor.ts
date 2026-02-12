@@ -2,7 +2,7 @@
  * Doctor command implementation
  *
  * Provides comprehensive diagnostics and troubleshooting information
- * for happy CLI including configuration, daemon status, logs, and links
+ * for unhappy CLI including configuration, daemon status, logs, and links
  */
 
 import { configuration } from '@/configuration';
@@ -30,7 +30,7 @@ export function getEnvironmentInfo(): Record<string, any> {
     DEBUG: process.env.DEBUG,
     workingDirectory: process.cwd(),
     processArgv: process.argv,
-    happyDir: configuration?.happyHomeDir,
+    unhappyDir: configuration?.unhappyHomeDir,
     serverUrl: configuration?.serverUrl,
     logsDir: configuration?.logsDir,
     processPid: process.pid,
@@ -110,7 +110,7 @@ export async function runDoctorCommand(
 
     // Configuration
     console.log(chalk.bold('⚙️  Configuration'));
-    console.log(`Unhappy Home: ${chalk.blue(configuration.happyHomeDir)}`);
+    console.log(`Unhappy Home: ${chalk.blue(configuration.unhappyHomeDir)}`);
     console.log(`Server URL: ${chalk.blue(configuration.serverUrl)}`);
     console.log(`Logs Dir: ${chalk.blue(configuration.logsDir)}`);
 
@@ -232,14 +232,14 @@ export async function runDoctorCommand(
         });
       });
     } else {
-      console.log(chalk.red('❌ No happy processes found'));
+      console.log(chalk.red('❌ No unhappy processes found'));
     }
 
     if (filter === 'all' && allProcesses.length > 1) {
       // More than just current process
       console.log(chalk.bold('\n💡 Process Management'));
       console.log(
-        chalk.gray('To clean up runaway processes: happy doctor clean'),
+        chalk.gray('To clean up runaway processes: unhappy doctor clean'),
       );
     }
   } catch (error) {

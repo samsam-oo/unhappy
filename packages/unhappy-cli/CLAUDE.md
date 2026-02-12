@@ -6,7 +6,7 @@ Unhappy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enabl
 
 1. **handy-cli** (this project) - CLI wrapper for Claude Code
 2. **handy** - React Native mobile client
-3. **handy-server** - Node.js server with Prisma (hosted at https://api.happy-servers.com/)
+3. **handy-server** - Node.js server with Prisma (hosted at https://api.unhappy.im/)
 
 ## Code Style Preferences
 

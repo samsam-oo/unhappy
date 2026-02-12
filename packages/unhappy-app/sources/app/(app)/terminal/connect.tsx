@@ -42,7 +42,7 @@ export default function TerminalConnectScreen() {
 
     const handleConnect = async () => {
         if (publicKey) {
-            // Convert the hash key format to the expected happy:// URL format
+            // Convert the hash key format to the expected unhappy:// URL format
             const authUrl = `unhappy://terminal?${publicKey}`;
             await processAuthUrl(authUrl);
         }

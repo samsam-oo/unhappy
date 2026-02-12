@@ -72,7 +72,7 @@ export async function runClaude(
   // Validate daemon spawn requirements - fail fast on invalid config
   if (options.startedBy === 'daemon' && options.startingMode === 'local') {
     throw new Error(
-      'Daemon-spawned sessions cannot use local/interactive mode. Use --happy-starting-mode remote or spawn sessions directly from terminal.',
+      'Daemon-spawned sessions cannot use local/interactive mode. Use --unhappy-starting-mode remote or spawn sessions directly from terminal.',
     );
   }
 
@@ -109,9 +109,9 @@ export async function runClaude(
     os: os.platform(),
     machineId: machineId,
     homeDir: os.homedir(),
-    happyHomeDir: configuration.happyHomeDir,
-    happyLibDir: projectPath(),
-    happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
+    unhappyHomeDir: configuration.unhappyHomeDir,
+    unhappyLibDir: projectPath(),
+    unhappyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
     startedFromDaemon: options.startedBy === 'daemon',
     hostPid: process.pid,
     startedBy: options.startedBy || 'terminal',

@@ -111,7 +111,7 @@ We want to
   "content": {
     "type": "output",
     "data": {
-      "cwd": "/Users/kirilldubovitskiy/projects/happy/handy-cli",
+      "cwd": "/Users/kirilldubovitskiy/projects/unhappy/handy-cli",
       "sessionId": "329df624-b37c-4849-ab83-65722d321c29",
       "version": "1.0.51",
       "uuid": "072e0a05-5480-4a83-9f63-802da615b66b",
@@ -142,7 +142,7 @@ We want to
   "content": {
     "type": "output",
     "data": {
-      "cwd": "/Users/kirilldubovitskiy/projects/happy/handy-cli",
+      "cwd": "/Users/kirilldubovitskiy/projects/unhappy/handy-cli",
       "sessionId": "329df624-b37c-4849-ab83-65722d321c29",
       "version": "1.0.51",
       "uuid": "8b1593e4-c56e-4785-9dd0-741587021c95",
@@ -349,5 +349,4 @@ Blocking
     - We can parse the terminal output
 
 - e2e single tests
-  - Would be nice to be able to run the whole thing - including pty to emulate a simple scenario and make sure a single multi step happy path works fine
-
+  - Would be nice to be able to run the whole thing - including pty to emulate a simple scenario and make sure a single multi step unhappy path works fine

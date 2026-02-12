@@ -99,7 +99,7 @@ export function EmptyMainScreen() {
                     $ npm i -g unhappy-cli
                 </Text>
                 <Text style={styles.terminalText}>
-                    $ happy
+                    $ unhappy
                 </Text>
             </View>
 

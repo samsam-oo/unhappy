@@ -53,14 +53,14 @@ export async function handleConnectCommand(args: string[]): Promise<void> {
 
 function showConnectHelp(): void {
   console.log(`
-${chalk.bold('happy connect')} - Connect AI vendor API keys to Unhappy cloud
+${chalk.bold('unhappy connect')} - Connect AI vendor API keys to Unhappy cloud
 
 ${chalk.bold('Usage:')}
-  happy connect codex        Store your Codex API key in Unhappy cloud
-  happy connect claude       Store your Anthropic API key in Unhappy cloud
-  happy connect gemini       Store your Gemini API key in Unhappy cloud
-  happy connect status       Show connection status for all vendors
-  happy connect help         Show this help message
+  unhappy connect codex        Store your Codex API key in Unhappy cloud
+  unhappy connect claude       Store your Anthropic API key in Unhappy cloud
+  unhappy connect gemini       Store your Gemini API key in Unhappy cloud
+  unhappy connect status       Show connection status for all vendors
+  unhappy connect help         Show this help message
 
 ${chalk.bold('Description:')}
   The connect command allows you to securely store your AI vendor API keys
@@ -68,13 +68,13 @@ ${chalk.bold('Description:')}
   without exposing your API keys locally.
 
 ${chalk.bold('Examples:')}
-  happy connect codex
-  happy connect claude
-  happy connect gemini
-  happy connect status
+  unhappy connect codex
+  unhappy connect claude
+  unhappy connect gemini
+  unhappy connect status
 
 ${chalk.bold('Notes:')} 
-  • You must be authenticated with Unhappy first (run 'happy auth login')
+  • You must be authenticated with Unhappy first (run 'unhappy auth login')
   • API keys are encrypted and stored securely in Unhappy cloud
   • You can manage your stored keys at app.unhappy.im
 `);
@@ -90,7 +90,7 @@ async function handleConnectVendor(
   const credentials = await readCredentials();
   if (!credentials) {
     console.log(chalk.yellow('⚠️  Not authenticated with Unhappy'));
-    console.log(chalk.gray('  Please run "happy auth login" first'));
+    console.log(chalk.gray('  Please run "unhappy auth login" first'));
     process.exit(1);
   }
 
@@ -135,7 +135,7 @@ async function handleConnectStatus(): Promise<void> {
   const credentials = await readCredentials();
   if (!credentials) {
     console.log(chalk.yellow('⚠️  Not authenticated with Unhappy'));
-    console.log(chalk.gray('  Please run "happy auth login" first'));
+    console.log(chalk.gray('  Please run "unhappy auth login" first'));
     process.exit(1);
   }
 
@@ -198,8 +198,8 @@ async function handleConnectStatus(): Promise<void> {
   }
 
   console.log('');
-  console.log(chalk.gray('To connect a vendor, run: happy connect <vendor>'));
-  console.log(chalk.gray('Example: happy connect gemini'));
+  console.log(chalk.gray('To connect a vendor, run: unhappy connect <vendor>'));
+  console.log(chalk.gray('Example: unhappy connect gemini'));
   console.log('');
 }
 

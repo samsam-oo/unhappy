@@ -221,7 +221,7 @@ export class CodexAppServerClient {
       await this.callRpc(
         'initialize',
         {
-          clientInfo: { name: 'happy-codex-client', version: '1.0.0' },
+          clientInfo: { name: 'unhappy-codex-client', version: '1.0.0' },
           capabilities: { experimentalApi: true },
         },
         { timeout: 30000 },

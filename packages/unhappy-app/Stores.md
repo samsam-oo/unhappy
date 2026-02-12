@@ -36,9 +36,9 @@ We respectfully acknowledge slopus/happy as the original licensed upstream work 
 
 **How It Works:**
 
-1. Install the happy-coder CLI on your computer
+1. Install the unhappy-coder CLI on your computer
 2. Scan a QR code to securely pair your devices
-3. Use 'happy' instead of 'claude' to start encrypted sessions
+3. Use 'unhappy' instead of 'claude' to start encrypted sessions
 4. Switch between desktop and mobile instantly
 
 Perfect for developers who:

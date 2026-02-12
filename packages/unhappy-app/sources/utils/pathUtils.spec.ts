@@ -194,21 +194,21 @@ describe('pathUtils', () => {
         it('should work with typical macOS home directories', () => {
             const homeDir = '/Users/developer';
             expect(resolveAbsolutePath('~', homeDir)).toBe('/Users/developer');
-            expect(resolveAbsolutePath('~/Projects/happy', homeDir)).toBe('/Users/developer/Projects/happy');
+            expect(resolveAbsolutePath('~/Projects/unhappy', homeDir)).toBe('/Users/developer/Projects/unhappy');
             expect(resolveAbsolutePath('~/Desktop/file.txt', homeDir)).toBe('/Users/developer/Desktop/file.txt');
         });
 
         it('should work with typical Linux home directories', () => {
             const homeDir = '/home/developer';
             expect(resolveAbsolutePath('~', homeDir)).toBe('/home/developer');
-            expect(resolveAbsolutePath('~/projects/happy', homeDir)).toBe('/home/developer/projects/happy');
+            expect(resolveAbsolutePath('~/projects/unhappy', homeDir)).toBe('/home/developer/projects/unhappy');
             expect(resolveAbsolutePath('~/documents/file.txt', homeDir)).toBe('/home/developer/documents/file.txt');
         });
 
         it('should work with typical Windows home directories', () => {
             const homeDir = 'C:\\Users\\developer';
             expect(resolveAbsolutePath('~', homeDir)).toBe('C:\\Users\\developer');
-            expect(resolveAbsolutePath('~/Projects/happy', homeDir)).toBe('C:\\Users\\developer\\Projects/happy');
+            expect(resolveAbsolutePath('~/Projects/unhappy', homeDir)).toBe('C:\\Users\\developer\\Projects/unhappy');
             expect(resolveAbsolutePath('~/Desktop/file.txt', homeDir)).toBe('C:\\Users\\developer\\Desktop/file.txt');
         });
 

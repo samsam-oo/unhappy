@@ -4,7 +4,7 @@ This document contains the development guidelines and instructions for the Unhap
 
 ## Project Overview
 
-**Name**: happy-server  
+**Name**: unhappy-server  
 **Repository**: https://github.com/samsam-oo/unhappy-server.git  
 **License**: MIT  
 **Language**: TypeScript  
@@ -208,8 +208,8 @@ The project includes a multi-stage Dockerfile:
 #### Environment Variables
 - CLI: Use `yarn dev:local-server` (NOT `yarn dev`) to load `.env.dev-local-server`
 - Server: Use `yarn dev` to start with proper env files
-- **Tell**: Wrong server URL = check `HAPPY_SERVER_URL` env var
-- **Tell**: Wrong home dir = check `HAPPY_HOME_DIR` (should be `~/.happy-dev` for local)
+- **Tell**: Wrong server URL = check `UNHAPPY_SERVER_URL` env var
+- **Tell**: Wrong home dir = check `UNHAPPY_HOME_DIR` (should be `~/.unhappy-dev` for local)
 
 ### Quick Diagnostic Commands
 

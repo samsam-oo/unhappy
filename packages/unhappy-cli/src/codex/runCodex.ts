@@ -472,7 +472,7 @@ export async function runCodex(opts: {
       typeof process.env.CODEX_HOME === 'string' ? process.env.CODEX_HOME.trim() : '';
     return fromEnv || join(os.homedir(), '.codex');
   };
-  const getUnhappyHomeDir = (): string => {
+  const getUnunhappyHomeDir = (): string => {
     const raw =
       typeof process.env.UNHAPPY_HOME_DIR === 'string'
         ? process.env.UNHAPPY_HOME_DIR.trim()
@@ -790,7 +790,7 @@ export async function runCodex(opts: {
     const homes: string[] = [];
     const currentHome = getEffectiveCodexHomeDir();
     const defaultHome = join(os.homedir(), '.codex');
-    const unhappyCodexHome = join(getUnhappyHomeDir(), 'codex-home');
+    const unhappyCodexHome = join(getUnunhappyHomeDir(), 'codex-home');
 
     homes.push(currentHome);
     if (storedCodexHomeDirForResume) homes.push(storedCodexHomeDirForResume);

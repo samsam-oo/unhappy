@@ -59,10 +59,10 @@ async function isServerHealthy(): Promise<boolean> {
     }
     
     // Check if we have test credentials
-    const testCredentials = existsSync(join(configuration.happyHomeDir, 'access.key'));
+    const testCredentials = existsSync(join(configuration.unhappyHomeDir, 'access.key'));
     if (!testCredentials) {
-      console.log('[TEST] No test credentials found in', configuration.happyHomeDir);
-      console.log('[TEST] Run "happy auth login" with UNHAPPY_HOME_DIR=~/.unhappy-dev-test first');
+      console.log('[TEST] No test credentials found in', configuration.unhappyHomeDir);
+      console.log('[TEST] Run "unhappy auth login" with UNHAPPY_HOME_DIR=~/.unhappy-dev-test first');
       return false;
     }
     
@@ -117,9 +117,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       path: '/test/path',
       host: 'test-host',
       homeDir: '/test/home',
-      happyHomeDir: '/test/happy-home',
-      happyLibDir: '/test/happy-lib',
-      happyToolsDir: '/test/happy-tools',
+      unhappyHomeDir: '/test/unhappy-home',
+      unhappyLibDir: '/test/unhappy-lib',
+      unhappyToolsDir: '/test/unhappy-tools',
       hostPid: 99999,
       startedBy: 'terminal',
       machineId: 'test-machine-123'
@@ -132,7 +132,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     expect(sessions).toHaveLength(1);
     
     const tracked = sessions[0];
-    expect(tracked.startedBy).toBe('happy directly - likely by user from terminal');
+    expect(tracked.startedBy).toBe('unhappy directly - likely by user from terminal');
     expect(tracked.happySessionId).toBe('test-session-123');
     expect(tracked.pid).toBe(99999);
   });
@@ -188,9 +188,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   });
 
   it('should track both daemon-spawned and terminal sessions', async () => {
-    // Spawn a real happy process that looks like it was started from terminal
+    // Spawn a real unhappy process that looks like it was started from terminal
     const terminalHappyProcess = spawnUnhappyCLI([
-      '--happy-starting-mode', 'remote',
+      '--unhappy-starting-mode', 'remote',
       '--started-by', 'terminal'
     ], {
       cwd: '/tmp',
@@ -198,7 +198,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       stdio: 'ignore'
     });
     if (!terminalHappyProcess || !terminalHappyProcess.pid) {
-      throw new Error('Failed to spawn terminal happy process');
+      throw new Error('Failed to spawn terminal unhappy process');
     }
     // Give time to start & report itself
     await new Promise(resolve => setTimeout(resolve, 5_000));
@@ -219,7 +219,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     );
 
     expect(terminalSession).toBeDefined();
-    expect(terminalSession.startedBy).toBe('happy directly - likely by user from terminal');
+    expect(terminalSession.startedBy).toBe('unhappy directly - likely by user from terminal');
     
     expect(daemonSession).toBeDefined();
     expect(daemonSession.startedBy).toBe('daemon');
@@ -437,7 +437,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       // and think it is a new version
       // We are not using yarn build here because it cleans out dist/
       // and we want to avoid that, 
-      // otherwise daemon will spawn a non existing happy js script.
+      // otherwise daemon will spawn a non existing unhappy js script.
       // We need to remove index, but not the other files, otherwise some of our code might fail when called from within the daemon.
       execSync('yarn build', { stdio: 'ignore' });
       

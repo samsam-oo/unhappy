@@ -39,7 +39,7 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
   /** API key for Gemini (defaults to GEMINI_API_KEY or GOOGLE_API_KEY env var) */
   apiKey?: string;
 
-  /** OAuth token from Unhappy cloud (via 'happy connect gemini') - highest priority */
+  /** OAuth token from Unhappy cloud (via 'unhappy connect gemini') - highest priority */
   cloudToken?: string;
 
   /** Current user email (from OAuth id_token) - used to match per-account project ID */
@@ -82,7 +82,7 @@ export function createGeminiBackend(
   options: GeminiBackendOptions,
 ): GeminiBackendResult {
   // Resolve API key from multiple sources (in priority order):
-  // 1. Unhappy cloud OAuth token (via 'happy connect gemini') - highest priority
+  // 1. Unhappy cloud OAuth token (via 'unhappy connect gemini') - highest priority
   // 2. Local Gemini CLI config files (~/.gemini/)
   // 3. GEMINI_API_KEY environment variable
   // 4. GOOGLE_API_KEY environment variable - lowest priority
@@ -99,7 +99,7 @@ export function createGeminiBackend(
 
   if (!apiKey) {
     logger.warn(
-      `[Gemini] No API key found. Run 'happy connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`,
+      `[Gemini] No API key found. Run 'unhappy connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`,
     );
   }
 

@@ -187,8 +187,8 @@ export const MachineMetadataSchema = z.object({
   platform: z.string(),
   happyCliVersion: z.string(),
   homeDir: z.string(),
-  happyHomeDir: z.string(),
-  happyLibDir: z.string()
+  unhappyHomeDir: z.string(),
+  unhappyLibDir: z.string()
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
@@ -320,9 +320,9 @@ export type Metadata = {
   tools?: string[],
   slashCommands?: string[],
   homeDir: string,
-  happyHomeDir: string,
-  happyLibDir: string,
-  happyToolsDir: string,
+  unhappyHomeDir: string,
+  unhappyLibDir: string,
+  unhappyToolsDir: string,
   startedFromDaemon?: boolean,
   hostPid?: number,
   startedBy?: 'daemon' | 'terminal',

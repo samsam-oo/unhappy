@@ -382,9 +382,9 @@ Messages are encrypted as `MessageContent` and then base64 encoded:
   "path": "...",
   "host": "...",
   "homeDir": "...",
-  "happyHomeDir": "...",
-  "happyLibDir": "...",
-  "happyToolsDir": "...",
+  "unhappyHomeDir": "...",
+  "unhappyLibDir": "...",
+  "unhappyToolsDir": "...",
   "version": "...",
   "name": "...",
   "os": "...",
@@ -434,8 +434,8 @@ Messages are encrypted as `MessageContent` and then base64 encoded:
   "platform": "...",
   "happyCliVersion": "...",
   "homeDir": "...",
-  "happyHomeDir": "...",
-  "happyLibDir": "..."
+  "unhappyHomeDir": "...",
+  "unhappyLibDir": "..."
 }
 ```
 

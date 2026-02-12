@@ -176,7 +176,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             environmentVariables?: Record<string, string>;
         }>(
             machineId,
-            'spawn-happy-session',
+            'spawn-unhappy-session',
             { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables }
         );
         return result;

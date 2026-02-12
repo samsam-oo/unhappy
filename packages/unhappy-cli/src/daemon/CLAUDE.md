@@ -6,7 +6,7 @@ The daemon is a persistent background process that manages Unhappy sessions, ena
 
 ### Starting the Daemon
 
-Command: `happy daemon start`
+Command: `unhappy daemon start`
 
 Control Flow:
 
@@ -23,7 +23,7 @@ Control Flow:
    - State persistence: writes PID, version, HTTP port to daemon.state.json
    - HTTP server: starts on random port for local CLI control (list, stop, spawn)
    - WebSocket: establishes persistent connection to backend via `ApiMachineClient`
-   - RPC registration: exposes `spawn-happy-session`, `stop-session`, `requestShutdown` handlers
+   - RPC registration: exposes `spawn-unhappy-session`, `stop-session`, `requestShutdown` handlers
    - Heartbeat loop: every 60s (or UNHAPPY_DAEMON_HEARTBEAT_INTERVAL) checks for version updates and prunes dead sessions
 5. Awaits shutdown promise which resolves when:
    - OS signal received (SIGINT/SIGTERM)
@@ -54,7 +54,7 @@ The daemon detects when `npm upgrade unhappy-cli` occurs:
 
 ### Stopping the Daemon
 
-Command: `happy daemon stop`
+Command: `unhappy daemon stop`
 
 Control Flow:
 
@@ -74,11 +74,11 @@ Control Flow:
 
 Initiated by mobile app via backend RPC:
 
-1. Backend forwards RPC `spawn-happy-session` to daemon via WebSocket
+1. Backend forwards RPC `spawn-unhappy-session` to daemon via WebSocket
 2. `ApiMachineClient` invokes `spawnSession()` handler
 3. `spawnSession()`:
    - Creates directory if needed
-   - Spawns detached Unhappy process with `--happy-starting-mode remote --started-by daemon`
+   - Spawns detached Unhappy process with `--unhappy-starting-mode remote --started-by daemon`
    - Adds to `pidToTrackedSession` map
    - Sets up 10-second awaiter for session webhook
 4. New Unhappy process:
@@ -89,11 +89,11 @@ Initiated by mobile app via backend RPC:
 
 ### Terminal-Spawned Sessions
 
-User runs `happy` directly:
+User runs `unhappy` directly:
 
 1. CLI auto-starts daemon if configured
 2. Unhappy process calls `notifyDaemonSessionStarted()`
-3. Daemon receives webhook, creates `TrackedSession` with `startedBy: 'happy directly...'`
+3. Daemon receives webhook, creates `TrackedSession` with `startedBy: 'unhappy directly...'`
 4. Session tracked for health monitoring
 
 ### Session Termination
@@ -118,7 +118,7 @@ Local HTTP server (127.0.0.1 only) provides:
 
 ### Doctor Command
 
-`happy doctor` uses `ps aux | grep` to find all Unhappy processes:
+`unhappy doctor` uses `ps aux | grep` to find all Unhappy processes:
 
 - Production: matches `unhappy.mjs`, `unhappy-cli`, `dist/index.mjs`
 - Development: matches `tsx.*src/index.ts`
@@ -126,7 +126,7 @@ Local HTTP server (127.0.0.1 only) provides:
 
 ### Clean Runaway Processes
 
-`happy doctor clean`:
+`unhappy doctor clean`:
 
 1. `findRunawayUnhappyProcesses()` filters for likely orphans
 2. `killRunawayHappyProcesses()`:
@@ -161,7 +161,7 @@ Local HTTP server (127.0.0.1 only) provides:
 `ApiMachineClient` handles bidirectional communication:
 
 - Daemon to Server: machine-alive, machine-update-metadata, machine-update-state
-- Server to Daemon: rpc-request (spawn-happy-session, stop-session, requestShutdown)
+- Server to Daemon: rpc-request (spawn-unhappy-session, stop-session, requestShutdown)
 - All data encrypted with TweetNaCl
 
 ## 7. Integration Testing Challenges
@@ -202,7 +202,7 @@ interface MachineMetadata {
   platform: string; // darwin, linux, win32
   happyCliVersion: string;
   homeDir: string;
-  happyHomeDir: string;
+  unhappyHomeDir: string;
 }
 
 // Dynamic daemon state (frequently updated)
@@ -236,7 +236,7 @@ Checks if machine ID exists in settings:
     'platform': 'darwin',
     'happyCliVersion': '1.0.0',
     'homeDir': '/Users/john',
-    'happyHomeDir': '/Users/john/.unhappy'
+    'unhappyHomeDir': '/Users/john/.unhappy'
   }))",
   "daemonState": "base64(encrypted({
     'status': 'running',
@@ -335,7 +335,7 @@ socket.emit('machine-update-metadata', {
     'platform': 'darwin',
     'happyCliVersion': '1.0.1',  // version updated
     'homeDir': '/Users/john',
-    'happyHomeDir': '/Users/john/.unhappy'
+    'unhappyHomeDir': '/Users/john/.unhappy'
   }))",
   "expectedVersion": 1
 }, callback)

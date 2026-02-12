@@ -47,9 +47,9 @@ const testMetadata = {
   path: '/tmp',
   host: 'localhost',
   homeDir: '/home/user',
-  happyHomeDir: '/home/user/.unhappy',
-  happyLibDir: '/home/user/.unhappy/lib',
-  happyToolsDir: '/home/user/.unhappy/tools',
+  unhappyHomeDir: '/home/user/.unhappy',
+  unhappyLibDir: '/home/user/.unhappy/lib',
+  unhappyToolsDir: '/home/user/.unhappy/tools',
 };
 
 const testMachineMetadata = {
@@ -57,8 +57,8 @@ const testMachineMetadata = {
   platform: 'darwin',
   happyCliVersion: '1.0.0',
   homeDir: '/home/user',
-  happyHomeDir: '/home/user/.unhappy',
-  happyLibDir: '/home/user/.unhappy/lib',
+  unhappyHomeDir: '/home/user/.unhappy',
+  unhappyLibDir: '/home/user/.unhappy/lib',
 };
 
 describe('Api server error handling', () => {

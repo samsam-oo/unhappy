@@ -37,8 +37,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useCompactLayout, COMPACT_WIDTH_THRESHOLD } from '@/utils/responsive';
 
-const LOCAL_STORAGE_KEY = 'happy.workspaceExplorer.expanded.v1';
-const WORKSPACE_ORDER_KEY = 'happy.workspaceExplorer.workspaceOrder.v1';
+const LOCAL_STORAGE_KEY = 'unhappy.workspaceExplorer.expanded.v1';
+const WORKSPACE_ORDER_KEY = 'unhappy.workspaceExplorer.workspaceOrder.v1';
 
 const IS_WEB = Platform.OS === 'web';
 

@@ -133,7 +133,7 @@ export class ApiMachineClient {
   }: MachineRpcHandlers) {
     // Register spawn session handler
     this.rpcHandlerManager.registerHandler(
-      'spawn-happy-session',
+      'spawn-unhappy-session',
       async (params: any) => {
         const {
           directory,

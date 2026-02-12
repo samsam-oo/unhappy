@@ -14,7 +14,7 @@ import { encodeBase64 } from '@/api/encryption';
 import { logger } from '@/ui/logger';
 import { resolve } from 'node:path';
 
-// AI backend profile schema - MUST match happy app exactly
+// AI backend profile schema - MUST match unhappy app exactly
 // Using same Zod schema as GUI for runtime validation consistency
 
 // Environment variable schemas for different AI providers (matching GUI exactly)
@@ -106,7 +106,7 @@ export const AIBackendProfileSchema = z.object({
 
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
-// Helper functions matching the happy app exactly
+// Helper functions matching the unhappy app exactly
 export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
   return profile.compatibility[agent];
 }
@@ -205,7 +205,7 @@ interface Settings {
   machineIdConfirmedByServer?: boolean
   daemonAutoStartWhenRunningHappy?: boolean
   chromeMode?: boolean  // Default Chrome mode setting for Claude
-  // Profile management settings (synced with happy app)
+  // Profile management settings (synced with unhappy app)
   activeProfileId?: string
   profiles: AIBackendProfile[]
   // CLI-local environment variable cache (not synced)
@@ -299,9 +299,9 @@ async function updateCodexResumeState(
   let fileHandle: FileHandle | undefined;
   let attempts = 0;
 
-  // Ensure happy home dir exists
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true });
+  // Ensure unhappy home dir exists
+  if (!existsSync(configuration.unhappyHomeDir)) {
+    await mkdir(configuration.unhappyHomeDir, { recursive: true });
   }
 
   while (attempts < MAX_LOCK_ATTEMPTS) {
@@ -479,7 +479,7 @@ export async function readSettings(): Promise<Settings> {
     if (schemaVersion > SUPPORTED_SCHEMA_VERSION) {
       logger.warn(
         `⚠️ Settings schema v${schemaVersion} > supported v${SUPPORTED_SCHEMA_VERSION}. ` +
-        'Update happy-cli for full functionality.'
+        'Update unhappy-cli for full functionality.'
       );
     }
 
@@ -514,8 +514,8 @@ export async function readSettings(): Promise<Settings> {
 }
 
 export async function writeSettings(settings: Settings): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+  if (!existsSync(configuration.unhappyHomeDir)) {
+    await mkdir(configuration.unhappyHomeDir, { recursive: true })
   }
 
   // Ensure schema version is set before writing
@@ -582,8 +582,8 @@ export async function updateSettings(
     const updated = await updater(current);
 
     // Ensure directory exists
-    if (!existsSync(configuration.happyHomeDir)) {
-      await mkdir(configuration.happyHomeDir, { recursive: true });
+    if (!existsSync(configuration.unhappyHomeDir)) {
+      await mkdir(configuration.unhappyHomeDir, { recursive: true });
     }
 
     // Write atomically using rename
@@ -652,8 +652,8 @@ export async function readCredentials(): Promise<Credentials | null> {
 }
 
 export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+  if (!existsSync(configuration.unhappyHomeDir)) {
+    await mkdir(configuration.unhappyHomeDir, { recursive: true })
   }
   await writeFile(configuration.privateKeyFile, JSON.stringify({
     secret: encodeBase64(credentials.secret),
@@ -662,8 +662,8 @@ export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, 
 }
 
 export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Array, machineKey: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+  if (!existsSync(configuration.unhappyHomeDir)) {
+    await mkdir(configuration.unhappyHomeDir, { recursive: true })
   }
   await writeFile(configuration.privateKeyFile, JSON.stringify({
     encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
@@ -828,7 +828,7 @@ export async function setActiveProfile(profileId: string): Promise<void> {
 }
 
 /**
- * Update profiles (synced from happy app) with validation
+ * Update profiles (synced from unhappy app) with validation
  */
 export async function updateProfiles(profiles: unknown[]): Promise<void> {
   // Validate all profiles using Zod schema

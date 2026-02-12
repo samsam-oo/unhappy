@@ -16,7 +16,7 @@ class Configuration {
   public readonly isDaemonProcess: boolean;
 
   // Directories and paths (from persistence)
-  public readonly happyHomeDir: string;
+  public readonly unhappyHomeDir: string;
   public readonly logsDir: string;
   public readonly settingsFile: string;
   public readonly privateKeyFile: string;
@@ -47,18 +47,18 @@ class Configuration {
         /^~/,
         homedir(),
       );
-      this.happyHomeDir = expandedPath;
+      this.unhappyHomeDir = expandedPath;
     } else {
-      this.happyHomeDir = join(homedir(), '.unhappy');
+      this.unhappyHomeDir = join(homedir(), '.unhappy');
     }
 
-    this.logsDir = join(this.happyHomeDir, 'logs');
-    this.settingsFile = join(this.happyHomeDir, 'settings.json');
-    this.privateKeyFile = join(this.happyHomeDir, 'access.key');
-    this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json');
-    this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock');
-    this.codexResumeStateFile = join(this.happyHomeDir, 'codex.resume.json');
-    this.codexResumeLockFile = join(this.happyHomeDir, 'codex.resume.json.lock');
+    this.logsDir = join(this.unhappyHomeDir, 'logs');
+    this.settingsFile = join(this.unhappyHomeDir, 'settings.json');
+    this.privateKeyFile = join(this.unhappyHomeDir, 'access.key');
+    this.daemonStateFile = join(this.unhappyHomeDir, 'daemon.state.json');
+    this.daemonLockFile = join(this.unhappyHomeDir, 'daemon.state.json.lock');
+    this.codexResumeStateFile = join(this.unhappyHomeDir, 'codex.resume.json');
+    this.codexResumeLockFile = join(this.unhappyHomeDir, 'codex.resume.json.lock');
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(
       process.env.UNHAPPY_EXPERIMENTAL?.toLowerCase() || '',
@@ -71,21 +71,21 @@ class Configuration {
 
     // Validate variant configuration
     const variant = process.env.UNHAPPY_VARIANT || 'stable';
-    if (variant === 'dev' && !this.happyHomeDir.includes('dev')) {
+    if (variant === 'dev' && !this.unhappyHomeDir.includes('dev')) {
       console.warn(
         '⚠️  WARNING: UNHAPPY_VARIANT=dev but UNHAPPY_HOME_DIR does not contain "dev"',
       );
-      console.warn(`   Current: ${this.happyHomeDir}`);
+      console.warn(`   Current: ${this.unhappyHomeDir}`);
       console.warn(`   Expected: Should contain "dev" (e.g., ~/.unhappy-dev)`);
     }
 
     // Visual indicator on CLI startup (only if not daemon process to avoid log clutter)
     if (!this.isDaemonProcess && variant === 'dev') {
-      console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.happyHomeDir);
+      console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.unhappyHomeDir);
     }
 
-    if (!existsSync(this.happyHomeDir)) {
-      mkdirSync(this.happyHomeDir, { recursive: true });
+    if (!existsSync(this.unhappyHomeDir)) {
+      mkdirSync(this.unhappyHomeDir, { recursive: true });
     }
     // Ensure directories exist
     if (!existsSync(this.logsDir)) {

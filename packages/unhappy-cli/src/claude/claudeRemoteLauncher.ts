@@ -300,7 +300,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // This prevents context loss when mode changes (permission mode, model, etc.)
         // without starting a new session. Only reset parent chain when session ID
         // actually changes (e.g., new session started or /clear command used).
-        // See: https://github.com/anthropics/happy-cli/issues/143
+        // See related upstream CLI issue discussion.
         let previousSessionId: string | null = null;
         while (!exitReason) {
             logger.debug('[remote]: launch');

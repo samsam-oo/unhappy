@@ -146,7 +146,7 @@ export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claud
  * HOW ENVIRONMENT VARIABLES WORK:
  *
  * 1. USER LAUNCHES DAEMON with credentials in environment:
- *    Example: Z_AI_AUTH_TOKEN=sk-real-key Z_AI_BASE_URL=https://api.z.ai happy daemon start
+ *    Example: Z_AI_AUTH_TOKEN=sk-real-key Z_AI_BASE_URL=https://api.z.ai unhappy daemon start
  *
  * 2. PROFILE DEFINES MAPPINGS using ${VAR} syntax to map daemon env vars to what CLI expects:
  *    Z.AI example: { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' }
