@@ -1,15 +1,25 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, TextInput, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, useSessions } from '@/sync/storage';
+import { useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@/icons/vector-icons';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { ItemList } from '@/components/ItemList';
-import { SearchableListSelector } from '@/components/SearchableListSelector';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
+import { StatusDot } from '@/components/StatusDot';
+
+function getPlatformIcon(platform?: string): React.ComponentProps<typeof Ionicons>['name'] {
+    if (!platform) return 'desktop-outline';
+    const p = platform.toLowerCase();
+    if (p.includes('darwin') || p.includes('mac')) return 'laptop-outline';
+    if (p.includes('linux')) return 'terminal-outline';
+    return 'desktop-outline';
+}
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -20,32 +30,79 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: 20,
+        paddingHorizontal: 32,
     },
-    emptyText: {
-        fontSize: 16,
+    emptyIcon: {
+        marginBottom: 16,
+        opacity: 0.4,
+    },
+    emptyTitle: {
+        fontSize: 17,
+        color: theme.colors.text,
+        textAlign: 'center',
+        marginBottom: 8,
+        ...Typography.default('semiBold'),
+    },
+    emptySubtitle: {
+        fontSize: 15,
         color: theme.colors.textSecondary,
         textAlign: 'center',
+        lineHeight: 22,
         ...Typography.default(),
+    },
+    searchContainer: {
+        paddingHorizontal: Platform.select({ ios: 14, web: 0, default: 12 }),
+        paddingTop: 12,
+        paddingBottom: 4,
+    },
+    searchInputWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 10,
+        borderWidth: 0.5,
+        borderColor: theme.colors.divider,
+        paddingHorizontal: 12,
+        minHeight: Platform.select({ ios: 36, default: 40 }),
+    },
+    searchIcon: {
+        marginRight: 8,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        color: theme.colors.input.text,
+        paddingVertical: Platform.select({ ios: 8, default: 10 }),
+        ...Typography.default(),
+    },
+    iconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        backgroundColor: theme.colors.surfaceHigh,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    rightRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
 }));
 
-export default function MachinePickerScreen() {
+export default React.memo(function MachinePickerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
     const navigation = useNavigation();
     const params = useLocalSearchParams<{ selectedId?: string }>();
     const machines = useAllMachines();
-    const sessions = useSessions();
 
-    const selectedMachine = machines.find(m => m.id === params.selectedId) || null;
+    const [searchText, setSearchText] = React.useState('');
 
     const handleSelectMachine = (machine: typeof machines[0]) => {
-        // Support both callback pattern (feature branch wizard) and navigation params (main)
         const machineId = machine.id;
 
-        // Navigation params approach from main for backward compatibility
         const state = navigation.getState();
         const previousRoute = state?.routes?.[state.index - 1];
         if (state && state.index > 0 && previousRoute) {
@@ -58,45 +115,49 @@ export default function MachinePickerScreen() {
         router.back();
     };
 
-    // Compute recent machines from sessions
-    const recentMachines = React.useMemo(() => {
-        const machineIds = new Set<string>();
-        const machinesWithTimestamp: Array<{ machine: typeof machines[0]; timestamp: number }> = [];
+    const showSearch = machines.length >= 4;
 
-        sessions?.forEach(item => {
-            if (typeof item === 'string') return; // Skip section headers
-            const session = item as any;
-            if (session.metadata?.machineId && !machineIds.has(session.metadata.machineId)) {
-                const machine = machines.find(m => m.id === session.metadata.machineId);
-                if (machine) {
-                    machineIds.add(machine.id);
-                    machinesWithTimestamp.push({
-                        machine,
-                        timestamp: session.updatedAt || session.createdAt
-                    });
-                }
-            }
+    const filteredMachines = React.useMemo(() => {
+        if (!searchText.trim()) return machines;
+        const query = searchText.toLowerCase();
+        return machines.filter(m => {
+            const name = (m.metadata?.displayName || '').toLowerCase();
+            const host = (m.metadata?.host || '').toLowerCase();
+            return name.includes(query) || host.includes(query);
         });
+    }, [machines, searchText]);
 
-        return machinesWithTimestamp
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .map(item => item.machine);
-    }, [sessions, machines]);
+    const sortedMachines = React.useMemo(() => {
+        return [...filteredMachines].sort((a, b) => {
+            const aOnline = isMachineOnline(a) ? 0 : 1;
+            const bOnline = isMachineOnline(b) ? 0 : 1;
+            if (aOnline !== bOnline) return aOnline - bOnline;
+            const aName = (a.metadata?.displayName || a.metadata?.host || a.id).toLowerCase();
+            const bName = (b.metadata?.displayName || b.metadata?.host || b.id).toLowerCase();
+            return aName.localeCompare(bName);
+        });
+    }, [filteredMachines]);
+
+    const headerOptions = {
+        headerShown: true,
+        headerTitle: 'Select Machine',
+        headerBackTitle: t('common.back'),
+    };
 
     if (machines.length === 0) {
         return (
             <>
-                <Stack.Screen
-                    options={{
-                        headerShown: true,
-                        headerTitle: 'Select Machine',
-                        headerBackTitle: t('common.back')
-                    }}
-                />
+                <Stack.Screen options={headerOptions} />
                 <View style={styles.container}>
                     <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>
-                            No machines available
+                        <Ionicons
+                            name="desktop-outline"
+                            size={48}
+                            color={theme.colors.textSecondary}
+                            style={styles.emptyIcon}
+                        />
+                        <Text style={styles.emptyTitle}>
+                            {t('newSession.noMachinesFound')}
                         </Text>
                     </View>
                 </View>
@@ -106,71 +167,102 @@ export default function MachinePickerScreen() {
 
     return (
         <>
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: 'Select Machine',
-                    headerBackTitle: t('common.back')
-                }}
-            />
-            <ItemList>
-                <SearchableListSelector<typeof machines[0]>
-                    config={{
-                        getItemId: (machine) => machine.id,
-                        getItemTitle: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                        getItemSubtitle: undefined,
-                        getItemIcon: (machine) => (
+            <Stack.Screen options={headerOptions} />
+            <ItemList keyboardShouldPersistTaps="handled">
+                {showSearch && (
+                    <View style={styles.searchContainer}>
+                        <View style={styles.searchInputWrapper}>
                             <Ionicons
-                                name="desktop-outline"
-                                size={24}
+                                name="search"
+                                size={16}
                                 color={theme.colors.textSecondary}
+                                style={styles.searchIcon}
                             />
-                        ),
-                        getRecentItemIcon: (machine) => (
-                            <Ionicons
-                                name="time-outline"
-                                size={24}
-                                color={theme.colors.textSecondary}
+                            <TextInput
+                                style={styles.searchInput}
+                                value={searchText}
+                                onChangeText={setSearchText}
+                                placeholder="Search machines..."
+                                placeholderTextColor={theme.colors.textSecondary}
+                                clearButtonMode="while-editing"
+                                autoCapitalize="none"
+                                autoCorrect={false}
                             />
-                        ),
-                        getItemStatus: (machine) => {
-                            const offline = !isMachineOnline(machine);
-                            return {
-                                text: offline ? 'offline' : 'online',
-                                color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
-                                isPulsing: !offline,
-                            };
-                        },
-                        formatForDisplay: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                        parseFromDisplay: (text) => {
-                            return machines.find(m =>
-                                m.metadata?.displayName === text || m.metadata?.host === text || m.id === text
-                            ) || null;
-                        },
-                        filterItem: (machine, searchText) => {
-                            const displayName = (machine.metadata?.displayName || '').toLowerCase();
-                            const host = (machine.metadata?.host || '').toLowerCase();
-                            const search = searchText.toLowerCase();
-                            return displayName.includes(search) || host.includes(search);
-                        },
-                        searchPlaceholder: "Type to filter machines...",
-                        recentSectionTitle: "Recent Machines",
-                        favoritesSectionTitle: "Favorite Machines",
-                        noItemsMessage: "No machines available",
-                        showFavorites: false,  // Simpler modal experience - no favorites in modal
-                        showRecent: true,
-                        showSearch: true,
-                        allowCustomInput: false,
-                        compactItems: true,
-                    }}
-                    items={machines}
-                    recentItems={recentMachines}
-                    favoriteItems={[]}
-                    selectedItem={selectedMachine}
-                    onSelect={handleSelectMachine}
-                />
+                        </View>
+                    </View>
+                )}
+
+                {sortedMachines.length === 0 && searchText.trim() ? (
+                    <ItemGroup>
+                        <Item
+                            title="No machines match your search"
+                            showChevron={false}
+                            showDivider={false}
+                            titleStyle={{ color: theme.colors.textSecondary }}
+                        />
+                    </ItemGroup>
+                ) : (
+                    <ItemGroup>
+                        {sortedMachines.map((machine, index) => {
+                            const isOnline = isMachineOnline(machine);
+                            const isSelected = machine.id === params.selectedId;
+                            const displayName = machine.metadata?.displayName
+                                || machine.metadata?.host
+                                || machine.id;
+                            const subtitle = machine.metadata?.displayName && machine.metadata?.host
+                                ? machine.metadata.host
+                                : undefined;
+
+                            return (
+                                <Item
+                                    key={machine.id}
+                                    title={displayName}
+                                    subtitle={subtitle}
+                                    leftElement={
+                                        <View style={styles.iconContainer}>
+                                            <Ionicons
+                                                name={getPlatformIcon(machine.metadata?.platform)}
+                                                size={18}
+                                                color={isOnline
+                                                    ? theme.colors.text
+                                                    : theme.colors.textSecondary}
+                                            />
+                                        </View>
+                                    }
+                                    rightElement={
+                                        <View style={styles.rightRow}>
+                                            <StatusDot
+                                                color={isOnline
+                                                    ? theme.colors.status.connected
+                                                    : theme.colors.status.disconnected}
+                                                isPulsing={isOnline}
+                                                size={8}
+                                            />
+                                            {isSelected && (
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={22}
+                                                    color={theme.colors.status.connected}
+                                                />
+                                            )}
+                                        </View>
+                                    }
+                                    onPress={() => handleSelectMachine(machine)}
+                                    showChevron={false}
+                                    selected={isSelected}
+                                    showDivider={index < sortedMachines.length - 1}
+                                    pressableStyle={isSelected
+                                        ? { backgroundColor: theme.colors.surfaceSelected }
+                                        : undefined}
+                                    titleStyle={!isOnline
+                                        ? { color: theme.colors.textSecondary }
+                                        : undefined}
+                                />
+                            );
+                        })}
+                    </ItemGroup>
+                )}
             </ItemList>
         </>
     );
-}
+});
