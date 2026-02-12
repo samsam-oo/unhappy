@@ -1124,6 +1124,7 @@ function NewSessionWizard() {
         setIsCreating(true);
 
         try {
+            const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
             let actualPath = selectedPath;
 
             // Handle worktree creation
@@ -1172,6 +1173,7 @@ function NewSessionWizard() {
                 }
             }
 
+            const spawnStartedAt = Date.now();
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: actualPath,
@@ -1180,32 +1182,58 @@ function NewSessionWizard() {
                 environmentVariables
             });
 
+            let createdSessionId: string | null = null;
             if ('sessionId' in result && result.sessionId) {
+                createdSessionId = result.sessionId;
+            } else if (result.type === 'error' && /session webhook timeout/i.test(result.errorMessage || '')) {
+                // Fallback: daemon may time out before webhook, while the session is already created.
+                // Poll recent sessions for the target machine/path and continue when found.
+                for (let attempt = 0; attempt < 12; attempt++) {
+                    await sync.refreshSessions();
+                    const candidates = Object.values(storage.getState().sessions)
+                        .filter((s) => {
+                            if (!s.active) return false;
+                            if (s.createdAt < spawnStartedAt - 15_000) return false;
+                            if (s.metadata?.machineId !== selectedMachineId) return false;
+                            return s.metadata?.path === actualPath;
+                        })
+                        .sort((a, b) => b.createdAt - a.createdAt);
+                    if (candidates[0]?.id) {
+                        createdSessionId = candidates[0].id;
+                        break;
+                    }
+                    await wait(1000);
+                }
+            }
+
+            if (createdSessionId) {
                 // Clear draft state on successful session creation
                 clearNewSessionDraft();
 
                 await sync.refreshSessions();
 
                 // Set permission mode and model mode on the session
-                storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                storage.getState().updateSessionProfileId(result.sessionId, selectedProfileId);
-                storage.getState().updateSessionEffortMode(result.sessionId, effortMode);
+                storage.getState().updateSessionPermissionMode(createdSessionId, permissionMode);
+                storage.getState().updateSessionProfileId(createdSessionId, selectedProfileId);
+                storage.getState().updateSessionEffortMode(createdSessionId, effortMode);
                 if (modelMode && modelMode !== 'default') {
-                    storage.getState().updateSessionModelMode(result.sessionId, modelMode);
+                    storage.getState().updateSessionModelMode(createdSessionId, modelMode);
                 }
 
                 // Send initial message if provided
                 if (sessionPrompt.trim()) {
-                    await sync.sendMessage(result.sessionId, sessionPrompt);
+                    await sync.sendMessage(createdSessionId, sessionPrompt);
                 }
 
-                router.replace(`/session/${result.sessionId}`, {
+                router.replace(`/session/${createdSessionId}`, {
                     dangerouslySingular() {
                         return 'session'
                     },
                 });
             } else {
-                throw new Error('Session spawning failed - no session ID returned.');
+                throw new Error(result.type === 'error'
+                    ? result.errorMessage
+                    : 'Session spawning failed - no session ID returned.');
             }
         } catch (error) {
             console.error('Failed to start session', error);
@@ -1220,7 +1248,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, effortMode, recentMachinePaths, profileMap, router]);
 
     const screenWidth = useWindowDimensions().width;
 

@@ -290,6 +290,14 @@ export async function startDaemon(): Promise<void> {
       options: SpawnSessionOptions,
     ): Promise<SpawnSessionResult> => {
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
+      const parsedWebhookTimeoutMs = parseInt(
+        process.env.UNHAPPY_SESSION_WEBHOOK_TIMEOUT_MS || '30000',
+        10,
+      );
+      const webhookTimeoutMs =
+        Number.isFinite(parsedWebhookTimeoutMs) && parsedWebhookTimeoutMs > 0
+          ? parsedWebhookTimeoutMs
+          : 30_000;
 
       const {
         directory,
@@ -618,7 +626,7 @@ export async function startDaemon(): Promise<void> {
                   type: 'error',
                   errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`,
                 });
-              }, 15_000); // Same timeout as regular sessions
+              }, webhookTimeoutMs); // Same timeout as regular sessions
 
               // Register awaiter for tmux session (exact same as regular flow)
               pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
@@ -751,9 +759,10 @@ export async function startDaemon(): Promise<void> {
                 type: 'error',
                 errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`,
               });
-              // 15 second timeout - I have seen timeouts on 10 seconds
+              // 30 second default timeout (configurable via UNHAPPY_SESSION_WEBHOOK_TIMEOUT_MS)
+              // - I have seen timeouts on 10 seconds
               // even though session was still created successfully in ~2 more seconds
-            }, 15_000);
+            }, webhookTimeoutMs);
 
             // Register awaiter
             pidToAwaiter.set(happyProcess.pid!, (completedSession) => {

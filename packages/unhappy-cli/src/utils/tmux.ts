@@ -590,8 +590,11 @@ export class TmuxUtilities {
             return true;
         }
 
-        // Create session if it doesn't exist
-        const createResult = await this.executeTmuxCommand(['new-session', '-d', '-s', targetSession]);
+        // Create session if it doesn't exist.
+        // Use direct command execution to avoid generic target injection logic
+        // producing invalid `new-session ... -t <session>` ordering.
+        const createCmd = ['tmux', 'new-session', '-d', '-s', targetSession];
+        const createResult = await this.executeCommand(createCmd);
         return createResult !== null && createResult.returncode === 0;
     }
 
@@ -784,9 +787,18 @@ export class TmuxUtilities {
             // Build command to execute in the new window
             const fullCommand = args.join(' ');
 
-            // Create new window in session with command and environment variables
-            // IMPORTANT: Don't manually add -t here - executeTmuxCommand handles it via parameters
-            const createWindowArgs = ['new-window', '-n', windowName];
+            // Create new window in session with command and environment variables.
+            // Keep tmux options before shell-command (required by tmux parsing).
+            const createWindowArgs = [
+                'new-window',
+                '-P',
+                '-F',
+                '#{pane_pid}',
+                '-t',
+                sessionName,
+                '-n',
+                windowName,
+            ];
 
             // Add working directory if specified
             if (options.cwd) {
@@ -824,18 +836,16 @@ export class TmuxUtilities {
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            // Add the command to run in the window (runs immediately when window is created)
+            // Add the command to run in the window (must be the final argument).
             createWindowArgs.push(fullCommand);
 
-            // Add -P flag to print the pane PID immediately
-            createWindowArgs.push('-P');
-            createWindowArgs.push('-F', '#{pane_pid}');
-
-            // Create window with command and get PID immediately
-            const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
+            // Create window with command and get PID immediately.
+            // Use direct command execution so option ordering stays intact.
+            const tmuxBase = options.socketPath ? ['tmux', '-S', options.socketPath] : ['tmux'];
+            const createResult = await this.executeCommand([...tmuxBase, ...createWindowArgs]);
 
             if (!createResult || createResult.returncode !== 0) {
-                throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);
+                throw new Error(`Failed to create tmux window: ${createResult?.stderr || 'unknown error'}`);
             }
 
             // Extract the PID from the output
