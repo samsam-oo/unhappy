@@ -50,8 +50,8 @@ describe('buildReadyPushNotification', () => {
       cwd: '/home/test/work/unhappy',
     });
 
-    expect(ready.title).toBe('Codex ready: unhappy');
-    expect(ready.body).toBe('Waiting for your command in ~/work/unhappy');
+    expect(ready.title).toBe('[Waiting] ~/work/unhappy');
+    expect(ready.body).toBe('unhappy');
     expect(ready.data).toMatchObject({
       agentName: 'Codex',
       cwd: '/home/test/work/unhappy',
@@ -80,8 +80,8 @@ describe('buildReadyPushNotification', () => {
       cwd: '/repo/packages/app',
     });
 
-    expect(ready.title).toBe('Gemini ready: myproj (main)');
-    expect(ready.body).toBe('Waiting for your command in /repo');
+    expect(ready.title).toBe('[Waiting] /repo');
+    expect(ready.body).toBe('myproj (main)');
     expect(ready.data).toMatchObject({
       agentName: 'Gemini',
       cwd: '/repo/packages/app',
@@ -91,5 +91,27 @@ describe('buildReadyPushNotification', () => {
       packageName: '@acme/myproj',
       displayName: 'myproj',
     });
+  });
+
+  it('prefers session name for title when provided', () => {
+    mockHomedir.mockReturnValue('/home/test');
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes('--show-toplevel')) return '/repo\n';
+      if (cmd.includes('--abbrev-ref')) return 'main\n';
+      throw new Error('unexpected cmd');
+    });
+    mockExistsSync.mockImplementation((p: string) => p === '/repo/package.json');
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({ name: '@acme/myproj' }),
+    );
+
+    const ready = buildReadyPushNotification({
+      agentName: 'Claude',
+      cwd: '/repo/packages/app',
+      sessionName: 'Fix push notification copy',
+    });
+
+    expect(ready.title).toBe('[Waiting] Fix push notification copy');
+    expect(ready.body).toBe('myproj (main)');
   });
 });

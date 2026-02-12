@@ -341,9 +341,11 @@ export async function runGemini(opts: {
     }
     session.sendSessionEvent({ type: 'ready' });
     try {
+      const metadataSnapshot = session.getMetadataSnapshot();
       const ready = buildReadyPushNotification({
         agentName: 'Gemini',
-        cwd: metadata.path,
+        cwd: metadataSnapshot?.path || metadata.path,
+        sessionName: metadataSnapshot?.name,
       });
       api
         .push()

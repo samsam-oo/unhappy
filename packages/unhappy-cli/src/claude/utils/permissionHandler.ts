@@ -33,6 +33,44 @@ interface PendingRequest {
     input: unknown;
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+}
+
+function toShortText(value: unknown, maxLength: number = 120): string | null {
+    if (typeof value !== 'string') return null;
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (!normalized) return null;
+    if (normalized.length <= maxLength) return normalized;
+    return normalized.slice(0, maxLength - 3) + '...';
+}
+
+function extractPermissionTarget(toolName: string, input: unknown): string | null {
+    const inputObj = toRecord(input);
+    if (!inputObj) return null;
+
+    if (toolName === 'Bash' || toolName === 'BashOutput' || toolName === 'KillBash') {
+        const command = toShortText(inputObj.command);
+        if (command) return command;
+    }
+
+    const pathKeys = ['file_path', 'notebook_path', 'path', 'directory', 'dir', 'cwd'] as const;
+    for (const key of pathKeys) {
+        const value = toShortText(inputObj[key]);
+        if (value) return value;
+    }
+
+    // Gemini read payloads often include locations[0].path.
+    const locations = inputObj.locations;
+    if (Array.isArray(locations) && locations.length > 0) {
+        const firstLocation = toRecord(locations[0]);
+        const value = toShortText(firstLocation?.path);
+        if (value) return value;
+    }
+
+    return null;
+}
+
 export class PermissionHandler {
     private toolCalls: { id: string, name: string, input: any, used: boolean }[] = [];
     private responses = new Map<string, PermissionResponse>();
@@ -201,9 +239,18 @@ export class PermissionHandler {
             }
             
             // Send push notification
+            const toolLabel = getToolName(toolName);
+            const target = extractPermissionTarget(toolName, input);
+            const body = target ? `${toolLabel} ${target}` : toolLabel;
+            const metadataSnapshot = this.session.client.getMetadataSnapshot();
+            const sessionName = typeof metadataSnapshot?.name === 'string'
+                ? metadataSnapshot.name.trim()
+                : '';
+            const sessionPath = metadataSnapshot?.path || this.session.path;
+            const sessionTitleOrPath = sessionName.length > 0 ? sessionName : sessionPath;
             this.session.api.push().sendToAllDevices(
-                'Permission Request',
-                `Claude wants to ${getToolName(toolName)}`,
+                `[Approve] ${sessionTitleOrPath}`,
+                body,
                 {
                     sessionId: this.session.client.sessionId,
                     requestId: id,

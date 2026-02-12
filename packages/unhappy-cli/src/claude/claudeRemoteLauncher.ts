@@ -397,9 +397,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 return;
                             }
 
+                            const metadataSnapshot = session.client.getMetadataSnapshot();
                             const ready = buildReadyPushNotification({
                                 agentName: "Claude",
-                                cwd: session.path,
+                                cwd: metadataSnapshot?.path || session.path,
+                                sessionName: metadataSnapshot?.name,
                             });
                             session.api.push().sendToAllDevices(
                                 ready.title,

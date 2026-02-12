@@ -411,6 +411,13 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Get the latest in-memory session metadata snapshot.
+     */
+    getMetadataSnapshot(): Metadata | null {
+        return this.metadata ? { ...this.metadata } : null;
+    }
+
+    /**
      * Update session agent state
      * @param handler - Handler function that returns the updated agent state
      */

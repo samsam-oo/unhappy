@@ -52,6 +52,7 @@ function simplifyPackageName(name: string): string {
 export function buildReadyPushNotification(opts: {
   agentName: string;
   cwd?: string;
+  sessionName?: string;
 }): ReadyPushNotification {
   const cwd = opts.cwd || process.cwd();
 
@@ -64,10 +65,14 @@ export function buildReadyPushNotification(opts: {
     ? simplifyPackageName(packageName)
     : path.basename(projectRoot);
 
-  const title = `${opts.agentName} ready: ${displayName}${
-    gitBranch ? ` (${gitBranch})` : ''
-  }`;
-  const body = `Waiting for your command in ${humanizePath(projectRoot)}`;
+  const sessionName =
+    typeof opts.sessionName === 'string' ? opts.sessionName.trim() : '';
+  const sessionTitleOrPath =
+    sessionName.length > 0
+      ? sessionName
+      : humanizePath(projectRoot);
+  const title = `[Waiting] ${sessionTitleOrPath}`;
+  const body = `${displayName}${gitBranch ? ` (${gitBranch})` : ''}`;
 
   return {
     title,

@@ -411,9 +411,11 @@ export async function runCodex(opts: {
     }
     session.sendSessionEvent({ type: 'ready' });
     try {
+      const metadataSnapshot = session.getMetadataSnapshot();
       const ready = buildReadyPushNotification({
         agentName: 'Codex',
-        cwd: metadata.path,
+        cwd: metadataSnapshot?.path || metadata.path,
+        sessionName: metadataSnapshot?.name,
       });
       api
         .push()
