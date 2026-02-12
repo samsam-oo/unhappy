@@ -195,6 +195,7 @@ export class ApiSessionClient extends EventEmitter {
         let content: MessageContent;
         const isSummaryMessage =
             body.type === 'summary' && 'summary' in body && 'leafUuid' in body;
+        const summaryUpdatedAt = Date.now();
 
         // Check if body is already a MessageContent (has role property)
         if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
@@ -224,16 +225,27 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
 
-        // Update metadata with summary even when the socket is temporarily disconnected.
-        // Session title in the app is derived from metadata.summary.
+        // Keep local metadata snapshot fresh for push/title generation even when offline.
+        // Server metadata update is sent only when socket is connected.
         if (isSummaryMessage) {
-            this.updateMetadata((metadata) => ({
-                ...metadata,
-                summary: {
-                    text: body.summary,
-                    updatedAt: Date.now()
-                }
-            }));
+            if (this.metadata) {
+                this.metadata = {
+                    ...this.metadata,
+                    summary: {
+                        text: body.summary,
+                        updatedAt: summaryUpdatedAt
+                    }
+                };
+            }
+            if (this.socket.connected) {
+                this.updateMetadata((metadata) => ({
+                    ...metadata,
+                    summary: {
+                        text: body.summary,
+                        updatedAt: summaryUpdatedAt
+                    }
+                }));
+            }
         }
 
         // Check if socket is connected before sending

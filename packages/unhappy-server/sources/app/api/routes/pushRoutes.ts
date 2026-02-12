@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
+import { inTx } from "@/storage/inTx";
 
 export function pushRoutes(app: Fastify) {
     
@@ -27,51 +28,53 @@ export function pushRoutes(app: Fastify) {
         const normalizedDeviceId = deviceId?.trim() || undefined;
 
         try {
-            if (normalizedDeviceId) {
-                const cacheKey = `push-token:${userId}:${normalizedDeviceId}`;
-                const previousToken = await db.simpleCache.findUnique({
-                    where: { key: cacheKey }
-                });
-
-                // Token can rotate for the same device. Remove stale token so the device
-                // does not receive duplicated notifications.
-                if (previousToken?.value && previousToken.value !== token) {
-                    await db.accountPushToken.deleteMany({
-                        where: {
-                            accountId: userId,
-                            token: previousToken.value
-                        }
+            await inTx(async (tx) => {
+                if (normalizedDeviceId) {
+                    const cacheKey = `push-token:${userId}:${normalizedDeviceId}`;
+                    const previousToken = await tx.simpleCache.findUnique({
+                        where: { key: cacheKey }
                     });
-                }
-            }
 
-            await db.accountPushToken.upsert({
-                where: {
-                    accountId_token: {
+                    // Token can rotate for the same device. Remove stale token so the device
+                    // does not receive duplicated notifications.
+                    if (previousToken?.value && previousToken.value !== token) {
+                        await tx.accountPushToken.deleteMany({
+                            where: {
+                                accountId: userId,
+                                token: previousToken.value
+                            }
+                        });
+                    }
+                }
+
+                await tx.accountPushToken.upsert({
+                    where: {
+                        accountId_token: {
+                            accountId: userId,
+                            token: token
+                        }
+                    },
+                    update: {
+                        updatedAt: new Date()
+                    },
+                    create: {
                         accountId: userId,
                         token: token
                     }
-                },
-                update: {
-                    updatedAt: new Date()
-                },
-                create: {
-                    accountId: userId,
-                    token: token
+                });
+
+                if (normalizedDeviceId) {
+                    const cacheKey = `push-token:${userId}:${normalizedDeviceId}`;
+                    await tx.simpleCache.upsert({
+                        where: { key: cacheKey },
+                        update: { value: token },
+                        create: {
+                            key: cacheKey,
+                            value: token
+                        }
+                    });
                 }
             });
-
-            if (normalizedDeviceId) {
-                const cacheKey = `push-token:${userId}:${normalizedDeviceId}`;
-                await db.simpleCache.upsert({
-                    where: { key: cacheKey },
-                    update: { value: token },
-                    create: {
-                        key: cacheKey,
-                        value: token
-                    }
-                });
-            }
 
             return reply.send({ success: true });
         } catch (error) {

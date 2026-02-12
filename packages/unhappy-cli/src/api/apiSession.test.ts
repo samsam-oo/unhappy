@@ -68,7 +68,7 @@ describe('ApiSessionClient connection handling', () => {
         expect(mockSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
     });
 
-    it('should still update metadata for summary when socket is disconnected', () => {
+    it('should update only local metadata for summary when socket is disconnected', () => {
         mockSocket.connected = false;
         const client = new ApiSessionClient('fake-token', mockSession);
         const updateMetadataSpy = vi
@@ -81,7 +81,8 @@ describe('ApiSessionClient connection handling', () => {
             leafUuid: 'leaf-1'
         } as any);
 
-        expect(updateMetadataSpy).toHaveBeenCalledTimes(1);
+        expect(updateMetadataSpy).not.toHaveBeenCalled();
+        expect(client.getMetadataSnapshot()?.summary?.text).toBe('New title');
         expect(mockSocket.emit).not.toHaveBeenCalled();
     });
 
