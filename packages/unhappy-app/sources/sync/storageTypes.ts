@@ -134,24 +134,36 @@ export interface DecryptedMessage {
 // Machine states
 //
 
-export const MachineMetadataSchema = z.object({
-  host: z.string(),
-  platform: z.string(),
-  happyCliVersion: z.string(),
-  unhappyHomeDir: z.string(), // Directory for Unhappy auth, settings, logs (usually .unhappy/ or .unhappy-dev/)
-  homeDir: z.string(), // User's home directory (matches CLI field name)
-  // Optional fields that may be added in future versions
-  username: z.string().optional(),
-  arch: z.string().optional(),
-  displayName: z.string().optional(), // Custom display name for the machine
-  // Daemon status fields
-  daemonLastKnownStatus: z.enum(['running', 'shutting-down']).optional(),
-  daemonLastKnownPid: z.number().optional(),
-  shutdownRequestedAt: z.number().optional(),
-  shutdownSource: z
-    .enum(['unhappy-app', 'unhappy-cli', 'os-signal', 'unknown'])
-    .optional(),
-});
+export const MachineMetadataSchema = z
+  .object({
+    host: z.string(),
+    platform: z.string(),
+    happyCliVersion: z.string(),
+    // Backward compatibility: pre-rebrand machine metadata used `happyHomeDir`.
+    // Accept both keys and normalize to `unhappyHomeDir`.
+    unhappyHomeDir: z.string().optional(),
+    happyHomeDir: z.string().optional(),
+    homeDir: z.string(), // User's home directory (matches CLI field name)
+    // Optional fields that may be added in future versions
+    username: z.string().optional(),
+    arch: z.string().optional(),
+    displayName: z.string().optional(), // Custom display name for the machine
+    // Daemon status fields
+    daemonLastKnownStatus: z.enum(['running', 'shutting-down']).optional(),
+    daemonLastKnownPid: z.number().optional(),
+    shutdownRequestedAt: z.number().optional(),
+    shutdownSource: z
+      .enum(['unhappy-app', 'unhappy-cli', 'os-signal', 'unknown'])
+      .optional(),
+  })
+  .refine(
+    (value) => Boolean(value.unhappyHomeDir || value.happyHomeDir),
+    'Either unhappyHomeDir or happyHomeDir must be provided',
+  )
+  .transform(({ happyHomeDir, unhappyHomeDir, ...rest }) => ({
+    ...rest,
+    unhappyHomeDir: unhappyHomeDir ?? happyHomeDir!,
+  }));
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;
 

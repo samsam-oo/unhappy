@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AgentStateSchema } from './storageTypes';
+import { AgentStateSchema, MachineMetadataSchema } from './storageTypes';
 
 describe('AgentStateSchema', () => {
     it('maps completedRequests.allowTools -> allowedTools (backward compatible)', () => {
@@ -36,3 +36,29 @@ describe('AgentStateSchema', () => {
     });
 });
 
+describe('MachineMetadataSchema', () => {
+    it('accepts legacy happyHomeDir and normalizes it to unhappyHomeDir', () => {
+        const parsed = MachineMetadataSchema.parse({
+            host: 'legacy-host',
+            platform: 'darwin',
+            happyCliVersion: '0.14.0',
+            happyHomeDir: '/Users/legacy/.happy',
+            homeDir: '/Users/legacy',
+        });
+
+        expect(parsed.unhappyHomeDir).toBe('/Users/legacy/.happy');
+        expect((parsed as any).happyHomeDir).toBeUndefined();
+    });
+
+    it('accepts current unhappyHomeDir format unchanged', () => {
+        const parsed = MachineMetadataSchema.parse({
+            host: 'current-host',
+            platform: 'linux',
+            happyCliVersion: '0.14.8',
+            unhappyHomeDir: '/home/current/.unhappy',
+            homeDir: '/home/current',
+        });
+
+        expect(parsed.unhappyHomeDir).toBe('/home/current/.unhappy');
+    });
+});
