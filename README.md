@@ -30,7 +30,7 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g unhappy-coder
+npm install -g unhappy-cli
 ```
 
 <h3 align="center">

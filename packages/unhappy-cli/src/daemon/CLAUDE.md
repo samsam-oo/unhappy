@@ -41,7 +41,7 @@ Control Flow:
 
 ### Version Mismatch Auto-Update
 
-The daemon detects when `npm upgrade unhappy-coder` occurs:
+The daemon detects when `npm upgrade unhappy-cli` occurs:
 
 1. Heartbeat reads package.json from disk
 2. Compares `JSON.parse(package.json).version` with compiled `configuration.currentCliVersion`
@@ -120,7 +120,7 @@ Local HTTP server (127.0.0.1 only) provides:
 
 `happy doctor` uses `ps aux | grep` to find all Unhappy processes:
 
-- Production: matches `unhappy.mjs`, `unhappy-coder`, `dist/index.mjs`
+- Production: matches `unhappy.mjs`, `unhappy-cli`, `dist/index.mjs`
 - Development: matches `tsx.*src/index.ts`
 - Categorizes by command args: daemon, daemon-spawned, user-session, doctor
 

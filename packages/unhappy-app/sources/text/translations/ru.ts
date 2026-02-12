@@ -410,7 +410,7 @@ export const ru: TranslationStructure = {
     }) =>
       `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
     updateCliInstructions:
-      'Пожалуйста, выполните npm install -g unhappy-coder@latest',
+      'Пожалуйста, выполните npm install -g unhappy-cli@latest',
     deleteSession: 'Удалить сессию',
     deleteSessionSubtitle: 'Удалить эту сессию навсегда',
     deleteSessionConfirm: 'Удалить сессию навсегда?',
@@ -827,7 +827,7 @@ export const ru: TranslationStructure = {
   machine: {
     offlineUnableToSpawn: 'Запуск отключен: машина offline',
     offlineHelp:
-      '• Убедитесь, что компьютер online\n• Выполните `unhappy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g unhappy-coder@latest`',
+      '• Убедитесь, что компьютер online\n• Выполните `unhappy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g unhappy-cli@latest`',
     launchNewSessionInDirectory: 'Запустить новую сессию в папке',
     daemon: 'Daemon',
     status: 'Статус',

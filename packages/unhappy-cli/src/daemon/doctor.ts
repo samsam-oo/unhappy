@@ -26,10 +26,9 @@ export async function findAllUnhappyProcesses(): Promise<
       // Check if it's an Unhappy process
       const isUnhappy =
         name.includes('unhappy') ||
-        (name === 'node' &&
-          (cmd.includes('unhappy-cli') || cmd.includes('dist/index.mjs'))) ||
+        (name === 'node' && cmd.includes('dist/index.mjs')) ||
         cmd.includes('unhappy.mjs') ||
-        cmd.includes('unhappy-coder') ||
+        cmd.includes('unhappy-cli') ||
         (cmd.includes('tsx') &&
           cmd.includes('src/index.ts') &&
           cmd.includes('unhappy-cli'));

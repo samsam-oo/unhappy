@@ -440,7 +440,7 @@ export const es: TranslationStructure = {
     }) =>
       `Versión ${currentVersion} instalada. Actualice a ${requiredVersion} o posterior`,
     updateCliInstructions:
-      'Por favor ejecute npm install -g unhappy-coder@latest',
+      'Por favor ejecute npm install -g unhappy-cli@latest',
     deleteSession: 'Eliminar sesión',
     deleteSessionSubtitle: 'Eliminar permanentemente esta sesión',
     deleteSessionConfirm: '¿Eliminar sesión permanentemente?',
@@ -833,7 +833,7 @@ export const es: TranslationStructure = {
     offlineUnableToSpawn:
       'El lanzador está deshabilitado mientras la máquina está desconectada',
     offlineHelp:
-      '• Asegúrate de que tu computadora esté en línea\n• Ejecuta `unhappy daemon status` para diagnosticar\n• ¿Estás usando la última versión del CLI? Actualiza con `npm install -g unhappy-coder@latest`',
+      '• Asegúrate de que tu computadora esté en línea\n• Ejecuta `unhappy daemon status` para diagnosticar\n• ¿Estás usando la última versión del CLI? Actualiza con `npm install -g unhappy-cli@latest`',
     launchNewSessionInDirectory: 'Iniciar nueva sesión en directorio',
     daemon: 'Daemon',
     status: 'Estado',

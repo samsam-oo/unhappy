@@ -31,7 +31,7 @@ This creates a `unhappy-dev` command in your PATH pointing to your local build, 
 
 | Command       | Runs                                                     |
 | ------------- | -------------------------------------------------------- |
-| `unhappy`     | Stable npm version (from `npm install -g unhappy-coder`) |
+| `unhappy`     | Stable npm version (from `npm install -g unhappy-cli`) |
 | `unhappy-dev` | Local development version (from this repo)               |
 
 **Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.

@@ -516,7 +516,7 @@ export const ja: TranslationStructure = {
     }) =>
       `バージョン ${currentVersion} がインストールされています。${requiredVersion} 以降に更新してください`,
     updateCliInstructions:
-      'npm install -g unhappy-coder@latest を実行してください',
+      'npm install -g unhappy-cli@latest を実行してください',
     deleteSession: 'セッションを削除',
     deleteSessionSubtitle: 'このセッションを完全に削除',
     deleteSessionConfirm: 'セッションを完全に削除しますか？',
@@ -902,7 +902,7 @@ export const ja: TranslationStructure = {
     launchNewSessionInDirectory: 'ディレクトリで新しいセッションを起動',
     offlineUnableToSpawn: 'マシンがオフラインのためランチャーは無効です',
     offlineHelp:
-      '• コンピューターがオンラインであることを確認してください\n• `unhappy daemon status`を実行して診断してください\n• 最新のCLIバージョンを使用していますか？`npm install -g unhappy-coder@latest`でアップグレードしてください',
+      '• コンピューターがオンラインであることを確認してください\n• `unhappy daemon status`を実行して診断してください\n• 最新のCLIバージョンを使用していますか？`npm install -g unhappy-cli@latest`でアップグレードしてください',
     daemon: 'デーモン',
     status: 'ステータス',
     stopDaemon: 'デーモンを停止',

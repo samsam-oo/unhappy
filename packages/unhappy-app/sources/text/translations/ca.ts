@@ -441,7 +441,7 @@ export const ca: TranslationStructure = {
     }) =>
       `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
     updateCliInstructions:
-      'Si us plau executeu npm install -g unhappy-coder@latest',
+      'Si us plau executeu npm install -g unhappy-cli@latest',
     deleteSession: 'Elimina la sessió',
     deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
     deleteSessionConfirm: 'Eliminar la sessió permanentment?',
@@ -834,7 +834,7 @@ export const ca: TranslationStructure = {
     offlineUnableToSpawn:
       'El llançador està desactivat mentre la màquina està fora de línia',
     offlineHelp:
-      "• Assegura't que l'ordinador estigui en línia\n• Executa `unhappy daemon status` per diagnosticar\n• Fas servir l'última versió del CLI? Actualitza amb `npm install -g unhappy-coder@latest`",
+      "• Assegura't que l'ordinador estigui en línia\n• Executa `unhappy daemon status` per diagnosticar\n• Fas servir l'última versió del CLI? Actualitza amb `npm install -g unhappy-cli@latest`",
     launchNewSessionInDirectory: 'Inicia una nova sessió al directori',
     daemon: 'Dimoni',
     status: 'Estat',

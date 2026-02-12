@@ -72,15 +72,15 @@ Your code. Your privacy. Your Claude Code companion.
 
 ### Privacy Policy
 
-https://github.com/samsam-oo/unhappy-coder/blob/main/PRIVACY.md
+https://github.com/samsam-oo/unhappy/blob/main/packages/unhappy-app/PRIVACY.md
 
 ### Support / Contact
 
-https://github.com/samsam-oo/unhappy-coder/issues
+https://github.com/samsam-oo/unhappy/issues
 
 ### Website / Marketing
 
-https://github.com/samsam-oo/unhappy-coder
+https://github.com/samsam-oo/unhappy
 
 ## Additional Google Play Requirements
 

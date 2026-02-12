@@ -7,7 +7,7 @@ Free. Open source. Code anywhere.
 ## Installation
 
 ```bash
-npm install -g unhappy-coder
+npm install -g unhappy-cli
 ```
 
 ## Usage

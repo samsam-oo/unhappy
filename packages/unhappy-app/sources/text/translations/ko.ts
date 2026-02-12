@@ -403,7 +403,7 @@ export const ko: TranslationStructure = {
       requiredVersion: string;
     }) =>
       `설치된 버전: ${currentVersion}. ${requiredVersion} 이상으로 업데이트하세요`,
-    updateCliInstructions: 'npm install -g unhappy-coder@latest 를 실행하세요',
+    updateCliInstructions: 'npm install -g unhappy-cli@latest 를 실행하세요',
     deleteSession: '세션 삭제',
     deleteSessionSubtitle: '이 세션을 영구적으로 제거',
     deleteSessionConfirm: '세션을 영구적으로 삭제할까요?',
@@ -788,7 +788,7 @@ export const ko: TranslationStructure = {
     launchNewSessionInDirectory: '디렉터리에서 새 세션 실행',
     offlineUnableToSpawn: '머신이 오프라인이면 런처를 사용할 수 없습니다',
     offlineHelp:
-      '• 컴퓨터가 온라인인지 확인하세요\n• `unhappy daemon status`를 실행하여 진단하세요\n• 최신 CLI 버전인가요? `npm install -g unhappy-coder@latest`로 업그레이드하세요',
+      '• 컴퓨터가 온라인인지 확인하세요\n• `unhappy daemon status`를 실행하여 진단하세요\n• 최신 CLI 버전인가요? `npm install -g unhappy-cli@latest`로 업그레이드하세요',
     daemon: '데몬',
     status: '상태',
     stopDaemon: '데몬 중지',

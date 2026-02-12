@@ -111,7 +111,7 @@ function unlink() {
             if (linkTarget === binSource || linkTarget.includes('happy-cli')) {
                 fs.unlinkSync(binTarget);
                 console.log('\n✅ Removed unhappy-dev development symlink');
-                console.log('\nTo restore npm version: npm install -g unhappy-coder');
+                console.log('\nTo restore npm version: npm install -g unhappy-cli');
             } else {
                 console.log(`\n⚠️  unhappy-dev symlink points elsewhere: ${linkTarget}`);
                 console.log('   Not removing. Remove manually if needed.');

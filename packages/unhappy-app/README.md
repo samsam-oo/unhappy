@@ -30,7 +30,7 @@ Step 2: Install CLI on your computer
 </h3>
 
 ```bash
-npm install -g unhappy-coder
+npm install -g unhappy-cli
 ```
 
 <h3 align="center">
@@ -67,7 +67,7 @@ On your computer, run `unhappy` instead of `claude` or `unhappy codex` instead o
 
 - **[unhappy-cli](https://github.com/samsam-oo/unhappy-cli)** - Command-line interface for Claude Code and Codex
 - **[unhappy-server](https://github.com/samsam-oo/unhappy-server)** - Backend server for encrypted sync
-- **unhappy-coder** - This mobile client (you are here)
+- **[unhappy-app](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-app)** - This mobile client (you are here)
 
 ## 🏠 Who We Are
 
