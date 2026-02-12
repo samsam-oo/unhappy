@@ -2,7 +2,11 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
 import { getServerUrl } from './serverConfig';
 
-export async function registerPushToken(credentials: AuthCredentials, token: string): Promise<void> {
+export async function registerPushToken(
+    credentials: AuthCredentials,
+    token: string,
+    deviceId?: string,
+): Promise<void> {
     const API_ENDPOINT = getServerUrl();
     await backoff(async () => {
         const response = await fetch(`${API_ENDPOINT}/v1/push-tokens`, {
@@ -11,7 +15,10 @@ export async function registerPushToken(credentials: AuthCredentials, token: str
                 'Authorization': `Bearer ${credentials.token}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ token })
+            body: JSON.stringify({
+                token,
+                ...(deviceId ? { deviceId } : {})
+            })
         });
 
         if (!response.ok) {
