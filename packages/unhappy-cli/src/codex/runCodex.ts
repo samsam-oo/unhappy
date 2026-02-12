@@ -1006,10 +1006,8 @@ export async function runCodex(opts: {
       messageBuffer.addMessage('Starting task...', 'status');
     } else if (msg.type === 'task_complete') {
       messageBuffer.addMessage('Task completed', 'status');
-      sendReady();
     } else if (msg.type === 'turn_aborted') {
       messageBuffer.addMessage('Turn aborted', 'status');
-      sendReady();
     }
 
     if (msg.type === 'task_started') {
