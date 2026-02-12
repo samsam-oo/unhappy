@@ -28,7 +28,7 @@ import {
   connectionState,
   startOfflineReconnection,
 } from '@/utils/serverConnectionErrors';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import packageJson from '../../package.json';
 import { projectPath } from '../projectPath';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -543,6 +543,9 @@ export async function runClaude(
 
   registerKillSessionHandler(session.rpcHandlerManager, cleanup);
 
+  // Use the same stdio bridge pattern as Codex/Gemini for better MCP compatibility.
+  const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');
+
   // Create claude loop
   const exitCode = await loop({
     path: workingDirectory,
@@ -567,8 +570,8 @@ export async function runClaude(
     },
     mcpServers: {
       unhappy: {
-        type: 'http' as const,
-        url: happyServer.url,
+        command: bridgeCommand,
+        args: ['--url', happyServer.url],
       },
     },
     session,
