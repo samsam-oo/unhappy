@@ -283,6 +283,11 @@ export class CodexAppServerClient {
     if (cfg && 'experimental_resume' in cfg) {
       delete cfg.experimental_resume;
     }
+    // Codex app-server rejects `model_reasoning_effort: null` in thread config.
+    // Auto/default effort should be expressed by omitting the field at thread scope.
+    if (cfg && cfg.model_reasoning_effort === null) {
+      delete cfg.model_reasoning_effort;
+    }
 
     const resumeThreadId =
       this.preferredResumeThreadId ?? this.extractThreadIdFromResumePath(resumePath);
