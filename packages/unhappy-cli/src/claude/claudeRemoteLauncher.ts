@@ -22,6 +22,7 @@ interface PermissionsField {
     result: 'approved' | 'denied';
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
     allowedTools?: string[];
+    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
@@ -230,6 +231,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
                             if (response.allowTools && response.allowTools.length > 0) {
                                 permissions.allowedTools = response.allowTools;
+                            }
+                            if (response.decision) {
+                                permissions.decision = response.decision;
                             }
 
                             // Add permissions directly to the tool_result content object

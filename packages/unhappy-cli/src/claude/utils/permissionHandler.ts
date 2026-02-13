@@ -22,6 +22,7 @@ interface PermissionResponse {
     reason?: string;
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
     allowTools?: string[];
+    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
     receivedAt?: number;
 }
 
@@ -191,13 +192,24 @@ export class PermissionHandler {
         // Approval flow
         //
 
-        let toolCallId = this.resolveToolCallId(toolName, input);
-        if (!toolCallId) { // What if we got permission before tool call
-            await delay(1000);
-            toolCallId = this.resolveToolCallId(toolName, input);
-            if (!toolCallId) {
-                throw new Error(`Could not resolve tool call ID for ${toolName}`);
+        let toolCallId: string | null = null;
+        // Claude can emit canCallTool before the corresponding tool_use event reaches onMessage.
+        // Retry briefly to avoid dropping permission prompts due to ordering races.
+        for (let attempt = 0; attempt < 8; attempt++) {
+            if (options.signal.aborted) {
+                throw new Error('Permission request aborted');
             }
+            toolCallId = this.resolveToolCallId(toolName, input);
+            if (toolCallId) {
+                break;
+            }
+            if (attempt < 7) {
+                await delay(250);
+            }
+        }
+
+        if (!toolCallId) {
+            throw new Error(`Could not resolve tool call ID for ${toolName}`);
         }
         return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
     }
@@ -310,17 +322,35 @@ export class PermissionHandler {
      * Resolves tool call ID based on tool name and input
      */
     private resolveToolCallId(name: string, args: any): string | null {
+        let matchedUsedCall = false;
+
         // Search in reverse (most recent first)
         for (let i = this.toolCalls.length - 1; i >= 0; i--) {
             const call = this.toolCalls[i];
             if (call.name === name && isDeepStrictEqual(call.input, args)) {
                 if (call.used) {
-                    return null;
+                    matchedUsedCall = true;
+                    continue;
                 }
                 // Found unused match - mark as used and return
                 call.used = true;
                 return call.id;
             }
+        }
+
+        // Fallback for occasional payload-shape drift between tool_use and canCallTool.
+        // Only use name-only matching when there is exactly one candidate to avoid mis-linking.
+        const looseCandidates = this.toolCalls.filter(
+            (call) => call.name === name && !call.used
+        );
+        if (looseCandidates.length === 1) {
+            looseCandidates[0].used = true;
+            logger.debug(`[PermissionHandler] resolveToolCallId fallback by name for ${name}: ${looseCandidates[0].id}`);
+            return looseCandidates[0].id;
+        }
+
+        if (matchedUsedCall) {
+            logger.debug(`[PermissionHandler] resolveToolCallId matched only used calls for ${name}`);
         }
 
         return null;
@@ -458,7 +488,8 @@ export class PermissionHandler {
                             status: message.approved ? 'approved' : 'denied',
                             reason: message.reason,
                             mode: message.mode,
-                            allowTools: message.allowTools
+                            allowTools: message.allowTools,
+                            decision: message.decision
                         }
                     }
                 };
