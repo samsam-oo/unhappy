@@ -474,7 +474,7 @@ export default function InputStylesDemo() {
         },
         {
             id: 'github',
-            name: '깃허브 스타일',
+            name: 'Github 스타일',
             description: '개발자 중심의 마크다운 힌트',
             preview: (
                 <View style={{ backgroundColor: '#f6f8fa' }}>
