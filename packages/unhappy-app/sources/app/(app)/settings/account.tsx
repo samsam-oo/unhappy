@@ -20,7 +20,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Platform, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export default React.memo(() => {
@@ -143,16 +143,14 @@ export default React.memo(() => {
                         showChevron={false}
                         copy={!!sync.serverID}
                     />
-                    {Platform.OS !== 'web' && (
-                        <Item
-                            title={t('settingsAccount.linkNewDevice')}
-                            subtitle={isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')}
-                            icon={<Ionicons name="qr-code-outline" size={ACCOUNT_ICON_SIZE} color={accentPrimary} />}
-                            onPress={connectAccount}
-                            disabled={isConnecting}
-                            showChevron={false}
-                        />
-                    )}
+                    <Item
+                        title={t('settingsAccount.linkNewDevice')}
+                        subtitle={isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')}
+                        icon={<Ionicons name="qr-code-outline" size={ACCOUNT_ICON_SIZE} color={accentPrimary} />}
+                        onPress={connectAccount}
+                        disabled={isConnecting}
+                        showChevron={false}
+                    />
                 </ItemGroup>
 
                 {/* Profile Section */}

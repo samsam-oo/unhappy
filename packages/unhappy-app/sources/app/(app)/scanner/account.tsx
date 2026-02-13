@@ -32,7 +32,6 @@ export default React.memo(function AccountScannerScreen() {
     }, [isFocused]);
 
     React.useEffect(() => {
-        if (Platform.OS === 'web') return;
         if (!permission) return;
         if (!permission.granted && permission.canAskAgain) {
             requestPermission();
@@ -55,14 +54,6 @@ export default React.memo(function AccountScannerScreen() {
             setCameraEnabled(true);
         }
     }, [connectWithUrl, isLoading]);
-
-    if (Platform.OS === 'web') {
-        return (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-                <Text>{t('terminal.webBrowserRequiredDescription')}</Text>
-            </View>
-        );
-    }
 
     if (!permission) {
         return (
@@ -99,14 +90,16 @@ export default React.memo(function AccountScannerScreen() {
                         {t('common.continue')}
                     </Text>
                 </Pressable>
-                <Pressable
-                    onPress={() => Linking.openSettings()}
-                    style={{ paddingHorizontal: 14, paddingVertical: 10 }}
-                >
-                    <Text style={{ color: theme.colors.textSecondary }}>
-                        {t('common.open')}
-                    </Text>
-                </Pressable>
+                {Platform.OS !== 'web' && (
+                    <Pressable
+                        onPress={() => Linking.openSettings()}
+                        style={{ paddingHorizontal: 14, paddingVertical: 10 }}
+                    >
+                        <Text style={{ color: theme.colors.textSecondary }}>
+                            {t('common.open')}
+                        </Text>
+                    </Pressable>
+                )}
             </View>
         );
     }
@@ -116,7 +109,7 @@ export default React.memo(function AccountScannerScreen() {
             {isFocused && cameraEnabled ? (
                 <CameraView
                     style={{ flex: 1 }}
-                    facing="back"
+                    facing={Platform.OS === 'web' ? 'front' : 'back'}
                     barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
                     onBarcodeScanned={isLoading ? undefined : onBarcodeScanned}
                     active={!isLoading}
