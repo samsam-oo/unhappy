@@ -1211,7 +1211,32 @@ function NewSessionWizard() {
                 // Clear draft state on successful session creation
                 clearNewSessionDraft();
 
-                await sync.refreshSessions();
+                // Avoid blocking navigation on a full sessions refresh/decryption pass.
+                // Insert a minimal optimistic session so the destination screen renders
+                // immediately, then reconcile in background.
+                if (!storage.getState().sessions[createdSessionId]) {
+                    const now = Date.now();
+                    storage.getState().applySessions([{
+                        id: createdSessionId,
+                        seq: 0,
+                        createdAt: now,
+                        updatedAt: now,
+                        active: true,
+                        activeAt: now,
+                        metadata: {
+                            path: actualPath,
+                            host: selectedMachine?.metadata?.host || 'unknown',
+                            machineId: selectedMachineId,
+                            homeDir: selectedMachine?.metadata?.homeDir,
+                            flavor: agentType,
+                        },
+                        metadataVersion: 0,
+                        agentState: null,
+                        agentStateVersion: 0,
+                        thinking: false,
+                        thinkingAt: 0,
+                    }]);
+                }
 
                 // Set permission mode and model mode on the session
                 storage.getState().updateSessionPermissionMode(createdSessionId, permissionMode);
@@ -1223,7 +1248,10 @@ function NewSessionWizard() {
 
                 // Send initial message if provided
                 if (sessionPrompt.trim()) {
-                    await sync.sendMessage(createdSessionId, sessionPrompt);
+                    void sync.sendMessage(createdSessionId, sessionPrompt)
+                        .catch((error) => {
+                            console.error('Failed to send initial session message', error);
+                        });
                 }
 
                 router.replace(`/session/${createdSessionId}`, {
@@ -1231,6 +1259,11 @@ function NewSessionWizard() {
                         return 'session'
                     },
                 });
+
+                void sync.refreshSessions()
+                    .catch((error) => {
+                        console.error('Failed to refresh sessions after spawn', error);
+                    });
             } else {
                 throw new Error(result.type === 'error'
                     ? result.errorMessage
@@ -1249,7 +1282,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, effortMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, effortMode, recentMachinePaths, profileMap, router, selectedMachine]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1269,7 +1302,7 @@ function NewSessionWizard() {
             cliStatus: includeCLI ? {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
-                ...(SHOW_GEMINI_UI && experimentsEnabled && { gemini: cliAvailability.gemini }),
+                ...(SHOW_GEMINI_UI && experimentsEnabled ? { gemini: cliAvailability.gemini } : {}),
             } : undefined,
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
