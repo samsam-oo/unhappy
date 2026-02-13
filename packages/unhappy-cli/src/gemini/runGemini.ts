@@ -186,6 +186,13 @@ export async function runGemini(opts: {
     });
   session = initialSession;
 
+  // Mark the session as agent-ready as early as possible so mobile/web does not
+  // block for the full readiness timeout on the first message.
+  session.updateAgentState((currentState) => ({
+    ...currentState,
+    controlledByUser: opts.startedBy !== 'daemon',
+  }));
+
   // Report to daemon (only if we have a real session)
   if (response) {
     try {

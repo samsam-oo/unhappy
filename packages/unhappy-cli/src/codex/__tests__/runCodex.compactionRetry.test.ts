@@ -283,6 +283,14 @@ describe('runCodex auto-compaction recovery', () => {
       clearResume: true,
     });
 
+    expect(mockState.session.updateAgentState).toHaveBeenCalled();
+    const appliedStates = mockState.session.updateAgentState.mock.calls.map(
+      ([updater]: [(state: Record<string, unknown>) => Record<string, unknown>]) =>
+        updater({}),
+    );
+    expect(
+      appliedStates.some((state) => state.controlledByUser === true),
+    ).toBe(true);
     expect(mockState.client.startSession).toHaveBeenCalledTimes(2);
     expect(mockState.client.continueSession).toHaveBeenCalledTimes(1);
     expect(mockState.client.clearSession).toHaveBeenCalledTimes(1);
@@ -294,4 +302,3 @@ describe('runCodex auto-compaction recovery', () => {
     });
   });
 });
-
