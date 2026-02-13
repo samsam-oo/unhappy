@@ -9,13 +9,14 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { gitStatusSync } from '@/sync/gitStatusSync';
-import { machineBash, sessionAbort } from '@/sync/ops';
-import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, setCurrentViewedSessionId, getCurrentViewedSessionId } from '@/sync/storage';
+import { machineBash, machineUpdateDaemon, sessionAbort } from '@/sync/ops';
+import { storage, useIsDataReady, useLocalSetting, useMachine, useRealtimeStatus, useSessionMessages, useSessionUsage, setCurrentViewedSessionId, getCurrentViewedSessionId } from '@/sync/storage';
 import { useSession } from '@/sync/storage';
 import { Session, type ReasoningEffortMode } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { tracking, trackMessageSent } from '@/track';
+import { isMachineOnline } from '@/utils/machineUtils';
 import { isRunningOnMac } from '@/utils/platform';
 import { promptCommitMessage } from '@/utils/promptCommitMessage';
 import { useDeviceType, useHeaderHeight, useIsLandscape, useIsTablet } from '@/utils/responsive';
@@ -533,10 +534,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
+    const [isUpdatingDaemon, setIsUpdatingDaemon] = React.useState(false);
 
     // Check if CLI version is outdated and not already acknowledged
     const cliVersion = session.metadata?.version;
     const machineId = session.metadata?.machineId;
+    const machine = useMachine(machineId ?? '');
+    const isMachineReachable = Boolean(machine && isMachineOnline(machine));
     const isCliOutdated = cliVersion && !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION);
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
@@ -565,6 +569,24 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             });
         }
     }, [machineId, cliVersion, acknowledgedCliVersions]);
+
+    const handleUpdateDaemon = React.useCallback(async () => {
+        if (!machineId || !machine || isUpdatingDaemon || !isMachineOnline(machine)) return;
+        setIsUpdatingDaemon(true);
+        try {
+            const result = await machineUpdateDaemon(machineId);
+            Modal.alert(t('common.success'), result.message);
+            await sync.refreshMachines();
+            handleDismissCliWarning();
+        } catch (error) {
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : t('common.error')
+            );
+        } finally {
+            setIsUpdatingDaemon(false);
+        }
+    }, [machineId, machine, isUpdatingDaemon, handleDismissCliWarning]);
 
     // Function to update permission mode
     const updatePermissionMode = React.useCallback((mode: PermissionMode) => {
@@ -688,38 +710,96 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         <>
             {/* CLI Version Warning Overlay - Subtle centered pill */}
             {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
-                <Pressable
-                    onPress={handleDismissCliWarning}
+                <View
                     style={{
                         position: 'absolute',
                         top: 8, // Position at top of content area (padding handled by parent)
                         alignSelf: 'center',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        zIndex: 998, // Below voice bar but above content
+                        maxWidth: '94%',
+                    }}
+                >
+                    <Pressable
+                        onPress={handleUpdateDaemon}
+                        disabled={!isMachineReachable || isUpdatingDaemon}
+                        style={{
+                            backgroundColor: theme.colors.box.warning.background,
+                            borderWidth: 1,
+                            borderColor: theme.colors.box.warning.border,
+                            borderRadius: 100,
+                            paddingHorizontal: 14,
+                            paddingVertical: 7,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            opacity: !isMachineReachable || isUpdatingDaemon ? 0.6 : 1,
+                        }}
+                    >
+                        {isUpdatingDaemon ? (
+                            <ActivityIndicator size="small" color={theme.colors.box.warning.text} style={{ marginRight: 6 }} />
+                        ) : (
+                            <Ionicons name="download-outline" size={14} color={theme.colors.box.warning.text} style={{ marginRight: 6 }} />
+                        )}
+                        <Text style={{
+                            fontSize: 12,
+                            color: theme.colors.box.warning.text,
+                            fontWeight: '600'
+                        }}>
+                            unhappy daemon update
+                        </Text>
+                    </Pressable>
+                    <Pressable
+                        onPress={handleDismissCliWarning}
+                        style={{
+                            backgroundColor: theme.colors.box.warning.background,
+                            borderWidth: 1,
+                            borderColor: theme.colors.box.warning.border,
+                            borderRadius: 100,
+                            width: 32,
+                            height: 32,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                        }}
+                    >
+                        <Ionicons name="close" size={14} color={theme.colors.box.warning.text} />
+                    </Pressable>
+                </View>
+            )}
+
+            {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
+                <View
+                    style={{
+                        position: 'absolute',
+                        top: 48,
+                        alignSelf: 'center',
                         backgroundColor: theme.colors.box.warning.background,
                         borderWidth: 1,
                         borderColor: theme.colors.box.warning.border,
-                        borderRadius: 100, // Fully rounded pill
-                        paddingHorizontal: 14,
-                        paddingVertical: 7,
+                        borderRadius: 100,
+                        paddingHorizontal: 12,
+                        paddingVertical: 5,
                         flexDirection: 'row',
                         alignItems: 'center',
-                        zIndex: 998, // Below voice bar but above content
+                        zIndex: 997,
+                        maxWidth: '90%',
                         shadowColor: '#000',
                         shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.15,
+                        shadowOpacity: 0.08,
                         shadowRadius: 4,
-                        elevation: 4,
+                        elevation: 2,
                     }}
                 >
                     <Ionicons name="warning-outline" size={14} color={theme.colors.box.warning.text} style={{ marginRight: 6 }} />
                     <Text style={{
                         fontSize: 12,
                         color: theme.colors.box.warning.text,
-                        fontWeight: '600'
+                        fontWeight: '600',
                     }}>
                         {t('sessionInfo.cliVersionOutdated')}
                     </Text>
-                    <Ionicons name="close" size={14} color={theme.colors.box.warning.text} style={{ marginLeft: 8 }} />
-                </Pressable>
+                </View>
             )}
 
             {/* Main content area - no padding since header is overlay */}

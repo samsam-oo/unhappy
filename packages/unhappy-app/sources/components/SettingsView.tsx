@@ -12,6 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal } from '@/modal';
 import { disconnectGitHub, getGitHubOAuthParams } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
+import { machineUpdateDaemon } from '@/sync/ops';
 import { getAvatarUrl, getBio, getDisplayName } from '@/sync/profile';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useAllMachines, useLocalSettingMutable, useProfile, useSetting } from '@/sync/storage';
@@ -19,11 +20,12 @@ import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { trackWhatsNewClicked } from '@/track';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { Linking, Platform, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 
 export const SettingsView = React.memo(function SettingsView() {
@@ -39,6 +41,7 @@ export const SettingsView = React.memo(function SettingsView() {
     const displayName = getDisplayName(profile);
     const avatarUrl = getAvatarUrl(profile);
     const bio = getBio(profile);
+    const [updatingMachineId, setUpdatingMachineId] = React.useState<string | null>(null);
 
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
@@ -117,6 +120,49 @@ export const SettingsView = React.memo(function SettingsView() {
             await sync.refreshProfile();
         }
     });
+
+    const outdatedMachines = React.useMemo(() => {
+        return allMachines
+            .map((machine) => {
+                const daemonStateVersion =
+                    machine.daemonState &&
+                    typeof machine.daemonState.startedWithCliVersion === 'string'
+                        ? machine.daemonState.startedWithCliVersion
+                        : undefined;
+                const metadataVersion =
+                    machine.metadata &&
+                    typeof machine.metadata.happyCliVersion === 'string'
+                        ? machine.metadata.happyCliVersion
+                        : undefined;
+                const cliVersion = daemonStateVersion ?? metadataVersion;
+
+                return {
+                    machine,
+                    cliVersion,
+                    isOutdated: cliVersion ? !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION) : false
+                };
+            })
+            .filter((entry) => entry.isOutdated && entry.cliVersion);
+    }, [allMachines]);
+
+    const handleUpdateDaemon = React.useCallback(async (machineId: string) => {
+        const targetMachine = allMachines.find((machine) => machine.id === machineId);
+        if (!targetMachine || !isMachineOnline(targetMachine) || updatingMachineId === machineId) return;
+
+        setUpdatingMachineId(machineId);
+        try {
+            const result = await machineUpdateDaemon(machineId);
+            Modal.alert(t('common.success'), result.message);
+            await sync.refreshMachines();
+        } catch (error) {
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : t('common.error')
+            );
+        } finally {
+            setUpdatingMachineId((current) => (current === machineId ? null : current));
+        }
+    }, [allMachines, updatingMachineId]);
 
 
     return (
@@ -280,6 +326,51 @@ export const SettingsView = React.memo(function SettingsView() {
                                     />
                                 }
                                 onPress={() => router.push(`/machine/${machine.id}`)}
+                            />
+                        );
+                    })}
+                </ItemGroup>
+            )}
+
+            {outdatedMachines.length > 0 && (
+                <ItemGroup title={t('machine.daemon')}>
+                    {outdatedMachines.map(({ machine, cliVersion }) => {
+                        const machineName = machine.metadata?.displayName || machine.metadata?.host || machine.id;
+                        const online = isMachineOnline(machine);
+                        const isUpdating = updatingMachineId === machine.id;
+                        return (
+                            <Item
+                                key={`daemon-update-${machine.id}`}
+                                title="unhappy daemon update"
+                                subtitle={`${machineName} • ${t('sessionInfo.cliVersionOutdatedMessage', {
+                                    currentVersion: cliVersion!,
+                                    requiredVersion: MINIMUM_CLI_VERSION
+                                })}`}
+                                subtitleLines={2}
+                                showChevron={false}
+                                disabled={!online || isUpdating}
+                                onPress={() => handleUpdateDaemon(machine.id)}
+                                titleStyle={{
+                                    color:
+                                        !online || isUpdating
+                                            ? theme.colors.textSecondary
+                                            : theme.colors.button.primary.background
+                                }}
+                                rightElement={
+                                    isUpdating ? (
+                                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                    ) : (
+                                        <Ionicons
+                                            name="download-outline"
+                                            size={20}
+                                            color={
+                                                !online
+                                                    ? theme.colors.textSecondary
+                                                    : theme.colors.button.primary.background
+                                            }
+                                        />
+                                    )
+                                }
                             />
                         );
                     })}
