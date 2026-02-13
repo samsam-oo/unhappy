@@ -20,6 +20,20 @@ This allows you to test production-like builds with real users before releasing 
 
 ## Quick Start
 
+### Native Projects (CNG / Managed)
+
+This app uses Expo CNG. Native folders are generated artifacts and are not committed.
+
+```bash
+# Generate fresh native projects from app.config.js
+npm run prebuild
+```
+
+Notes:
+- `ios/` and `android/` are generated from config plugins + Expo prebuild.
+- `expo run:ios` / `expo run:android` will prebuild automatically when needed.
+- Re-run `npm run prebuild` after changing app config, plugins, or native module setup.
+
 ### iOS Development
 
 ```bash
