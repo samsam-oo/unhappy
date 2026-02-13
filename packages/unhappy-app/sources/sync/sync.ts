@@ -296,6 +296,8 @@ class Sync {
             if (latestSession) {
                 this.applySessions([{
                     ...(latestSession as Omit<Session, 'presence'>),
+                    active: true,
+                    activeAt: Math.max(latestSession.activeAt, createdAt),
                     thinking: true,
                     thinkingAt: createdAt,
                     updatedAt: Math.max(latestSession.updatedAt, createdAt),
@@ -577,11 +579,19 @@ class Sync {
             // Decrypt agent state using session-specific encryption
             let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
 
+            const existingSession = storage.getState().sessions[session.id];
+            // Keep local optimistic thinking state until realtime lifecycle/activity updates arrive.
+            // The sessions REST payload does not include realtime thinking status.
+            const preserveLocalThinking = existingSession?.thinking === true;
+            const thinkingAt = preserveLocalThinking ? (existingSession?.thinkingAt || Date.now()) : 0;
+
             // Put it all together
             const processedSession = {
                 ...session,
-                thinking: false,
-                thinkingAt: 0,
+                active: preserveLocalThinking ? true : session.active,
+                activeAt: preserveLocalThinking ? Math.max(session.activeAt, thinkingAt) : session.activeAt,
+                thinking: preserveLocalThinking,
+                thinkingAt,
                 metadata,
                 agentState
             };
