@@ -1,7 +1,7 @@
-import * as React from 'react';
-import { View, Text, ScrollView, Pressable, TextInput, Platform } from 'react-native';
-import { Ionicons, MaterialIcons, Feather } from '@/icons/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { Feather, Ionicons, MaterialIcons } from '@/icons/vector-icons';
+import * as React from 'react';
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type InputStyle = {
@@ -1257,7 +1257,7 @@ export default function InputStylesDemo() {
         },
         {
             id: 'claude',
-            name: '클로드 스타일',
+            name: 'Claude 스타일',
             description: '아티팩트 기능이 있는 AI 어시스턴트',
             preview: (
                 <View style={{ backgroundColor: '#f9f7f4' }}>

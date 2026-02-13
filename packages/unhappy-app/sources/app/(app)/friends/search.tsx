@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, FlatList } from 'react-native';
+import { Keyboard, View, Text, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, FlatList, Pressable } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { UserSearchResult } from '@/components/UserSearchResult';
 import { searchUsersByUsername, sendFriendRequest } from '@/sync/apiFriends';
@@ -77,71 +77,74 @@ export default function SearchFriendsScreen() {
             <ItemList
                 style={{ paddingTop: 0 }}
                 keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
             >
-                <ItemGroup
-                    title={t('friends.searchInstructions')}
-                    style={styles.searchSection}
-                >
-                    <View style={styles.searchContainer}>
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder={t('friends.searchPlaceholder')}
-                            placeholderTextColor={theme.colors.input.placeholder}
-                            value={searchQuery}
-                            onChangeText={setSearchQuery}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            returnKeyType="search"
-                            editable={!processingUserId}
-                        />
-                        
-                        {isSearching && (
-                            <View style={styles.searchingIndicator}>
-                                <ActivityIndicator size="small" color={theme.colors.textLink} />
-                            </View>
-                        )}
-                    </View>
-                </ItemGroup>
-
-                <ItemGroup
-                    style={styles.resultsGroup}
-                >
-                    <View style={styles.resultsSection}>
-                        {isSearching && searchResults.length === 0 ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color={theme.colors.textLink} />
-                                <Text style={styles.loadingText}>{t('friends.searching')}</Text>
-                            </View>
-                        ) : searchResults.length > 0 ? (
-                            <FlatList
-                                data={searchResults}
-                                renderItem={renderUserItem}
-                                ItemSeparatorComponent={renderSeparator}
-                                keyExtractor={(item) => item.id}
-                                scrollEnabled={false}
-                                contentContainerStyle={styles.resultsList}
+                <Pressable onPress={Keyboard.dismiss}>
+                    <ItemGroup
+                        title={t('friends.searchInstructions')}
+                        style={styles.searchSection}
+                    >
+                        <View style={styles.searchContainer}>
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder={t('friends.searchPlaceholder')}
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                value={searchQuery}
+                                onChangeText={setSearchQuery}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                returnKeyType="search"
+                                editable={!processingUserId}
                             />
-                        ) : hasSearched ? (
-                            <View style={styles.noResultsContainer}>
-                                <Text style={styles.noResultsText}>
-                                    {t('friends.noUserFound')}
-                                </Text>
-                                <Text style={styles.noResultsHint}>
-                                    {t('friends.checkUsername')}
-                                </Text>
-                            </View>
-                        ) : (
-                            <View style={styles.helpContainer}>
-                                <Text style={styles.helpTitle}>
-                                    {t('friends.howToFind')}
-                                </Text>
-                                <Text style={styles.helpText}>
-                                    {t('friends.findInstructions')}
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-                </ItemGroup>
+                            
+                            {isSearching && (
+                                <View style={styles.searchingIndicator}>
+                                    <ActivityIndicator size="small" color={theme.colors.textLink} />
+                                </View>
+                            )}
+                        </View>
+                    </ItemGroup>
+
+                    <ItemGroup
+                        style={styles.resultsGroup}
+                    >
+                        <View style={styles.resultsSection}>
+                            {isSearching && searchResults.length === 0 ? (
+                                <View style={styles.loadingContainer}>
+                                    <ActivityIndicator size="large" color={theme.colors.textLink} />
+                                    <Text style={styles.loadingText}>{t('friends.searching')}</Text>
+                                </View>
+                            ) : searchResults.length > 0 ? (
+                                <FlatList
+                                    data={searchResults}
+                                    renderItem={renderUserItem}
+                                    ItemSeparatorComponent={renderSeparator}
+                                    keyExtractor={(item) => item.id}
+                                    scrollEnabled={false}
+                                    contentContainerStyle={styles.resultsList}
+                                />
+                            ) : hasSearched ? (
+                                <View style={styles.noResultsContainer}>
+                                    <Text style={styles.noResultsText}>
+                                        {t('friends.noUserFound')}
+                                    </Text>
+                                    <Text style={styles.noResultsHint}>
+                                        {t('friends.checkUsername')}
+                                    </Text>
+                                </View>
+                            ) : (
+                                <View style={styles.helpContainer}>
+                                    <Text style={styles.helpTitle}>
+                                        {t('friends.howToFind')}
+                                    </Text>
+                                    <Text style={styles.helpText}>
+                                        {t('friends.findInstructions')}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    </ItemGroup>
+                </Pressable>
             </ItemList>
         </KeyboardAvoidingView>
     );

@@ -637,6 +637,8 @@ export const zhHans: TranslationStructure = {
     file: '文件',
     fileEmpty: '文件为空',
     noChanges: '没有要显示的更改',
+    untitledSession: 'Untitled Session',
+    untitledSessions: 'Untitled Sessions',
   },
 
   settingsVoice: {
@@ -836,6 +838,38 @@ export const zhHans: TranslationStructure = {
     never: '从未',
     metadataVersion: '元数据版本',
     untitledSession: '无标题会话',
+    stopDaemonConfirmTitle: 'Stop daemon?',
+    stopDaemonConfirmDescription:
+      'You will not be able to start new sessions on this machine until the daemon is started again. Existing sessions will remain active.',
+    daemonStopped: 'Daemon stopped',
+    stopDaemonFailed:
+      'Could not stop daemon. It may already be stopped.',
+    renameMachineTitle: 'Rename machine',
+    renameMachineDescription:
+      'Enter a custom name for this machine. Leave it empty to use the default host name.',
+    renameMachinePlaceholder: 'Enter machine name',
+    renameMachineSuccess: 'Machine name updated',
+    renameMachineFailed: 'Failed to rename machine',
+    createDirectoryConfirmTitle: 'Create directory?',
+    createDirectoryConfirmDescription: ({ directory }: { directory: string }) =>
+      `Directory '${directory}' does not exist. Create it?`,
+    startSessionFailed:
+      'Failed to start session. Make sure the daemon is running on the target machine.',
+    machineNotFound: 'Machine not found',
+    unknownMachine: 'Unknown machine',
+    customPathPlaceholder: 'Enter custom path',
+    projectSection: 'Project',
+    notConfigured: 'Not configured',
+    basePathDescription:
+      'Used as the default starting folder when choosing project paths.',
+    exampleHomePath: 'e.g. ~',
+    resetBasePath: 'Reset base repository path',
+    resetBasePathConfirmTitle: 'Reset base repository path?',
+    resetBasePathConfirmDescription:
+      'This resets the project explorer default to your home directory.',
+    previousSessionsMax: ({ count }: { count: number }) =>
+      `Previous Sessions (max ${count})`,
+    daemonLikelyAlive: 'Likely alive',
     back: '返回',
   },
 

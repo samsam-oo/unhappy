@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TextInput, Platform } from 'react-native';
+import { Keyboard, Pressable, View, Text, TextInput, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { Typography } from '@/constants/Typography';
@@ -168,100 +168,102 @@ export default React.memo(function MachinePickerScreen() {
     return (
         <>
             <Stack.Screen options={headerOptions} />
-            <ItemList keyboardShouldPersistTaps="handled">
-                {showSearch && (
-                    <View style={styles.searchContainer}>
-                        <View style={styles.searchInputWrapper}>
-                            <Ionicons
-                                name="search"
-                                size={16}
-                                color={theme.colors.textSecondary}
-                                style={styles.searchIcon}
-                            />
-                            <TextInput
-                                style={styles.searchInput}
-                                value={searchText}
-                                onChangeText={setSearchText}
-                                placeholder="머신 검색..."
-                                placeholderTextColor={theme.colors.textSecondary}
-                                clearButtonMode="while-editing"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
-                    </View>
-                )}
-
-                {sortedMachines.length === 0 && searchText.trim() ? (
-                    <ItemGroup>
-                        <Item
-                            title="검색과 일치하는 머신이 없습니다"
-                            showChevron={false}
-                            showDivider={false}
-                            titleStyle={{ color: theme.colors.textSecondary }}
-                        />
-                    </ItemGroup>
-                ) : (
-                    <ItemGroup>
-                        {sortedMachines.map((machine, index) => {
-                            const isOnline = isMachineOnline(machine);
-                            const isSelected = machine.id === params.selectedId;
-                            const displayName = machine.metadata?.displayName
-                                || machine.metadata?.host
-                                || machine.id;
-                            const subtitle = machine.metadata?.displayName && machine.metadata?.host
-                                ? machine.metadata.host
-                                : undefined;
-
-                            return (
-                                <Item
-                                    key={machine.id}
-                                    title={displayName}
-                                    subtitle={subtitle}
-                                    leftElement={
-                                        <View style={styles.iconContainer}>
-                                            <Ionicons
-                                                name={getPlatformIcon(machine.metadata?.platform)}
-                                                size={18}
-                                                color={isOnline
-                                                    ? theme.colors.text
-                                                    : theme.colors.textSecondary}
-                                            />
-                                        </View>
-                                    }
-                                    rightElement={
-                                        <View style={styles.rightRow}>
-                                            <StatusDot
-                                                color={isOnline
-                                                    ? theme.colors.status.connected
-                                                    : theme.colors.status.disconnected}
-                                                isPulsing={isOnline}
-                                                size={8}
-                                            />
-                                            {isSelected && (
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={22}
-                                                    color={theme.colors.status.connected}
-                                                />
-                                            )}
-                                        </View>
-                                    }
-                                    onPress={() => handleSelectMachine(machine)}
-                                    showChevron={false}
-                                    selected={isSelected}
-                                    showDivider={index < sortedMachines.length - 1}
-                                    pressableStyle={isSelected
-                                        ? { backgroundColor: theme.colors.surfaceSelected }
-                                        : undefined}
-                                    titleStyle={!isOnline
-                                        ? { color: theme.colors.textSecondary }
-                                        : undefined}
+            <ItemList keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+                <Pressable onPress={Keyboard.dismiss}>
+                    {showSearch && (
+                        <View style={styles.searchContainer}>
+                            <View style={styles.searchInputWrapper}>
+                                <Ionicons
+                                    name="search"
+                                    size={16}
+                                    color={theme.colors.textSecondary}
+                                    style={styles.searchIcon}
                                 />
-                            );
-                        })}
-                    </ItemGroup>
-                )}
+                                <TextInput
+                                    style={styles.searchInput}
+                                    value={searchText}
+                                    onChangeText={setSearchText}
+                                    placeholder="머신 검색..."
+                                    placeholderTextColor={theme.colors.textSecondary}
+                                    clearButtonMode="while-editing"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                            </View>
+                        </View>
+                    )}
+
+                    {sortedMachines.length === 0 && searchText.trim() ? (
+                        <ItemGroup>
+                            <Item
+                                title="검색과 일치하는 머신이 없습니다"
+                                showChevron={false}
+                                showDivider={false}
+                                titleStyle={{ color: theme.colors.textSecondary }}
+                            />
+                        </ItemGroup>
+                    ) : (
+                        <ItemGroup>
+                            {sortedMachines.map((machine, index) => {
+                                const isOnline = isMachineOnline(machine);
+                                const isSelected = machine.id === params.selectedId;
+                                const displayName = machine.metadata?.displayName
+                                    || machine.metadata?.host
+                                    || machine.id;
+                                const subtitle = machine.metadata?.displayName && machine.metadata?.host
+                                    ? machine.metadata.host
+                                    : undefined;
+
+                                return (
+                                    <Item
+                                        key={machine.id}
+                                        title={displayName}
+                                        subtitle={subtitle}
+                                        leftElement={
+                                            <View style={styles.iconContainer}>
+                                                <Ionicons
+                                                    name={getPlatformIcon(machine.metadata?.platform)}
+                                                    size={18}
+                                                    color={isOnline
+                                                        ? theme.colors.text
+                                                        : theme.colors.textSecondary}
+                                                />
+                                            </View>
+                                        }
+                                        rightElement={
+                                            <View style={styles.rightRow}>
+                                                <StatusDot
+                                                    color={isOnline
+                                                        ? theme.colors.status.connected
+                                                        : theme.colors.status.disconnected}
+                                                    isPulsing={isOnline}
+                                                    size={8}
+                                                />
+                                                {isSelected && (
+                                                    <Ionicons
+                                                        name="checkmark-circle"
+                                                        size={22}
+                                                        color={theme.colors.status.connected}
+                                                    />
+                                                )}
+                                            </View>
+                                        }
+                                        onPress={() => handleSelectMachine(machine)}
+                                        showChevron={false}
+                                        selected={isSelected}
+                                        showDivider={index < sortedMachines.length - 1}
+                                        pressableStyle={isSelected
+                                            ? { backgroundColor: theme.colors.surfaceSelected }
+                                            : undefined}
+                                        titleStyle={!isOnline
+                                            ? { color: theme.colors.textSecondary }
+                                            : undefined}
+                                    />
+                                );
+                            })}
+                        </ItemGroup>
+                    )}
+                </Pressable>
             </ItemList>
         </>
     );

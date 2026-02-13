@@ -2,7 +2,7 @@ import * as React from 'react';
 import { View, Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
@@ -86,15 +86,40 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
     const insets = useSafeAreaInsets();
     const inboxHasContent = useInboxHasContent();
 
-    const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
+    const tabs: {
+        key: TabType;
+        iconOutline: React.ComponentProps<typeof Ionicons>['name'];
+        iconFilled: React.ComponentProps<typeof Ionicons>['name'];
+        label: string;
+    }[] = React.useMemo(() => {
         // NOTE: Zen tab removed - the feature never got to a useful state
-        const out: { key: TabType; icon: any; label: string }[] = [];
+        const out: {
+            key: TabType;
+            iconOutline: React.ComponentProps<typeof Ionicons>['name'];
+            iconFilled: React.ComponentProps<typeof Ionicons>['name'];
+            label: string;
+        }[] = [];
         if (ENABLE_INBOX) {
-            out.push({ key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') });
+            out.push({
+                key: 'inbox',
+                iconOutline: 'mail-outline',
+                iconFilled: 'mail',
+                label: t('tabs.inbox')
+            });
         }
         out.push(
-            { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism 15.png'), label: t('tabs.sessions') },
-            { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism 9.png'), label: t('tabs.settings') },
+            {
+                key: 'sessions',
+                iconOutline: 'chatbubbles-outline',
+                iconFilled: 'chatbubbles',
+                label: t('tabs.sessions')
+            },
+            {
+                key: 'settings',
+                iconOutline: 'settings-outline',
+                iconFilled: 'settings',
+                label: t('tabs.settings')
+            },
         );
         return out;
     }, []);
@@ -113,11 +138,10 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
                             hitSlop={8}
                         >
                             <View style={styles.tabContent}>
-                                <Image
-                                    source={tab.icon}
-                                    contentFit="contain"
-                                    style={[{ width: 24, height: 24 }]}
-                                    tintColor={isActive ? theme.colors.text : theme.colors.textSecondary}
+                                <Ionicons
+                                    name={isActive ? tab.iconFilled : tab.iconOutline}
+                                    size={22}
+                                    color={isActive ? theme.colors.text : theme.colors.textSecondary}
                                 />
                                 {tab.key === 'inbox' && inboxBadgeCount > 0 && (
                                     <View style={styles.badge}>

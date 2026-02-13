@@ -8,7 +8,7 @@ import { Text } from '@/components/StyledText';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { useMultiClick } from '@/hooks/useMultiClick';
-import { Ionicons } from '@/icons/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Modal } from '@/modal';
 import { disconnectGitHub, getGitHubOAuthParams } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
@@ -75,6 +75,12 @@ export const SettingsView = React.memo(function SettingsView() {
     // Connection status
     const isGitHubConnected = !!profile.github;
     const isAnthropicConnected = profile.connectedServices?.includes('anthropic') || false;
+    const accentPrimary = theme.dark ? 'rgba(203,213,225,0.86)' : 'rgba(71,85,105,0.78)';
+    const accentSecondary = theme.dark ? 'rgba(148,163,184,0.80)' : 'rgba(100,116,139,0.74)';
+    const accentWarm = theme.dark ? 'rgba(180,196,214,0.80)' : 'rgba(90,105,122,0.72)';
+    const accentSuccess = theme.dark ? 'rgba(176,190,206,0.86)' : 'rgba(90,103,120,0.78)';
+    const accentDanger = theme.dark ? 'rgba(248,113,113,0.84)' : 'rgba(185,28,28,0.78)';
+    const SETTINGS_ICON_SIZE = 24;
 
     // GitHub connection
     const [connectingGitHub, connectGitHub] = useHappyAction(async () => {
@@ -121,13 +127,13 @@ export const SettingsView = React.memo(function SettingsView() {
             <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
                 <View style={{
                     alignItems: 'center',
-                    paddingVertical: Platform.select({ web: 14, default: 24 }),
-                    backgroundColor: theme.colors.surface,
-                    marginTop: Platform.select({ web: 10, default: 16 }),
-                    borderRadius: Platform.select({ web: 10, default: 12 }),
-                    marginHorizontal: Platform.select({ web: 12, default: 16 }),
-                    borderWidth: Platform.OS === 'web' ? 1 : 0,
-                    borderColor: Platform.OS === 'web' ? theme.colors.chrome.panelBorder : 'transparent',
+                    paddingVertical: Platform.select({ web: 16, default: 22 }),
+                    backgroundColor: theme.dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                    marginTop: Platform.select({ web: 10, default: 14 }),
+                    borderRadius: Platform.select({ web: 14, default: 16 }),
+                    marginHorizontal: 16,
+                    borderWidth: 1,
+                    borderColor: theme.dark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)',
                 }}>
                     {profile.firstName ? (
                         // Profile view: Avatar + name + version
@@ -155,7 +161,7 @@ export const SettingsView = React.memo(function SettingsView() {
                             <Image
                                 source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
                                 contentFit="contain"
-                                style={{ width: Platform.select({ web: 240, default: 300 }), height: Platform.select({ web: 72, default: 90 }), marginBottom: 12 }}
+                                style={{ width: Platform.select({ web: 224, default: 280 }), height: Platform.select({ web: 68, default: 84 }), marginBottom: 6 }}
                             />
                         </>
                     )}
@@ -167,14 +173,14 @@ export const SettingsView = React.memo(function SettingsView() {
                 <ItemGroup>
                     <Item
                         title={t('settings.scanQrCodeToAuthenticate')}
-                        icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="qr-code-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                         onPress={connectTerminal}
                         loading={isLoading}
                         showChevron={false}
                     />
                     <Item
                         title={t('connect.enterUrlManually')}
-                        icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="link-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                         onPress={async () => {
                             const url = await Modal.prompt(
                                 t('modals.authenticateTerminal'),
@@ -203,7 +209,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={
                         <Image
                             source={require('@/assets/images/icon-claude.png')}
-                            style={{ width: 29, height: 29 }}
+                            style={{ width: SETTINGS_ICON_SIZE, height: SETTINGS_ICON_SIZE }}
                             contentFit="contain"
                         />
                     }
@@ -220,7 +226,7 @@ export const SettingsView = React.memo(function SettingsView() {
                     icon={
                         <Ionicons
                             name="logo-github"
-                            size={29}
+                            size={SETTINGS_ICON_SIZE}
                             color={isGitHubConnected ? theme.colors.status.connected : theme.colors.textSecondary}
                         />
                     }
@@ -270,7 +276,7 @@ export const SettingsView = React.memo(function SettingsView() {
                                 icon={
                                     <Ionicons
                                         name="desktop-outline"
-                                        size={29}
+                                        size={SETTINGS_ICON_SIZE}
                                         color={isOnline ? theme.colors.status.connected : theme.colors.status.disconnected}
                                     />
                                 }
@@ -286,38 +292,38 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('settings.account')}
                     subtitle={t('settings.accountSubtitle')}
-                    icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
+                    icon={<Ionicons name="person-circle-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                     onPress={() => router.push('/settings/account')}
                 />
                 <Item
                     title={t('settings.appearance')}
                     subtitle={t('settings.appearanceSubtitle')}
-                    icon={<Ionicons name="color-palette-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="color-palette-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                     onPress={() => router.push('/settings/appearance')}
                 />
                 <Item
                     title={t('settings.voiceAssistant')}
                     subtitle={t('settings.voiceAssistantSubtitle')}
-                    icon={<Ionicons name="mic-outline" size={29} color="#34C759" />}
+                    icon={<Ionicons name="mic-outline" size={SETTINGS_ICON_SIZE} color={accentSuccess} />}
                     onPress={() => router.push('/settings/voice')}
                 />
                 <Item
                     title={t('settings.featuresTitle')}
                     subtitle={t('settings.featuresSubtitle')}
-                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
+                    icon={<Ionicons name="flask-outline" size={SETTINGS_ICON_SIZE} color={accentWarm} />}
                     onPress={() => router.push('/settings/features')}
                 />
                 <Item
                     title={t('settings.profiles')}
                     subtitle={t('settings.profilesSubtitle')}
-                    icon={<Ionicons name="person-outline" size={29} color="#AF52DE" />}
+                    icon={<Ionicons name="person-outline" size={SETTINGS_ICON_SIZE} color={accentSecondary} />}
                     onPress={() => router.push('/settings/profiles')}
                 />
                 {experiments && (
                     <Item
                         title={t('settings.usage')}
                         subtitle={t('settings.usageSubtitle')}
-                        icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="analytics-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                         onPress={() => router.push('/settings/usage')}
                     />
                 )}
@@ -328,7 +334,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 <ItemGroup title={t('settings.developer')}>
                     <Item
                         title={t('settings.developerTools')}
-                        icon={<Ionicons name="construct-outline" size={29} color="#5856D6" />}
+                        icon={<Ionicons name="construct-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                         onPress={() => router.push('/dev')}
                     />
                 </ItemGroup>
@@ -339,7 +345,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('settings.whatsNew')}
                     subtitle={t('settings.whatsNewSubtitle')}
-                    icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
+                    icon={<Ionicons name="sparkles-outline" size={SETTINGS_ICON_SIZE} color={accentWarm} />}
                     onPress={() => {
                         trackWhatsNewClicked();
                         router.push('/changelog');
@@ -347,18 +353,18 @@ export const SettingsView = React.memo(function SettingsView() {
                 />
                 <Item
                     title={t('settings.github')}
-                    icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
+                    icon={<Ionicons name="logo-github" size={SETTINGS_ICON_SIZE} color={theme.colors.text} />}
                     detail="samsam-oo/unhappy"
                     onPress={handleGitHub}
                 />
                 <Item
                     title={t('settings.reportIssue')}
-                    icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
+                    icon={<Ionicons name="bug-outline" size={SETTINGS_ICON_SIZE} color={accentDanger} />}
                     onPress={handleReportIssue}
                 />
                 <Item
                     title={t('settings.privacyPolicy')}
-                    icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
+                    icon={<Ionicons name="shield-checkmark-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                     onPress={async () => {
                         const url = 'https://unhappy.im/privacy/';
                         const supported = await Linking.canOpenURL(url);
@@ -369,7 +375,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 />
                 <Item
                     title={t('settings.termsOfService')}
-                    icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+                    icon={<Ionicons name="document-text-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                     onPress={async () => {
                         const url = 'https://github.com/samsam-oo/unhappy/blob/main/TERMS.md';
                         const supported = await Linking.canOpenURL(url);
@@ -381,7 +387,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 {Platform.OS === 'ios' && (
                     <Item
                         title={t('settings.eula')}
-                        icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+                        icon={<Ionicons name="document-text-outline" size={SETTINGS_ICON_SIZE} color={accentPrimary} />}
                         onPress={async () => {
                             const url = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
                             const supported = await Linking.canOpenURL(url);
@@ -394,7 +400,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 <Item
                     title={t('common.version')}
                     detail={appVersion}
-                    icon={<Ionicons name="information-circle-outline" size={29} color={theme.colors.textSecondary} />}
+                    icon={<Ionicons name="information-circle-outline" size={SETTINGS_ICON_SIZE} color={theme.colors.textSecondary} />}
                     onPress={handleVersionClick}
                     showChevron={false}
                 />

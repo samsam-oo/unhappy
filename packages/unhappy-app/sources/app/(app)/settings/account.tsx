@@ -1,27 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
-import { Ionicons } from '@/icons/vector-icons';
-import * as Clipboard from 'expo-clipboard';
-import { Typography } from '@/constants/Typography';
 import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Modal } from '@/modal';
-import { t } from '@/text';
 import { layout } from '@/components/layout';
-import { useSettingMutable, useProfile } from '@/sync/storage';
-import { sync } from '@/sync/sync';
-import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
+import { Typography } from '@/constants/Typography';
 import { useConnectAccount } from '@/hooks/useConnectAccount';
-import { getDisplayName, getAvatarUrl } from '@/sync/profile';
-import { Image } from 'expo-image';
 import { useHappyAction } from '@/hooks/useHappyAction';
+import { Modal } from '@/modal';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
+import { getDisplayName } from '@/sync/profile';
+import { useProfile, useSettingMutable } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import * as Clipboard from 'expo-clipboard';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { Platform, Pressable, Text, View } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export default React.memo(() => {
     const { theme } = useUnistyles();
@@ -40,6 +40,11 @@ export default React.memo(() => {
     // Profile display values
     const displayName = getDisplayName(profile);
     const githubUsername = profile.github?.login;
+    const accentPrimary = theme.dark ? 'rgba(203,213,225,0.86)' : 'rgba(71,85,105,0.78)';
+    const accentWarm = theme.dark ? 'rgba(180,196,214,0.80)' : 'rgba(90,105,122,0.72)';
+    const accentSuccess = theme.dark ? 'rgba(134,239,172,0.82)' : 'rgba(21,128,61,0.72)';
+    const accentDanger = theme.dark ? 'rgba(248,113,113,0.84)' : 'rgba(185,28,28,0.78)';
+    const ACCOUNT_ICON_SIZE = 24;
 
     // GitHub disconnection
     const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
@@ -104,6 +109,21 @@ export default React.memo(() => {
     return (
         <>
             <ItemList>
+                <View style={styles.headerWrap}>
+                    <View style={styles.headerCard}>
+                        <View style={styles.headerIcon}>
+                        </View>
+                        <View style={styles.headerText}>
+                            <Text style={styles.headerTitle}>
+                                {displayName || t('settingsAccount.statusActive')}
+                            </Text>
+                            <Text style={styles.headerSubtitle}>
+                                {githubUsername ? `@${githubUsername}` : t('settingsAccount.accountInformation')}
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+
                 {/* Account Info */}
                 <ItemGroup title={t('settingsAccount.accountInformation')}>
                     <Item
@@ -127,7 +147,7 @@ export default React.memo(() => {
                         <Item
                             title={t('settingsAccount.linkNewDevice')}
                             subtitle={isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')}
-                            icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
+                            icon={<Ionicons name="qr-code-outline" size={ACCOUNT_ICON_SIZE} color={accentPrimary} />}
                             onPress={connectAccount}
                             disabled={isConnecting}
                             showChevron={false}
@@ -156,14 +176,18 @@ export default React.memo(() => {
                                 icon={profile.avatar?.url ? (
                                     <Image
                                         source={{ uri: profile.avatar.url }}
-                                        style={{ width: 29, height: 29, borderRadius: 14.5 }}
+                                        style={{ width: ACCOUNT_ICON_SIZE, height: ACCOUNT_ICON_SIZE, borderRadius: ACCOUNT_ICON_SIZE / 2 }}
                                         placeholder={{ thumbhash: profile.avatar.thumbhash }}
                                         contentFit="cover"
                                         transition={200}
                                         cachePolicy="memory-disk"
                                     />
                                 ) : (
-                                    <Ionicons name="logo-github" size={29} color={theme.colors.textSecondary} />
+                                    <Ionicons
+                                        name="logo-github"
+                                        size={ACCOUNT_ICON_SIZE}
+                                        color={theme.colors.textSecondary}
+                                    />
                                 )}
                             />
                         )}
@@ -204,7 +228,7 @@ export default React.memo(() => {
                                         icon={
                                             <Image
                                                 source={serviceInfo.icon}
-                                                style={{ width: 29, height: 29 }}
+                                                style={{ width: ACCOUNT_ICON_SIZE, height: ACCOUNT_ICON_SIZE }}
                                                 tintColor={serviceInfo.tintColor}
                                                 contentFit="contain"
                                             />
@@ -224,7 +248,7 @@ export default React.memo(() => {
                     <Item
                         title={t('settingsAccount.secretKey')}
                         subtitle={showSecret ? t('settingsAccount.tapToHide') : t('settingsAccount.tapToReveal')}
-                        icon={<Ionicons name={showSecret ? "eye-off-outline" : "eye-outline"} size={29} color="#FF9500" />}
+                        icon={<Ionicons name={showSecret ? "eye-off-outline" : "eye-outline"} size={ACCOUNT_ICON_SIZE} color={accentWarm} />}
                         onPress={handleShowSecret}
                         showChevron={false}
                     />
@@ -234,37 +258,18 @@ export default React.memo(() => {
                 {showSecret && (
                     <ItemGroup>
                         <Pressable onPress={handleCopySecret}>
-                            <View style={{
-                                backgroundColor: theme.colors.surface,
-                                paddingHorizontal: 16,
-                                paddingVertical: 14,
-                                width: '100%',
-                                maxWidth: layout.maxWidth,
-                                alignSelf: 'center'
-                            }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                                    <Text style={{
-                                        fontSize: 11,
-                                        color: theme.colors.textSecondary,
-                                        letterSpacing: 0.5,
-                                        textTransform: 'uppercase',
-                                        ...Typography.default('semiBold')
-                                    }}>
+                            <View style={styles.secretCard}>
+                                <View style={styles.secretCardHeader}>
+                                    <Text style={styles.secretLabel}>
                                         {t('settingsAccount.secretKeyLabel')}
                                     </Text>
                                     <Ionicons
                                         name={copiedRecently ? "checkmark-circle" : "copy-outline"}
                                         size={18}
-                                        color={copiedRecently ? "#34C759" : theme.colors.textSecondary}
+                                        color={copiedRecently ? accentSuccess : theme.colors.textSecondary}
                                     />
                                 </View>
-                                <Text style={{
-                                    fontSize: 13,
-                                    letterSpacing: 0.5,
-                                    lineHeight: 20,
-                                    color: theme.colors.text,
-                                    ...Typography.mono()
-                                }}>
+                                <Text style={styles.secretValue}>
                                     {formattedSecret}
                                 </Text>
                             </View>
@@ -287,8 +292,11 @@ export default React.memo(() => {
                                     const optOut = !value;
                                     setAnalyticsOptOut(optOut);
                                 }}
-                                trackColor={{ false: '#767577', true: '#34C759' }}
-                                thumbColor="#FFFFFF"
+                                trackColor={{
+                                    false: theme.dark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.16)',
+                                    true: accentPrimary
+                                }}
+                                thumbColor={theme.dark ? '#F8FAFC' : '#FFFFFF'}
                             />
                         }
                         showChevron={false}
@@ -300,7 +308,7 @@ export default React.memo(() => {
                     <Item
                         title={t('settingsAccount.logout')}
                         subtitle={t('settingsAccount.logoutSubtitle')}
-                        icon={<Ionicons name="log-out-outline" size={29} color="#FF3B30" />}
+                        icon={<Ionicons name="log-out-outline" size={ACCOUNT_ICON_SIZE} color={accentDanger} />}
                         destructive
                         onPress={handleLogout}
                     />
@@ -309,3 +317,76 @@ export default React.memo(() => {
         </>
     );
 });
+
+const styles = StyleSheet.create((theme) => ({
+    headerWrap: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+    },
+    headerCard: {
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: theme.dark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)',
+        backgroundColor: theme.dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    headerIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 12,
+        backgroundColor: theme.dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerText: {
+        flex: 1,
+    },
+    headerTitle: {
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
+        fontSize: 15,
+    },
+    headerSubtitle: {
+        ...Typography.default(),
+        color: theme.colors.textSecondary,
+        fontSize: 12,
+        marginTop: 2,
+    },
+    secretCard: {
+        backgroundColor: theme.dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+        borderWidth: 1,
+        borderColor: theme.dark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)',
+        borderRadius: 14,
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+    },
+    secretCardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
+    secretLabel: {
+        ...Typography.default('semiBold'),
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        letterSpacing: 0.35,
+    },
+    secretValue: {
+        ...Typography.mono(),
+        fontSize: 13,
+        letterSpacing: 0.4,
+        lineHeight: 20,
+        color: theme.colors.text,
+    },
+}));

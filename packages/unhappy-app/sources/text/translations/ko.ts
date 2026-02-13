@@ -440,12 +440,12 @@ export const ko: TranslationStructure = {
       readOnlyTools: '읽기 전용 도구만',
       autoApproveAll: '모든 동작 자동 승인',
       badgeAcceptAllEdits: '모든 수정 허용',
-      badgeBypassAllPermissions: '모든 권한 건너뛰기',
+      badgeBypassAllPermissions: '바이패스 모드',
       badgePlanMode: '플랜 모드',
     },
     agent: {
-      claude: '클로드',
-      codex: '코덱스',
+      claude: 'Claude',
+      codex: 'Codex',
       gemini: '제미니',
     },
     model: {
@@ -627,6 +627,8 @@ export const ko: TranslationStructure = {
     file: '파일',
     fileEmpty: '파일이 비어 있습니다',
     noChanges: '표시할 변경 사항이 없습니다',
+    untitledSession: '제목 없는 세션',
+    untitledSessions: '제목 없는 세션들',
   },
 
   settingsVoice: {
@@ -831,6 +833,38 @@ export const ko: TranslationStructure = {
     never: '없음',
     metadataVersion: '메타데이터 버전',
     untitledSession: '제목 없는 세션',
+    stopDaemonConfirmTitle: '데몬을 중지할까요?',
+    stopDaemonConfirmDescription:
+      '데몬을 다시 시작할 때까지 이 머신에서 새 세션을 시작할 수 없습니다. 기존 세션은 유지됩니다.',
+    daemonStopped: '데몬이 중지되었습니다',
+    stopDaemonFailed:
+      '데몬을 중지하지 못했습니다. 이미 중지되어 있을 수 있습니다.',
+    renameMachineTitle: '머신 이름 변경',
+    renameMachineDescription:
+      '이 머신의 사용자 지정 이름을 입력하세요. 비워 두면 기본 호스트 이름을 사용합니다.',
+    renameMachinePlaceholder: '머신 이름 입력',
+    renameMachineSuccess: '머신 이름이 변경되었습니다',
+    renameMachineFailed: '머신 이름 변경에 실패했습니다',
+    createDirectoryConfirmTitle: '디렉터리 생성?',
+    createDirectoryConfirmDescription: ({ directory }: { directory: string }) =>
+      `디렉터리 '${directory}'가 존재하지 않습니다. 생성할까요?`,
+    startSessionFailed:
+      '세션 시작에 실패했습니다. 대상 머신에서 데몬이 실행 중인지 확인하세요.',
+    machineNotFound: '머신을 찾을 수 없습니다',
+    unknownMachine: '알 수 없는 머신',
+    customPathPlaceholder: '사용자 지정 경로 입력',
+    projectSection: '프로젝트',
+    notConfigured: '설정되지 않음',
+    basePathDescription:
+      '프로젝트 경로 선택 시 기본 시작 폴더로 사용됩니다.',
+    exampleHomePath: '예: ~',
+    resetBasePath: '기본 저장소 경로 초기화',
+    resetBasePathConfirmTitle: '기본 저장소 경로 초기화?',
+    resetBasePathConfirmDescription:
+      '이 작업은 프로젝트 탐색 기본 설정을 홈 디렉터리로 되돌립니다.',
+    previousSessionsMax: ({ count }: { count: number }) =>
+      `이전 세션 (최대 ${count}개)`,
+    daemonLikelyAlive: '정상 동작 추정',
     back: '뒤로',
   },
 

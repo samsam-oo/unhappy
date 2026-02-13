@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView as RNKeyboardAvoidingView } from 'react-native';
+import { Keyboard, View, ScrollView, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView as RNKeyboardAvoidingView } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter, Stack } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -159,58 +159,61 @@ export default function NewArtifactScreen() {
                             { maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }
                         ]}
                         keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
                     >
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>{t('artifacts.titleLabel')}</Text>
-                            <TextInput
-                                style={[
-                                    styles.input,
-                                    titleFocused && styles.inputFocused,
-                                    Platform.OS === 'web' && { 
-                                        outlineStyle: 'none',
-                                        outline: 'none',
-                                        outlineWidth: 0,
-                                        outlineColor: 'transparent'
-                                    } as any
-                                ]}
-                                value={title}
-                                onChangeText={setTitle}
-                                placeholder={t('artifacts.titlePlaceholder')}
-                                placeholderTextColor={theme.colors.input.placeholder}
-                                onFocus={() => setTitleFocused(true)}
-                                onBlur={() => setTitleFocused(false)}
-                                editable={!isSaving}
-                                returnKeyType="next"
-                                autoCapitalize="sentences"
-                            />
-                        </View>
-                        
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>{t('artifacts.bodyLabel')}</Text>
-                            <TextInput
-                                style={[
-                                    styles.input,
-                                    styles.textArea,
-                                    bodyFocused && styles.inputFocused,
-                                    Platform.OS === 'web' && { 
-                                        outlineStyle: 'none',
-                                        outline: 'none',
-                                        outlineWidth: 0,
-                                        outlineColor: 'transparent'
-                                    } as any
-                                ]}
-                                value={body}
-                                onChangeText={setBody}
-                                placeholder={t('artifacts.bodyPlaceholder')}
-                                placeholderTextColor={theme.colors.input.placeholder}
-                                onFocus={() => setBodyFocused(true)}
-                                onBlur={() => setBodyFocused(false)}
-                                editable={!isSaving}
-                                multiline
-                                numberOfLines={10}
-                                autoCapitalize="sentences"
-                            />
-                        </View>
+                        <Pressable onPress={Keyboard.dismiss}>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>{t('artifacts.titleLabel')}</Text>
+                                <TextInput
+                                    style={[
+                                        styles.input,
+                                        titleFocused && styles.inputFocused,
+                                        Platform.OS === 'web' && { 
+                                            outlineStyle: 'none',
+                                            outline: 'none',
+                                            outlineWidth: 0,
+                                            outlineColor: 'transparent'
+                                        } as any
+                                    ]}
+                                    value={title}
+                                    onChangeText={setTitle}
+                                    placeholder={t('artifacts.titlePlaceholder')}
+                                    placeholderTextColor={theme.colors.input.placeholder}
+                                    onFocus={() => setTitleFocused(true)}
+                                    onBlur={() => setTitleFocused(false)}
+                                    editable={!isSaving}
+                                    returnKeyType="next"
+                                    autoCapitalize="sentences"
+                                />
+                            </View>
+                            
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>{t('artifacts.bodyLabel')}</Text>
+                                <TextInput
+                                    style={[
+                                        styles.input,
+                                        styles.textArea,
+                                        bodyFocused && styles.inputFocused,
+                                        Platform.OS === 'web' && { 
+                                            outlineStyle: 'none',
+                                            outline: 'none',
+                                            outlineWidth: 0,
+                                            outlineColor: 'transparent'
+                                        } as any
+                                    ]}
+                                    value={body}
+                                    onChangeText={setBody}
+                                    placeholder={t('artifacts.bodyPlaceholder')}
+                                    placeholderTextColor={theme.colors.input.placeholder}
+                                    onFocus={() => setBodyFocused(true)}
+                                    onBlur={() => setBodyFocused(false)}
+                                    editable={!isSaving}
+                                    multiline
+                                    numberOfLines={10}
+                                    autoCapitalize="sentences"
+                                />
+                            </View>
+                        </Pressable>
                     </ScrollView>
                 </KeyboardWrapper>
             </View>

@@ -10,10 +10,9 @@ import { t } from '@/text';
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { useIsLandscape } from "@/utils/responsive";
 import { getRandomBytesAsync } from "expo-crypto";
-import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import * as React from 'react';
-import { Platform, Text, View } from "react-native";
+import { Image, Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
@@ -48,8 +47,8 @@ function BrandingSection() {
             <View style={styles.iconGlow}>
                 <Image
                     source={require('@/assets/images/logotype.png')}
-                    contentFit="contain"
                     style={styles.iconLogo}
+                    resizeMode="contain"
                 />
             </View>
             <Text style={styles.brandName}>Unhappy Coder</Text>
@@ -186,17 +185,17 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
     },
     iconGlow: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: theme.dark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+        width: 320,
+        height: 110,
+        borderRadius: 0,
+        backgroundColor: 'transparent',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 20,
     },
     iconLogo: {
-        width: 44,
-        height: 44,
+        width: 300,
+        height: 82,
     },
     brandName: {
         ...Typography.logo(),

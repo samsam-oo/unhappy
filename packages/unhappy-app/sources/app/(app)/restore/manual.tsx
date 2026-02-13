@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { Keyboard, Pressable, View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
@@ -108,31 +108,37 @@ export default function Restore() {
     };
 
     return (
-        <ScrollView style={styles.scrollView}>
-            <View style={styles.container}>
-                <View style={styles.contentWrapper}>
-                    <Text style={styles.instructionText}>
-                        비밀 키를 입력해 계정을 복구하세요.
-                    </Text>
+        <ScrollView
+            style={styles.scrollView}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+        >
+            <Pressable onPress={Keyboard.dismiss}>
+                <View style={styles.container}>
+                    <View style={styles.contentWrapper}>
+                        <Text style={styles.instructionText}>
+                            비밀 키를 입력해 계정을 복구하세요.
+                        </Text>
 
-                    <TextInput
-                        style={styles.textInput}
-                        placeholder="XXXXX-XXXXX-XXXXX..."
-                        placeholderTextColor={theme.colors.input.placeholder}
-                        value={restoreKey}
-                        onChangeText={setRestoreKey}
-                        autoCapitalize="characters"
-                        autoCorrect={false}
-                        multiline={true}
-                        numberOfLines={4}
-                    />
+                        <TextInput
+                            style={styles.textInput}
+                            placeholder="XXXXX-XXXXX-XXXXX..."
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={restoreKey}
+                            onChangeText={setRestoreKey}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                            multiline={true}
+                            numberOfLines={4}
+                        />
 
-                    <RoundButton
-                        title={t('connect.restoreAccount')}
-                        action={handleRestore}
-                    />
+                        <RoundButton
+                            title={t('connect.restoreAccount')}
+                            action={handleRestore}
+                        />
+                    </View>
                 </View>
-            </View>
+            </Pressable>
         </ScrollView>
     );
 }

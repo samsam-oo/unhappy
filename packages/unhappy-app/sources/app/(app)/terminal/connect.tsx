@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Platform, View } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
@@ -7,10 +7,8 @@ import { RoundButton } from '@/components/RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { Ionicons } from '@/icons/vector-icons';
 import { ItemList } from '@/components/ItemList';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
 import { t } from '@/text';
-import { useUnistyles } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export default function TerminalConnectScreen() {
     const router = useRouter();
@@ -52,193 +50,270 @@ export default function TerminalConnectScreen() {
         router.back();
     };
 
-    // Show placeholder for mobile platforms
-    if (Platform.OS !== 'web') {
-        return (
-            <ItemList>
-                <ItemGroup>
-                    <View style={{ 
-                        alignItems: 'center',
-                        paddingVertical: 32,
-                        paddingHorizontal: 16
-                    }}>
-                        <Ionicons 
-                            name="laptop-outline" 
-                            size={64} 
-                            color={theme.colors.textSecondary} 
-                            style={{ marginBottom: 16 }} 
-                        />
-                        <Text style={{ 
-                            ...Typography.default('semiBold'), 
-                            fontSize: 18, 
-                            textAlign: 'center',
-                            marginBottom: 12 
-                        }}>
-                            {t('terminal.webBrowserRequired')}
-                        </Text>
-                        <Text style={{ 
-                            ...Typography.default(), 
-                            fontSize: 14, 
-                            color: theme.colors.textSecondary, 
-                            textAlign: 'center',
-                            lineHeight: 20 
-                        }}>
-                            {t('terminal.webBrowserRequiredDescription')}
-                        </Text>
-                    </View>
-                </ItemGroup>
-            </ItemList>
-        );
-    }
+    const keyPreview = publicKey
+        ? `${publicKey.slice(0, 16)}...${publicKey.slice(-10)}`
+        : '';
 
-    // Show loading state while processing hash
-    if (!hashProcessed) {
-        return (
-            <ItemList>
-                <ItemGroup>
-                    <View style={{ 
-                        alignItems: 'center',
-                        paddingVertical: 32,
-                        paddingHorizontal: 16
-                    }}>
-                        <Text style={{ ...Typography.default(), color: theme.colors.textSecondary }}>
-                            {t('terminal.processingConnection')}
-                        </Text>
-                    </View>
-                </ItemGroup>
-            </ItemList>
-        );
-    }
-
-    // Show error if no key found
-    if (!publicKey) {
-        return (
-            <ItemList>
-                <ItemGroup>
-                    <View style={{ 
-                        alignItems: 'center',
-                        paddingVertical: 32,
-                        paddingHorizontal: 16
-                    }}>
-                        <Ionicons 
-                            name="warning-outline" 
-                            size={48} 
-                            color={theme.colors.textDestructive} 
-                            style={{ marginBottom: 16 }} 
-                        />
-                        <Text style={{ 
-                            ...Typography.default('semiBold'), 
-                            fontSize: 16, 
-                            color: theme.colors.textDestructive,
-                            textAlign: 'center',
-                            marginBottom: 8 
-                        }}>
-                            {t('terminal.invalidConnectionLink')}
-                        </Text>
-                        <Text style={{ 
-                            ...Typography.default(), 
-                            fontSize: 14, 
-                            color: theme.colors.textSecondary, 
-                            textAlign: 'center',
-                            lineHeight: 20 
-                        }}>
-                            {t('terminal.invalidConnectionLinkDescription')}
-                        </Text>
-                    </View>
-                </ItemGroup>
-            </ItemList>
-        );
-    }
-
-    // Show confirmation screen for valid connection
-    return (
+    const renderFrame = (content: React.ReactNode) => (
         <ItemList>
-            {/* Connection Request Header */}
-            <ItemGroup>
-                <View style={{ 
-                    alignItems: 'center',
-                    paddingVertical: 24,
-                    paddingHorizontal: 16
-                }}>
-                    <Ionicons 
-                        name="terminal-outline" 
-                        size={48} 
-                        color={theme.colors.radio.active} 
-                        style={{ marginBottom: 16 }} 
-                    />
-                    <Text style={{ 
-                        ...Typography.default('semiBold'), 
-                        fontSize: 20, 
-                        textAlign: 'center',
-                        marginBottom: 12,
-                        color: theme.colors.text,
-                    }}>
-                        {t('terminal.connectTerminal')}
-                    </Text>
-                    <Text style={{ 
-                        ...Typography.default(), 
-                        fontSize: 14, 
-                        color: theme.colors.textSecondary, 
-                        textAlign: 'center',
-                        lineHeight: 20 
-                    }}>
-                        {t('terminal.terminalRequestDescription')}
-                    </Text>
+            <View style={styles.page}>
+                <View pointerEvents="none" style={[styles.ambientGlow, styles.ambientGlowTop]} />
+                <View pointerEvents="none" style={[styles.ambientGlow, styles.ambientGlowBottom]} />
+                <View style={[styles.card, Platform.OS === 'web' && styles.cardWeb]}>
+                    {content}
                 </View>
-            </ItemGroup>
-
-            {/* Connection Details */}
-            <ItemGroup title={t('terminal.connectionDetails')}>
-                <Item
-                    title={t('terminal.publicKey')}
-                    detail={`${publicKey.substring(0, 12)}...`}
-                    icon={<Ionicons name="finger-print-outline" size={29} color={theme.colors.radio.active} />}
-                    showChevron={false}
-                />
-                <Item
-                    title={t('terminal.encryption')}
-                    detail={t('terminal.endToEndEncrypted')}
-                    icon={<Ionicons name="lock-closed-outline" size={29} color={theme.colors.success} />}
-                    showChevron={false}
-                />
-            </ItemGroup>
-
-            {/* Action Buttons */}
-            <ItemGroup>
-                <View style={{ 
-                    paddingHorizontal: 16,
-                    paddingVertical: 16,
-                    gap: 12 
-                }}>
-                    <RoundButton
-                        title={isLoading ? t('terminal.connecting') : t('terminal.acceptConnection')}
-                        onPress={handleConnect}
-                        size="large"
-                        disabled={isLoading}
-                        loading={isLoading}
-                    />
-                    <RoundButton
-                        title={t('terminal.reject')}
-                        onPress={handleReject}
-                        size="large"
-                        display="inverted"
-                        disabled={isLoading}
-                    />
-                </View>
-            </ItemGroup>
-
-            {/* Security Notice */}
-            <ItemGroup 
-                title={t('terminal.security')}
-                footer={t('terminal.securityFooter')}
-            >
-                <Item
-                    title={t('terminal.clientSideProcessing')}
-                    subtitle={t('terminal.linkProcessedLocally')}
-                    icon={<Ionicons name="shield-checkmark-outline" size={29} color={theme.colors.success} />}
-                    showChevron={false}
-                />
-            </ItemGroup>
+            </View>
         </ItemList>
     );
+
+    const renderHeader = (
+        iconName: React.ComponentProps<typeof Ionicons>['name'],
+        iconColor: string,
+        title: string,
+        description: string
+    ) => (
+        <View style={styles.header}>
+            <View style={[styles.iconBadge, { backgroundColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+                <Ionicons name={iconName} size={30} color={iconColor} />
+            </View>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.description}>{description}</Text>
+        </View>
+    );
+
+    if (Platform.OS !== 'web') {
+        return renderFrame(
+            <>
+                {renderHeader(
+                    'laptop-outline',
+                    theme.colors.textSecondary,
+                    t('terminal.webBrowserRequired'),
+                    t('terminal.webBrowserRequiredDescription')
+                )}
+            </>
+        );
+    }
+
+    if (!hashProcessed) {
+        return renderFrame(
+            <>
+                {renderHeader(
+                    'hourglass-outline',
+                    theme.colors.radio.active,
+                    t('terminal.connectTerminal'),
+                    t('terminal.processingConnection')
+                )}
+            </>
+        );
+    }
+
+    if (!publicKey) {
+        return renderFrame(
+            <>
+                {renderHeader(
+                    'warning-outline',
+                    theme.colors.textDestructive,
+                    t('terminal.invalidConnectionLink'),
+                    t('terminal.invalidConnectionLinkDescription')
+                )}
+                <RoundButton
+                    title={t('terminal.reject')}
+                    onPress={handleReject}
+                    size="large"
+                    display="inverted"
+                />
+            </>
+        );
+    }
+
+    return renderFrame(
+        <>
+            {renderHeader(
+                'terminal-outline',
+                theme.colors.radio.active,
+                t('terminal.connectTerminal'),
+                t('terminal.terminalRequestDescription')
+            )}
+
+            <View style={styles.infoSection}>
+                <Text style={styles.sectionLabel}>{t('terminal.connectionDetails')}</Text>
+                <View style={styles.infoRow}>
+                    <Ionicons name="finger-print-outline" size={20} color={theme.colors.radio.active} />
+                    <View style={styles.infoText}>
+                        <Text style={styles.infoTitle}>{t('terminal.publicKey')}</Text>
+                        <Text style={styles.infoValue}>{keyPreview}</Text>
+                    </View>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.infoRow}>
+                    <Ionicons name="lock-closed-outline" size={20} color={theme.colors.success} />
+                    <View style={styles.infoText}>
+                        <Text style={styles.infoTitle}>{t('terminal.encryption')}</Text>
+                        <Text style={styles.infoValue}>{t('terminal.endToEndEncrypted')}</Text>
+                    </View>
+                </View>
+            </View>
+
+            <View style={styles.securityNote}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.success} />
+                <View style={styles.securityText}>
+                    <Text style={styles.securityTitle}>{t('terminal.clientSideProcessing')}</Text>
+                    <Text style={styles.securitySubtitle}>{t('terminal.linkProcessedLocally')}</Text>
+                </View>
+            </View>
+
+            <View style={styles.actionGroup}>
+                <RoundButton
+                    title={isLoading ? t('terminal.connecting') : t('terminal.acceptConnection')}
+                    onPress={handleConnect}
+                    size="large"
+                    disabled={isLoading}
+                    loading={isLoading}
+                />
+                <RoundButton
+                    title={t('terminal.reject')}
+                    onPress={handleReject}
+                    size="large"
+                    display="inverted"
+                    disabled={isLoading}
+                />
+            </View>
+
+            <Text style={styles.footerText}>{t('terminal.securityFooter')}</Text>
+        </>
+    );
 }
+
+const styles = StyleSheet.create((theme) => ({
+    page: {
+        flex: 1,
+        justifyContent: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 24,
+    },
+    ambientGlow: {
+        position: 'absolute',
+        width: 220,
+        height: 220,
+        borderRadius: 110,
+        opacity: 0.35,
+    },
+    ambientGlowTop: {
+        top: -90,
+        right: -60,
+        backgroundColor: theme.dark ? 'rgba(148, 163, 184, 0.12)' : 'rgba(15, 23, 42, 0.05)',
+    },
+    ambientGlowBottom: {
+        bottom: -95,
+        left: -70,
+        backgroundColor: theme.dark ? 'rgba(100, 116, 139, 0.10)' : 'rgba(15, 23, 42, 0.04)',
+    },
+    card: {
+        gap: 16,
+        padding: 22,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+        backgroundColor: theme.dark ? 'rgba(15, 18, 24, 0.90)' : 'rgba(255, 255, 255, 0.94)',
+    },
+    cardWeb: {
+        width: '100%',
+        maxWidth: 620,
+        alignSelf: 'center',
+    },
+    header: {
+        alignItems: 'center',
+        gap: 10,
+    },
+    iconBadge: {
+        width: 56,
+        height: 56,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    title: {
+        ...Typography.default('semiBold'),
+        fontSize: 22,
+        color: theme.colors.text,
+        textAlign: 'center',
+    },
+    description: {
+        ...Typography.default(),
+        fontSize: 14,
+        lineHeight: 21,
+        textAlign: 'center',
+        color: theme.colors.textSecondary,
+        maxWidth: 480,
+    },
+    infoSection: {
+        borderRadius: 14,
+        padding: 14,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+        backgroundColor: theme.dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.015)',
+    },
+    sectionLabel: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        letterSpacing: 0.2,
+        color: theme.colors.textSecondary,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    infoText: {
+        flex: 1,
+        gap: 3,
+    },
+    infoTitle: {
+        ...Typography.default(),
+        fontSize: 13,
+        color: theme.colors.textSecondary,
+    },
+    infoValue: {
+        ...Typography.default('semiBold'),
+        fontSize: 14,
+        color: theme.colors.text,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: theme.dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+    },
+    securityNote: {
+        flexDirection: 'row',
+        gap: 10,
+        alignItems: 'flex-start',
+        padding: 14,
+        borderRadius: 14,
+        backgroundColor: theme.dark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.06)',
+    },
+    securityText: {
+        flex: 1,
+        gap: 2,
+    },
+    securityTitle: {
+        ...Typography.default('semiBold'),
+        fontSize: 13,
+        color: theme.colors.text,
+    },
+    securitySubtitle: {
+        ...Typography.default(),
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.textSecondary,
+    },
+    actionGroup: {
+        gap: 10,
+    },
+    footerText: {
+        ...Typography.default(),
+        fontSize: 12,
+        lineHeight: 18,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+    },
+}));

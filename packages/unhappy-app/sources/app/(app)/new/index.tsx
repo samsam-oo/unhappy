@@ -32,7 +32,7 @@ import Constants from 'expo-constants';
 import { randomUUID } from 'expo-crypto';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Keyboard, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -1275,7 +1275,7 @@ function NewSessionWizard() {
         const includeCLI = selectedMachineId && cliAvailability.timestamp > 0;
 
         return {
-            text: isOnline ? t('common.online') : t('common.offline'),
+            text: isOnline ? t('status.online') : t('status.offline'),
             color: isOnline ? theme.colors.success : theme.colors.textDestructive,
             dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
             isPulsing: isOnline,
@@ -1384,13 +1384,14 @@ function NewSessionWizard() {
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
                 >
-                <View style={[
-                    { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
-                ]}>
-                    <View style={[
-                        { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
-                    ]}>
-                        <View ref={profileSectionRef} style={styles.wizardContainer}>
+                    <Pressable onPress={Keyboard.dismiss}>
+                        <View style={[
+                            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+                        ]}>
+                            <View style={[
+                                { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
+                            ]}>
+                                <View ref={profileSectionRef} style={styles.wizardContainer}>
                             {/* CLI Detection Status Banner - shows after detection completes */}
                             {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
                                 <View style={{
@@ -1860,7 +1861,7 @@ function NewSessionWizard() {
                                     getItemStatus: (machine) => {
                                         const offline = !isMachineOnline(machine);
                                         return {
-                                            text: offline ? t('common.offline') : t('common.online'),
+                                            text: offline ? t('status.offline') : t('status.online'),
                                             color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                                             dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                                             isPulsing: !offline,
@@ -2148,9 +2149,10 @@ function NewSessionWizard() {
                                     );
                                 })}
                             </ItemGroup>
+                                </View>
+                            </View>
                         </View>
-                    </View>
-                </View>
+                    </Pressable>
                 </ScrollView>
 
                 {/* Section 5: AgentInput - Sticky at bottom */}

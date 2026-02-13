@@ -15,7 +15,7 @@ import { t } from '@/text';
 import { useAuth } from '@/auth/AuthContext';
 import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, TextInput, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -188,63 +188,69 @@ export default function ServerConfigScreen() {
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ItemList style={styles.itemListContainer}>
-          <ItemGroup footer={t('server.advancedFeatureFooter')}>
-            <View style={styles.contentContainer}>
-              <Text style={styles.labelText}>
-                {t('server.customServerUrlLabel').toUpperCase()}
-              </Text>
-              <TextInput
-                style={[
-                  styles.textInput,
-                  isValidating && styles.textInputValidating,
-                ]}
-                value={inputUrl}
-                onChangeText={(text) => {
-                  setInputUrl(text);
-                  setError(null);
-                }}
-                placeholder={t('common.urlPlaceholder')}
-                placeholderTextColor={theme.colors.input.placeholder}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                editable={!isValidating}
-              />
-              {error && <Text style={styles.errorText}>{error}</Text>}
-              {isValidating && (
-                <Text style={styles.validatingText}>
-                  {t('server.validatingServer')}
+        <ItemList
+          style={styles.itemListContainer}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+        >
+          <Pressable onPress={Keyboard.dismiss}>
+            <ItemGroup footer={t('server.advancedFeatureFooter')}>
+              <View style={styles.contentContainer}>
+                <Text style={styles.labelText}>
+                  {t('server.customServerUrlLabel').toUpperCase()}
                 </Text>
-              )}
-              <View style={styles.buttonRow}>
-                <View style={styles.buttonWrapper}>
-                  <RoundButton
-                    title={t('server.resetToDefault')}
-                    size="normal"
-                    display="inverted"
-                    onPress={handleReset}
-                    disabled={!serverInfo.isCustom}
-                  />
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    isValidating && styles.textInputValidating,
+                  ]}
+                  value={inputUrl}
+                  onChangeText={(text) => {
+                    setInputUrl(text);
+                    setError(null);
+                  }}
+                  placeholder={t('common.urlPlaceholder')}
+                  placeholderTextColor={theme.colors.input.placeholder}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  editable={!isValidating}
+                />
+                {error && <Text style={styles.errorText}>{error}</Text>}
+                {isValidating && (
+                  <Text style={styles.validatingText}>
+                    {t('server.validatingServer')}
+                  </Text>
+                )}
+                <View style={styles.buttonRow}>
+                  <View style={styles.buttonWrapper}>
+                    <RoundButton
+                      title={t('server.resetToDefault')}
+                      size="normal"
+                      display="inverted"
+                      onPress={handleReset}
+                      disabled={!serverInfo.isCustom}
+                    />
+                  </View>
+                  <View style={styles.buttonWrapper}>
+                    <RoundButton
+                      title={
+                        isValidating ? t('server.validating') : t('common.save')
+                      }
+                      size="normal"
+                      action={handleSave}
+                      disabled={isValidating}
+                    />
+                  </View>
                 </View>
-                <View style={styles.buttonWrapper}>
-                  <RoundButton
-                    title={
-                      isValidating ? t('server.validating') : t('common.save')
-                    }
-                    size="normal"
-                    action={handleSave}
-                    disabled={isValidating}
-                  />
-                </View>
+                {serverInfo.isCustom && (
+                  <Text style={styles.statusText}>
+                    {t('server.currentlyUsingCustomServer')}
+                  </Text>
+                )}
               </View>
-              {serverInfo.isCustom && (
-                <Text style={styles.statusText}>
-                  {t('server.currentlyUsingCustomServer')}
-                </Text>
-              )}
-            </View>
-          </ItemGroup>
+            </ItemGroup>
+          </Pressable>
         </ItemList>
       </KeyboardAvoidingView>
     </>

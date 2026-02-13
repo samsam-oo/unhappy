@@ -17,7 +17,7 @@ import { formatPathRelativeToProjectBase, getSessionName, getSessionSubtitle } f
 import { isAbsolutePathLike, joinBasePath } from '@/utils/basePathUtils';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, RefreshControl, Text, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, Pressable, RefreshControl, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const styles = StyleSheet.create((theme) => ({
@@ -121,31 +121,37 @@ export default function MachineDetailScreen() {
         }
 
         // Use machine online status as proxy for daemon status
-        return isMachineOnline(machine) ? 'likely alive' : 'stopped';
+        return isMachineOnline(machine) ? 'likely_alive' : 'stopped';
     }, [machine]);
+
+    const daemonStatusLabel = useMemo(() => {
+        if (daemonStatus === 'likely_alive') return t('machine.daemonLikelyAlive');
+        if (daemonStatus === 'stopped') return t('status.offline');
+        return t('status.unknown');
+    }, [daemonStatus]);
 
     const handleStopDaemon = async () => {
         // Show confirmation modal using alert with buttons
         Modal.alert(
-            '데몬을 중지할까요?',
-            '데몬을 다시 시작할 때까지 이 컴퓨터의 해당 머신에서 새 세션을 시작할 수 없습니다. 현재 세션은 그대로 유지됩니다.',
+            t('machine.stopDaemonConfirmTitle'),
+            t('machine.stopDaemonConfirmDescription'),
             [
                 {
-                    text: '취소',
+                    text: t('common.cancel'),
                     style: 'cancel'
                 },
                 {
-                    text: '데몬 중지',
+                    text: t('machine.stopDaemon'),
                     style: 'destructive',
                     onPress: async () => {
                         setIsStoppingDaemon(true);
                         try {
                             const result = await machineStopDaemon(machineId!);
-                            Modal.alert('데몬이 중지되었습니다', result.message);
+                            Modal.alert(t('machine.daemonStopped'), result.message);
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
                         } catch (error) {
-                            Modal.alert(t('common.error'), '데몬을 중지하지 못했습니다. 실행되지 않았을 수 있습니다.');
+                            Modal.alert(t('common.error'), t('machine.stopDaemonFailed'));
                         } finally {
                             setIsStoppingDaemon(false);
                         }
@@ -170,11 +176,11 @@ export default function MachineDetailScreen() {
         if (!machine || !machineId) return;
 
         const newDisplayName = await Modal.prompt(
-            '머신 이름 변경',
-            '이 머신의 사용자 지정 이름을 입력하세요. 비워 두면 기본 호스트 이름을 사용합니다.',
+            t('machine.renameMachineTitle'),
+            t('machine.renameMachineDescription'),
             {
                 defaultValue: machine.metadata?.displayName || '',
-                placeholder: machine.metadata?.host || '머신 이름 입력',
+                placeholder: machine.metadata?.host || t('machine.renameMachinePlaceholder'),
                 cancelText: t('common.cancel'),
                 confirmText: t('common.rename')
             }
@@ -194,11 +200,11 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                Modal.alert(t('common.success'), '머신 이름이 변경되었습니다');
+                Modal.alert(t('common.success'), t('machine.renameMachineSuccess'));
             } catch (error) {
                 Modal.alert(
-                    '오류',
-                    error instanceof Error ? error.message : '머신 이름 변경에 실패했습니다'
+                    t('common.error'),
+                    error instanceof Error ? error.message : t('machine.renameMachineFailed')
                 );
                 // Refresh to get latest state
                 await sync.refreshMachines();
@@ -234,7 +240,11 @@ export default function MachineDetailScreen() {
                     navigateToSession(result.sessionId);
                     break;
                 case 'requestToApproveDirectoryCreation': {
-                    const approved = await Modal.confirm('디렉터리 생성?', `디렉터리 '${result.directory}'가 존재하지 않습니다. 생성할까요?`, { cancelText: t('common.cancel'), confirmText: t('common.create') });
+                    const approved = await Modal.confirm(
+                        t('machine.createDirectoryConfirmTitle'),
+                        t('machine.createDirectoryConfirmDescription', { directory: result.directory }),
+                        { cancelText: t('common.cancel'), confirmText: t('common.create') }
+                    );
                     if (approved) {
                         await handleStartSession(true);
                     }
@@ -245,7 +255,7 @@ export default function MachineDetailScreen() {
                     break;
             }
         } catch (error) {
-            let errorMessage = '세션 시작에 실패했습니다. 대상 머신에서 데몬이 실행 중인지 확인하세요.';
+            let errorMessage = t('machine.startSessionFailed');
             if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
                 errorMessage = error.message;
             }
@@ -256,9 +266,9 @@ export default function MachineDetailScreen() {
     };
 
     const pastUsedRelativePath = useCallback((session: Session) => {
-        if (!session.metadata) return '알 수 없는 경로';
+        if (!session.metadata) return t('status.unknown');
         return formatPathRelativeToProjectBase(session.metadata.path, session.metadata.machineId, session.metadata.homeDir);
-    }, []);
+    }, [t]);
 
     if (!machine) {
         return (
@@ -272,7 +282,7 @@ export default function MachineDetailScreen() {
                 />
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text style={[Typography.default(), { fontSize: 16, color: '#666' }]}>
-                        머신을 찾을 수 없습니다
+                        {t('machine.machineNotFound')}
                     </Text>
                 </View>
             </>
@@ -280,7 +290,7 @@ export default function MachineDetailScreen() {
     }
 
     const metadata = machine.metadata;
-    const machineName = metadata?.displayName || metadata?.host || '알 수 없는 머신';
+    const machineName = metadata?.displayName || metadata?.host || t('machine.unknownMachine');
 
     const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
     const currentProjectBasePath = (projectBasePaths.find(p => p.machineId === machineId)?.path || '').trim();
@@ -348,98 +358,100 @@ export default function MachineDetailScreen() {
                     />
                 }
                 keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
             >
-                {/* Launch section */}
-                {machine && (
-                    <>
-                        {!isMachineOnline(machine) && (
-                            <ItemGroup>
-                                <Item
-                                    title={t('machine.offlineUnableToSpawn')}
-                                    subtitle={t('machine.offlineHelp')}
-                                    subtitleLines={0}
-                                    showChevron={false}
-                                />
-                            </ItemGroup>
-                        )}
-                        <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
-                        <View style={{ opacity: isMachineOnline(machine) ? 1 : 0.5 }}>
-                            <View style={styles.pathInputContainer}>
-                                <View style={[styles.pathInput, { paddingVertical: 8 }]}>
-                                    <MultiTextInput
-                                        ref={inputRef}
-                                        value={customPath}
-                                        onChangeText={setCustomPath}
-                                        placeholder={'사용자 지정 경로 입력'}
-                                        maxHeight={76}
-                                        paddingTop={8}
-                                        paddingBottom={8}
-                                        paddingRight={48}
-                                    />
-                                    <Pressable
-                                        onPress={() => handleStartSession()}
-                                        disabled={spawnButtonDisabled}
-                                        style={[
-                                            styles.inlineSendButton,
-                                            spawnButtonDisabled ? styles.inlineSendInactive : styles.inlineSendActive
-                                        ]}
-                                    >
-                                        <Ionicons
-                                            name="play"
-                                            size={16}
-                                            color={spawnButtonDisabled ? theme.colors.textSecondary : theme.colors.button.primary.tint}
-                                            style={{ marginLeft: 1 }}
-                                        />
-                                    </Pressable>
-                                </View>
-                            </View>
-                            <View style={{ paddingTop: 4 }} />
-                            {pathsToShow.map((path, index) => {
-                                const display = formatPathRelativeToProjectBase(path, machineId, machine.metadata?.homeDir);
-                                const isSelected = customPath.trim() === display;
-                                const isLast = index === pathsToShow.length - 1;
-                                const hideDivider = isLast && pathsToShow.length <= 5;
-                                return (
+                <Pressable onPress={Keyboard.dismiss}>
+                    {/* Launch section */}
+                    {machine && (
+                        <>
+                            {!isMachineOnline(machine) && (
+                                <ItemGroup>
                                     <Item
-                                        key={path}
-                                        title={display}
-                                        leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
-                                        onPress={isMachineOnline(machine) ? () => {
-                                            setCustomPath(display);
-                                            setTimeout(() => inputRef.current?.focus(), 50);
-                                        } : undefined}
-                                        disabled={!isMachineOnline(machine)}
-                                        selected={isSelected}
+                                        title={t('machine.offlineUnableToSpawn')}
+                                        subtitle={t('machine.offlineHelp')}
+                                        subtitleLines={0}
                                         showChevron={false}
-                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                        showDivider={!hideDivider}
                                     />
-                                );
-                            })}
-                            {recentPaths.length > 5 && (
-                                <Item
-                                    title={showAllPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: recentPaths.length })}
-                                    onPress={() => setShowAllPaths(!showAllPaths)}
-                                    showChevron={false}
-                                    showDivider={false}
-                                    titleStyle={{
-                                        textAlign: 'center',
-                                        color: (theme as any).dark ? theme.colors.button.primary.tint : theme.colors.button.primary.background
-                                    }}
-                                />
+                                </ItemGroup>
                             )}
-                        </View>
-                        </ItemGroup>
-                    </>
-                )}
+                            <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
+                            <View style={{ opacity: isMachineOnline(machine) ? 1 : 0.5 }}>
+                                <View style={styles.pathInputContainer}>
+                                    <View style={[styles.pathInput, { paddingVertical: 8 }]}>
+                                        <MultiTextInput
+                                            ref={inputRef}
+                                            value={customPath}
+                                            onChangeText={setCustomPath}
+                                            placeholder={t('machine.customPathPlaceholder')}
+                                            maxHeight={76}
+                                            paddingTop={8}
+                                            paddingBottom={8}
+                                            paddingRight={48}
+                                        />
+                                        <Pressable
+                                            onPress={() => handleStartSession()}
+                                            disabled={spawnButtonDisabled}
+                                            style={[
+                                                styles.inlineSendButton,
+                                                spawnButtonDisabled ? styles.inlineSendInactive : styles.inlineSendActive
+                                            ]}
+                                        >
+                                            <Ionicons
+                                                name="play"
+                                                size={16}
+                                                color={spawnButtonDisabled ? theme.colors.textSecondary : theme.colors.button.primary.tint}
+                                                style={{ marginLeft: 1 }}
+                                            />
+                                        </Pressable>
+                                    </View>
+                                </View>
+                                <View style={{ paddingTop: 4 }} />
+                                {pathsToShow.map((path, index) => {
+                                    const display = formatPathRelativeToProjectBase(path, machineId, machine.metadata?.homeDir);
+                                    const isSelected = customPath.trim() === display;
+                                    const isLast = index === pathsToShow.length - 1;
+                                    const hideDivider = isLast && pathsToShow.length <= 5;
+                                    return (
+                                        <Item
+                                            key={path}
+                                            title={display}
+                                            leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                            onPress={isMachineOnline(machine) ? () => {
+                                                setCustomPath(display);
+                                                setTimeout(() => inputRef.current?.focus(), 50);
+                                            } : undefined}
+                                            disabled={!isMachineOnline(machine)}
+                                            selected={isSelected}
+                                            showChevron={false}
+                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                            showDivider={!hideDivider}
+                                        />
+                                    );
+                                })}
+                                {recentPaths.length > 5 && (
+                                    <Item
+                                        title={showAllPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: recentPaths.length })}
+                                        onPress={() => setShowAllPaths(!showAllPaths)}
+                                        showChevron={false}
+                                        showDivider={false}
+                                        titleStyle={{
+                                            textAlign: 'center',
+                                            color: (theme as any).dark ? theme.colors.button.primary.tint : theme.colors.button.primary.background
+                                        }}
+                                    />
+                                )}
+                            </View>
+                            </ItemGroup>
+                        </>
+                    )}
 
                 {/* Daemon */}
-                <ItemGroup title={t('machine.daemon')}>
+                    <ItemGroup title={t('machine.daemon')}>
                         <Item
                             title={t('machine.status')}
-                            detail={daemonStatus}
+                            detail={daemonStatusLabel}
                             detailStyle={{
-                                color: daemonStatus === 'likely alive' ? '#34C759' : '#FF9500'
+                                color: daemonStatus === 'likely_alive' ? '#34C759' : '#FF9500'
                             }}
                             showChevron={false}
                         />
@@ -497,23 +509,22 @@ export default function MachineDetailScreen() {
                             title={t('machine.daemonStateVersion')}
                             subtitle={String(machine.daemonStateVersion)}
                         />
-                </ItemGroup>
+                    </ItemGroup>
 
-                {/* '프로젝트' */}
-                <ItemGroup title={'프로젝트'}>
+                    <ItemGroup title={t('machine.projectSection')}>
                     <Item
                         title={t('finishSession.basePath')}
-                        subtitle={effectiveProjectBasePath ? effectiveProjectBasePath : '설정되지 않음'}
+                        subtitle={effectiveProjectBasePath ? effectiveProjectBasePath : t('machine.notConfigured')}
                         subtitleLines={0}
                         showChevron={false}
                         onPress={async () => {
                             const homeDir = machine.metadata?.homeDir;
                             const input = await Modal.prompt(
                                 t('finishSession.basePath'),
-                                '프로젝트 경로 선택 시 기본 시작 폴더로 사용됩니다.',
+                                t('machine.basePathDescription'),
                                 {
                                     defaultValue: currentProjectBasePath || (homeDir || ''),
-                                    placeholder: homeDir || '예: ~',
+                                    placeholder: homeDir || t('machine.exampleHomePath'),
                                     cancelText: t('common.cancel'),
                                     confirmText: t('common.save'),
                                 }
@@ -531,13 +542,13 @@ export default function MachineDetailScreen() {
                     />
                     {currentProjectBasePath ? (
                         <Item
-                            title="기본 저장소 경로 초기화"
+                            title={t('machine.resetBasePath')}
                             titleStyle={{ color: theme.colors.textDestructive }}
                             showChevron={false}
                             onPress={async () => {
                                 const ok = await Modal.confirm(
-                                    '기본 저장소 경로 초기화?',
-                                    '이 작업은 프로젝트 탐색 기본 설정을 홈 디렉터리로 되돌립니다.',
+                                    t('machine.resetBasePathConfirmTitle'),
+                                    t('machine.resetBasePathConfirmDescription'),
                                     { cancelText: t('common.cancel'), confirmText: t('common.reset'), destructive: true }
                                 );
                                 if (!ok) return;
@@ -545,25 +556,25 @@ export default function MachineDetailScreen() {
                             }}
                         />
                     ) : null}
-                </ItemGroup>
+                    </ItemGroup>
 
                 {/* Previous Sessions (debug view) */}
-                {previousSessions.length > 0 && (
-                    <ItemGroup title={'이전 세션 (최대 5개)'}>
-                        {previousSessions.map(session => (
-                            <Item
-                                key={session.id}
-                                title={getSessionName(session)}
-                                subtitle={getSessionSubtitle(session)}
-                                onPress={() => navigateToSession(session.id)}
-                                rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
-                            />
-                        ))}
-                    </ItemGroup>
-                )}
+                    {previousSessions.length > 0 && (
+                        <ItemGroup title={t('machine.previousSessionsMax', { count: 5 })}>
+                            {previousSessions.map(session => (
+                                <Item
+                                    key={session.id}
+                                    title={getSessionName(session)}
+                                    subtitle={getSessionSubtitle(session)}
+                                    onPress={() => navigateToSession(session.id)}
+                                    rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
+                                />
+                            ))}
+                        </ItemGroup>
+                    )}
 
                 {/* Machine */}
-                <ItemGroup title={t('machine.machineGroup')}>
+                    <ItemGroup title={t('machine.machineGroup')}>
                         <Item
                             title={t('machine.host')}
                             subtitle={metadata?.host || machineId}
@@ -606,7 +617,8 @@ export default function MachineDetailScreen() {
                             title={t('machine.metadataVersion')}
                             subtitle={String(machine.metadataVersion)}
                         />
-                </ItemGroup>
+                    </ItemGroup>
+                </Pressable>
             </ItemList>
         </>
     );

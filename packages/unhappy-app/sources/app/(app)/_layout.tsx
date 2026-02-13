@@ -1,13 +1,13 @@
-import { Stack } from 'expo-router';
-import 'react-native-reanimated';
-import * as React from 'react';
-import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
-import { Platform, TouchableOpacity, Text } from 'react-native';
-import { isRunningOnMac } from '@/utils/platform';
-import { useUnistyles } from 'react-native-unistyles';
-import { t } from '@/text';
+import { Typography } from '@/constants/Typography';
 import { ENABLE_INBOX } from '@/featureFlags';
+import { t } from '@/text';
+import { isRunningOnMac } from '@/utils/platform';
+import { Stack } from 'expo-router';
+import * as React from 'react';
+import { Platform, Text, TouchableOpacity } from 'react-native';
+import 'react-native-reanimated';
+import { useUnistyles } from 'react-native-unistyles';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -322,7 +322,7 @@ export default function RootLayout() {
                 name="settings/connect/claude"
                 options={{
                     headerShown: true,
-                    headerTitle: '클로드 연결',
+                    headerTitle: 'Claude 연결',
                     headerBackTitle: t('common.back'),
                     // headerStyle: {
                     //     backgroundColor: Platform.OS === 'web' ? theme.colors.header.background : '#1F1E1C',

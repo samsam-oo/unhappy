@@ -1,10 +1,9 @@
 import React from 'react';
-import { View, Text, Platform } from 'react-native';
-import { Ionicons } from '@/icons/vector-icons';
+import { View, Text, Platform, Image } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { useSessionStatus, formatPathRelativeToProjectBase } from '@/utils/sessionUtils';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -16,6 +15,8 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     iconContainer: {
         marginBottom: 10,
+        width: 168,
+        height: 52,
     },
     hostText: {
         fontSize: 16,
@@ -51,20 +52,6 @@ interface EmptyMessagesProps {
     session: Session;
 }
 
-function getOSIcon(os?: string): keyof typeof Ionicons.glyphMap {
-    if (!os) return 'hardware-chip-outline';
-    
-    const osLower = os.toLowerCase();
-    if (osLower.includes('darwin') || osLower.includes('mac')) {
-        return 'laptop-outline';
-    } else if (osLower.includes('win')) {
-        return 'desktop-outline';
-    } else if (osLower.includes('linux')) {
-        return 'terminal-outline';
-    }
-    return 'hardware-chip-outline';
-}
-
 function formatRelativeTime(timestamp: number): string {
     const now = Date.now();
     const diffMs = now - timestamp;
@@ -84,19 +71,16 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export function EmptyMessages({ session }: EmptyMessagesProps) {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
-    const osIcon = getOSIcon(session.metadata?.os);
     const sessionStatus = useSessionStatus(session);
     const startedTime = formatRelativeTime(session.createdAt);
     
     return (
         <View style={styles.container}>
-            <Ionicons 
-                name={osIcon}
-                size={72} 
-                color={theme.colors.textSecondary}
+            <Image
+                source={require('@/assets/images/logotype.png')}
                 style={styles.iconContainer}
+                resizeMode="contain"
             />
             
             {session.metadata?.host && (

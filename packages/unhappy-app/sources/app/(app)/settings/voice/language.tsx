@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { View, TextInput, FlatList } from 'react-native';
-import { Ionicons } from '@/icons/vector-icons';
+import { FlatList, Keyboard, Pressable, TextInput, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -15,6 +15,7 @@ export default function LanguageSelectionScreen() {
     const router = useRouter();
     const [voiceAssistantLanguage, setVoiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [searchQuery, setSearchQuery] = useState('');
+    const iconColor = theme.dark ? 'rgba(203,213,225,0.86)' : 'rgba(71,85,105,0.78)';
 
     // Filter languages based on search query
     const filteredLanguages = useMemo(() => {
@@ -36,79 +37,85 @@ export default function LanguageSelectionScreen() {
     };
 
     return (
-        <ItemList style={{ paddingTop: 0 }}>
-            {/* Search Header */}
-            <View style={{
-                backgroundColor: theme.colors.surface,
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.divider
-            }}>
+        <ItemList
+            style={{ paddingTop: 0 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+        >
+            <Pressable onPress={Keyboard.dismiss}>
+                {/* Search Header */}
                 <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: theme.colors.input.background,
-                    borderRadius: 10,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
+                    backgroundColor: theme.colors.surface,
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderBottomWidth: 1,
+                    borderBottomColor: theme.colors.divider
                 }}>
-                    <Ionicons 
-                        name="search-outline" 
-                        size={20} 
-                        color={theme.colors.textSecondary} 
-                        style={{ marginRight: 8 }}
-                    />
-                    <TextInput
-                        style={{
-                            flex: 1,
-                            fontSize: 16,
-                            color: theme.colors.input.text,
-                        }}
-                        placeholder={t('settingsVoice.language.searchPlaceholder')}
-                        placeholderTextColor={theme.colors.input.placeholder}
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-                    {searchQuery.length > 0 && (
-                        <Ionicons 
-                            name="close-circle" 
-                            size={20} 
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: theme.colors.input.background,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                    }}>
+                        <Ionicons
+                            name="search-outline"
+                            size={20}
                             color={theme.colors.textSecondary}
-                            onPress={() => setSearchQuery('')}
-                            style={{ marginLeft: 8 }}
+                            style={{ marginRight: 8 }}
                         />
-                    )}
+                        <TextInput
+                            style={{
+                                flex: 1,
+                                fontSize: 16,
+                                color: theme.colors.input.text,
+                            }}
+                            placeholder={t('settingsVoice.language.searchPlaceholder')}
+                            placeholderTextColor={theme.colors.input.placeholder}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+                        {searchQuery.length > 0 && (
+                            <Ionicons
+                                name="close-circle"
+                                size={20}
+                                color={theme.colors.textSecondary}
+                                onPress={() => setSearchQuery('')}
+                                style={{ marginLeft: 8 }}
+                            />
+                        )}
+                    </View>
                 </View>
-            </View>
 
-            {/* Language List */}
-            <ItemGroup 
-                title={t('settingsVoice.language.title')} 
-                footer={t('settingsVoice.language.footer', { count: filteredLanguages.length })}
-            >
-                <FlatList
-                    data={filteredLanguages}
-                    keyExtractor={(item) => item.code || 'autodetect'}
-                    renderItem={({ item }) => (
-                        <Item
-                            title={getLanguageDisplayName(item)}
-                            subtitle={item.code || t('settingsVoice.language.autoDetect')}
-                            icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
-                            rightElement={
-                                voiceAssistantLanguage === item.code ? (
-                                    <Ionicons name="checkmark-circle" size={24} color="#007AFF" />
-                                ) : null
-                            }
-                            onPress={() => handleLanguageSelect(item.code)}
-                            showChevron={false}
-                        />
-                    )}
-                    scrollEnabled={false}
-                />
-            </ItemGroup>
+                {/* Language List */}
+                <ItemGroup
+                    title={t('settingsVoice.language.title')}
+                    footer={t('settingsVoice.language.footer', { count: filteredLanguages.length })}
+                >
+                    <FlatList
+                        data={filteredLanguages}
+                        keyExtractor={(item) => item.code || 'autodetect'}
+                        renderItem={({ item }) => (
+                            <Item
+                                title={getLanguageDisplayName(item)}
+                                subtitle={item.code || t('settingsVoice.language.autoDetect')}
+                                icon={<Ionicons name="language-outline" size={24} color={iconColor} />}
+                                rightElement={
+                                    voiceAssistantLanguage === item.code ? (
+                                        <Ionicons name="checkmark-circle" size={20} color={iconColor} />
+                                    ) : null
+                                }
+                                onPress={() => handleLanguageSelect(item.code)}
+                                showChevron={false}
+                            />
+                        )}
+                        scrollEnabled={false}
+                    />
+                </ItemGroup>
+            </Pressable>
         </ItemList>
     );
 }

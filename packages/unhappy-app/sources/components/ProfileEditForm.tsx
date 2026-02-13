@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, ViewStyle, Linking, Platform } from 'react-native';
+import { Keyboard, View, Text, Pressable, ScrollView, TextInput, ViewStyle, Linking, Platform } from 'react-native';
 import { Ionicons } from '@/icons/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
@@ -101,8 +101,10 @@ export function ProfileEditForm({
             style={[profileEditFormStyles.scrollView, containerStyle]}
             contentContainerStyle={profileEditFormStyles.scrollContent}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
         >
-            <View style={profileEditFormStyles.formContainer}>
+            <Pressable onPress={Keyboard.dismiss}>
+                <View style={profileEditFormStyles.formContainer}>
                     {/* Profile Name */}
                     <Text style={{
                         fontSize: 14,
@@ -561,6 +563,7 @@ export function ProfileEditForm({
                         )}
                     </View>
                 </View>
+            </Pressable>
         </ScrollView>
     );
 }

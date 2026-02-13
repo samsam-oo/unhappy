@@ -1,5 +1,5 @@
 import React from 'react';
-import { Ionicons } from '@/icons/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -22,6 +22,7 @@ export default function LanguageSettingsScreen() {
     const { theme } = useUnistyles();
     const [preferredLanguage, setPreferredLanguage] = useSettingMutable('preferredLanguage');
     const { reloadApp } = useUpdates();
+    const iconColor = theme.dark ? 'rgba(203,213,225,0.86)' : 'rgba(71,85,105,0.78)';
 
     // Get device locale for automatic detection
     const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
@@ -84,15 +85,15 @@ export default function LanguageSettingsScreen() {
                         subtitle={option.subtitle}
                         icon={<Ionicons 
                             name="language-outline" 
-                            size={29} 
-                            color="#007AFF" 
+                            size={24} 
+                            color={iconColor} 
                         />}
                         rightElement={
                             currentSelection === option.key ? (
                                 <Ionicons 
                                     name="checkmark" 
                                     size={20} 
-                                    color="#007AFF" 
+                                    color={iconColor} 
                                 />
                             ) : null
                         }

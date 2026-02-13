@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {
     ActivityIndicator,
+    Keyboard,
     Platform,
     Pressable,
     ScrollView,
@@ -245,55 +246,58 @@ export function CommitMessageModal(props: Props) {
                 style={styles.scroll}
                 contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
             >
-                <View style={styles.titleRow}>
-                    <Text style={[styles.title, Typography.default('semiBold')]} numberOfLines={1}>
-                        {props.title}
+                <Pressable onPress={Keyboard.dismiss}>
+                    <View style={styles.titleRow}>
+                        <Text style={[styles.title, Typography.default('semiBold')]} numberOfLines={1}>
+                            {props.title}
+                        </Text>
+                        {showAi && (
+                            <Pressable
+                                onPress={handleGenerate}
+                                disabled={generating}
+                                style={({ pressed }) => ([
+                                    styles.aiButton,
+                                    { opacity: generating ? 0.6 : 1 },
+                                    pressed && !generating && { opacity: 0.85 },
+                                ])}
+                            >
+                                {generating
+                                    ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                    : <Ionicons name="sparkles-outline" size={16} color={theme.colors.textSecondary} />
+                                }
+                                <Text style={[styles.aiText, Typography.default('semiBold')]}>AI 생성</Text>
+                            </Pressable>
+                        )}
+                    </View>
+
+                    {props.message ? (
+                        <Text style={[styles.message, Typography.default()]}>{props.message}</Text>
+                    ) : null}
+
+                    <TextInput
+                        ref={inputRef}
+                        style={[styles.input, Typography.default()]}
+                        value={value}
+                        onChangeText={setValue}
+                        placeholder={props.placeholder}
+                        placeholderTextColor={theme.colors.input.placeholder}
+                        multiline={true}
+                        scrollEnabled={true}
+                        autoCapitalize="sentences"
+                        autoCorrect={true}
+                        autoFocus={Platform.OS === 'web'}
+                        onKeyPress={handleKeyPress}
+                    />
+
+                    <Text style={[styles.hint, Typography.default()]}>
+                        {meta.lines === 1 ? '1 line' : `${meta.lines} lines`}{Platform.OS === 'web' ? '  •  Cmd/Ctrl+Enter to commit' : ''}
                     </Text>
-                    {showAi && (
-                        <Pressable
-                            onPress={handleGenerate}
-                            disabled={generating}
-                            style={({ pressed }) => ([
-                                styles.aiButton,
-                                { opacity: generating ? 0.6 : 1 },
-                                pressed && !generating && { opacity: 0.85 },
-                            ])}
-                        >
-                            {generating
-                                ? <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                                : <Ionicons name="sparkles-outline" size={16} color={theme.colors.textSecondary} />
-                            }
-                            <Text style={[styles.aiText, Typography.default('semiBold')]}>AI 생성</Text>
-                        </Pressable>
-                    )}
-                </View>
-
-                {props.message ? (
-                    <Text style={[styles.message, Typography.default()]}>{props.message}</Text>
-                ) : null}
-
-                <TextInput
-                    ref={inputRef}
-                    style={[styles.input, Typography.default()]}
-                    value={value}
-                    onChangeText={setValue}
-                    placeholder={props.placeholder}
-                    placeholderTextColor={theme.colors.input.placeholder}
-                    multiline={true}
-                    scrollEnabled={true}
-                    autoCapitalize="sentences"
-                    autoCorrect={true}
-                    autoFocus={Platform.OS === 'web'}
-                    onKeyPress={handleKeyPress}
-                />
-
-                <Text style={[styles.hint, Typography.default()]}>
-                    {meta.lines === 1 ? '1 line' : `${meta.lines} lines`}{Platform.OS === 'web' ? '  •  Cmd/Ctrl+Enter to commit' : ''}
-                </Text>
-                {generateError ? (
-                    <Text style={[styles.error, Typography.default()]}>{generateError}</Text>
-                ) : null}
+                    {generateError ? (
+                        <Text style={[styles.error, Typography.default()]}>{generateError}</Text>
+                    ) : null}
+                </Pressable>
             </ScrollView>
 
             <View style={styles.buttonContainer}>

@@ -1,4 +1,4 @@
-import { Ionicons } from '@/icons/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
@@ -19,6 +19,9 @@ const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
 export default function AppearanceSettingsScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
+    const accentPrimary = theme.dark ? 'rgba(203,213,225,0.86)' : 'rgba(71,85,105,0.78)';
+    const accentMuted = theme.dark ? 'rgba(148,163,184,0.80)' : 'rgba(100,116,139,0.74)';
+    const APPEARANCE_ICON_SIZE = 24;
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
@@ -54,7 +57,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settings.appearance')}
                     subtitle={t('settingsAppearance.themeDescriptions.dark')}
-                    icon={<Ionicons name="contrast-outline" size={29} color={theme.colors.status.connecting} />}
+                    icon={<Ionicons name="contrast-outline" size={APPEARANCE_ICON_SIZE} color={accentMuted} />}
                     detail={t('settingsAppearance.themeOptions.dark')}
                     disabled
                 />
@@ -64,7 +67,7 @@ export default function AppearanceSettingsScreen() {
             <ItemGroup title={t('settingsLanguage.title')} footer={t('settingsLanguage.description')}>
                 <Item
                     title={t('settingsLanguage.currentLanguage')}
-                    icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
+                    icon={<Ionicons name="language-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     detail={getLanguageDisplayText()}
                     onPress={() => router.push('/settings/language')}
                 />
@@ -95,7 +98,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.compactSessionView')}
                     subtitle={t('settingsAppearance.compactSessionViewDescription')}
-                    icon={<Ionicons name="albums-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="albums-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     rightElement={
                         <Switch
                             value={compactSessionView}
@@ -106,7 +109,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.inlineToolCalls')}
                     subtitle={t('settingsAppearance.inlineToolCallsDescription')}
-                    icon={<Ionicons name="code-slash-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="code-slash-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     rightElement={
                         <Switch
                             value={viewInline}
@@ -117,7 +120,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.expandTodoLists')}
                     subtitle={t('settingsAppearance.expandTodoListsDescription')}
-                    icon={<Ionicons name="checkmark-done-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="checkmark-done-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     rightElement={
                         <Switch
                             value={expandTodos}
@@ -128,7 +131,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.showLineNumbersInDiffs')}
                     subtitle={t('settingsAppearance.showLineNumbersInDiffsDescription')}
-                    icon={<Ionicons name="list-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="list-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     rightElement={
                         <Switch
                             value={showLineNumbers}
@@ -139,7 +142,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.showLineNumbersInToolViews')}
                     subtitle={t('settingsAppearance.showLineNumbersInToolViewsDescription')}
-                    icon={<Ionicons name="code-working-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="code-working-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     rightElement={
                         <Switch
                             value={showLineNumbersInToolViews}
@@ -150,7 +153,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.wrapLinesInDiffs')}
                     subtitle={t('settingsAppearance.wrapLinesInDiffsDescription')}
-                    icon={<Ionicons name="return-down-forward-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="return-down-forward-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     rightElement={
                         <Switch
                             value={wrapLinesInDiffs}
@@ -161,7 +164,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.avatarStyle')}
                     subtitle={t('settingsAppearance.avatarStyleDescription')}
-                    icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="person-circle-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     detail={displayStyle === 'pixelated' ? t('settingsAppearance.avatarOptions.pixelated') : displayStyle === 'brutalist' ? t('settingsAppearance.avatarOptions.brutalist') : t('settingsAppearance.avatarOptions.gradient')}
                     onPress={() => {
                         const currentIndex = displayStyle === 'pixelated' ? 0 : displayStyle === 'gradient' ? 1 : 2;
@@ -173,7 +176,7 @@ export default function AppearanceSettingsScreen() {
                 <Item
                     title={t('settingsAppearance.showFlavorIcons')}
                     subtitle={t('settingsAppearance.showFlavorIconsDescription')}
-                    icon={<Ionicons name="apps-outline" size={29} color="#5856D6" />}
+                    icon={<Ionicons name="apps-outline" size={APPEARANCE_ICON_SIZE} color={accentPrimary} />}
                     rightElement={
                         <Switch
                             value={showFlavorIcons}
