@@ -74,6 +74,19 @@ export function resolveCodexTurnEffort(mode: {
   }
 }
 
+export function isCodexAutoCompactionContextError(
+  detail: string | null | undefined,
+): boolean {
+  if (!detail) return false;
+  const normalized = detail.toLowerCase();
+
+  return (
+    normalized.includes('error running remote compact task') ||
+    normalized.includes('context_length_exceeded') ||
+    (normalized.includes('context window') && normalized.includes('exceeds'))
+  );
+}
+
 /**
  * Notify connected clients when Codex finishes processing and the queue is idle.
  * Returns true when a ready event was emitted.
@@ -189,6 +202,13 @@ export async function runCodex(opts: {
     model?: string;
     effort?: ReasoningEffortMode;
     effortResetToDefault?: boolean;
+  }
+  interface QueuedMessage {
+    message: string;
+    mode: EnhancedMode;
+    isolate: boolean;
+    hash: string;
+    compactRetryCount?: number;
   }
 
   //
@@ -1194,22 +1214,12 @@ export async function runCodex(opts: {
     await client.connect();
     logger.debug('[codex]: client.connect done');
     let wasCreated = false;
-    let pending: {
-      message: string;
-      mode: EnhancedMode;
-      isolate: boolean;
-      hash: string;
-    } | null = null;
+    let pending: QueuedMessage | null = null;
 
     while (!shouldExit) {
       logActiveHandles('loop-top');
       // Get next batch; respect mode boundaries like Claude
-      let message: {
-        message: string;
-        mode: EnhancedMode;
-        isolate: boolean;
-        hash: string;
-      } | null = pending;
+      let message: QueuedMessage | null = pending;
       pending = null;
       if (!message) {
         // Capture the current signal to distinguish idle-abort from queue close
@@ -1227,7 +1237,10 @@ export async function runCodex(opts: {
           logger.debug(`[codex]: batch=${!!batch}, shouldExit=${shouldExit}`);
           break;
         }
-        message = batch;
+        message = {
+          ...batch,
+          compactRetryCount: 0,
+        };
       }
 
       // Defensive check for TS narrowing
@@ -1411,6 +1424,24 @@ export async function runCodex(opts: {
           logger.debug('[Codex] continueSession response:', response);
           if (isCodexToolResponseError(response)) {
             const detail = extractCodexToolResponseText(response) || 'Codex request failed';
+            if (
+              isCodexAutoCompactionContextError(detail) &&
+              (message.compactRetryCount ?? 0) < 1
+            ) {
+              const retryMessage =
+                'Codex auto-compaction hit the context limit. Starting a new thread and retrying once.';
+              messageBuffer.addMessage(retryMessage, 'status');
+              session.sendSessionEvent({ type: 'message', message: retryMessage });
+              try {
+                client.clearSession();
+              } catch {}
+              wasCreated = false;
+              pending = {
+                ...message,
+                compactRetryCount: (message.compactRetryCount ?? 0) + 1,
+              };
+              continue;
+            }
             const msg = `Codex error: ${detail}`;
             messageBuffer.addMessage(msg, 'status');
             session.sendSessionEvent({ type: 'message', message: msg });
@@ -1423,6 +1454,7 @@ export async function runCodex(opts: {
         logger.warn('Error in codex session:', error);
         const isAbortError =
           error instanceof Error && error.name === 'AbortError';
+        const errorText = error instanceof Error ? error.message : String(error);
 
         if (isAbortError) {
           messageBuffer.addMessage('Aborted by user', 'status');
@@ -1434,6 +1466,28 @@ export async function runCodex(opts: {
           // Do not clear session state here; the next user message should continue on the
           // existing session if possible.
         } else {
+          if (
+            isCodexAutoCompactionContextError(errorText) &&
+            (message.compactRetryCount ?? 0) < 1
+          ) {
+            const retryMessage =
+              'Codex auto-compaction failed with context overflow. Starting a new thread and retrying once.';
+            messageBuffer.addMessage(retryMessage, 'status');
+            session.sendSessionEvent({
+              type: 'message',
+              message: retryMessage,
+            });
+            try {
+              client.clearSession();
+            } catch {}
+            wasCreated = false;
+            pending = {
+              ...message,
+              compactRetryCount: (message.compactRetryCount ?? 0) + 1,
+            };
+            continue;
+          }
+
           messageBuffer.addMessage('Process exited unexpectedly', 'status');
           session.sendSessionEvent({
             type: 'message',

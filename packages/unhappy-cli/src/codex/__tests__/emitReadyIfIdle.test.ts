@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { emitReadyIfIdle, resolveCodexTurnEffort } from '../runCodex';
+import {
+    emitReadyIfIdle,
+    isCodexAutoCompactionContextError,
+    resolveCodexTurnEffort,
+} from '../runCodex';
 
 describe('emitReadyIfIdle', () => {
     it('emits ready and notification when queue is idle', () => {
@@ -77,5 +81,26 @@ describe('resolveCodexTurnEffort', () => {
 
     it('returns undefined when there is no explicit override', () => {
         expect(resolveCodexTurnEffort({})).toBeUndefined();
+    });
+});
+
+describe('isCodexAutoCompactionContextError', () => {
+    it('detects remote compact task context overflow errors', () => {
+        expect(
+            isCodexAutoCompactionContextError(
+                'Error running remote compact task: {"error":{"code":"context_length_exceeded"}}',
+            ),
+        ).toBe(true);
+        expect(
+            isCodexAutoCompactionContextError(
+                'Your input exceeds the context window of this model.',
+            ),
+        ).toBe(true);
+    });
+
+    it('does not match unrelated errors', () => {
+        expect(isCodexAutoCompactionContextError('Network timeout')).toBe(false);
+        expect(isCodexAutoCompactionContextError('')).toBe(false);
+        expect(isCodexAutoCompactionContextError(undefined)).toBe(false);
     });
 });
