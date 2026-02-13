@@ -70,6 +70,14 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         );
     };
 
+    const shouldIgnoreUnavailablePermissionRPC = (error: unknown): boolean => {
+        const message = error instanceof Error ? error.message : String(error ?? '');
+        if (!message) return false;
+        // Session teardown/reconnect windows can briefly unbind the permission RPC handler.
+        // Treat this as a no-op to avoid noisy modals during delete/archive flows.
+        return message.includes('RPC method not available') && message.includes(':permission');
+    };
+
     // If the app backgrounded mid-RPC, make sure we don't come back with a permanently disabled footer.
     useEffect(() => {
         const sub = AppState.addEventListener('change', (next) => {
@@ -132,6 +140,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         } catch (error) {
             console.error('Failed to approve permission:', error);
             dbg('approve: error', error instanceof Error ? error.message : error);
+            if (shouldIgnoreUnavailablePermissionRPC(error)) {
+                dbg('approve: ignored unavailable permission RPC');
+                return;
+            }
             Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingButton(null);
@@ -156,6 +168,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         } catch (error) {
             console.error('Failed to approve all edits:', error);
             dbg('approveAllEdits: error', error instanceof Error ? error.message : error);
+            if (shouldIgnoreUnavailablePermissionRPC(error)) {
+                dbg('approveAllEdits: ignored unavailable permission RPC');
+                return;
+            }
             Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingAllEdits(false);
@@ -185,6 +201,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         } catch (error) {
             console.error('Failed to approve for session:', error);
             dbg('approveForSession: error', error instanceof Error ? error.message : error);
+            if (shouldIgnoreUnavailablePermissionRPC(error)) {
+                dbg('approveForSession: ignored unavailable permission RPC');
+                return;
+            }
             Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingForSession(false);
@@ -207,6 +227,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         } catch (error) {
             console.error('Failed to deny permission:', error);
             dbg('deny: error', error instanceof Error ? error.message : error);
+            if (shouldIgnoreUnavailablePermissionRPC(error)) {
+                dbg('deny: ignored unavailable permission RPC');
+                return;
+            }
             Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to deny permission');
         } finally {
             setLoadingButton(null);
@@ -230,6 +254,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         } catch (error) {
             console.error('Failed to approve permission:', error);
             dbg('codexApprove: error', error instanceof Error ? error.message : error);
+            if (shouldIgnoreUnavailablePermissionRPC(error)) {
+                dbg('codexApprove: ignored unavailable permission RPC');
+                return;
+            }
             Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingButton(null);
@@ -252,6 +280,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         } catch (error) {
             console.error('Failed to approve for session:', error);
             dbg('codexApproveForSession: error', error instanceof Error ? error.message : error);
+            if (shouldIgnoreUnavailablePermissionRPC(error)) {
+                dbg('codexApproveForSession: ignored unavailable permission RPC');
+                return;
+            }
             Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
         } finally {
             setLoadingForSession(false);
@@ -274,6 +306,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         } catch (error) {
             console.error('Failed to abort permission:', error);
             dbg('codexAbort: error', error instanceof Error ? error.message : error);
+            if (shouldIgnoreUnavailablePermissionRPC(error)) {
+                dbg('codexAbort: ignored unavailable permission RPC');
+                return;
+            }
             Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to abort permission');
         } finally {
             setLoadingButton(null);

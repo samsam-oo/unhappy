@@ -131,6 +131,11 @@ interface SessionKillResponse {
     message: string;
 }
 
+function isRpcMethodUnavailableError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return message.includes('RPC method not available');
+}
+
 // Response types for spawn session
 export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
@@ -543,6 +548,12 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
         );
         return response;
     } catch (error) {
+        if (isRpcMethodUnavailableError(error)) {
+            return {
+                success: true,
+                message: 'Session is already unavailable'
+            };
+        }
         return {
             success: false,
             message: error instanceof Error ? error.message : 'Unknown error'
@@ -562,7 +573,10 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
         });
         
         if (response.ok) {
-            const result = await response.json();
+            await response.json();
+            return { success: true };
+        } else if (response.status === 404) {
+            // Already deleted on server; treat as successful cleanup for UX consistency.
             return { success: true };
         } else {
             const error = await response.text();
