@@ -300,7 +300,7 @@ export const ko: TranslationStructure = {
     noPathSelected: '세션을 시작할 디렉터리를 선택하세요',
     sessionType: {
       title: '세션 유형',
-      simple: '단순',
+      simple: '기본',
       worktree: '워크트리',
       comingSoon: '준비 중',
     },

@@ -212,20 +212,13 @@ class Sync {
 
 
     async sendMessage(sessionId: string, text: string, displayText?: string) {
-
-        // Get encryption
-        const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) { // Should never happen
-            console.error(`Session ${sessionId} not found`);
-            return;
-        }
-
         // Get session data from storage
         const session = storage.getState().sessions[sessionId];
         if (!session) {
             console.error(`Session ${sessionId} not found in storage`);
             return;
         }
+        const wasThinking = session.thinking === true;
 
         // Read permission mode from session state
         const rawPermissionMode = session.permissionMode || 'default';
@@ -289,7 +282,6 @@ class Sync {
                 ...(displayText && { displayText }) // Add displayText if provided
             }
         };
-        const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
         // Add to messages - normalize the raw record
         const createdAt = Date.now();
@@ -297,6 +289,45 @@ class Sync {
         if (normalizedMessage) {
             this.applyMessages(sessionId, [normalizedMessage]);
         }
+
+        // Show immediate "responding" feedback while the first server activity arrives.
+        if (!wasThinking) {
+            const latestSession = storage.getState().sessions[sessionId];
+            if (latestSession) {
+                this.applySessions([{
+                    ...(latestSession as Omit<Session, 'presence'>),
+                    thinking: true,
+                    thinkingAt: createdAt,
+                    updatedAt: Math.max(latestSession.updatedAt, createdAt),
+                }]);
+            }
+        }
+
+        let encryption = this.encryption.getSessionEncryption(sessionId);
+        if (!encryption) {
+            try {
+                await this.refreshSessions();
+            } catch (error) {
+                console.error(`Failed to refresh sessions before sending message for ${sessionId}:`, error);
+            }
+            encryption = this.encryption.getSessionEncryption(sessionId);
+        }
+        if (!encryption) {
+            console.error(`Session encryption not found for ${sessionId}`);
+            if (!wasThinking) {
+                const latestSession = storage.getState().sessions[sessionId];
+                if (latestSession) {
+                    this.applySessions([{
+                        ...(latestSession as Omit<Session, 'presence'>),
+                        thinking: false,
+                        thinkingAt: 0,
+                    }]);
+                }
+            }
+            return;
+        }
+
+        const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
         const ready = await this.waitForAgentReady(sessionId);
         if (!ready) {

@@ -1206,6 +1206,7 @@ function NewSessionWizard() {
             if (createdSessionId) {
                 // Clear draft state on successful session creation
                 clearNewSessionDraft();
+                const hasInitialPrompt = sessionPrompt.trim().length > 0;
 
                 // Avoid blocking navigation on a full sessions refresh/decryption pass.
                 // Insert a minimal optimistic session so the destination screen renders
@@ -1229,8 +1230,8 @@ function NewSessionWizard() {
                         metadataVersion: 0,
                         agentState: null,
                         agentStateVersion: 0,
-                        thinking: false,
-                        thinkingAt: 0,
+                        thinking: hasInitialPrompt,
+                        thinkingAt: hasInitialPrompt ? now : 0,
                     }]);
                 }
 
@@ -1260,7 +1261,7 @@ function NewSessionWizard() {
                 }
 
                 // Send initial message if provided
-                if (sessionPrompt.trim()) {
+                if (hasInitialPrompt) {
                     void sync.sendMessage(createdSessionId, sessionPrompt)
                         .catch((error) => {
                             console.error('Failed to send initial session message', error);
