@@ -75,7 +75,7 @@ export const MermaidRenderer = React.memo((props: {
             return (
                 <View style={[style.container, style.errorContainer]}>
                     <View style={style.errorContent}>
-                        <Text style={style.errorText}>Mermaid diagram syntax error</Text>
+                        <Text style={style.errorText}>Mermaid 다이어그램 구문 오류</Text>
                         <View style={style.codeBlock}>
                             <Text style={style.codeText}>{props.content}</Text>
                         </View>

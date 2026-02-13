@@ -216,7 +216,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
 
                             if (item.kind === 'built-in') {
                                 const profile = item.profile;
-                                const subtitle = `${profile.anthropicConfig?.model || 'Default model'}${profile.anthropicConfig?.baseUrl ? ` • ${profile.anthropicConfig.baseUrl}` : ''}`;
+                                const subtitle = `${profile.anthropicConfig?.model || t('profiles.defaultModel')}${profile.anthropicConfig?.baseUrl ? ` • ${profile.anthropicConfig.baseUrl}` : ''}`;
 
                                 return (
                                     <ProfileRow

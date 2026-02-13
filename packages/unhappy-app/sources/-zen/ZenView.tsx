@@ -217,7 +217,7 @@ export const ZenView = React.memo(() => {
                             style={[styles.actionButton, { backgroundColor: theme.colors.button.primary.background }]}
                         >
                             <Ionicons name="hammer-outline" size={20} color="#FFFFFF" />
-                            <Text style={styles.actionButtonText}>Work on task</Text>
+                            <Text style={styles.actionButtonText}>작업 진행</Text>
                         </Pressable>
 
                         <Pressable
@@ -225,7 +225,7 @@ export const ZenView = React.memo(() => {
                             style={[styles.actionButton, { backgroundColor: theme.colors.surfaceHighest }]}
                         >
                             <Ionicons name="sparkles" size={20} color={theme.colors.text} />
-                            <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>Clarify</Text>
+                            <Text style={[styles.actionButtonText, { color: theme.colors.text }]}>명확화</Text>
                         </Pressable>
 
                         <Pressable
@@ -233,7 +233,7 @@ export const ZenView = React.memo(() => {
                             style={[styles.actionButton, { backgroundColor: theme.colors.textDestructive }]}
                         >
                             <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
-                            <Text style={styles.actionButtonText}>Delete</Text>
+                            <Text style={styles.actionButtonText}>삭제</Text>
                         </Pressable>
                     </View>
 
@@ -241,7 +241,7 @@ export const ZenView = React.memo(() => {
                     {linkedSessions.length > 0 && (
                         <View style={styles.linkedSessionsSection}>
                             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-                                Linked Sessions
+                                연결된 세션
                             </Text>
                             {linkedSessions.map((link, index) => (
                                 <Pressable
@@ -262,7 +262,7 @@ export const ZenView = React.memo(() => {
                     {/* Helper Text */}
                     <View style={styles.helperSection}>
                         <Text style={[styles.helperText, { color: theme.colors.textSecondary }]}>
-                            Tap the task text to edit
+                            할 일 텍스트를 눌러 편집하세요
                         </Text>
                     </View>
                 </View>

@@ -82,7 +82,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     responsiveBox: {
         flex: 1,
-        backgroundColor: theme.colors.surface,  // TODO: change to primary
+        backgroundColor: theme.colors.surface,  // 기본색으로 변경 예정
         padding: 16,
         borderRadius: 8,
         minHeight: 80,
@@ -117,7 +117,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontFamily: 'monospace',
     },
     themeButton: {
-        backgroundColor: theme.colors.surface,  // TODO: change to primary
+        backgroundColor: theme.colors.surface,  // 기본색으로 변경 예정
         padding: 12,
         borderRadius: 8,
         marginHorizontal: 4,
@@ -135,7 +135,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginBottom: 12,
     },
     adaptiveBox: {
-        backgroundColor: theme.colors.surface,  // TODO: change to primary
+        backgroundColor: theme.colors.surface,  // 기본색으로 변경 예정
         padding: {
             xs: 8,
             sm: 12,
@@ -175,22 +175,22 @@ export default function UnistylesDemo() {
     };
 
     const toggleColorScheme = () => {
-        // Note: ColorScheme is typically system-controlled in React Native
-        console.log('Color scheme toggle requested - this would typically be system controlled');
+        // React Native에서는 색상 스킴이 보통 시스템에서 제어됩니다.
+        console.log('컬러 스킴 토글 요청됨 - 일반적으로 시스템에서 제어됩니다');
     };
 
     return (
         <View style={styles.container}>
             <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
-                {/* Theme Demo */}
+                {/* 테마 데모 */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>🎨 Theme System</Text>
+                    <Text style={styles.sectionTitle}>🎨 테마 시스템</Text>
                     <View style={styles.themeCard}>
                         <Text style={styles.themeText}>
-                            Current Theme: {rt.themeName}
+                            현재 테마: {rt.themeName}
                         </Text>
                         <Text style={[styles.themeText, { fontSize: 14, opacity: 0.8 }]}>
-                            Primary: {theme.colors.surface}  // TODO: change to primary
+                            기본색: {theme.colors.surface}  // 기본색은 추후 조정 예정
                         </Text>
                     </View>
 
@@ -199,46 +199,46 @@ export default function UnistylesDemo() {
                             style={styles.themeButton}
                             onPress={() => switchTheme('light')}
                         >
-                            <Text style={styles.themeButtonText}>Light</Text>
+                            <Text style={styles.themeButtonText}>라이트</Text>
                         </Pressable>
                         <Pressable
                             style={styles.themeButton}
                             onPress={() => switchTheme('dark')}
                         >
-                            <Text style={styles.themeButtonText}>Dark</Text>
+                            <Text style={styles.themeButtonText}>다크</Text>
                         </Pressable>
                     </View>
                 </View>
 
-                {/* Breakpoints Demo */}
+                {/* 반응형 중단점 데모 */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>📱 Responsive Breakpoints</Text>
+                    <Text style={styles.sectionTitle}>📱 반응형 중단점</Text>
                     <Text style={{ marginBottom: 12, color: '#666' }}>
-                        Current: {rt.breakpoint} ({screenWidth}px)
+                        현재: {rt.breakpoint} ({screenWidth}px)
                     </Text>
 
                     <View style={styles.breakpointBox}>
                         <Text style={styles.breakpointText}>
-                            Active Breakpoint: {rt.breakpoint}
+                            활성 중단점: {rt.breakpoint}
                         </Text>
                         <Text style={[styles.breakpointText, { fontSize: 12, opacity: 0.8 }]}>
-                            Screen width: {rt.screen.width}px
+                            화면 너비: {rt.screen.width}px
                         </Text>
                     </View>
 
                     <View style={styles.responsiveContainer}>
                         <View style={styles.responsiveBox}>
-                            <Text style={{ color: 'white', fontWeight: 'bold' }}>Box 1</Text>
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>박스 1</Text>
                         </View>
                         <View style={styles.responsiveBox}>
-                            <Text style={{ color: 'white', fontWeight: 'bold' }}>Box 2</Text>
+                            <Text style={{ color: 'white', fontWeight: 'bold' }}>박스 2</Text>
                         </View>
                     </View>
                 </View>
 
-                {/* Orientation Demo */}
+                {/* 화면 방향 데모 */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>🔄 Orientation Styles</Text>
+                    <Text style={styles.sectionTitle}>🔄 방향 스타일</Text>
                     <View style={styles.orientationBox}>
                         <Ionicons
                             name={rt.isPortrait ? 'phone-portrait' : 'phone-landscape'}
@@ -246,22 +246,22 @@ export default function UnistylesDemo() {
                             color="white"
                         />
                         <Text style={styles.orientationText}>
-                            {rt.isPortrait ? 'Portrait' : 'Landscape'}
+                            {rt.isPortrait ? '세로 모드' : '가로 모드'}
                         </Text>
                     </View>
                 </View>
 
                 {/* Adaptive Components */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>🎯 Adaptive Components</Text>
+                    <Text style={styles.sectionTitle}>🎯 적응형 컴포넌트</Text>
                     <Text style={{ marginBottom: 12, color: '#666' }}>
-                        Padding and border radius adapt to screen size
+                        패딩과 둥근 모서리가 화면 크기에 맞춰 조정됩니다
                     </Text>
 
                     {['Tiny', 'Small', 'Medium', 'Large', 'Extra Large'].map((size, index) => (
                         <View key={size} style={styles.adaptiveBox}>
                             <Text style={styles.adaptiveText}>
-                                {size} - Adapts to {rt.breakpoint}
+                                {size} - {rt.breakpoint}에 적응
                             </Text>
                         </View>
                     ))}
@@ -269,10 +269,10 @@ export default function UnistylesDemo() {
 
                 {/* Runtime Information */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>⚙️ Runtime Information</Text>
+                    <Text style={styles.sectionTitle}>⚙️ 런타임 정보</Text>
 
                     <View style={styles.switchContainer}>
-                        <Text style={{ fontSize: 16, color: '#333' }}>Show Runtime Details</Text>
+                            <Text style={{ fontSize: 16, color: '#333' }}>런타임 상세 보기</Text>
                         <Switch
                             value={showRuntimeInfo}
                             onValueChange={setShowRuntimeInfo}
@@ -283,42 +283,42 @@ export default function UnistylesDemo() {
                         <>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Theme: {rt.themeName}
+                                    테마: {rt.themeName}
                                 </Text>
                             </View>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Breakpoint: {rt.breakpoint}
+                                    중단점: {rt.breakpoint}
                                 </Text>
                             </View>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Screen: {rt.screen.width} × {rt.screen.height}
+                                    화면: {rt.screen.width} × {rt.screen.height}
                                 </Text>
                             </View>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Orientation: {rt.isPortrait ? 'Portrait' : 'Landscape'}
+                                    방향: {rt.isPortrait ? '세로 모드' : '가로 모드'}
                                 </Text>
                             </View>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Color Scheme: {rt.colorScheme}
+                                    컬러 스킴: {rt.colorScheme}
                                 </Text>
                             </View>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Content Size: {rt.contentSizeCategory}
+                                    콘텐츠 크기: {rt.contentSizeCategory}
                                 </Text>
                             </View>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Has Dynamic Island: {rt.insets.top > 50 ? 'Yes' : 'No'}
+                                    다이내믹 아일랜드 존재: {rt.insets.top > 50 ? '있음' : '없음'}
                                 </Text>
                             </View>
                             <View style={styles.runtimeBox}>
                                 <Text style={styles.runtimeText}>
-                                    Safe Insets: T:{rt.insets.top} B:{rt.insets.bottom} L:{rt.insets.left} R:{rt.insets.right}
+                                    안전 여백: 상:{rt.insets.top} 하:{rt.insets.bottom} 좌:{rt.insets.left} 우:{rt.insets.right}
                                 </Text>
                             </View>
                         </>
@@ -329,45 +329,44 @@ export default function UnistylesDemo() {
                         onPress={toggleColorScheme}
                     >
                         <Text style={styles.themeButtonText}>
-                            Toggle Color Scheme ({rt.colorScheme})
+                            컬러 스킴 전환 ({rt.colorScheme})
                         </Text>
                     </Pressable>
                 </View>
 
                 {/* Color Scheme Demo */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>🌙 Color Scheme</Text>
+                    <Text style={styles.sectionTitle}>🌙 색상 스킴</Text>
                     <View style={{
                         backgroundColor: rt.colorScheme === 'dark' ? '#2C3E50' : '#ECF0F1',
                         padding: 16,
                         borderRadius: 8,
                     }}>
-                        <Text style={{
-                            color: rt.colorScheme === 'dark' ? 'white' : 'black',
-                            textAlign: 'center',
-                            fontSize: 16,
-                            fontWeight: '600'
-                        }}>
-                            Current color scheme: {rt.colorScheme}
-                        </Text>
-                        <Text style={{
+                            <Text style={{
+                                color: rt.colorScheme === 'dark' ? 'white' : 'black',
+                                textAlign: 'center',
+                                fontSize: 16,
+                                fontWeight: '600'
+                            }}>
+                                현재 색상 스킴: {rt.colorScheme}
+                            </Text>
+                            <Text style={{
                             color: rt.colorScheme === 'dark' ? '#BDC3C7' : '#7F8C8D',
                             textAlign: 'center',
                             fontSize: 14,
                             marginTop: 4
                         }}>
-                            This box adapts to system color scheme
-                        </Text>
+                                이 박스는 시스템 색상 스킴에 맞춰 조정됩니다
+                            </Text>
+                        </View>
                     </View>
-                </View>
 
                 {/* Performance Note */}
                 <View style={[styles.section, { backgroundColor: '#FFF3CD', borderColor: '#FFEAA7', borderWidth: 1 }]}>
-                    <Text style={[styles.sectionTitle, { color: '#856404' }]}>⚡ Performance Note</Text>
+                    <Text style={[styles.sectionTitle, { color: '#856404' }]}>⚡ 성능 참고</Text>
                     <Text style={{ color: '#856404', lineHeight: 20 }}>
-                        Unistyles compiles styles at build time and provides runtime optimizations.
-                        All the responsive features you see here work without performance penalties
-                        thanks to the native bridge integration.
+                        Unistyles는 빌드 타임에 스타일을 컴파일하고 런타임 최적화를 제공합니다.
+                        여기서 보는 모든 반응형 기능은 네이티브 브릿지 통합 덕분에 성능 저하 없이 동작합니다.
                     </Text>
                 </View>
             </ScrollView>

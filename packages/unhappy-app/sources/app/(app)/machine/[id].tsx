@@ -127,25 +127,25 @@ export default function MachineDetailScreen() {
     const handleStopDaemon = async () => {
         // Show confirmation modal using alert with buttons
         Modal.alert(
-            'Stop Daemon?',
-            'You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.',
+            '데몬을 중지할까요?',
+            '데몬을 다시 시작할 때까지 이 컴퓨터의 해당 머신에서 새 세션을 시작할 수 없습니다. 현재 세션은 그대로 유지됩니다.',
             [
                 {
-                    text: 'Cancel',
+                    text: '취소',
                     style: 'cancel'
                 },
                 {
-                    text: 'Stop Daemon',
+                    text: '데몬 중지',
                     style: 'destructive',
                     onPress: async () => {
                         setIsStoppingDaemon(true);
                         try {
                             const result = await machineStopDaemon(machineId!);
-                            Modal.alert('Daemon Stopped', result.message);
+                            Modal.alert('데몬이 중지되었습니다', result.message);
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
                         } catch (error) {
-                            Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
+                            Modal.alert(t('common.error'), '데몬을 중지하지 못했습니다. 실행되지 않았을 수 있습니다.');
                         } finally {
                             setIsStoppingDaemon(false);
                         }
@@ -170,11 +170,11 @@ export default function MachineDetailScreen() {
         if (!machine || !machineId) return;
 
         const newDisplayName = await Modal.prompt(
-            'Rename Machine',
-            'Give this machine a custom name. Leave empty to use the default hostname.',
+            '머신 이름 변경',
+            '이 머신의 사용자 지정 이름을 입력하세요. 비워 두면 기본 호스트 이름을 사용합니다.',
             {
                 defaultValue: machine.metadata?.displayName || '',
-                placeholder: machine.metadata?.host || 'Enter machine name',
+                placeholder: machine.metadata?.host || '머신 이름 입력',
                 cancelText: t('common.cancel'),
                 confirmText: t('common.rename')
             }
@@ -194,11 +194,11 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                Modal.alert(t('common.success'), 'Machine renamed successfully');
+                Modal.alert(t('common.success'), '머신 이름이 변경되었습니다');
             } catch (error) {
                 Modal.alert(
-                    'Error',
-                    error instanceof Error ? error.message : 'Failed to rename machine'
+                    '오류',
+                    error instanceof Error ? error.message : '머신 이름 변경에 실패했습니다'
                 );
                 // Refresh to get latest state
                 await sync.refreshMachines();
@@ -234,7 +234,7 @@ export default function MachineDetailScreen() {
                     navigateToSession(result.sessionId);
                     break;
                 case 'requestToApproveDirectoryCreation': {
-                    const approved = await Modal.confirm('Create Directory?', `The directory '${result.directory}' does not exist. Would you like to create it?`, { cancelText: t('common.cancel'), confirmText: t('common.create') });
+                    const approved = await Modal.confirm('디렉터리 생성?', `디렉터리 '${result.directory}'가 존재하지 않습니다. 생성할까요?`, { cancelText: t('common.cancel'), confirmText: t('common.create') });
                     if (approved) {
                         await handleStartSession(true);
                     }
@@ -245,7 +245,7 @@ export default function MachineDetailScreen() {
                     break;
             }
         } catch (error) {
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+            let errorMessage = '세션 시작에 실패했습니다. 대상 머신에서 데몬이 실행 중인지 확인하세요.';
             if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
                 errorMessage = error.message;
             }
@@ -256,7 +256,7 @@ export default function MachineDetailScreen() {
     };
 
     const pastUsedRelativePath = useCallback((session: Session) => {
-        if (!session.metadata) return 'unknown path';
+        if (!session.metadata) return '알 수 없는 경로';
         return formatPathRelativeToProjectBase(session.metadata.path, session.metadata.machineId, session.metadata.homeDir);
     }, []);
 
@@ -272,7 +272,7 @@ export default function MachineDetailScreen() {
                 />
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text style={[Typography.default(), { fontSize: 16, color: '#666' }]}>
-                        Machine not found
+                        머신을 찾을 수 없습니다
                     </Text>
                 </View>
             </>
@@ -280,7 +280,7 @@ export default function MachineDetailScreen() {
     }
 
     const metadata = machine.metadata;
-    const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
+    const machineName = metadata?.displayName || metadata?.host || '알 수 없는 머신';
 
     const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
     const currentProjectBasePath = (projectBasePaths.find(p => p.machineId === machineId)?.path || '').trim();
@@ -370,7 +370,7 @@ export default function MachineDetailScreen() {
                                         ref={inputRef}
                                         value={customPath}
                                         onChangeText={setCustomPath}
-                                        placeholder={'Enter custom path'}
+                                        placeholder={'사용자 지정 경로 입력'}
                                         maxHeight={76}
                                         paddingTop={8}
                                         paddingBottom={8}
@@ -499,21 +499,21 @@ export default function MachineDetailScreen() {
                         />
                 </ItemGroup>
 
-                {/* Projects */}
-                <ItemGroup title="Projects">
+                {/* '프로젝트' */}
+                <ItemGroup title={'프로젝트'}>
                     <Item
                         title={t('finishSession.basePath')}
-                        subtitle={effectiveProjectBasePath ? effectiveProjectBasePath : 'Not set'}
+                        subtitle={effectiveProjectBasePath ? effectiveProjectBasePath : '설정되지 않음'}
                         subtitleLines={0}
                         showChevron={false}
                         onPress={async () => {
                             const homeDir = machine.metadata?.homeDir;
                             const input = await Modal.prompt(
                                 t('finishSession.basePath'),
-                                'Used as the default starting folder when choosing a project path.',
+                                '프로젝트 경로 선택 시 기본 시작 폴더로 사용됩니다.',
                                 {
                                     defaultValue: currentProjectBasePath || (homeDir || ''),
-                                    placeholder: homeDir || 'e.g. ~',
+                                    placeholder: homeDir || '예: ~',
                                     cancelText: t('common.cancel'),
                                     confirmText: t('common.save'),
                                 }
@@ -531,13 +531,13 @@ export default function MachineDetailScreen() {
                     />
                     {currentProjectBasePath ? (
                         <Item
-                            title="Clear Base Repository"
+                            title="기본 저장소 경로 초기화"
                             titleStyle={{ color: theme.colors.textDestructive }}
                             showChevron={false}
                             onPress={async () => {
                                 const ok = await Modal.confirm(
-                                    'Clear Base Repository?',
-                                    'This will revert project browsing defaults back to the home directory.',
+                                    '기본 저장소 경로 초기화?',
+                                    '이 작업은 프로젝트 탐색 기본 설정을 홈 디렉터리로 되돌립니다.',
                                     { cancelText: t('common.cancel'), confirmText: t('common.reset'), destructive: true }
                                 );
                                 if (!ok) return;
@@ -549,7 +549,7 @@ export default function MachineDetailScreen() {
 
                 {/* Previous Sessions (debug view) */}
                 {previousSessions.length > 0 && (
-                    <ItemGroup title={'Previous Sessions (up to 5 most recent)'}>
+                    <ItemGroup title={'이전 세션 (최대 5개)'}>
                         {previousSessions.map(session => (
                             <Item
                                 key={session.id}

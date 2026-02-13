@@ -371,12 +371,12 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         if (!onToggleFavorite) return;
 
         Modal.alert(
-            'Remove Favorite',
-            `Remove "${config.getItemTitle(item)}" from ${config.favoritesSectionTitle.toLowerCase()}?`,
+            '즐겨찾기 삭제',
+            `"${config.getItemTitle(item)}"를 즐겨찾기에서 삭제할까요?`,
             [
                 { text: t('common.cancel'), style: 'cancel' },
                 {
-                    text: 'Remove',
+                    text: '삭제',
                     style: 'destructive',
                     onPress: () => onToggleFavorite(item)
                 }

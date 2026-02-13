@@ -68,7 +68,7 @@ export const UsageChart: React.FC<UsageChartProps> = ({
     if (!data || data.length === 0) {
         return (
             <View style={styles.emptyState}>
-                <Text style={styles.emptyText}>No usage data available</Text>
+                <Text style={styles.emptyText}>사용량 데이터가 없습니다</Text>
             </View>
         );
     }

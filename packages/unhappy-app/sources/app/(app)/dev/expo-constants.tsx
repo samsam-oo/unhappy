@@ -25,17 +25,17 @@ function JsonViewer({ title, data, defaultExpanded = false }: JsonViewerProps) {
     const handleCopy = async () => {
         try {
             await Clipboard.setStringAsync(JSON.stringify(data, null, 2));
-            Modal.alert('Copied', 'JSON data copied to clipboard');
+            Modal.alert('복사됨', 'JSON 데이터가 클립보드에 복사되었습니다');
         } catch (error) {
-            Modal.alert('Error', 'Failed to copy to clipboard');
+            Modal.alert('오류', '클립보드 복사에 실패했습니다');
         }
     };
     
     if (!data) {
         return (
-            <Item
+                <Item
                 title={title}
-                detail="Not available"
+                detail="사용 불가"
                 showChevron={false}
             />
         );
@@ -185,20 +185,20 @@ export default function ExpoConstantsScreen() {
         <>
             <Stack.Screen
                 options={{
-                    title: 'Expo Constants',
+                    title: 'Expo 상수',
                     headerLargeTitle: false,
                 }}
             />
             <ItemList>
                 {/* Main Configuration */}
-                <ItemGroup title="Configuration from Constants API">
+                <ItemGroup title="Constants API 설정">
                     <JsonViewer
-                        title="expoConfig (Current)"
+                        title="expoConfig (현재)"
                         data={expoConfig}
                         defaultExpanded={true}
                     />
                     <JsonViewer
-                        title="manifest (Legacy)"
+                        title="매니페스트 (레거시)"
                         data={manifest}
                     />
                     <JsonViewer
@@ -207,184 +207,184 @@ export default function ExpoConstantsScreen() {
                     />
                     {updatesManifest && (
                         <JsonViewer
-                            title="Updates.manifest"
+                            title="Updates 매니페스트"
                             data={updatesManifest}
                         />
                     )}
                 </ItemGroup>
                 
                 {/* Raw Native Module Manifests */}
-                <ItemGroup title="Raw Native Module Manifests">
+                <ItemGroup title="네이티브 모듈 매니페스트(원본)">
                     <Item
-                        title="Is Embedded Launch"
-                        detail={isEmbedded !== undefined ? (isEmbedded ? 'Yes' : 'No') : 'Not available'}
+                        title="임베디드 런치 여부"
+                        detail={isEmbedded !== undefined ? (isEmbedded ? '예' : '아니오') : '사용 불가'}
                         showChevron={false}
                     />
                     {parsedExponentManifest && (
                         <JsonViewer
-                            title="ExponentConstants.manifest (Embedded)"
+                            title="ExponentConstants 매니페스트 (임베디드)"
                             data={parsedExponentManifest}
                         />
                     )}
                     {parsedUpdatesManifest && (
                         <JsonViewer
-                            title="ExpoUpdates.manifest (OTA)"
+                            title="ExpoUpdates 매니페스트 (OTA)"
                             data={parsedUpdatesManifest}
                         />
                     )}
                     {parsedDevLauncherManifest && (
                         <JsonViewer
-                            title="DevLauncher.manifest"
+                            title="DevLauncher 매니페스트"
                             data={parsedDevLauncherManifest}
                         />
                     )}
                 </ItemGroup>
                 
                 {/* Raw String Manifests (for debugging) */}
-                <ItemGroup title="Raw Manifest Strings">
+                <ItemGroup title="매니페스트 원본 문자열">
                     {typeof rawExponentManifest === 'string' && (
                         <JsonViewer
-                            title="ExponentConstants.manifest (raw string)"
+                            title="ExponentConstants 매니페스트 (원본 문자열)"
                             data={{ raw: rawExponentManifest }}
                         />
                     )}
                     {typeof rawUpdatesManifest === 'string' && (
                         <JsonViewer
-                            title="ExpoUpdates.manifestString (raw)"
+                            title="ExpoUpdates 원본 문자열"
                             data={{ raw: rawUpdatesManifest }}
                         />
                     )}
                     {rawDevLauncherManifest && (
                         <JsonViewer
-                            title="DevLauncher.manifestString (raw)"
+                            title="DevLauncher 원본 문자열"
                             data={{ raw: rawDevLauncherManifest }}
                         />
                     )}
                 </ItemGroup>
                 
                 {/* Resolved App Config */}
-                <ItemGroup title="Resolved App Config">
-                    <JsonViewer
-                        title="Loaded App Config (from @/config)"
+                <ItemGroup title="해석된 앱 설정">
+                        <JsonViewer
+                        title="설정 파일에서 불러온 앱 설정 (@/config)"
                         data={config}
                         defaultExpanded={true}
                     />
                 </ItemGroup>
                 
                 {/* System Constants */}
-                <ItemGroup title="System Constants">
+                <ItemGroup title="시스템 상수">
                     <Item
-                        title="Device ID"
-                        detail={Constants.deviceId || 'Not available'}
+                        title="디바이스 ID"
+                        detail={Constants.deviceId || '사용 불가'}
                         showChevron={false}
                     />
                     <Item
-                        title="Session ID"
+                        title="세션 ID"
                         detail={Constants.sessionId}
                         showChevron={false}
                     />
                     <Item
-                        title="Installation ID"
+                        title="설치 ID"
                         detail={Constants.installationId}
                         showChevron={false}
                     />
                     <Item
-                        title="Is Device"
-                        detail={Constants.isDevice ? 'Yes' : 'No'}
+                        title="디바이스 여부"
+                        detail={Constants.isDevice ? '예' : '아니오'}
                         showChevron={false}
                     />
                     <Item
-                        title="Debug Mode"
-                        detail={Constants.debugMode ? 'Yes' : 'No'}
+                        title="디버그 모드"
+                        detail={Constants.debugMode ? '예' : '아니오'}
                         showChevron={false}
                     />
                     <Item
-                        title="App Ownership"
-                        detail={Constants.appOwnership || 'N/A'}
+                        title="앱 소유권"
+                        detail={Constants.appOwnership || '해당 없음'}
                         showChevron={false}
                     />
                     <Item
-                        title="Execution Environment"
-                        detail={Constants.executionEnvironment || 'N/A'}
+                        title="실행 환경"
+                        detail={Constants.executionEnvironment || '해당 없음'}
                         showChevron={false}
                     />
                 </ItemGroup>
                 
                 {/* Updates Information */}
-                <ItemGroup title="Updates Information">
+                <ItemGroup title="업데이트 정보">
                     <Item
-                        title="Update ID"
-                        detail={updateId || 'Not available'}
+                        title="업데이트 ID"
+                        detail={updateId || '사용 불가'}
                         showChevron={false}
                     />
                     <Item
-                        title="Release Channel"
-                        detail={releaseChannel || 'Not available'}
+                        title="릴리스 채널"
+                        detail={releaseChannel || '사용 불가'}
                         showChevron={false}
                     />
                     <Item
-                        title="Channel"
-                        detail={channel || 'Not available'}
+                        title="채널"
+                        detail={channel || '사용 불가'}
                         showChevron={false}
                     />
                     <Item
-                        title="Is Embedded Launch"
-                        detail={isEmbeddedLaunch !== undefined ? (isEmbeddedLaunch ? 'Yes' : 'No') : 'Not available'}
+                        title="임베디드 런치 여부"
+                        detail={isEmbeddedLaunch !== undefined ? (isEmbeddedLaunch ? '예' : '아니오') : '사용 불가'}
                         showChevron={false}
                     />
                 </ItemGroup>
                 
                 {/* Platform Info */}
-                <ItemGroup title="Platform Constants">
+                <ItemGroup title="플랫폼 상수">
                     <JsonViewer
-                        title="Platform Constants"
+                        title="플랫폼 상수"
                         data={Constants.platform}
                     />
                 </ItemGroup>
                 
                 {/* System Fonts */}
-                <ItemGroup title="System Fonts">
+                <ItemGroup title="시스템 폰트">
                     <JsonViewer
-                        title="Available Fonts"
+                        title="사용 가능한 폰트"
                         data={Constants.systemFonts}
                     />
                 </ItemGroup>
                 
                 {/* Native Modules Info */}
-                <ItemGroup title="Native Modules">
+                <ItemGroup title="네이티브 모듈">
                     <Item
                         title="ExponentConstants"
-                        detail={ExponentConstants ? 'Available' : 'Not available'}
+                        detail={ExponentConstants ? '사용 가능' : '사용 불가'}
                         showChevron={false}
                     />
                     <Item
                         title="ExpoUpdates"
-                        detail={ExpoUpdates ? 'Available' : 'Not available'}
+                        detail={ExpoUpdates ? '사용 가능' : '사용 불가'}
                         showChevron={false}
                     />
                     <Item
                         title="EXDevLauncher"
-                        detail={NativeModules.EXDevLauncher ? 'Available' : 'Not available'}
+                        detail={NativeModules.EXDevLauncher ? '사용 가능' : '사용 불가'}
                         showChevron={false}
                     />
                     {ExponentConstants && (
                         <JsonViewer
-                            title="ExponentConstants (full module)"
+                            title="ExponentConstants (전체 모듈)"
                             data={ExponentConstants}
                         />
                     )}
                     {ExpoUpdates && (
                         <JsonViewer
-                            title="ExpoUpdates (full module)"
+                            title="ExpoUpdates (전체 모듈)"
                             data={ExpoUpdates}
                         />
                     )}
                 </ItemGroup>
                 
                 {/* Raw Constants Object */}
-                <ItemGroup title="All Constants (Debug)">
+                <ItemGroup title="전체 상수(디버그)">
                     <JsonViewer
-                        title="Full Constants Object"
+                        title="전체 상수 객체"
                         data={Constants}
                     />
                 </ItemGroup>

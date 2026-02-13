@@ -244,6 +244,9 @@ export const en = {
     fileNotFound: 'File not found',
     invalidFormat: 'Invalid format',
     operationFailed: 'Operation failed',
+    machineOffline: 'Machine is offline',
+    failedToListDirectory: 'Failed to list directory',
+    failedToParseDirectoryList: 'Failed to parse directory list',
     tryAgain: 'Please try again',
     contactSupport: 'Contact support if the problem persists',
     sessionNotFound: 'Session not found',
@@ -453,6 +456,11 @@ export const en = {
       acceptEdits: 'Accept Edits',
       plan: 'Plan Mode',
       bypassPermissions: 'Yolo Mode',
+      askEveryAction: 'Ask every action',
+      planOnly: 'Plan only',
+      autoApproveEdits: 'Auto-approve edits',
+      readOnlyTools: 'Read-only tools',
+      autoApproveAll: 'Auto-approve all',
       badgeAcceptAllEdits: 'Accept All Edits',
       badgeBypassAllPermissions: 'Bypass All Permissions',
       badgePlanMode: 'Plan Mode',
@@ -465,6 +473,17 @@ export const en = {
     model: {
       title: 'MODEL',
       configureInCli: 'Configure models in CLI settings',
+      selectModel: 'Select model',
+    },
+    reasoningEffort: {
+      auto: 'Auto',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      max: 'Max',
+      label: 'Reasoning effort',
+      accessibilityHint: ({ current }: { current: string }) =>
+        `Cycles effort. Current: ${current}.`,
     },
     codexPermissionMode: {
       title: 'CODEX PERMISSION MODE',
@@ -790,12 +809,15 @@ export const en = {
 
   welcome: {
     // Main welcome screen for unauthenticated users
-    title: 'Codex and Claude Code mobile client',
+    title: 'Mobile AI Agent',
     subtitle:
       'End-to-end encrypted and your account is stored only on your device.',
     createAccount: 'Create account',
     linkOrRestoreAccount: 'Link or restore account',
     loginWithMobileApp: 'Login with mobile app',
+    featureEncrypted: 'E2E Encrypted',
+    featureCrossPlatform: 'Cross-Platform',
+    featureInstantSync: 'Instant Sync',
   },
 
   review: {

@@ -12,7 +12,7 @@ export function useCommandPalette(commands: Command[], onClose: () => void) {
         if (!searchQuery.trim()) {
             // Group commands by category
             const grouped = commands.reduce((acc, command) => {
-                const category = command.category || 'General';
+                const category = command.category || '일반';
                 if (!acc[category]) {
                     acc[category] = [];
                 }
@@ -41,7 +41,7 @@ export function useCommandPalette(commands: Command[], onClose: () => void) {
 
         // Group filtered results
         const grouped = filtered.reduce((acc, command) => {
-            const category = command.category || 'Results';
+            const category = command.category || '검색 결과';
             if (!acc[category]) {
                 acc[category] = [];
             }

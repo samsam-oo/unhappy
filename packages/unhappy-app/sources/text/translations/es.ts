@@ -252,6 +252,9 @@ export const es: TranslationStructure = {
     fileNotFound: 'Archivo no encontrado',
     invalidFormat: 'Formato inválido',
     operationFailed: 'Operación falló',
+    machineOffline: 'Machine is offline',
+    failedToListDirectory: 'Failed to list directory',
+    failedToParseDirectoryList: 'Failed to parse directory list',
     tryAgain: 'Intenta de nuevo',
     contactSupport: 'Contacta soporte si el problema persiste',
     sessionNotFound: 'Sesión no encontrada',
@@ -468,6 +471,11 @@ export const es: TranslationStructure = {
       acceptEdits: 'Aceptar ediciones',
       plan: 'Modo de planificación',
       bypassPermissions: 'Modo Yolo',
+      askEveryAction: 'Ask every action',
+      planOnly: 'Plan only',
+      autoApproveEdits: 'Auto-approve edits',
+      readOnlyTools: 'Read-only tools',
+      autoApproveAll: 'Auto-approve all',
       badgeAcceptAllEdits: 'Aceptar todas las ediciones',
       badgeBypassAllPermissions: 'Omitir todos los permisos',
       badgePlanMode: 'Modo de planificación',
@@ -480,6 +488,7 @@ export const es: TranslationStructure = {
     model: {
       title: 'MODELO',
       configureInCli: 'Configurar modelos en la configuración del CLI',
+      selectModel: 'Select model',
     },
     codexPermissionMode: {
       title: 'MODO DE PERMISOS CODEX',
@@ -510,6 +519,16 @@ export const es: TranslationStructure = {
       badgeReadOnly: 'Solo lectura',
       badgeSafeYolo: 'YOLO seguro',
       badgeYolo: 'YOLO',
+    },
+    reasoningEffort: {
+      auto: 'Auto',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      max: 'Max',
+      label: 'Reasoning effort',
+      accessibilityHint: ({ current }: { current: string }) =>
+        `Cycles effort. Current: ${current}.`,
     },
     context: {
       remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -813,6 +832,9 @@ export const es: TranslationStructure = {
     createAccount: 'Crear cuenta',
     linkOrRestoreAccount: 'Vincular o restaurar cuenta',
     loginWithMobileApp: 'Iniciar sesión con aplicación móvil',
+    featureEncrypted: 'Cifrado E2E',
+    featureCrossPlatform: 'Multiplataforma',
+    featureInstantSync: 'Sincronización instantánea',
   },
 
   review: {

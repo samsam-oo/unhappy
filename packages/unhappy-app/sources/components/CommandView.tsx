@@ -124,7 +124,7 @@ export const CommandView = React.memo<CommandViewProps>(({
 
                     {/* Empty output indicator */}
                     {!stdout && !stderr && !error && !hideEmptyOutput && (
-                        <Text style={styles.emptyOutput}>[Command completed with no output]</Text>
+                        <Text style={styles.emptyOutput}>[명령 출력이 없습니다]</Text>
                     )}
                 </>
             ) : (

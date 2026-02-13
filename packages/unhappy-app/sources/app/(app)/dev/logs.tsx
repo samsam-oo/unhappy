@@ -16,9 +16,9 @@ export default function LogsScreen() {
     React.useEffect(() => {
         // Add some sample logs if empty (for demo purposes)
         if (log.getCount() === 0) {
-            log.log('Logger initialized');
-            log.log('Sample debug message');
-            log.log('Application started successfully');
+            log.log('로거 초기화 완료');
+            log.log('디버그 메시지 예시');
+            log.log('앱 실행이 정상적으로 시작되었습니다');
         }
 
         // Initial load
@@ -43,9 +43,9 @@ export default function LogsScreen() {
 
     const handleClear = async () => {
         const confirmed = await Modal.confirm(
-            'Clear Logs',
-            'Are you sure you want to clear all logs?',
-            { confirmText: 'Clear', destructive: true }
+            '로그 삭제',
+            '모든 로그를 삭제하시겠습니까?',
+            { confirmText: '삭제', destructive: true }
         );
         if (confirmed) {
             log.clear();
@@ -54,18 +54,18 @@ export default function LogsScreen() {
 
     const handleCopyAll = async () => {
         if (logs.length === 0) {
-            Modal.alert('No Logs', 'There are no logs to copy');
+            Modal.alert('로그 없음', '복사할 로그가 없습니다');
             return;
         }
 
         const allLogs = logs.join('\n');
         await Clipboard.setStringAsync(allLogs);
-        Modal.alert('Copied', `${logs.length} log entries copied to clipboard`);
+        Modal.alert('복사됨', `로그 ${logs.length}건이 클립보드에 복사되었습니다`);
     };
 
     const handleAddTestLog = () => {
         const timestamp = new Date().toLocaleTimeString();
-        log.log(`Test log entry at ${timestamp}`);
+        log.log(`테스트 로그 항목: ${timestamp}`);
     };
 
     const renderLogItem = ({ item, index }: { item: string; index: number }) => (
@@ -90,21 +90,21 @@ export default function LogsScreen() {
         <View style={{ flex: 1, backgroundColor: '#F5F5F5' }}>
             {/* Header with actions */}
             <ItemList>
-                <ItemGroup title={`Logs (${logs.length})`}>
+                    <ItemGroup title={`Logs (${logs.length})`}>
                     <Item 
-                        title="Add Test Log"
-                        subtitle="Add a test log entry with timestamp"
+                        title="테스트 로그 추가"
+                        subtitle="타임스탬프가 포함된 테스트 로그를 추가합니다"
                         icon={<Ionicons name="add-circle-outline" size={24} color="#34C759" />}
                         onPress={handleAddTestLog}
                     />
                     <Item 
-                        title="Copy All Logs"
+                        title="모든 로그 복사"
                         icon={<Ionicons name="copy-outline" size={24} color="#007AFF" />}
                         onPress={handleCopyAll}
                         disabled={logs.length === 0}
                     />
                     <Item 
-                        title="Clear All Logs"
+                        title="모든 로그 삭제"
                         icon={<Ionicons name="trash-outline" size={24} color="#FF3B30" />}
                         onPress={handleClear}
                         disabled={logs.length === 0}
@@ -123,13 +123,13 @@ export default function LogsScreen() {
                         padding: 32
                     }}>
                         <Ionicons name="document-text-outline" size={48} color="#C0C0C0" />
-                        <Text style={{
-                            fontSize: 16,
-                            color: '#999',
-                            marginTop: 16,
-                            textAlign: 'center'
-                        }}>
-                            No logs yet
+                            <Text style={{
+                                fontSize: 16,
+                                color: '#999',
+                                marginTop: 16,
+                                textAlign: 'center'
+                            }}>
+                            아직 로그가 없습니다
                         </Text>
                         <Text style={{
                             fontSize: 14,
@@ -137,7 +137,7 @@ export default function LogsScreen() {
                             marginTop: 8,
                             textAlign: 'center'
                         }}>
-                            Logs will appear here as they are generated
+                            생성되면 여기에 로그가 표시됩니다
                         </Text>
                     </View>
                 ) : (

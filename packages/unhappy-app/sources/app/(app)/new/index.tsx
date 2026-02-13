@@ -1,45 +1,41 @@
-import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
-import Constants from 'expo-constants';
-import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
-import { Ionicons, Octicons } from '@/icons/vector-icons';
-import { ItemGroup } from '@/components/ItemGroup';
+import { AgentInput } from '@/components/AgentInput';
 import { Item } from '@/components/Item';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useUnistyles } from 'react-native-unistyles';
+import { ItemGroup } from '@/components/ItemGroup';
 import { layout } from '@/components/layout';
-import { t } from '@/text';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useHeaderHeight } from '@/utils/responsive';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { PermissionMode } from '@/components/PermissionModeSelector';
+import { SearchableListSelector } from '@/components/SearchableListSelector';
+import { StatusDot } from '@/components/StatusDot';
+import { SHOW_GEMINI_UI } from '@/config';
+import { Typography } from '@/constants/Typography';
+import { useCLIDetection } from '@/hooks/useCLIDetection';
+import { extractEnvVarReferences, resolveEnvVarSubstitution, useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
+import { Ionicons } from '@/icons/vector-icons';
 import { Modal } from '@/modal';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { normalizePermissionPolicy } from '@/sync/permissionPolicy';
+import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
+import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
+import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
+import { storage, useAllMachines, useSessions, useSetting, useSettingMutable } from '@/sync/storage';
+import type { ReasoningEffortMode } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
-import { SessionTypeSelector } from '@/components/SessionTypeSelector';
+import { t } from '@/text';
+import { joinBasePath, pathRelativeToBase } from '@/utils/basePathUtils';
 import { createWorktree } from '@/utils/createWorktree';
 import { generateWorktreeName } from '@/utils/generateWorktreeName';
-import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
-import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
-import { PermissionMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
-import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
-import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
-import { AgentInput } from '@/components/AgentInput';
-import { StyleSheet } from 'react-native-unistyles';
-import { randomUUID } from 'expo-crypto';
-import { useCLIDetection } from '@/hooks/useCLIDetection';
-import { useEnvironmentVariables, resolveEnvVarSubstitution, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { joinBasePath, pathRelativeToBase } from '@/utils/basePathUtils';
-import { MultiTextInput } from '@/components/MultiTextInput';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { StatusDot } from '@/components/StatusDot';
-import { SearchableListSelector, SelectorConfig } from '@/components/SearchableListSelector';
-import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
-import type { ReasoningEffortMode } from '@/sync/storageTypes';
-import { SHOW_GEMINI_UI } from '@/config';
-import { normalizePermissionPolicy } from '@/sync/permissionPolicy';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { useHeaderHeight } from '@/utils/responsive';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
+import Constants from 'expo-constants';
+import { randomUUID } from 'expo-crypto';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React from 'react';
+import { Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -2107,10 +2103,10 @@ function NewSessionWizard() {
                             <ItemGroup title="">
                                 {([
                                     { kind: 'mode', value: 'default', label: '기본', description: '권한을 요청합니다', icon: 'shield-outline' },
-                                    { kind: 'plan', label: '계획 모드', description: '실행 전 계획 수립', icon: 'list-outline' },
+                                    { kind: 'plan', value: 'planning', label: '계획', description: '실행 전 계획', icon: 'list-outline' },
                                     { kind: 'mode', value: 'allow-edits', label: '편집 허용', description: '편집을 자동 승인', icon: 'create-outline' },
                                     { kind: 'mode', value: 'read-only', label: '읽기 전용', description: '읽기 전용 모드', icon: 'eye-outline' },
-                                    { kind: 'mode', value: 'bypass', label: '우회', description: '모든 권한 요청 건너뛰기', icon: 'flash-outline' },
+                                    { kind: 'mode', value: 'bypass', label: '바이패스', description: '모든 권한 요청 건너뛰기', icon: 'flash-outline' },
                                 ] as const).map((row, index, array) => {
                                     const isSelected = row.kind === 'plan' ? planOnly : !planOnly && permissionMode === row.value;
                                     return (

@@ -87,15 +87,15 @@ function extractPatchChangePreview(input: unknown): string | null {
         detailLines.push(`${kind} ${toBasename(path)}`);
     }
 
-    const fileWord = entries.length === 1 ? 'file' : 'files';
+    const fileWord = '파일';
     const summaryLines = [
-        `${entries.length} ${fileWord} changed (A${addCount} M${modifyCount} D${deleteCount})`,
+        `${entries.length} ${fileWord} 변경됨 (A${addCount} M${modifyCount} D${deleteCount})`,
         ...detailLines.slice(0, MAX_CHANGE_PREVIEW_FILES),
     ];
 
     const hiddenCount = detailLines.length - MAX_CHANGE_PREVIEW_FILES;
     if (hiddenCount > 0) {
-        summaryLines.push(`... +${hiddenCount} more`);
+        summaryLines.push(`... +${hiddenCount}개 더`);
     }
 
     return formatChangeSummary(summaryLines);
@@ -166,9 +166,9 @@ function extractUnifiedDiffPreview(input: unknown): string | null {
     const totalAdded = files.reduce((sum, f) => sum + f.added, 0);
     const totalDeleted = files.reduce((sum, f) => sum + f.deleted, 0);
 
-    const fileWord = files.length === 1 ? 'file' : 'files';
+    const fileWord = '파일';
     const summaryLines = [
-        `${files.length} ${fileWord} changed (+${totalAdded} -${totalDeleted})`,
+        `${files.length} ${fileWord} 변경됨 (+${totalAdded} -${totalDeleted})`,
         ...files.slice(0, MAX_CHANGE_PREVIEW_FILES).map((f) => (
             f.added === 0 && f.deleted === 0
                 ? `M ${toBasename(f.path)}`
@@ -178,7 +178,7 @@ function extractUnifiedDiffPreview(input: unknown): string | null {
 
     const hiddenCount = files.length - MAX_CHANGE_PREVIEW_FILES;
     if (hiddenCount > 0) {
-        summaryLines.push(`... +${hiddenCount} more`);
+        summaryLines.push(`... +${hiddenCount}개 더`);
     }
 
     return formatChangeSummary(summaryLines);
@@ -418,7 +418,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         if (isReasoningTool) {
             const reasoningTitle =
                 typeof tool.input?.title === 'string' ? tool.input.title.trim() : '';
-            chatLabel = reasoningTitle || 'Thinking...';
+            chatLabel = reasoningTitle || t('tools.names.reasoning');
         } else if (knownTool && typeof knownTool.extractDescription === 'function') {
             const desc = knownTool.extractDescription({ tool, metadata: props.metadata });
             if (typeof desc === 'string' && desc.trim()) {

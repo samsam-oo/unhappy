@@ -128,7 +128,7 @@ export default function FileScreen() {
         const loadFile = async () => {
             try {
                 if (!sessionId || !filePath) {
-                    setError('File not found');
+                    setError(t('errors.fileNotFound'));
                     setIsLoading(false);
                     return;
                 }
@@ -206,13 +206,13 @@ export default function FileScreen() {
                             isBinary
                         });
                     } else {
-                        setError(response.error || 'Failed to read file');
+                        setError(response.error || t('errors.operationFailed'));
                     }
                 }
             } catch (error) {
                 console.error('Failed to load file:', error);
                 if (!isCancelled) {
-                    setError('Failed to load file');
+                    setError(t('errors.operationFailed'));
                 }
             } finally {
                 if (!isCancelled) {

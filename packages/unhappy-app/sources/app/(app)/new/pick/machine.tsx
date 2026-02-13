@@ -140,7 +140,7 @@ export default React.memo(function MachinePickerScreen() {
 
     const headerOptions = {
         headerShown: true,
-        headerTitle: 'Select Machine',
+        headerTitle: '머신 선택',
         headerBackTitle: t('common.back'),
     };
 
@@ -182,7 +182,7 @@ export default React.memo(function MachinePickerScreen() {
                                 style={styles.searchInput}
                                 value={searchText}
                                 onChangeText={setSearchText}
-                                placeholder="Search machines..."
+                                placeholder="머신 검색..."
                                 placeholderTextColor={theme.colors.textSecondary}
                                 clearButtonMode="while-editing"
                                 autoCapitalize="none"
@@ -195,7 +195,7 @@ export default React.memo(function MachinePickerScreen() {
                 {sortedMachines.length === 0 && searchText.trim() ? (
                     <ItemGroup>
                         <Item
-                            title="No machines match your search"
+                            title="검색과 일치하는 머신이 없습니다"
                             showChevron={false}
                             showDivider={false}
                             titleStyle={{ color: theme.colors.textSecondary }}

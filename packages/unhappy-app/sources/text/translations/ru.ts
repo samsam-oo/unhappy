@@ -234,6 +234,9 @@ export const ru: TranslationStructure = {
     fileNotFound: 'Файл не найден',
     invalidFormat: 'Неверный формат',
     operationFailed: 'Операция не выполнена',
+    machineOffline: 'Machine is offline',
+    failedToListDirectory: 'Failed to list directory',
+    failedToParseDirectoryList: 'Failed to parse directory list',
     tryAgain: 'Пожалуйста, попробуйте снова',
     contactSupport: 'Если проблема сохранится, обратитесь в поддержку',
     sessionNotFound: 'Сессия не найдена',
@@ -476,6 +479,11 @@ export const ru: TranslationStructure = {
       acceptEdits: 'Принимать правки',
       plan: 'Режим планирования',
       bypassPermissions: 'YOLO режим',
+      askEveryAction: 'Ask every action',
+      planOnly: 'Plan only',
+      autoApproveEdits: 'Auto-approve edits',
+      readOnlyTools: 'Read-only tools',
+      autoApproveAll: 'Auto-approve all',
       badgeAcceptAllEdits: 'Принимать все правки',
       badgeBypassAllPermissions: 'Обход всех разрешений',
       badgePlanMode: 'Режим планирования',
@@ -488,6 +496,7 @@ export const ru: TranslationStructure = {
     model: {
       title: 'МОДЕЛЬ',
       configureInCli: 'Настройте модели в настройках CLI',
+      selectModel: 'Select model',
     },
     codexPermissionMode: {
       title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
@@ -518,6 +527,16 @@ export const ru: TranslationStructure = {
       badgeReadOnly: 'Только чтение',
       badgeSafeYolo: 'Безопасный YOLO',
       badgeYolo: 'YOLO',
+    },
+    reasoningEffort: {
+      auto: 'Auto',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      max: 'Max',
+      label: 'Reasoning effort',
+      accessibilityHint: ({ current }: { current: string }) =>
+        `Cycles effort. Current: ${current}.`,
     },
     context: {
       remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
@@ -808,6 +827,9 @@ export const ru: TranslationStructure = {
     createAccount: 'Создать аккаунт',
     linkOrRestoreAccount: 'Связать или восстановить аккаунт',
     loginWithMobileApp: 'Войти через мобильное приложение',
+    featureEncrypted: 'E2E шифрование',
+    featureCrossPlatform: 'Кроссплатформенность',
+    featureInstantSync: 'Мгновенная синхронизация',
   },
 
   review: {

@@ -57,14 +57,14 @@ export default function InvertedListTest() {
         <>
             <Stack.Screen
                 options={{
-                    headerTitle: 'Inverted List Test',
+                    headerTitle: '반전 리스트 테스트',
                 }}
             />
 
             <Animated.View style={[styles.container, { transform: [{ translateY: height }] }]}>
                 <View style={styles.controlsContainer}>
                     <View>
-                        <Text style={styles.controlLabel}>List Implementation:</Text>
+                        <Text style={styles.controlLabel}>리스트 구현 방식:</Text>
                         <View style={styles.buttonRow}>
                             <TouchableOpacity
                                 onPress={() => setListType('flash')}
@@ -76,7 +76,7 @@ export default function InvertedListTest() {
                                 onPress={() => setListType('flat')}
                                 style={[styles.button, listType === 'flat' ? styles.buttonActive : styles.buttonInactive]}
                             >
-                                <Text style={[styles.buttonText, listType === 'flat' ? styles.buttonTextActive : styles.buttonTextInactive]}>FlatList</Text>
+                                    <Text style={[styles.buttonText, listType === 'flat' ? styles.buttonTextActive : styles.buttonTextInactive]}>FlatList</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={() => setListType('legend')}
@@ -87,26 +87,26 @@ export default function InvertedListTest() {
                         </View>
                     </View>
                     <View>
-                        <Text style={styles.controlLabel}>Padding Method:</Text>
+                        <Text style={styles.controlLabel}>패딩 방식:</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                             <View style={styles.buttonRow}>
                                 <TouchableOpacity
                                     onPress={() => setPaddingType('animated')}
                                     style={[styles.button, paddingType === 'animated' ? styles.buttonActive : styles.buttonInactive]}
                                 >
-                                    <Text style={[styles.buttonText, paddingType === 'animated' ? styles.buttonTextActive : styles.buttonTextInactive]}>Animated</Text>
+                                    <Text style={[styles.buttonText, paddingType === 'animated' ? styles.buttonTextActive : styles.buttonTextInactive]}>애니메이션</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={() => setPaddingType('non-animated')}
                                     style={[styles.button, paddingType === 'non-animated' ? styles.buttonActive : styles.buttonInactive]}
                                 >
-                                    <Text style={[styles.buttonText, paddingType === 'non-animated' ? styles.buttonTextActive : styles.buttonTextInactive]}>Non-Animated</Text>
+                                    <Text style={[styles.buttonText, paddingType === 'non-animated' ? styles.buttonTextActive : styles.buttonTextInactive]}>비애니메이션</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={() => setPaddingType('header-footer')}
                                     style={[styles.button, paddingType === 'header-footer' ? styles.buttonActive : styles.buttonInactive]}
                                 >
-                                    <Text style={[styles.buttonText, paddingType === 'header-footer' ? styles.buttonTextActive : styles.buttonTextInactive]}>Header/Footer</Text>
+                                    <Text style={[styles.buttonText, paddingType === 'header-footer' ? styles.buttonTextActive : styles.buttonTextInactive]}>헤더/푸터</Text>
                                 </TouchableOpacity>
                             </View>
                         </ScrollView>
@@ -117,7 +117,7 @@ export default function InvertedListTest() {
                     const ListEmptyComponent = (
                         <View style={styles.emptyState}>
                             <Text style={styles.emptyStateText}>
-                                No messages yet. Type something below!
+                                아직 메시지가 없습니다. 아래에 입력해 보세요!
                             </Text>
                         </View>
                     );
@@ -187,7 +187,7 @@ export default function InvertedListTest() {
                     <View style={styles.inputRow}>
                         <TextInput
                             style={styles.textInput}
-                            placeholder="Type a message..."
+                            placeholder="메시지를 입력하세요..."
                             value={inputText}
                             onChangeText={setInputText}
                             onSubmitEditing={addMessage}
@@ -197,7 +197,7 @@ export default function InvertedListTest() {
                             onPress={addMessage}
                             style={styles.sendButton}
                         >
-                            <Text style={styles.sendButtonText}>Send</Text>
+                            <Text style={styles.sendButtonText}>전송</Text>
                         </TouchableOpacity>
                     </View>
                 </View>

@@ -122,11 +122,11 @@ function AgentTextBlock(props: {
     const syntheticThinkingTool: ToolCall = {
       name: 'think',
       state: 'completed',
-      input: { title: 'Thinking...' },
+      input: { title: t('tools.names.reasoning') },
       createdAt: props.message.createdAt,
       startedAt: props.message.createdAt,
       completedAt: props.message.createdAt,
-      description: 'Thinking...',
+      description: t('tools.names.reasoning'),
       result: {
         content: thinkingBody || props.message.text,
         status: 'completed',

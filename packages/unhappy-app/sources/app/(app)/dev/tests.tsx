@@ -74,7 +74,7 @@ export default function TestsScreen() {
                                 {totalTests}
                             </Text>
                             <Text style={{ ...Typography.default(), fontSize: 14, color: '#8E8E93' }}>
-                                Total Tests
+                                총 테스트 수
                             </Text>
                         </View>
                         <View style={{ flex: 1 }}>
@@ -82,7 +82,7 @@ export default function TestsScreen() {
                                 {passedTests}
                             </Text>
                             <Text style={{ ...Typography.default(), fontSize: 14, color: '#8E8E93' }}>
-                                Passed
+                                통과
                             </Text>
                         </View>
                         <View style={{ flex: 1 }}>
@@ -90,7 +90,7 @@ export default function TestsScreen() {
                                 {failedTests}
                             </Text>
                             <Text style={{ ...Typography.default(), fontSize: 14, color: '#8E8E93' }}>
-                                Failed
+                                실패
                             </Text>
                         </View>
                     </View>
@@ -98,10 +98,10 @@ export default function TestsScreen() {
             )}
 
             {/* Run All Tests */}
-            <ItemGroup title="Actions">
+            <ItemGroup title="작업">
                 <Item
-                    title="Run All Tests"
-                    subtitle={`${suites.length} test suites available`}
+                    title="모든 테스트 실행"
+                    subtitle={`${suites.length}개 테스트 스위트 사용 가능`}
                     icon={<Ionicons name="play-circle-outline" size={28} color="#34C759" />}
                     onPress={runAllTests}
                     loading={state.running}
@@ -110,7 +110,7 @@ export default function TestsScreen() {
             </ItemGroup>
 
             {/* Test Suites */}
-            <ItemGroup title="Test Suites">
+            <ItemGroup title="테스트 스위트">
                 {suites.map(suiteName => {
                     const result = state.results.find(r => r.name === suiteName);
                     const hasRun = !!result;
@@ -122,7 +122,7 @@ export default function TestsScreen() {
                         <Item
                             key={suiteName}
                             title={suiteName}
-                            subtitle={hasRun ? `${passedCount}/${testCount} tests passed` : 'Not run'}
+                            subtitle={hasRun ? `${passedCount}/${testCount}개 테스트 통과` : '미실행'}
                             icon={
                                 hasRun ? (
                                     <Ionicons 
@@ -143,7 +143,7 @@ export default function TestsScreen() {
 
             {/* Test Results */}
             {state.results.map(suite => (
-                <ItemGroup key={suite.name} title={`${suite.name} Results`}>
+                <ItemGroup key={suite.name} title={`${suite.name} 결과`}>
                     {suite.tests.map((test, index) => (
                         <View key={index} style={{ backgroundColor: 'white' }}>
                             <View style={{ 
@@ -194,7 +194,7 @@ export default function TestsScreen() {
                 <View style={{ padding: 32, alignItems: 'center' }}>
                     <ActivityIndicator size="large" color="#007AFF" />
                     <Text style={{ ...Typography.default(), fontSize: 16, color: '#8E8E93', marginTop: 16 }}>
-                        Running tests...
+                        테스트 실행 중...
                     </Text>
                 </View>
             )}

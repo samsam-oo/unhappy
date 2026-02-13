@@ -86,13 +86,13 @@ export default function Restore() {
             // Validate the secret key format
             const secretBytes = decodeBase64(normalizedKey, 'base64url');
             if (secretBytes.length !== 32) {
-                throw new Error('Invalid secret key length');
+                throw new Error('비밀 키 길이가 유효하지 않습니다');
             }
 
             // Get token from secret
             const token = await authGetToken(secretBytes);
             if (!token) {
-                throw new Error('Failed to authenticate with provided key');
+                throw new Error('제공된 키로 인증에 실패했습니다');
             }
 
             // Login with new credentials
@@ -102,7 +102,7 @@ export default function Restore() {
             router.back();
 
         } catch (error) {
-            console.error('Restore error:', error);
+            console.error('복구 오류:', error);
             Modal.alert(t('common.error'), t('connect.invalidSecretKey'));
         }
     };
@@ -112,7 +112,7 @@ export default function Restore() {
             <View style={styles.container}>
                 <View style={styles.contentWrapper}>
                     <Text style={styles.instructionText}>
-                        Enter your secret key to restore access to your account.
+                        비밀 키를 입력해 계정을 복구하세요.
                     </Text>
 
                     <TextInput

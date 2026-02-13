@@ -116,7 +116,8 @@ export const AIBackendProfileSchema = z.object({
     defaultSessionType: z.enum(['simple', 'worktree']).optional(),
 
     // Default permission mode for this profile
-    defaultPermissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(),
+    defaultPermissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo', 'allow-edits', 'bypass']).optional(),
+    defaultPlanOnly: z.boolean().optional(),
 
     // Default model mode for this profile
     defaultModelMode: z.string().optional(),
@@ -284,6 +285,7 @@ export const SettingsSchema = z.object({
 	    })).describe('Per-machine base directories used for project selection'),
 	    lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
 	    lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
+	    lastUsedPlanOnly: z.boolean().nullable().describe('Last selected plan-only flag for new sessions'),
 	    lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
 	    lastUsedEffortMode: z.string().nullable().describe('Last selected reasoning effort mode for new sessions'),
 	    // Profile management settings
@@ -351,6 +353,7 @@ export const settingsDefaults: Settings = {
 	    projectBasePaths: [],
 	    lastUsedAgent: null,
 	    lastUsedPermissionMode: null,
+	    lastUsedPlanOnly: null,
 	    lastUsedModelMode: null,
 	    lastUsedEffortMode: null,
 	    // Profile management defaults

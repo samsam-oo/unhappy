@@ -9,6 +9,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { storage } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { t } from '@/text';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
@@ -23,10 +24,10 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             // Navigation commands
             {
                 id: 'new-session',
-                title: 'New Session',
-                subtitle: 'Start a new chat session',
+                title: '새 세션',
+                subtitle: '새 채팅 세션 시작',
                 icon: 'add-circle-outline',
-                category: 'Sessions',
+                category: t('tabs.sessions'),
                 shortcut: '⌘N',
                 action: () => {
                     router.push('/new');
@@ -34,20 +35,20 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             },
             {
                 id: 'sessions',
-                title: 'View All Sessions',
-                subtitle: 'Browse your chat history',
+                title: '모든 세션 보기',
+                subtitle: '채팅 기록 보기',
                 icon: 'chatbubbles-outline',
-                category: 'Sessions',
+                category: t('tabs.sessions'),
                 action: () => {
                     router.push('/');
                 }
             },
             {
                 id: 'settings',
-                title: 'Settings',
-                subtitle: 'Configure your preferences',
+                title: '설정',
+                subtitle: '환경설정 변경',
                 icon: 'settings-outline',
-                category: 'Navigation',
+                category: t('settings.title'),
                 shortcut: '⌘,',
                 action: () => {
                     router.push('/settings');
@@ -55,20 +56,20 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             },
             {
                 id: 'account',
-                title: 'Account',
-                subtitle: 'Manage your account',
+                title: '계정',
+                subtitle: '계정 관리',
                 icon: 'person-circle-outline',
-                category: 'Navigation',
+                category: t('settings.title'),
                 action: () => {
                     router.push('/settings/account');
                 }
             },
             {
                 id: 'connect',
-                title: 'Connect Device',
-                subtitle: 'Connect a new device via web',
+                title: '기기 연결',
+                subtitle: '웹으로 새 기기 연결',
                 icon: 'link-outline',
-                category: 'Navigation',
+                category: t('settings.title'),
                 action: () => {
                     router.push('/terminal/connect');
                 }
@@ -81,13 +82,13 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             .slice(0, 5);
 
         recentSessions.forEach(session => {
-            const sessionName = session.metadata?.name || `Session ${session.id.slice(0, 6)}`;
+            const sessionName = session.metadata?.name || t('status.unknown');
             cmds.push({
                 id: `session-${session.id}`,
                 title: sessionName,
-                subtitle: session.metadata?.path || 'Switch to session',
+                subtitle: session.metadata?.path || '세션으로 전환',
                 icon: 'time-outline',
-                category: 'Recent Sessions',
+                category: t('tabs.sessions'),
                 action: () => {
                     navigateToSession(session.id);
                 }
@@ -97,10 +98,10 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         // System commands
         cmds.push({
             id: 'sign-out',
-            title: 'Sign Out',
-            subtitle: 'Sign out of your account',
+                title: '로그아웃',
+                subtitle: '계정에서 로그아웃',
             icon: 'log-out-outline',
-            category: 'System',
+            category: t('common.error'),
             action: async () => {
                 await logout();
             }
@@ -110,10 +111,10 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         if (__DEV__) {
             cmds.push({
                 id: 'dev-menu',
-                title: 'Developer Menu',
-                subtitle: 'Access developer tools',
+                title: '개발자 메뉴',
+                subtitle: '개발자 도구 열기',
                 icon: 'code-slash-outline',
-                category: 'Developer',
+                category: t('settings.developer'),
                 action: () => {
                     router.push('/dev');
                 }

@@ -16,6 +16,7 @@ import { Ionicons } from '@/icons/vector-icons';
 import { useSettings } from '@/sync/storage';
 import { generateCommitMessageWithAI } from '@/utils/aiCommitMessage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { t } from '@/text';
 
 type Props = {
     title: string;
@@ -121,7 +122,7 @@ export function CommitMessageModal(props: Props) {
                 preferredLanguage: settings.preferredLanguage ?? null,
             });
             if (!result.success || !result.message) {
-                setGenerateError(result.error || 'AI generation failed.');
+                setGenerateError(result.error || t('errors.unknownError'));
                 return;
             }
             setValue(result.message);

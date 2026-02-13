@@ -19,8 +19,8 @@ export default function InputStylesDemo() {
     const inputStyles: InputStyle[] = [
         {
             id: 'slack',
-            name: 'Slack Style',
-            description: 'Minimalist with icon-only buttons',
+            name: '슬랙 스타일',
+            description: '아이콘만 표시되는 미니멀 디자인',
             preview: (
                 <View style={{ backgroundColor: '#fff' }}>
                     <View style={{
@@ -73,7 +73,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ flex: 1, fontSize: 14, color: '#333' }}
-                                placeholder="Message"
+                                placeholder="메시지"
                                 placeholderTextColor="#999"
                                 editable={false}
                             />
@@ -87,8 +87,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'openai',
-            name: 'OpenAI Style',
-            description: 'Clean with subtle rounded corners',
+            name: '오픈AI 스타일',
+            description: '부드러운 둥근 모서리의 깔끔한 디자인',
             preview: (
                 <View style={{ backgroundColor: '#fff' }}>
                     <View style={{ padding: 16 }}>
@@ -105,7 +105,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ flex: 1, fontSize: 16, color: '#000', paddingVertical: 12 }}
-                                placeholder="Message ChatGPT..."
+                                placeholder="메시지 ChatGPT..."
                                 placeholderTextColor="#8e8e8e"
                                 editable={false}
                             />
@@ -159,8 +159,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'discord',
-            name: 'Discord Style',
-            description: 'Dark mode with attachment button',
+            name: '디스코드 스타일',
+            description: '다크 모드와 첨부 파일 버튼',
             preview: (
                 <View style={{ backgroundColor: '#36393f' }}>
                     <View style={{ padding: 16 }}>
@@ -177,7 +177,7 @@ export default function InputStylesDemo() {
                             </Pressable>
                             <TextInput
                                 style={{ flex: 1, fontSize: 16, color: '#dcddde' }}
-                                placeholder="Message #general"
+                                placeholder="메시지 #일반"
                                 placeholderTextColor="#72767d"
                                 editable={false}
                             />
@@ -210,8 +210,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'whatsapp',
-            name: 'WhatsApp Style',
-            description: 'Green accents with circular buttons',
+            name: '왓츠앱 스타일',
+            description: '원형 버튼의 초록색 포인트',
             preview: (
                 <View style={{ backgroundColor: '#e5ddd5' }}>
                     <View style={{
@@ -234,7 +234,7 @@ export default function InputStylesDemo() {
                             </Pressable>
                             <TextInput
                                 style={{ flex: 1, fontSize: 16, color: '#000' }}
-                                placeholder="Type a message"
+                                placeholder="메시지를 입력하세요"
                                 placeholderTextColor="#999"
                                 editable={false}
                             />
@@ -269,7 +269,7 @@ export default function InputStylesDemo() {
                             borderRadius: 12,
                             marginRight: 6,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#667781' }}>Photo</Text>
+                            <Text style={{ fontSize: 12, color: '#667781' }}>사진</Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 12,
@@ -278,7 +278,7 @@ export default function InputStylesDemo() {
                             borderRadius: 12,
                             marginRight: 6,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#667781' }}>Video</Text>
+                            <Text style={{ fontSize: 12, color: '#667781' }}>동영상</Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 12,
@@ -286,7 +286,7 @@ export default function InputStylesDemo() {
                             backgroundColor: 'rgba(0,0,0,0.05)',
                             borderRadius: 12,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#667781' }}>Document</Text>
+                            <Text style={{ fontSize: 12, color: '#667781' }}>문서</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -294,8 +294,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'telegram',
-            name: 'Telegram Style',
-            description: 'Flat design with sharp corners',
+            name: '텔레그램 스타일',
+            description: '날카로운 모서리의 플랫 디자인',
             preview: (
                 <View style={{ backgroundColor: '#fff' }}>
                     <View style={{
@@ -318,7 +318,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ fontSize: 16, color: '#000' }}
-                                placeholder="Message"
+                                placeholder="메시지"
                                 placeholderTextColor="#999"
                                 editable={false}
                             />
@@ -358,8 +358,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'linear',
-            name: 'Linear Style',
-            description: 'Modern with subtle gradients',
+            name: '리니어 스타일',
+            description: '은은한 그라데이션이 있는 현대적 디자인',
             preview: (
                 <View style={{ backgroundColor: '#fcfcfc' }}>
                     <View style={{ padding: 16 }}>
@@ -376,7 +376,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ flex: 1, fontSize: 15, color: '#24292e' }}
-                                placeholder="Add a comment..."
+                                placeholder="댓글을 작성하세요..."
                                 placeholderTextColor="#6a737d"
                                 editable={false}
                             />
@@ -387,7 +387,7 @@ export default function InputStylesDemo() {
                                 borderRadius: 6,
                             }}>
                                 <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>
-                                    Comment
+                                    댓글
                                 </Text>
                             </Pressable>
                         </View>
@@ -416,8 +416,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'notion',
-            name: 'Notion Style',
-            description: 'Minimal with "/" command hint',
+            name: '노션 스타일',
+            description: '"/" 명령어 힌트가 있는 미니멀 스타일',
             preview: (
                 <View style={{ backgroundColor: '#fff' }}>
                     <View style={{ padding: 16 }}>
@@ -430,7 +430,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ fontSize: 16, color: '#37352f' }}
-                                placeholder="Type '/' for commands"
+                                placeholder="'/' 명령어 입력"
                                 placeholderTextColor="rgba(55, 53, 47, 0.4)"
                                 editable={false}
                             />
@@ -449,7 +449,7 @@ export default function InputStylesDemo() {
                             borderRadius: 3,
                             marginRight: 8,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#787774' }}>Add icon</Text>
+                            <Text style={{ fontSize: 12, color: '#787774' }}>아이콘 추가</Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 10,
@@ -458,7 +458,7 @@ export default function InputStylesDemo() {
                             borderRadius: 3,
                             marginRight: 8,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#787774' }}>Add cover</Text>
+                            <Text style={{ fontSize: 12, color: '#787774' }}>표지 추가</Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 10,
@@ -466,7 +466,7 @@ export default function InputStylesDemo() {
                             backgroundColor: '#f7f6f3',
                             borderRadius: 3,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#787774' }}>Add comment</Text>
+                            <Text style={{ fontSize: 12, color: '#787774' }}>댓글 추가</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -474,8 +474,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'github',
-            name: 'GitHub Style',
-            description: 'Developer-focused with markdown hint',
+            name: '깃허브 스타일',
+            description: '개발자 중심의 마크다운 힌트',
             preview: (
                 <View style={{ backgroundColor: '#f6f8fa' }}>
                     <View style={{ padding: 16 }}>
@@ -514,7 +514,7 @@ export default function InputStylesDemo() {
                             </View>
                             <TextInput
                                 style={{ fontSize: 14, color: '#24292e', minHeight: 60 }}
-                                placeholder="Leave a comment"
+                                placeholder="댓글을 입력하세요"
                                 placeholderTextColor="#6a737d"
                                 multiline
                                 editable={false}
@@ -529,7 +529,7 @@ export default function InputStylesDemo() {
                         paddingBottom: 12,
                     }}>
                         <Text style={{ fontSize: 12, color: '#6a737d' }}>
-                            Markdown is supported
+                            마크다운 지원
                         </Text>
                         <View style={{ flexDirection: 'row' }}>
                             <Pressable style={{
@@ -541,7 +541,7 @@ export default function InputStylesDemo() {
                                 borderColor: '#d1d5da',
                                 marginRight: 8,
                             }}>
-                                <Text style={{ fontSize: 14, color: '#24292e' }}>Cancel</Text>
+                                <Text style={{ fontSize: 14, color: '#24292e' }}>취소</Text>
                             </Pressable>
                             <Pressable style={{
                                 paddingHorizontal: 12,
@@ -549,7 +549,7 @@ export default function InputStylesDemo() {
                                 backgroundColor: '#2ea44f',
                                 borderRadius: 6,
                             }}>
-                                <Text style={{ fontSize: 14, color: '#fff', fontWeight: '600' }}>Comment</Text>
+                                <Text style={{ fontSize: 14, color: '#fff', fontWeight: '600' }}>댓글</Text>
                             </Pressable>
                         </View>
                     </View>
@@ -558,8 +558,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'imessage',
-            name: 'Apple Messages',
-            description: 'iOS native messaging style',
+            name: '애플 메시지',
+            description: 'iOS 기본 메시징 스타일',
             preview: (
                 <View style={{ backgroundColor: '#fff' }}>
                     <View style={{
@@ -589,7 +589,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ fontSize: 17, color: '#000' }}
-                                placeholder="iMessage"
+                                placeholder="i메시지"
                                 placeholderTextColor="#8e8e93"
                                 editable={false}
                             />
@@ -629,8 +629,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'material',
-            name: 'Material Design',
-            description: 'Google\'s design language',
+            name: '머테리얼 디자인',
+            description: 'Google의 디자인 언어',
             preview: (
                 <View style={{ backgroundColor: '#fff' }}>
                     <View style={{ padding: 16 }}>
@@ -652,7 +652,7 @@ export default function InputStylesDemo() {
                             }}>
                                 <TextInput
                                     style={{ flex: 1, fontSize: 16, color: '#000' }}
-                                    placeholder="Type your message"
+                                    placeholder="메시지를 입력하세요"
                                     placeholderTextColor="#999"
                                     editable={false}
                                 />
@@ -717,8 +717,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'brutalist',
-            name: 'Brutalist Style',
-            description: 'Bold borders and high contrast',
+            name: '브루탈리스트 스타일',
+            description: '굵은 테두리와 높은 대비',
             preview: (
                 <View style={{ backgroundColor: '#ffeb3b' }}>
                     <View style={{ padding: 16 }}>
@@ -738,7 +738,7 @@ export default function InputStylesDemo() {
                                     color: '#000',
                                     fontWeight: 'bold',
                                 }}
-                                placeholder="TYPE HERE!"
+                                placeholder="여기에 입력하세요!"
                                 placeholderTextColor="#666"
                                 editable={false}
                             />
@@ -772,7 +772,7 @@ export default function InputStylesDemo() {
                             paddingVertical: 8,
                             marginRight: 8,
                         }}>
-                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>BOLD</Text>
+                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>굵게</Text>
                         </Pressable>
                         <Pressable style={{
                             backgroundColor: '#fff',
@@ -782,7 +782,7 @@ export default function InputStylesDemo() {
                             paddingVertical: 8,
                             marginRight: 8,
                         }}>
-                            <Text style={{ color: '#000', fontWeight: 'bold' }}>ITALIC</Text>
+                            <Text style={{ color: '#000', fontWeight: 'bold' }}>기울임</Text>
                         </Pressable>
                         <Pressable style={{
                             backgroundColor: '#f44336',
@@ -791,7 +791,7 @@ export default function InputStylesDemo() {
                             paddingHorizontal: 16,
                             paddingVertical: 8,
                         }}>
-                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>LINK</Text>
+                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>링크</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -799,8 +799,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'glassmorphism',
-            name: 'Glassmorphism',
-            description: 'Translucent with blur effects',
+            name: '글래스모피즘',
+            description: '반투명 블러 효과',
             preview: (
                 <View style={{ backgroundColor: '#1a1a2e' }}>
                     <View style={{ padding: 16 }}>
@@ -820,7 +820,7 @@ export default function InputStylesDemo() {
                                     fontSize: 16, 
                                     color: '#fff',
                                 }}
-                                placeholder="Type a message..."
+                                placeholder="메시지를 입력하세요..."
                                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
                                 editable={false}
                             />
@@ -887,8 +887,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'spotify',
-            name: 'Spotify Style',
-            description: 'Music-focused with playback controls',
+            name: '스포티파이 스타일',
+            description: '재생 제어가 있는 음악 중심 UI',
             preview: (
                 <View style={{ backgroundColor: '#121212' }}>
                     <View style={{ padding: 16 }}>
@@ -908,7 +908,7 @@ export default function InputStylesDemo() {
                                     color: '#fff',
                                     marginLeft: 12,
                                 }}
-                                placeholder="Search for songs..."
+                                placeholder="노래 검색..."
                                 placeholderTextColor="#535353"
                                 editable={false}
                             />
@@ -953,8 +953,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'figma',
-            name: 'Figma Style',
-            description: 'Design tool with collaborative features',
+            name: '피그마 스타일',
+            description: '협업 기능이 있는 디자인 도구',
             preview: (
                 <View style={{ backgroundColor: '#2c2c2c' }}>
                     <View style={{ padding: 16 }}>
@@ -968,7 +968,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ flex: 1, fontSize: 14, color: '#fff' }}
-                                placeholder="Add a comment..."
+                                placeholder="댓글을 작성하세요..."
                                 placeholderTextColor="#a0a0a0"
                                 editable={false}
                             />
@@ -1044,8 +1044,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'twitter',
-            name: 'Twitter/X Style',
-            description: 'Microblogging with character limit',
+            name: '트위터/X 스타일',
+            description: '짧은 글쓰기 기반의 마이크로블로그',
             preview: (
                 <View style={{ backgroundColor: '#000' }}>
                     <View style={{ padding: 16 }}>
@@ -1061,7 +1061,7 @@ export default function InputStylesDemo() {
                                     color: '#fff',
                                     minHeight: 60,
                                 }}
-                                placeholder="What's happening?"
+                                placeholder="새 소식은 무엇인가요?"
                                 placeholderTextColor="#71767b"
                                 multiline
                                 editable={false}
@@ -1118,7 +1118,7 @@ export default function InputStylesDemo() {
                             borderColor: '#333',
                             marginRight: 8,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#1d9bf0' }}>Everyone</Text>
+                            <Text style={{ fontSize: 12, color: '#1d9bf0' }}>모두</Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 12,
@@ -1128,7 +1128,7 @@ export default function InputStylesDemo() {
                             borderColor: '#333',
                             marginRight: 8,
                         }}>
-                            <Text style={{ fontSize: 12, color: '#71767b' }}>Location</Text>
+                            <Text style={{ fontSize: 12, color: '#71767b' }}>위치</Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 12,
@@ -1137,7 +1137,7 @@ export default function InputStylesDemo() {
                             borderWidth: 1,
                             borderColor: '#333',
                         }}>
-                            <Text style={{ fontSize: 12, color: '#71767b' }}>Schedule</Text>
+                            <Text style={{ fontSize: 12, color: '#71767b' }}>일정</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -1145,8 +1145,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'arc',
-            name: 'Arc Browser Style',
-            description: 'Minimal with command palette',
+            name: 'Arc 브라우저 스타일',
+            description: '명령 팔레트를 사용하는 미니멀 스타일',
             preview: (
                 <View style={{ backgroundColor: '#f6f6f6' }}>
                     <View style={{ padding: 16 }}>
@@ -1177,7 +1177,7 @@ export default function InputStylesDemo() {
                                     color: '#000',
                                     marginLeft: 12,
                                 }}
-                                placeholder="Search or enter URL..."
+                                placeholder="검색하거나 URL을 입력하세요..."
                                 placeholderTextColor="#999"
                                 editable={false}
                             />
@@ -1214,7 +1214,7 @@ export default function InputStylesDemo() {
                                 backgroundColor: '#ff5f57',
                                 marginRight: 6,
                             }} />
-                            <Text style={{ fontSize: 13, color: '#333' }}>Space 1</Text>
+                            <Text style={{ fontSize: 13, color: '#333' }}>공간 1</Text>
                         </Pressable>
                         <Pressable style={{
                             flexDirection: 'row',
@@ -1232,7 +1232,7 @@ export default function InputStylesDemo() {
                                 backgroundColor: '#ffbd2e',
                                 marginRight: 6,
                             }} />
-                            <Text style={{ fontSize: 13, color: '#333' }}>Space 2</Text>
+                            <Text style={{ fontSize: 13, color: '#333' }}>공간 2</Text>
                         </Pressable>
                         <Pressable style={{
                             flexDirection: 'row',
@@ -1249,7 +1249,7 @@ export default function InputStylesDemo() {
                                 backgroundColor: '#28ca42',
                                 marginRight: 6,
                             }} />
-                            <Text style={{ fontSize: 13, color: '#333' }}>Space 3</Text>
+                            <Text style={{ fontSize: 13, color: '#333' }}>공간 3</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -1257,8 +1257,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'claude',
-            name: 'Claude Style',
-            description: 'AI assistant with artifacts',
+            name: '클로드 스타일',
+            description: '아티팩트 기능이 있는 AI 어시스턴트',
             preview: (
                 <View style={{ backgroundColor: '#f9f7f4' }}>
                     <View style={{ padding: 16 }}>
@@ -1276,7 +1276,7 @@ export default function InputStylesDemo() {
                                     color: '#000',
                                     minHeight: 40,
                                 }}
-                                placeholder="Ask Claude anything..."
+                                placeholder="Claude에게 무엇이든 물어보세요..."
                                 placeholderTextColor="#999"
                                 multiline
                                 editable={false}
@@ -1339,7 +1339,7 @@ export default function InputStylesDemo() {
                             borderRadius: 20,
                             marginRight: 8,
                         }}>
-                            <Text style={{ fontSize: 13, color: '#666' }}>Artifacts</Text>
+                            <Text style={{ fontSize: 13, color: '#666' }}>아티팩트</Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 12,
@@ -1347,7 +1347,7 @@ export default function InputStylesDemo() {
                             backgroundColor: '#f4f2ee',
                             borderRadius: 20,
                         }}>
-                            <Text style={{ fontSize: 13, color: '#666' }}>Projects</Text>
+                            <Text style={{ fontSize: 13, color: '#666' }}>프로젝트</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -1355,8 +1355,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'reddit',
-            name: 'Reddit Style',
-            description: 'Community-focused with markdown',
+            name: '레딧 스타일',
+            description: '커뮤니티 중심의 마크다운 지원',
             preview: (
                 <View style={{ backgroundColor: '#1a1a1b' }}>
                     <View style={{ padding: 12 }}>
@@ -1373,7 +1373,7 @@ export default function InputStylesDemo() {
                                     color: '#d7dadc',
                                     minHeight: 80,
                                 }}
-                                placeholder="What are your thoughts?"
+                                placeholder="의견을 알려주세요"
                                 placeholderTextColor="#818384"
                                 multiline
                                 editable={false}
@@ -1444,8 +1444,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'wechat',
-            name: 'WeChat Style',
-            description: 'Chinese super-app design',
+            name: '위쳇 스타일',
+            description: '중국형 슈퍼앱 스타일',
             preview: (
                 <View style={{ backgroundColor: '#ededed' }}>
                     <View style={{
@@ -1478,7 +1478,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ fontSize: 16, color: '#000' }}
-                                placeholder="Type message"
+                                placeholder="메시지를 입력하세요"
                                 placeholderTextColor="#999"
                                 editable={false}
                             />
@@ -1520,23 +1520,23 @@ export default function InputStylesDemo() {
                     }}>
                         <Pressable style={{ alignItems: 'center' }}>
                             <Ionicons name="camera" size={24} color="#576b95" />
-                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>Album</Text>
+                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>앨범</Text>
                         </Pressable>
                         <Pressable style={{ alignItems: 'center' }}>
                             <Ionicons name="videocam" size={24} color="#576b95" />
-                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>Sight</Text>
+                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>사진</Text>
                         </Pressable>
                         <Pressable style={{ alignItems: 'center' }}>
                             <Ionicons name="call" size={24} color="#576b95" />
-                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>Call</Text>
+                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>통화</Text>
                         </Pressable>
                         <Pressable style={{ alignItems: 'center' }}>
                             <Ionicons name="location" size={24} color="#576b95" />
-                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>Location</Text>
+                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>위치</Text>
                         </Pressable>
                         <Pressable style={{ alignItems: 'center' }}>
                             <MaterialIcons name="attach-money" size={24} color="#576b95" />
-                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>Transfer</Text>
+                            <Text style={{ fontSize: 11, color: '#576b95', marginTop: 2 }}>송금</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -1544,8 +1544,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'obsidian',
-            name: 'Obsidian Style',
-            description: 'Note-taking with linking',
+            name: '옵시디언 스타일',
+            description: '링크 기반 노트 작성',
             preview: (
                 <View style={{ backgroundColor: '#202020' }}>
                     <View style={{ padding: 16 }}>
@@ -1562,7 +1562,7 @@ export default function InputStylesDemo() {
                                     color: '#e0e0e0',
                                     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
                                 }}
-                                placeholder="# Start typing..."
+                                placeholder="코드를 입력하세요..."
                                 placeholderTextColor="#666"
                                 editable={false}
                             />
@@ -1600,7 +1600,7 @@ export default function InputStylesDemo() {
                         }}>
                             <Ionicons name="document-text" size={14} color="#e0e0e0" />
                             <Text style={{ color: '#e0e0e0', fontSize: 12, marginLeft: 4 }}>
-                                Markdown
+                                마크다운
                             </Text>
                         </Pressable>
                     </View>
@@ -1609,8 +1609,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'snapchat',
-            name: 'Snapchat Style',
-            description: 'Ephemeral messaging with camera',
+            name: '스냅챗 스타일',
+            description: '카메라 기반 일회성 메시지',
             preview: (
                 <View style={{ backgroundColor: '#000' }}>
                     <View style={{
@@ -1639,7 +1639,7 @@ export default function InputStylesDemo() {
                         }}>
                             <TextInput
                                 style={{ fontSize: 16, color: '#fff' }}
-                                placeholder="Send a chat"
+                                placeholder="채팅 보내기"
                                 placeholderTextColor="#666"
                                 editable={false}
                             />
@@ -1668,9 +1668,9 @@ export default function InputStylesDemo() {
                             borderRadius: 20,
                             marginRight: 8,
                         }}>
-                            <Text style={{ color: '#000', fontSize: 14, fontWeight: '600' }}>
-                                Snap
-                            </Text>
+                                <Text style={{ color: '#000', fontSize: 14, fontWeight: '600' }}>
+                                    스냅
+                                </Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 16,
@@ -1679,9 +1679,9 @@ export default function InputStylesDemo() {
                             borderRadius: 20,
                             marginRight: 8,
                         }}>
-                            <Text style={{ color: '#fff', fontSize: 14 }}>
-                                Stickers
-                            </Text>
+                                <Text style={{ color: '#fff', fontSize: 14 }}>
+                                    스티커
+                                </Text>
                         </Pressable>
                         <Pressable style={{
                             paddingHorizontal: 16,
@@ -1689,9 +1689,9 @@ export default function InputStylesDemo() {
                             backgroundColor: '#1a1a1a',
                             borderRadius: 20,
                         }}>
-                            <Text style={{ color: '#fff', fontSize: 14 }}>
-                                Games
-                            </Text>
+                                <Text style={{ color: '#fff', fontSize: 14 }}>
+                                    게임
+                                </Text>
                         </Pressable>
                     </View>
                 </View>
@@ -1699,8 +1699,8 @@ export default function InputStylesDemo() {
         },
         {
             id: 'teams',
-            name: 'Microsoft Teams',
-            description: 'Corporate communication style',
+            name: '마이크로소프트 팀즈',
+            description: '기업 커뮤니케이션 스타일',
             preview: (
                 <View style={{ backgroundColor: '#f5f5f5' }}>
                     <View style={{ padding: 12 }}>
@@ -1743,7 +1743,7 @@ export default function InputStylesDemo() {
                                     paddingVertical: 8,
                                     minHeight: 40,
                                 }}
-                                placeholder="Type a new message"
+                                placeholder="새 메시지를 입력하세요"
                                 placeholderTextColor="#a19f9d"
                                 editable={false}
                             />
@@ -1795,7 +1795,7 @@ export default function InputStylesDemo() {
                         }}>
                             <Ionicons name="videocam" size={16} color="#6264a7" />
                             <Text style={{ fontSize: 13, color: '#605e5c', marginLeft: 6 }}>
-                                Meet now
+                                지금 만나기
                             </Text>
                         </Pressable>
                         <Pressable style={{
@@ -1810,7 +1810,7 @@ export default function InputStylesDemo() {
                         }}>
                             <Ionicons name="calendar" size={16} color="#6264a7" />
                             <Text style={{ fontSize: 13, color: '#605e5c', marginLeft: 6 }}>
-                                Schedule
+                                일정
                             </Text>
                         </Pressable>
                     </View>
@@ -1853,7 +1853,7 @@ export default function InputStylesDemo() {
                         marginBottom: 4,
                         ...Typography.default(),
                     }}>
-                        Active Style: {style.name}
+                        현재 스타일: {style.name}
                     </Text>
                     {style.preview}
                 </View>
@@ -1877,7 +1877,7 @@ export default function InputStylesDemo() {
                     paddingHorizontal: 16,
                     ...Typography.default('semiBold'),
                 }}>
-                    Input Style Variants
+                    입력 스타일 목록
                 </Text>
                 <Text style={{
                     fontSize: 14,
@@ -1886,7 +1886,7 @@ export default function InputStylesDemo() {
                     paddingHorizontal: 16,
                     ...Typography.default(),
                 }}>
-                    Tap any style to see it applied to the bottom input
+                    원하는 스타일을 선택하면 하단 입력창에 미리보기됩니다
                 </Text>
 
                 {inputStyles.map((style) => (

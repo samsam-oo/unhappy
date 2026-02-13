@@ -65,7 +65,7 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
                         color={theme.colors.box.warning.text}
                     />
                     <Text style={warningTextStyle}>
-                        Permissions shown in terminal only. Reset or send a message to control from app.
+                        앱에서 제어하려면 터미널에 표시된 권한만 확인하거나 메시지를 보내세요.
                     </Text>
                 </View>
             )}

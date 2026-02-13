@@ -34,7 +34,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.connecting,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: true,
-                    text: 'Connecting...',
+                    text: '연결 중...',
                     textColor: theme.colors.text
                 };
             case 'connected':
@@ -42,7 +42,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.connected,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
-                    text: 'Voice Assistant Active',
+                    text: '음성 비서 활성',
                     textColor: theme.colors.text
                 };
             case 'error':
@@ -50,7 +50,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.error,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
-                    text: 'Connection Error',
+                    text: '연결 오류',
                     textColor: theme.colors.text
                 };
             default:
@@ -58,7 +58,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                     color: theme.colors.status.default,
                     backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
-                    text: 'Voice Assistant',
+                    text: '음성 비서',
                     textColor: theme.colors.text
                 };
         }
@@ -128,7 +128,7 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
                                 />
                             )}
                             <Text style={[styles.tapToEndText, { color: statusInfo.textColor, marginLeft: isVoiceSpeaking ? 8 : 0 }]}>
-                                Tap to end
+                                터치해서 종료
                             </Text>
                         </View>
                     </View>

@@ -119,4 +119,4 @@ export const SUPPORTED_LANGUAGE_CODES: SupportedLanguage[] = Object.keys(
 /**
  * Default language code
  */
-export const DEFAULT_LANGUAGE: SupportedLanguage = 'en';
+export const DEFAULT_LANGUAGE: SupportedLanguage = 'ko';

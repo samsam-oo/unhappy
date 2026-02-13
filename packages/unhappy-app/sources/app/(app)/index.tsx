@@ -1,19 +1,21 @@
-import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { Text, View, Image, Platform } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as React from 'react';
-import { encodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
-import { router, useRouter } from "expo-router";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { getRandomBytesAsync } from "expo-crypto";
-import { useIsLandscape } from "@/utils/responsive";
-import { Typography } from "@/constants/Typography";
-import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { MainView } from "@/components/MainView";
+import { RoundButton } from "@/components/RoundButton";
+import { Typography } from "@/constants/Typography";
+import { encodeBase64 } from "@/encryption/base64";
+import { Ionicons } from "@/icons/vector-icons";
 import { t } from '@/text';
+import { trackAccountCreated, trackAccountRestored } from '@/track';
+import { useIsLandscape } from "@/utils/responsive";
+import { getRandomBytesAsync } from "expo-crypto";
+import { Image } from "expo-image";
+import { useRouter } from "expo-router";
+import * as React from 'react';
+import { Platform, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 
 export default function Home() {
     const auth = useAuth();
@@ -29,8 +31,83 @@ function Authenticated() {
     return <MainView variant="phone" />;
 }
 
-function NotAuthenticated() {
+function FeatureBadge({ icon, label }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string }) {
     const { theme } = useUnistyles();
+    return (
+        <View style={styles.featureBadge}>
+            <Ionicons name={icon} size={14} color={theme.colors.textLink} />
+            <Text style={styles.featureBadgeText}>{label}</Text>
+        </View>
+    );
+}
+
+function BrandingSection() {
+    const { theme } = useUnistyles();
+    return (
+        <View style={styles.brandingSection}>
+            <View style={styles.iconGlow}>
+                <Image
+                    source={require('@/assets/images/logotype.png')}
+                    contentFit="contain"
+                    style={styles.iconLogo}
+                />
+            </View>
+            <Text style={styles.brandName}>Unhappy Coder</Text>
+            <Text style={styles.tagline}>
+                {t('welcome.title')}
+            </Text>
+        </View>
+    );
+}
+
+function CTAButtons({ createAccount, router: nav }: { createAccount: () => Promise<void>; router: ReturnType<typeof useRouter> }) {
+    if (Platform.OS !== 'android' && Platform.OS !== 'ios') {
+        return (
+            <>
+                <View style={styles.buttonContainer}>
+                    <RoundButton
+                        title={t('welcome.loginWithMobileApp')}
+                        onPress={() => {
+                            trackAccountRestored();
+                            nav.push('/restore');
+                        }}
+                    />
+                </View>
+                <View style={styles.buttonContainerSecondary}>
+                    <RoundButton
+                        size="normal"
+                        title={t('welcome.createAccount')}
+                        action={createAccount}
+                        display="inverted"
+                    />
+                </View>
+            </>
+        );
+    }
+    return (
+        <>
+            <View style={styles.buttonContainer}>
+                <RoundButton
+                    title={t('welcome.createAccount')}
+                    action={createAccount}
+                />
+            </View>
+            <View style={styles.buttonContainerSecondary}>
+                <RoundButton
+                    size="normal"
+                    title={t('welcome.linkOrRestoreAccount')}
+                    onPress={() => {
+                        trackAccountRestored();
+                        nav.push('/restore');
+                    }}
+                    display="inverted"
+                />
+            </View>
+        </>
+    );
+}
+
+function NotAuthenticated() {
     const auth = useAuth();
     const router = useRouter();
     const isLandscape = useIsLandscape();
@@ -49,60 +126,24 @@ function NotAuthenticated() {
         }
     }
 
+    const featureBadges = (
+        <View style={styles.featureRow}>
+            <FeatureBadge icon="lock-closed" label={t('welcome.featureEncrypted')} />
+            <FeatureBadge icon="globe-outline" label={t('welcome.featureCrossPlatform')} />
+            <FeatureBadge icon="flash" label={t('welcome.featureInstantSync')} />
+        </View>
+    );
+
     const portraitLayout = (
         <View style={styles.portraitContainer}>
-            <Image
-                source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                resizeMode="contain"
-                style={styles.logo}
-            />
-            <Text style={styles.title}>
-                {t('welcome.title')}
-            </Text>
+            <BrandingSection />
             <Text style={styles.subtitle}>
                 {t('welcome.subtitle')}
             </Text>
-            {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.loginWithMobileApp')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            ) : (
-                <>
-                    <View style={styles.buttonContainer}>
-                        <RoundButton
-                            title={t('welcome.createAccount')}
-                            action={createAccount}
-                        />
-                    </View>
-                    <View style={styles.buttonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title={t('welcome.linkOrRestoreAccount')}
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                            display="inverted"
-                        />
-                    </View>
-                </>
-            )}
+            {featureBadges}
+            <View style={styles.ctaSection}>
+                <CTAButtons createAccount={createAccount} router={router} />
+            </View>
         </View>
     );
 
@@ -110,59 +151,14 @@ function NotAuthenticated() {
         <View style={[styles.landscapeContainer, { paddingBottom: insets.bottom + 24 }]}>
             <View style={styles.landscapeInner}>
                 <View style={styles.landscapeLogoSection}>
-                    <Image
-                        source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                        resizeMode="contain"
-                        style={styles.logo}
-                    />
+                    <BrandingSection />
+                    {featureBadges}
                 </View>
                 <View style={styles.landscapeContentSection}>
-                    <Text style={styles.landscapeTitle}>
-                        {t('welcome.title')}
-                    </Text>
                     <Text style={styles.landscapeSubtitle}>
                         {t('welcome.subtitle')}
                     </Text>
-                    {Platform.OS !== 'android' && Platform.OS !== 'ios'
-                        ? (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.loginWithMobileApp')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                        : (<>
-                            <View style={styles.landscapeButtonContainer}>
-                                <RoundButton
-                                    title={t('welcome.createAccount')}
-                                    action={createAccount}
-                                />
-                            </View>
-                            <View style={styles.landscapeButtonContainerSecondary}>
-                                <RoundButton
-                                    size="normal"
-                                    title={t('welcome.linkOrRestoreAccount')}
-                                    onPress={() => {
-                                        trackAccountRestored();
-                                        router.push('/restore');
-                                    }}
-                                    display="inverted"
-                                />
-                            </View>
-                        </>)
-                    }
+                    <CTAButtons createAccount={createAccount} router={router} />
                 </View>
             </View>
         </View>
@@ -177,31 +173,84 @@ function NotAuthenticated() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-    // NotAuthenticated styles
+    // Portrait layout
     portraitContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        paddingHorizontal: 24,
     },
-    logo: {
-        width: 300,
-        height: 90,
+
+    // Branding
+    brandingSection: {
+        alignItems: 'center',
     },
-    title: {
-        marginTop: 16,
-        textAlign: 'center',
-        fontSize: 24,
-        ...Typography.default('semiBold'),
+    iconGlow: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: theme.dark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 20,
+    },
+    iconLogo: {
+        width: 44,
+        height: 44,
+    },
+    brandName: {
+        ...Typography.logo(),
+        fontSize: 36,
         color: theme.colors.text,
+        letterSpacing: -0.5,
+        marginBottom: 8,
     },
+    tagline: {
+        ...Typography.default(),
+        fontSize: 16,
+        color: theme.colors.textLink,
+        textAlign: 'center',
+    },
+
+    // Subtitle
     subtitle: {
         ...Typography.default(),
-        fontSize: 18,
+        fontSize: 15,
+        lineHeight: 22,
         color: theme.colors.textSecondary,
         marginTop: 16,
         textAlign: 'center',
-        marginHorizontal: 24,
-        marginBottom: 64,
+        maxWidth: 320,
+    },
+
+    // Feature badges
+    featureRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        gap: 8,
+        marginTop: 24,
+    },
+    featureBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        backgroundColor: theme.dark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+    },
+    featureBadgeText: {
+        ...Typography.default(),
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+    },
+
+    // CTA
+    ctaSection: {
+        alignItems: 'center',
+        marginTop: 48,
+        width: '100%',
     },
     buttonContainer: {
         maxWidth: 280,
@@ -210,6 +259,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     buttonContainerSecondary: {
     },
+
     // Landscape styles
     landscapeContainer: {
         flexBasis: 0,
@@ -239,26 +289,14 @@ const styles = StyleSheet.create((theme) => ({
         justifyContent: 'center',
         paddingLeft: 24,
     },
-    landscapeTitle: {
-        textAlign: 'center',
-        fontSize: 24,
-        ...Typography.default('semiBold'),
-        color: theme.colors.text,
-    },
     landscapeSubtitle: {
         ...Typography.default(),
-        fontSize: 18,
+        fontSize: 15,
+        lineHeight: 22,
         color: theme.colors.textSecondary,
-        marginTop: 16,
         textAlign: 'center',
         marginBottom: 32,
         paddingHorizontal: 16,
-    },
-    landscapeButtonContainer: {
-        width: 280,
-        marginBottom: 16,
-    },
-    landscapeButtonContainerSecondary: {
-        width: 280,
+        maxWidth: 320,
     },
 }));

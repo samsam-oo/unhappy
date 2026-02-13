@@ -10,21 +10,21 @@ export default function ShimmerDemoScreen() {
         <>
             <Stack.Screen
                 options={{
-                    headerTitle: 'Shimmer View Demo',
+                    headerTitle: 'Shimmer 뷰 데모',
                 }}
             />
             
             <ScrollView style={styles.container}>
                 <View style={styles.content}>
-                    <Text style={styles.pageTitle}>Shimmer View Examples</Text>
+                    <Text style={styles.pageTitle}>Shimmer 뷰 예시</Text>
                     <Text style={styles.description}>
-                        Various examples of shimmer effects using children as masks
+                        자식 노드를 마스크로 활용한 다양한 shimmer 효과 예시
                     </Text>
 
-                    <ItemGroup title="Text Shimmer">
+                    <ItemGroup title="텍스트 Shimmer">
                         <View style={styles.example}>
                             <ShimmerView style={styles.shimmerContainer}>
-                                <Text style={styles.shimmerText}>Loading Content...</Text>
+                                <Text style={styles.shimmerText}>콘텐츠 로딩 중...</Text>
                             </ShimmerView>
                         </View>
 
@@ -34,14 +34,14 @@ export default function ShimmerDemoScreen() {
                                 shimmerColors={['#D0D0D0', '#E8E8E8', '#FFFFFF', '#E8E8E8', '#D0D0D0']}
                             >
                                 <View>
-                                    <Text style={styles.titleText}>Awesome Title</Text>
-                                    <Text style={styles.subtitleText}>This is a subtitle with shimmer effect</Text>
+                                    <Text style={styles.titleText}>멋진 제목</Text>
+                                    <Text style={styles.subtitleText}>이것은 shimmer 효과가 적용된 부제목입니다</Text>
                                 </View>
                             </ShimmerView>
                         </View>
                     </ItemGroup>
 
-                    <ItemGroup title="Icon Shimmer">
+                    <ItemGroup title="아이콘 Shimmer">
                         <View style={styles.example}>
                             <ShimmerView style={styles.iconShimmerContainer} duration={1000}>
                                 <View style={styles.iconContainer}>
@@ -51,7 +51,7 @@ export default function ShimmerDemoScreen() {
                         </View>
                     </ItemGroup>
 
-                    <ItemGroup title="Card Skeleton">
+                    <ItemGroup title="카드 스켈레톤">
                         <View style={styles.example}>
                             <ShimmerView style={styles.cardShimmerContainer}>
                                 <View style={styles.card}>
@@ -71,7 +71,7 @@ export default function ShimmerDemoScreen() {
                         </View>
                     </ItemGroup>
 
-                    <ItemGroup title="Custom Colors">
+                    <ItemGroup title="커스텀 색상">
                         <View style={styles.example}>
                             <ShimmerView 
                                 style={styles.shimmerContainer}
@@ -79,7 +79,7 @@ export default function ShimmerDemoScreen() {
                                 duration={2000}
                             >
                                 <Text style={[styles.shimmerText, { color: '#FF69B4' }]}>
-                                    Pink Shimmer
+                                    핑크 Shimmer
                                 </Text>
                             </ShimmerView>
                         </View>
@@ -91,13 +91,13 @@ export default function ShimmerDemoScreen() {
                                 shimmerWidthPercent={120}
                             >
                                 <Text style={[styles.shimmerText, { color: '#009688' }]}>
-                                    Teal Shimmer
+                                    청록 Shimmer
                                 </Text>
                             </ShimmerView>
                         </View>
                     </ItemGroup>
 
-                    <ItemGroup title="Complex Shapes">
+                    <ItemGroup title="복합형 쉐이프">
                         <View style={styles.example}>
                             <ShimmerView style={styles.complexShimmerContainer}>
                                 <View style={styles.complexShape}>
@@ -109,11 +109,11 @@ export default function ShimmerDemoScreen() {
                         </View>
                     </ItemGroup>
 
-                    <ItemGroup title="Full Width Example">
+                    <ItemGroup title="전체 너비 예시">
                         <View style={styles.example}>
                             <ShimmerView style={styles.fullWidthContainer}>
                                 <View style={styles.fullWidthContent}>
-                                    <Text style={styles.fullWidthText}>Full Width Shimmer Effect</Text>
+                                    <Text style={styles.fullWidthText}>전체 너비 Shimmer 효과</Text>
                                 </View>
                             </ShimmerView>
                         </View>

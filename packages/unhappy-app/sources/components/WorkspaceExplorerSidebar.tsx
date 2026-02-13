@@ -134,7 +134,7 @@ function getProjectStableId(project: Project): string {
 
 function getBasename(path: string): string {
     const parts = path.split(/[\\/]/).filter(Boolean);
-    return parts[parts.length - 1] || path || 'Workspace';
+    return parts[parts.length - 1] || path || t('files.projectRoot');
 }
 
 function getSelectedSessionIdFromPathname(pathname: string): string | null {
@@ -529,7 +529,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     });
 
     const sessionStatus = useSessionStatus(props.session);
-    const rawSessionTitle = props.session.metadata?.summary?.text?.trim() || 'Session';
+    const rawSessionTitle = props.session.metadata?.summary?.text?.trim() || t('files.untitledSession');
     const sessionTitle = truncateWithEllipsis(rawSessionTitle, compact ? 44 : 30);
 
     const iconColor = React.useMemo(() => {
@@ -965,7 +965,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
     }, [activeSessionIds, projectGroups]);
 
     const defaultWorkspaceOrder = React.useMemo(() => {
-        return [...visibleProjectGroups].sort((a, b) => b.updatedAt - a.updatedAt).map((g) => g.stableId);
+        return [...visibleProjectGroups].map((g) => g.stableId);
     }, [visibleProjectGroups]);
 
     React.useEffect(() => {
@@ -1043,19 +1043,19 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
             const errors: string[] = [];
             for (const id of sessionIds) {
                 const result = await sessionKill(id);
-                if (!result.success) errors.push(result.message || 'Failed to archive session');
+                if (!result.success) errors.push(result.message || t('sessionInfo.failedToArchiveSession'));
             }
 
             await sync.refreshSessions();
 
             if (errors.length) {
-                Modal.alert('Error', errors[0]!, [{ text: 'OK', style: 'cancel' }]);
+                Modal.alert(t('common.error'), errors[0]!, [{ text: t('common.ok'), style: 'cancel' }]);
             }
         } catch (e) {
             if (e instanceof HappyError) {
-                Modal.alert('Error', e.message, [{ text: 'OK', style: 'cancel' }]);
+                Modal.alert(t('common.error'), e.message, [{ text: t('common.ok'), style: 'cancel' }]);
             } else {
-                Modal.alert('Error', 'Unknown error', [{ text: 'OK', style: 'cancel' }]);
+                Modal.alert(t('common.error'), t('errors.unknownError'), [{ text: t('common.ok'), style: 'cancel' }]);
             }
         } finally {
             setDeletingWorkspaceId((cur) => (cur === workspaceStableId ? null : cur));
@@ -1215,7 +1215,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
             const rootSessions: Session[] = rootSessionIds
                 .map((id) => sessionById.get(id))
                 .filter(Boolean) as Session[];
-            rootSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+            rootSessions.sort((a, b) => a.createdAt - b.createdAt);
 
             // Sessions and worktrees are siblings under the project, but the "folder" (worktree)
             // should stay visually at the bottom of the list.
@@ -1240,7 +1240,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                 const wtSessions: Session[] = (wt.sessionIds || [])
                     .map((id) => sessionById.get(id))
                     .filter(Boolean) as Session[];
-                wtSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+                wtSessions.sort((a, b) => a.createdAt - b.createdAt);
                 for (const s of wtSessions) out.push({ type: 'session', session: s, depth: 2, groupStableId: projectStableId });
             }
         }
@@ -1248,7 +1248,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
         // Fallback: sessions without metadata/project association.
         const ungrouped = sessions
             .filter((s) => !included.has(s.id))
-            .sort((a, b) => b.updatedAt - a.updatedAt);
+            .sort((a, b) => a.createdAt - b.createdAt);
         for (const s of ungrouped) {
             out.push({ type: 'session', session: s, depth: 1, groupStableId: `u:${s.id}` });
         }
@@ -1302,7 +1302,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
     return (
         <View style={styles.container}>
             <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Workspaces</Text>
+                <Text style={styles.sectionTitle}>작업공간</Text>
                 <View style={styles.headerButtons}>
                     <Pressable
                         onPress={() => router.push('/new')}
@@ -1311,7 +1311,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                             styles.headerButton,
                             (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
                         ]}
-                        accessibilityLabel="New session"
+                        accessibilityLabel="새 세션"
                     >
                         <Ionicons name="add" size={UI_ICONS.headerAdd} color={theme.colors.header.tint} />
                     </Pressable>
@@ -1322,7 +1322,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                             styles.headerButton,
                             (Platform.OS === 'web' && (hovered || pressed)) && styles.headerButtonHover,
                         ]}
-                        accessibilityLabel={allExpanded ? 'Collapse all workspaces' : 'Expand all workspaces'}
+                        accessibilityLabel={allExpanded ? '모든 작업공간 접기' : '모든 작업공간 펼치기'}
                     >
                         <Ionicons
                             name={allExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
@@ -1360,10 +1360,10 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                         return (
                             <View style={styles.emptyState}>
                                 <Text style={styles.emptyStateTitle}>
-                                    {'No active workspaces'}
+                                    {'활성 작업공간이 없습니다'}
                                 </Text>
                                 <Text style={styles.emptyStateSubtitle}>
-                                    {'Create a new session to add a workspace.'}
+                                    {'세션을 새로 만들어 작업공간을 추가하세요.'}
                                 </Text>
                                 <Pressable
                                     onPress={() => router.push('/new')}
@@ -1372,9 +1372,9 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                         (Platform.OS === 'web' && (hovered || pressed)) && styles.emptyStateButtonHover,
                                         pressed && styles.rowPressed,
                                     ]}
-                                    accessibilityLabel="New session"
+                                    accessibilityLabel="새 세션"
                                 >
-                                    <Text style={styles.emptyStateButtonText}>New session</Text>
+                                    <Text style={styles.emptyStateButtonText}>새 세션</Text>
                                 </Pressable>
                             </View>
                         );
@@ -1559,7 +1559,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     <>
                                                         <Octicons name="git-branch" size={UI_ICONS.gitBranch} color={theme.colors.textSecondary} />
                                                         <Text style={styles.subtitle} numberOfLines={1}>
-                                                            {branch || 'detached'}
+                                                            {branch || t('files.detachedHead')}
                                                         </Text>
                                                     </>
                                                 )}
@@ -1572,7 +1572,6 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             {attentionCount > 0 && (
                                                 <View
                                                     style={styles.badge}
-                                                    accessibilityLabel={`${attentionCount} notifications`}
                                                 >
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
@@ -1733,13 +1732,13 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             </Text>
                                             <View style={styles.subtitleRow}>
                                                 <Text style={styles.subtitle} numberOfLines={1}>
-                                                    worktree
+                                                    {t('files.worktree')}
                                                 </Text>
                                                 {hasGitStatus && (
                                                     <>
                                                         <Octicons name="git-branch" size={UI_ICONS.gitBranch} color={theme.colors.textSecondary} />
                                                         <Text style={styles.subtitle} numberOfLines={1}>
-                                                            {branch || 'detached'}
+                                                            {branch || t('files.detachedHead')}
                                                         </Text>
                                                     </>
                                                 )}
@@ -1750,10 +1749,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                         </View>
                                         <View style={styles.projectActions}>
                                             {attentionCount > 0 && (
-                                                <View
-                                                    style={styles.badge}
-                                                    accessibilityLabel={`${attentionCount} notifications`}
-                                                >
+                                                <View style={styles.badge}>
                                                     <Text style={styles.badgeText}>{badgeText}</Text>
                                                 </View>
                                             )}

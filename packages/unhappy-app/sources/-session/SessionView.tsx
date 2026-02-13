@@ -31,6 +31,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUnistyles } from 'react-native-unistyles';
 import * as Clipboard from 'expo-clipboard';
 import { layout } from '@/components/layout';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
+import { normalizePermissionPolicy } from '@/sync/permissionPolicy';
 
 function bashQuote(value: string): string {
     return `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -38,7 +40,7 @@ function bashQuote(value: string): string {
 
 async function openInEditor(machineId: string, path: string): Promise<{ success: boolean; error?: string }> {
     const quoted = bashQuote(path);
-    const cmd = [
+        const cmd = [
         // Prefer editor CLIs; fall back to OS openers.
         `if command -v code >/dev/null 2>&1; then code -r ${quoted}`,
         `elif command -v cursor >/dev/null 2>&1; then cursor -r ${quoted}`,
@@ -50,7 +52,7 @@ async function openInEditor(machineId: string, path: string): Promise<{ success:
 
     const result = await machineBash(machineId, cmd, '/');
     if (!result.success || result.exitCode !== 0) {
-        const msg = (result.stderr || result.stdout || '').trim() || 'Failed to open in editor.';
+        const msg = (result.stderr || result.stdout || '').trim() || '편집기 실행에 실패했습니다.';
         return { success: false, error: msg };
     }
     return { success: true };
@@ -165,18 +167,18 @@ function HeaderDropdownPanel(props: {
     if (props.kind === 'open') {
         items.push({
             key: 'open-editor',
-            label: 'Open in Editor',
+            label: '편집기에서 열기',
             icon: <Ionicons name="code-outline" size={16} color={theme.colors.header.tint} />,
             onPress: closeThen(async () => {
                 const result = await openInEditor(props.machineId, props.path);
                 if (!result.success) {
-                    Modal.alert(t('common.error'), result.error || 'Failed to open in editor.');
+                    Modal.alert(t('common.error'), result.error || '편집기 실행에 실패했습니다.');
                 }
             }) as any,
         });
         items.push({
             key: 'copy-path',
-            label: 'Copy Path',
+            label: '경로 복사',
             icon: <Ionicons name="copy-outline" size={16} color={theme.colors.header.tint} />,
             onPress: closeThen(async () => {
                 try {
@@ -280,7 +282,6 @@ function SessionHeaderActions(props: {
     menu: HeaderMenuKind | null;
     setMenu: (v: HeaderMenuKind | null) => void;
 }) {
-    const router = useRouter();
     const { theme } = useUnistyles();
 
     const deviceType = useDeviceType();
@@ -315,11 +316,13 @@ function SessionHeaderActions(props: {
                     onPress={() => props.setMenu(props.menu === 'commit' ? null : 'commit')}
                 />
                 */}
+                {/*
                 <HeaderIconButton
                     label={t('tabs.settings')}
                     icon={<Ionicons name="settings-outline" size={20} color={theme.colors.header.tint} />}
                     onPress={() => router.push(`/session/${props.sessionId}/info`)}
                 />
+                */}
             </View>
         );
     }
@@ -345,11 +348,13 @@ function SessionHeaderActions(props: {
             />
             */}
 
+            {/*
             <HeaderIconButton
                 label={t('tabs.settings')}
                 icon={<Ionicons name="settings-outline" size={18} color={theme.colors.header.tint} />}
                 onPress={() => router.push(`/session/${props.sessionId}/info`)}
             />
+            */}
         </View>
     );
 }
@@ -529,8 +534,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isCliOutdated = cliVersion && !isVersionSupported(cliVersion, MINIMUM_CLI_VERSION);
     const isAcknowledged = machineId && acknowledgedCliVersions[machineId] === cliVersion;
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
-    // Get permission mode from session object, default to 'default'
-    const permissionMode = session.permissionMode || 'default';
+    const permissionPolicy = React.useMemo(() => normalizePermissionPolicy({
+        permissionMode: session.permissionMode || 'default',
+    }), [session.permissionMode]);
+    const permissionMode = permissionPolicy.permissionMode;
+    const planOnly = permissionPolicy.planOnly;
     // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
     const isGeminiSession = session.metadata?.flavor === 'gemini';
     const modelMode: string | null = session.modelMode ?? (isGeminiSession ? 'gemini-2.5-pro' : null);
@@ -553,8 +561,18 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [machineId, cliVersion, acknowledgedCliVersions]);
 
     // Function to update permission mode
-    const updatePermissionMode = React.useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {
+    const updatePermissionMode = React.useCallback((mode: PermissionMode) => {
+        // Selecting a concrete mode must always exit plan-only state.
         storage.getState().updateSessionPermissionMode(sessionId, mode);
+    }, [sessionId]);
+    const updatePlanOnly = React.useCallback((nextPlanOnly: boolean) => {
+        if (nextPlanOnly) {
+            storage.getState().updateSessionPermissionMode(sessionId, 'plan');
+            return;
+        }
+        const currentMode = storage.getState().sessions[sessionId]?.permissionMode;
+        const fallbackMode = normalizePermissionPolicy({ permissionMode: currentMode ?? 'default' }).permissionMode;
+        storage.getState().updateSessionPermissionMode(sessionId, fallbackMode);
     }, [sessionId]);
 
     // Function to update model mode (for Gemini sessions)
@@ -615,6 +633,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
+            planOnly={planOnly}
+            onPlanOnlyChange={updatePlanOnly}
             modelMode={modelMode}
             onModelModeChange={updateModelMode}
             effortMode={session.effortMode ?? null}

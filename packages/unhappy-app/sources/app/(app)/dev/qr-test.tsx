@@ -53,13 +53,13 @@ const stylesheet = StyleSheet.create((theme) => ({
 export default function QRTest() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const [customData, setCustomData] = useState('Hello World!');
+    const [customData, setCustomData] = useState('안녕하세요!');
 
     const testData = [
-        { label: 'Simple Text', data: 'Hello QR Code!' },
+        { label: '단순 텍스트', data: '안녕하세요 QR 코드!' },
         { label: 'URL', data: 'https://github.com/samsam-oo/unhappy' },
-        { label: 'Email', data: 'mailto:test@example.com' },
-        { label: 'Phone', data: 'tel:+1234567890' },
+        { label: '이메일', data: 'mailto:test@example.com' },
+        { label: '전화', data: 'tel:+1234567890' },
         { label: 'WiFi', data: 'WIFI:T:WPA;S:MyNetwork;P:password123;H:false;;' },
     ];
 
@@ -70,24 +70,24 @@ export default function QRTest() {
         <ScrollView style={styles.container}>
             {/* Custom QR Code */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Custom QR Code</Text>
+                <Text style={styles.sectionTitle}>사용자 지정 QR 코드</Text>
                 <TextInput
                     style={styles.input}
                     value={customData}
                     onChangeText={setCustomData}
-                    placeholder="Enter your data here..."
+                    placeholder="여기에 데이터를 입력하세요"
                     placeholderTextColor={theme.colors.input.placeholder}
                     multiline
                 />
                 <View style={styles.qrContainer}>
-                    <Text style={styles.qrLabel}>Custom Data</Text>
+                    <Text style={styles.qrLabel}>사용자 데이터</Text>
                     <QRCode data={customData} size={200} />
                 </View>
             </View>
 
-            {/* Predefined Examples */}
+            {/* 미리 정의된 예시 */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Example QR Codes</Text>
+                <Text style={styles.sectionTitle}>QR 코드 예시</Text>
                 {testData.map((item, index) => (
                     <View key={index} style={styles.qrContainer}>
                         <Text style={styles.qrLabel}>{item.label}: {item.data}</Text>
@@ -96,28 +96,28 @@ export default function QRTest() {
                 ))}
             </View>
 
-            {/* Different Sizes */}
+            {/* 다양한 크기 */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Different Sizes</Text>
+                <Text style={styles.sectionTitle}>다양한 크기</Text>
                 <View style={styles.row}>
                     {sizes.map((size) => (
                         <View key={size} style={[styles.qrContainer, { margin: 5 }]}>
                             <Text style={styles.qrLabel}>{size}x{size}</Text>
-                            <QRCode data="Size test" size={size} />
+                            <QRCode data="크기 테스트" size={size} />
                         </View>
                     ))}
                 </View>
             </View>
 
-            {/* Error Correction Levels */}
+            {/* 오류 보정 레벨 */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Error Correction Levels</Text>
+                <Text style={styles.sectionTitle}>오류 보정 레벨</Text>
                 <View style={styles.row}>
                     {errorLevels.map((level) => (
                         <View key={level} style={[styles.qrContainer, { margin: 5 }]}>
                             <Text style={styles.qrLabel}>{level.toUpperCase()}</Text>
                             <QRCode 
-                                data="Error correction test with some longer text to see differences"
+                                data="오류 보정 테스트(긴 텍스트로 차이 확인)"
                                 size={150} 
                                 errorCorrectionLevel={level}
                             />
@@ -126,23 +126,23 @@ export default function QRTest() {
                 </View>
             </View>
 
-            {/* Color Variations */}
+            {/* 색상 변형 */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Color Variations</Text>
+                <Text style={styles.sectionTitle}>색상 변형</Text>
                 <View style={styles.row}>
                     <View style={[styles.qrContainer, { margin: 5 }]}>
-                        <Text style={styles.qrLabel}>Blue on White</Text>
+                        <Text style={styles.qrLabel}>흰색 바탕 파란색</Text>
                         <QRCode 
-                            data="Blue QR Code" 
+                            data="파란색 QR 코드" 
                             size={150} 
                             foregroundColor="#0066CC"
                             backgroundColor="#FFFFFF"
                         />
                     </View>
                     <View style={[styles.qrContainer, { margin: 5 }]}>
-                        <Text style={styles.qrLabel}>White on Dark</Text>
+                        <Text style={styles.qrLabel}>어두운 배경 흰색</Text>
                         <QRCode 
-                            data="White QR Code" 
+                            data="흰색 QR 코드" 
                             size={150} 
                             foregroundColor="#FFFFFF"
                             backgroundColor="#333333"
@@ -151,13 +151,13 @@ export default function QRTest() {
                 </View>
             </View>
 
-            {/* Long Text Test */}
+            {/* 긴 텍스트 테스트 */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Long Text Handling</Text>
+                <Text style={styles.sectionTitle}>긴 텍스트 처리</Text>
                 <View style={styles.qrContainer}>
-                    <Text style={styles.qrLabel}>Long text with multiple lines</Text>
+                    <Text style={styles.qrLabel}>여러 줄로 긴 텍스트</Text>
                     <QRCode 
-                        data="This is a very long text that should be encoded into a QR code to test how the component handles larger amounts of data. The QR code should automatically adjust its version to accommodate all this text while maintaining readability and scannability."
+                        data="이것은 많은 양의 데이터를 인코딩하여 QR 코드 컴포넌트가 얼마나 처리할 수 있는지 테스트하는 긴 텍스트입니다. QR 코드는 가독성과 스캔 가능성을 유지하면서 모든 텍스트를 맞추기 위해 버전을 자동으로 조정합니다."
                         size={250}
                         errorCorrectionLevel="high"
                     />

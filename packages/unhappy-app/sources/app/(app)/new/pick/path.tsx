@@ -134,7 +134,7 @@ export default function PathPickerScreen() {
         if (!machineId || !machine) return;
         if (!machineIsOnline) {
             setBrowseEntries([]);
-            setBrowseError('Machine is offline');
+            setBrowseError(t('errors.machineOffline'));
             setIsBrowsing(false);
             return;
         }
@@ -173,7 +173,7 @@ export default function PathPickerScreen() {
 
             if (!response.success) {
                 setBrowseEntries([]);
-                setBrowseError(response.error || 'Failed to list directory');
+                setBrowseError(response.error || t('errors.failedToListDirectory'));
                 return;
             }
 
@@ -220,7 +220,7 @@ export default function PathPickerScreen() {
                 <Stack.Screen
                     options={{
                         headerShown: true,
-                        headerTitle: 'Select Path',
+                        headerTitle: '경로 선택',
                     headerBackTitle: t('common.back'),
                     headerRight: () => (
                         <Pressable
@@ -244,7 +244,7 @@ export default function PathPickerScreen() {
                 <View style={styles.container}>
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
-                            No machine selected
+                            머신이 선택되지 않았습니다
                         </Text>
                     </View>
                 </View>
@@ -257,7 +257,7 @@ export default function PathPickerScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Select Path',
+                    headerTitle: '경로 선택',
                     headerBackTitle: t('common.back'),
                     headerRight: () => (
                         <Pressable
@@ -408,7 +408,7 @@ export default function PathPickerScreen() {
 
 	                            {browseError && (
 	                                <Item
-	                                    title="Unable to load folders"
+	                                    title="폴더를 불러오지 못했습니다"
 	                                    subtitle={browseError}
                                     subtitleLines={2}
                                     leftElement={
@@ -425,8 +425,8 @@ export default function PathPickerScreen() {
 
                             {isBrowsing && (
                                 <Item
-                                    title="Loading..."
-                                    subtitle="Fetching folders from machine"
+                                    title="불러오는 중..."
+                                    subtitle="기계에서 폴더 목록을 가져오는 중입니다"
                                     leftElement={<ActivityIndicator />}
                                     showChevron={false}
                                     disabled={true}
@@ -435,8 +435,8 @@ export default function PathPickerScreen() {
 
                             {!isBrowsing && !browseError && browseEntries.length === 0 && (
                                 <Item
-                                    title="No folders"
-                                    subtitle="This directory is empty"
+                                    title="폴더가 없습니다"
+                                    subtitle="이 디렉터리는 비어 있습니다"
                                     leftElement={
                                         <Ionicons
                                             name="folder-outline"

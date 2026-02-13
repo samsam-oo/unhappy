@@ -27,11 +27,11 @@ export default function DevScreen() {
         const currentUrl = getServerUrl();
 
         const newUrl = await Modal.prompt(
-            'Edit API Endpoint',
-            'Enter the server URL:',
+            'API 엔드포인트 수정',
+            '서버 URL을 입력하세요:',
             {
                 defaultValue: currentUrl,
-                confirmText: 'Save'
+                confirmText: '저장'
             }
         );
 
@@ -39,26 +39,26 @@ export default function DevScreen() {
             const validation = validateServerUrl(newUrl);
             if (validation.valid) {
                 setServerUrl(newUrl);
-                Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
+                Modal.alert('성공', '서버 URL이 업데이트되었습니다. 변경사항을 적용하려면 앱을 재시작하세요.');
             } else {
-                Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
+                Modal.alert('잘못된 URL', validation.error || '유효한 URL을 입력해 주세요.');
             }
         }
     };
 
     const handleClearCache = async () => {
         const confirmed = await Modal.confirm(
-            'Clear Cache',
-            'Are you sure you want to clear all cached data?',
-            { confirmText: 'Clear', destructive: true }
+            '캐시 삭제',
+            '저장된 캐시 데이터를 모두 삭제하시겠습니까?',
+            { confirmText: '삭제', destructive: true }
         );
         if (confirmed) {
-            console.log('Cache cleared');
-            Modal.alert('Success', 'Cache has been cleared');
+            console.log('캐시가 삭제되었습니다');
+            Modal.alert('성공', '캐시가 삭제되었습니다');
         }
     };
 
-    // Helper function to format time ago
+    // 시간 표시 문자열을 변환하는 함수
     const formatTimeAgo = (timestamp: number | null): string => {
         if (!timestamp) return '';
 
@@ -69,31 +69,31 @@ export default function DevScreen() {
         const hours = Math.floor(minutes / 60);
         const days = Math.floor(hours / 24);
 
-        if (seconds < 10) return 'Just now';
-        if (seconds < 60) return `${seconds}s ago`;
-        if (minutes < 60) return `${minutes}m ago`;
-        if (hours < 24) return `${hours}h ago`;
-        if (days < 7) return `${days}d ago`;
+        if (seconds < 10) return '방금';
+        if (seconds < 60) return `${seconds}초 전`;
+        if (minutes < 60) return `${minutes}분 전`;
+        if (hours < 24) return `${hours}시간 전`;
+        if (days < 7) return `${days}일 전`;
 
         return new Date(timestamp).toLocaleDateString();
     };
 
-    // Helper function to get socket status subtitle
+    // 소켓 연결 상태 부제목 계산 함수
     const getSocketStatusSubtitle = (): string => {
         const { status, lastConnectedAt, lastDisconnectedAt } = socketStatus;
 
         if (status === 'connected' && lastConnectedAt) {
-            return `Connected ${formatTimeAgo(lastConnectedAt)}`;
+            return `연결됨 ${formatTimeAgo(lastConnectedAt)}`;
         } else if ((status === 'disconnected' || status === 'error') && lastDisconnectedAt) {
-            return `Last connected ${formatTimeAgo(lastDisconnectedAt)}`;
+            return `마지막 연결 ${formatTimeAgo(lastDisconnectedAt)}`;
         } else if (status === 'connecting') {
-            return 'Connecting to server...';
+            return '서버에 연결 중...';
         }
 
-        return 'No connection info';
+        return '연결 정보 없음';
     };
 
-    // Socket status indicator component
+    // 소켓 상태 표시 컴포넌트
     const SocketStatusIndicator = () => {
         switch (socketStatus.status) {
             case 'connected':
@@ -112,33 +112,33 @@ export default function DevScreen() {
     return (
         <ItemList>
             {/* App Information */}
-            <ItemGroup title="App Information">
+            <ItemGroup title="앱 정보">
                 <Item
-                    title="Version"
+                    title="버전"
                     detail={Constants.expoConfig?.version || '1.0.0'}
                 />
                 <Item
-                    title="Build Number"
-                    detail={Application.nativeBuildVersion || 'N/A'}
+                    title="빌드 번호"
+                    detail={Application.nativeBuildVersion || '해당 없음'}
                 />
                 <Item
-                    title="SDK Version"
-                    detail={Constants.expoConfig?.sdkVersion || 'Unknown'}
+                    title="SDK 버전"
+                    detail={Constants.expoConfig?.sdkVersion || '알 수 없음'}
                 />
                 <Item
-                    title="Platform"
+                    title="플랫폼"
                     detail={`${Constants.platform?.ios ? 'iOS' : 'Android'} ${Constants.systemVersion || ''}`}
                 />
                 <Item
-                    title="Anonymous ID"
+                    title="익명 ID"
                     detail={anonymousId}
                 />
             </ItemGroup>
 
             {/* Debug Options */}
-            <ItemGroup title="Debug Options">
+            <ItemGroup title="디버그 옵션">
                 <Item
-                    title="Debug Mode"
+                    title="디버그 모드"
                     rightElement={
                         <Switch
                             value={debugMode}
@@ -148,8 +148,8 @@ export default function DevScreen() {
                     showChevron={false}
                 />
                 <Item
-                    title="Verbose Logging"
-                    subtitle="Log all network requests and responses"
+                    title="상세 로그"
+                    subtitle="모든 네트워크 요청 및 응답을 로그에 기록"
                     rightElement={
                         <Switch
                             value={verboseLogging}
@@ -159,192 +159,192 @@ export default function DevScreen() {
                     showChevron={false}
                 />
                 <Item
-                    title="View Logs"
+                    title="로그 보기"
                     icon={<Ionicons name="document-text-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/logs')}
                 />
             </ItemGroup>
 
             {/* Component Demos */}
-            <ItemGroup title="Component Demos">
+            <ItemGroup title="컴포넌트 데모">
                 <Item
-                    title="Device Info"
-                    subtitle="Safe area insets and device parameters"
+                    title="기기 정보"
+                    subtitle="안전 영역 인셋과 기기 파라미터"
                     icon={<Ionicons name="phone-portrait-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/device-info')}
                 />
                 <Item
-                    title="List Components"
-                    subtitle="Demo of Item, ItemGroup, and ItemList"
+                    title="목록 컴포넌트"
+                    subtitle="목록, 리스트 그룹, 리스트 아이템 예시"
                     icon={<Ionicons name="list-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/list-demo')}
                 />
                 <Item
-                    title="Typography"
-                    subtitle="All typography styles"
+                    title="타이포그래피"
+                    subtitle="전체 타이포그래피 스타일"
                     icon={<Ionicons name="text-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/typography')}
                 />
                 <Item
-                    title="Colors"
-                    subtitle="Color palette and themes"
+                    title="색상"
+                    subtitle="색상 팔레트와 테마"
                     icon={<Ionicons name="color-palette-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/colors')}
                 />
                 <Item
-                    title="Message Demos"
-                    subtitle="Various message types and components"
+                    title="메시지 데모"
+                    subtitle="다양한 메시지 유형과 컴포넌트"
                     icon={<Ionicons name="chatbubbles-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/messages-demo')}
                 />
                 <Item
-                    title="Inverted List Test"
-                    subtitle="Test inverted FlatList with keyboard"
+                    title="반전 리스트 테스트"
+                    subtitle="키보드 환경에서 역순 리스트 테스트"
                     icon={<Ionicons name="swap-vertical-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/inverted-list')}
                 />
                 <Item
-                    title="Tool Views"
-                    subtitle="Tool call visualization components"
+                    title="도구 뷰"
+                    subtitle="도구 호출 시각화 컴포넌트"
                     icon={<Ionicons name="construct-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/tools2')}
                 />
                 <Item
-                    title="Shimmer View"
-                    subtitle="Shimmer loading effects with masks"
+                    title="쉐이머 뷰"
+                    subtitle="마스크가 적용된 쉬머 로딩 효과"
                     icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/shimmer-demo')}
                 />
                 <Item
-                    title="Multi Text Input"
-                    subtitle="Auto-growing multiline text input"
+                    title="멀티라인 텍스트 입력"
+                    subtitle="자동으로 커지는 다중줄 입력"
                     icon={<Ionicons name="create-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/multi-text-input')}
                 />
                 <Item
-                    title="Input Styles"
-                    subtitle="10+ different input field style variants"
+                    title="입력 스타일"
+                    subtitle="10개 이상의 다양한 입력 필드 스타일"
                     icon={<Ionicons name="color-palette-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/input-styles')}
                 />
                 <Item
-                    title="Modal System"
-                    subtitle="Alert, confirm, and custom modals"
+                    title="모달 시스템"
+                    subtitle="알림, 확인 및 커스텀 모달"
                     icon={<Ionicons name="albums-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/modal-demo')}
                 />
                 <Item
-                    title="Unit Tests"
-                    subtitle="Run tests in the app environment"
+                    title="단위 테스트"
+                    subtitle="앱 환경에서 테스트 실행"
                     icon={<Ionicons name="flask-outline" size={28} color="#34C759" />}
                     onPress={() => router.push('/dev/tests')}
                 />
                 <Item
-                    title="Unistyles Demo"
-                    subtitle="React Native Unistyles features and capabilities"
+                    title="Unistyles 데모"
+                    subtitle="리액트 네이티브 Unistyles 기능"
                     icon={<Ionicons name="brush-outline" size={28} color="#FF6B6B" />}
                     onPress={() => router.push('/dev/unistyles-demo')}
                 />
                 <Item
-                    title="QR Code Test"
-                    subtitle="Test QR code generation with different parameters"
+                    title="QR 코드 테스트"
+                    subtitle="다양한 파라미터로 QR 코드 생성 테스트"
                     icon={<Ionicons name="qr-code-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/qr-test')}
                 />
                 <Item
-                    title="Todo Demo"
-                    subtitle="Wunderlist-style todo list with inline editing and reordering"
+                    title="Todo 데모"
+                    subtitle="인라인 편집 및 정렬이 가능한 할 일 목록"
                     icon={<Ionicons name="checkbox-outline" size={28} color="#34C759" />}
                     onPress={() => router.push('/dev/todo-demo')}
                 />
             </ItemGroup>
 
             {/* Test Features */}
-            <ItemGroup title="Test Features" footer="These actions may affect app stability">
+            <ItemGroup title="테스트 기능" footer="일부 동작은 앱 안정성에 영향을 줄 수 있습니다">
                 <Item
-                    title="Claude OAuth Test"
-                    subtitle="Test Claude authentication flow"
+                    title="Claude OAuth 테스트"
+                    subtitle="Claude 인증 플로우 테스트"
                     icon={<Ionicons name="key-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/settings/connect/claude')}
                 />
                 <Item
-                    title="Test Crash"
-                    subtitle="Trigger a test crash"
+                    title="테스트 크래시"
+                    subtitle="테스트 크래시를 실행합니다"
                     destructive={true}
                     icon={<Ionicons name="warning-outline" size={28} color="#FF3B30" />}
                     onPress={async () => {
                         const confirmed = await Modal.confirm(
-                            'Test Crash',
-                            'This will crash the app. Continue?',
-                            { confirmText: 'Crash', destructive: true }
+                            '테스트 크래시',
+                            '앱이 충돌될 예정입니다. 계속하시겠습니까?',
+                            { confirmText: '크래시', destructive: true }
                         );
                         if (confirmed) {
-                            throw new Error('Test crash triggered from dev menu');
+                        throw new Error('개발 메뉴에서 테스트 크래시가 실행되었습니다');
                         }
                     }}
                 />
                 <Item
-                    title="Clear Cache"
-                    subtitle="Remove all cached data"
+                    title="캐시 삭제"
+                    subtitle="모든 캐시 데이터 삭제"
                     icon={<Ionicons name="trash-outline" size={28} color="#FF9500" />}
                     onPress={handleClearCache}
                 />
                 <Item
-                    title="Reset Changelog"
-                    subtitle="Show 'What's New' banner again"
+                    title="변경로그 재표시"
+                    subtitle="새 소식 배너를 다시 표시"
                     icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}
                     onPress={() => {
-                        // Set to latest - 1 so it shows as unread
-                        // (setting to 0 triggers first-install logic that auto-marks as read)
+                        // 최신 버전을 기준으로 1 감소시켜 미확인 상태로 유지
+                        // 0으로 설정하면 최초 설치 판정 로직이 동작해 자동으로 읽음 처리됨
                         const latest = getLatestVersion();
                         setLastViewedVersion(Math.max(0, latest - 1));
-                        Modal.alert('Done', 'Changelog reset. Restart app to see the banner.');
+                        Modal.alert('완료', '변경로그가 초기화되었습니다. 배너를 보려면 앱을 재시작하세요.');
                     }}
                 />
                 <Item
-                    title="Reset App State"
-                    subtitle="Clear all user data and preferences"
+                    title="앱 상태 초기화"
+                    subtitle="모든 사용자 데이터와 설정 삭제"
                     destructive={true}
                     icon={<Ionicons name="refresh-outline" size={28} color="#FF3B30" />}
                     onPress={async () => {
                         const confirmed = await Modal.confirm(
-                            'Reset App',
-                            'This will delete all data. Are you sure?',
-                            { confirmText: 'Reset', destructive: true }
+                            '앱 상태 초기화',
+                            '모든 데이터가 삭제됩니다. 계속하시겠습니까?',
+                            { confirmText: '초기화', destructive: true }
                         );
                         if (confirmed) {
-                            console.log('App state reset');
+                        console.log('앱 상태가 초기화되었습니다');
                         }
                     }}
                 />
             </ItemGroup>
 
             {/* System */}
-            <ItemGroup title="System">
+            <ItemGroup title="시스템">
                 <Item
-                    title="Purchases"
-                    subtitle="View subscriptions and entitlements"
+                    title="구매 내역"
+                    subtitle="구독 및 권한 항목 확인"
                     icon={<Ionicons name="card-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/purchases')}
                 />
                 <Item
-                    title="Expo Constants"
-                    subtitle="View expoConfig, manifests, and system constants"
+                    title="Expo 상수"
+                    subtitle="expoConfig, 매니페스트, 시스템 상수 조회"
                     icon={<Ionicons name="information-circle-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/expo-constants')}
                 />
             </ItemGroup>
 
             {/* Network */}
-            <ItemGroup title="Network">
+            <ItemGroup title="네트워크">
                 <Item
-                    title="API Endpoint"
+                    title="API 엔드포인트"
                     detail={getServerUrl()}
                     onPress={handleEditServerUrl}
                     detailStyle={{ flex: 1, textAlign: 'right', minWidth: '70%' }}
                 />
                 <Item
-                    title="Socket.IO Status"
+                    title="Socket.IO 상태"
                     subtitle={getSocketStatusSubtitle()}
                     detail={socketStatus.status}
                     rightElement={<SocketStatusIndicator />}

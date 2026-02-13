@@ -349,25 +349,25 @@ export const ChangesEditor = React.memo<ChangesEditorProps>(({ files, initialFil
                 {canShowRaw ? (
                     isCompactHeader ? (
                         <ToolbarToggle
-                            label="Raw"
+                            label="원본"
                             active={mode === 'raw'}
                             onPress={() => setMode(mode === 'raw' ? 'rendered' : 'raw')}
                         />
                     ) : (
                         <>
-                            <ToolbarToggle label="Rendered" active={mode === 'rendered'} onPress={() => setMode('rendered')} />
-                            <ToolbarToggle label="Raw" active={mode === 'raw'} onPress={() => setMode('raw')} />
+                            <ToolbarToggle label="렌더링" active={mode === 'rendered'} onPress={() => setMode('rendered')} />
+                            <ToolbarToggle label="원본" active={mode === 'raw'} onPress={() => setMode('raw')} />
                             <View style={styles.headerDivider} />
                         </>
                     )
                 ) : null}
                 <ToolbarToggle
-                    label={isCompactHeader ? 'Wrap' : (wrapLinesInDiffs ? 'Wrap: On' : 'Wrap: Off')}
+                    label={isCompactHeader ? '줄바꿈' : (wrapLinesInDiffs ? '줄바꿈: 켬' : '줄바꿈: 끔')}
                     active={wrapLinesInDiffs}
                     onPress={() => setWrapLinesInDiffs(!wrapLinesInDiffs)}
                 />
                 <ToolbarToggle
-                    label={isCompactHeader ? 'Ln' : (showLineNumbersInToolViews ? 'Ln: On' : 'Ln: Off')}
+                    label={isCompactHeader ? '줄 번호' : (showLineNumbersInToolViews ? '줄 번호: 표시' : '줄 번호: 숨김')}
                     active={showLineNumbersInToolViews}
                     onPress={() => setShowLineNumbersInToolViews(!showLineNumbersInToolViews)}
                 />
@@ -433,13 +433,13 @@ export const ChangesEditor = React.memo<ChangesEditorProps>(({ files, initialFil
                                 layout={LinearTransition.duration(140)}
                             >
                                 {conflictDetected ? (
-                                    <View style={styles.callout}>
-                                        <Ionicons name="warning-outline" size={14} color={theme.colors.warningCritical} />
-                                        <Text style={styles.calloutText} numberOfLines={2}>
-                                            Conflict markers detected in this change. Resolver UI will be added later.
-                                        </Text>
-                                    </View>
-                                ) : null}
+                            <View style={styles.callout}>
+                                <Ionicons name="warning-outline" size={14} color={theme.colors.warningCritical} />
+                                <Text style={styles.calloutText} numberOfLines={2}>
+                                    이 변경사항에서 충돌 표시자가 감지되었습니다. 충돌 해결 UI는 추후 추가됩니다.
+                                </Text>
+                            </View>
+                        ) : null}
                                 <View style={styles.singleDiffCard}>
                                     {renderFileDiff(selected)}
                                 </View>
@@ -465,13 +465,13 @@ export const ChangesEditor = React.memo<ChangesEditorProps>(({ files, initialFil
                             layout={LinearTransition.duration(140)}
                         >
                             {conflictDetected ? (
-                                <View style={styles.callout}>
-                                    <Ionicons name="warning-outline" size={14} color={theme.colors.warningCritical} />
-                                    <Text style={styles.calloutText} numberOfLines={2}>
-                                        Conflict markers detected in this change. Resolver UI will be added later.
-                                    </Text>
-                                </View>
-                            ) : null}
+                            <View style={styles.callout}>
+                                <Ionicons name="warning-outline" size={14} color={theme.colors.warningCritical} />
+                                <Text style={styles.calloutText} numberOfLines={2}>
+                                    이 변경사항에서 충돌 표시자가 감지되었습니다. 충돌 해결 UI는 추후 추가됩니다.
+                                </Text>
+                            </View>
+                        ) : null}
                             <View style={styles.singleDiffCard}>
                                 {renderFileDiff(selected)}
                             </View>

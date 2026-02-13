@@ -193,7 +193,7 @@ export default function ArtifactsScreen() {
                         ]}
                         numberOfLines={1}
                     >
-                        {item.title || 'Untitled'}
+                        {item.title || t('status.unknown')}
                     </Text>
                     <View style={styles.artifactMeta}>
                         <Text style={styles.artifactDate}>

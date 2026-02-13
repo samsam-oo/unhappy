@@ -147,7 +147,7 @@ export function ProfileEditForm({
                                     color: theme.colors.text,
                                     ...Typography.default('semiBold')
                                 }}>
-                                    Setup Instructions
+                                    설정 가이드
                                 </Text>
                             </View>
 
@@ -194,7 +194,7 @@ export function ProfileEditForm({
                                         flex: 1,
                                         ...Typography.default('semiBold')
                                     }}>
-                                        View Official Setup Guide
+                                        공식 설정 가이드 보기
                                     </Text>
                                     <Ionicons name="open-outline" size={14} color={theme.colors.button.primary.tint} />
                                 </Pressable>
@@ -210,7 +210,7 @@ export function ProfileEditForm({
                         marginBottom: 12,
                         ...Typography.default('semiBold')
                     }}>
-                        Default Session Type
+                        기본 세션 유형
                     </Text>
                     <View style={{ marginBottom: 16 }}>
                         <SessionTypeSelector
@@ -227,14 +227,15 @@ export function ProfileEditForm({
                         marginBottom: 12,
                         ...Typography.default('semiBold')
                     }}>
-                        Default Permission Mode
+                        기본 권한 모드
                     </Text>
                     <ItemGroup title="">
-                        {[
-                            { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                            { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                            { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                            { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                            {[
+                            { value: 'default' as PermissionMode, label: '기본', description: '권한을 요청합니다', icon: 'shield-outline' },
+                            { value: 'plan' as PermissionMode, label: '계획', description: '실행 전 계획', icon: 'list-outline' },
+                            { value: 'allow-edits' as PermissionMode, label: '편집 허용', description: '편집 요청을 자동 승인', icon: 'create-outline' },
+                            { value: 'read-only' as PermissionMode, label: '읽기 전용', description: '읽기만 가능합니다', icon: 'eye-outline' },
+                            { value: 'bypass' as PermissionMode, label: '바이패스', description: '모든 권한 요청 건너뛰기', icon: 'flash-outline' },
                         ].map((option, index, array) => (
                             <Item
                                 key={option.value}
@@ -304,7 +305,7 @@ export function ProfileEditForm({
                             color: theme.colors.text,
                             ...Typography.default('semiBold')
                         }}>
-                            Spawn Sessions in Tmux
+                            Tmux로 세션 시작
                         </Text>
                     </View>
                     <Text style={{
@@ -313,7 +314,7 @@ export function ProfileEditForm({
                         marginBottom: 12,
                         ...Typography.default()
                     }}>
-                        {useTmux ? 'Sessions spawn in new tmux windows. Configure session name and temp directory below.' : 'Sessions spawn in regular shell (no tmux integration)'}
+                        {useTmux ? '세션은 새로운 tmux 창에서 시작됩니다. 아래에서 세션 이름과 임시 디렉토리를 설정하세요.' : 'tmux 없이 일반 셸에서 바로 시작됩니다'}
                     </Text>
 
                     {/* Tmux Session Name */}
@@ -324,7 +325,7 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        Tmux Session Name ({t('common.optional')})
+                        Tmux 세션 이름 ({t('common.optional')})
                     </Text>
                     <Text style={{
                         fontSize: 12,
@@ -332,7 +333,7 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default()
                     }}>
-                        Leave empty to use first existing tmux session (or create "unhappy" if none exist). Specify name (e.g., "my-work") for specific session.
+                        비워두면 기존 tmux 세션 중 첫 번째를 사용합니다. (없으면 unhappy로 생성). 특정 세션을 쓰려면 이름을 입력하세요. (예: "my-work")
                     </Text>
                     <TextInput
                         style={{
@@ -346,7 +347,7 @@ export function ProfileEditForm({
                             borderColor: theme.colors.textSecondary,
                             opacity: useTmux ? 1 : 0.5,
                         }}
-                        placeholder={useTmux ? 'Empty = first existing session' : "Disabled - tmux not enabled"}
+                        placeholder={useTmux ? '비워두면 첫 번째 기존 세션 사용' : '비활성 - tmux 미사용'}
                         value={tmuxSession}
                         onChangeText={setTmuxSession}
                         editable={useTmux}
@@ -360,7 +361,7 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        Tmux Temp Directory ({t('common.optional')})
+                        Tmux 임시 디렉토리 ({t('common.optional')})
                     </Text>
                     <Text style={{
                         fontSize: 12,
@@ -368,7 +369,7 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default()
                     }}>
-                        Temporary directory for tmux session files. Leave empty for system default.
+                        tmux 세션 파일이 저장되는 임시 디렉토리입니다. 비워두면 시스템 기본값을 사용합니다.
                     </Text>
                     <TextInput
                         style={{
@@ -382,7 +383,7 @@ export function ProfileEditForm({
                             borderColor: theme.colors.textSecondary,
                             opacity: useTmux ? 1 : 0.5,
                         }}
-                        placeholder={useTmux ? "/tmp (optional)" : "Disabled - tmux not enabled"}
+                        placeholder={useTmux ? '/tmp (선택)' : '비활성 - tmux 미사용'}
                         placeholderTextColor={theme.colors.input.placeholder}
                         value={tmuxTmpDir}
                         onChangeText={setTmuxTmpDir}
@@ -426,7 +427,7 @@ export function ProfileEditForm({
                                 color: theme.colors.text,
                                 ...Typography.default('semiBold')
                             }}>
-                                Startup Bash Script
+                                시작 스크립트
                             </Text>
                         </View>
                         <Text style={{
@@ -436,8 +437,8 @@ export function ProfileEditForm({
                             ...Typography.default()
                         }}>
                             {useStartupScript
-                                ? 'Executed before spawning each session. Use for dynamic setup, environment checks, or custom initialization.'
-                                : 'No startup script - sessions spawn directly'}
+                                ? '각 세션 시작 전 실행됩니다. 동적 설정, 환경 검사, 커스텀 초기화에 사용하세요.'
+                                : '시작 스크립트 없음 - 세션을 바로 시작합니다'}
                         </Text>
                         <View style={{
                             flexDirection: 'row',
@@ -458,7 +459,7 @@ export function ProfileEditForm({
                                     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
                                     minHeight: 100,
                                 }}
-                                placeholder={useStartupScript ? "#!/bin/bash\necho 'Initializing...'\n# Your script here" : "Disabled"}
+                                placeholder={useStartupScript ? "#!/bin/bash\necho '초기화 중...'\n# 스크립트를 입력하세요" : '비활성'}
                                 value={startupScript}
                                 onChangeText={setStartupScript}
                                 editable={useStartupScript}

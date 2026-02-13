@@ -176,7 +176,7 @@ export function EnvironmentVariableCard({
                     color: theme.colors.textSecondary,
                     ...Typography.default()
                 }}>
-                    First try copying variable from remote machine:
+                    원격 머신에서 먼저 변수 복사 시도:
                 </Text>
             </Pressable>
 
@@ -193,7 +193,7 @@ export function EnvironmentVariableCard({
                     borderColor: theme.colors.textSecondary,
                     opacity: useRemoteVariable ? 1 : 0.5,
                 }}
-                placeholder="Variable name (e.g., Z_AI_MODEL)"
+                placeholder="변수 이름 (예: Z_AI_MODEL)"
                 placeholderTextColor={theme.colors.input.placeholder}
                 value={remoteVariableName}
                 onChangeText={setRemoteVariableName}
@@ -212,7 +212,7 @@ export function EnvironmentVariableCard({
                             fontStyle: 'italic',
                             ...Typography.default()
                         }}>
-                            ⏳ Checking remote machine...
+                            ⏳ 원격 머신을 확인하는 중입니다...
                         </Text>
                     ) : remoteValue === null ? (
                         <Text style={{
@@ -220,7 +220,7 @@ export function EnvironmentVariableCard({
                             color: theme.colors.warning,
                             ...Typography.default()
                         }}>
-                            ✗ Value not found
+                            ✗ 값을 찾을 수 없습니다
                         </Text>
                     ) : (
                         <>
@@ -229,7 +229,7 @@ export function EnvironmentVariableCard({
                                 color: theme.colors.success,
                                 ...Typography.default()
                             }}>
-                                ✓ Value found: {remoteValue}
+                                ✓ 값이 발견되었습니다: {remoteValue}
                             </Text>
                             {showRemoteDiffersWarning && (
                                 <Text style={{
@@ -238,7 +238,7 @@ export function EnvironmentVariableCard({
                                     marginTop: 2,
                                     ...Typography.default()
                                 }}>
-                                    ⚠️ Differs from documented value: {expectedValue}
+                                    ⚠️ 문서의 기본값과 다릅니다: {expectedValue}
                                 </Text>
                             )}
                         </>
@@ -254,7 +254,7 @@ export function EnvironmentVariableCard({
                     fontStyle: 'italic',
                     ...Typography.default()
                 }}>
-                    ℹ️ Select a machine to check if variable exists
+                    ℹ️ 변수를 확인하려면 머신을 선택하세요
                 </Text>
             )}
 
@@ -267,7 +267,7 @@ export function EnvironmentVariableCard({
                     fontStyle: 'italic',
                     ...Typography.default()
                 }}>
-                    🔒 Secret value - not retrieved for security
+                    🔒 보안상 비밀 값은 조회하지 않습니다
                 </Text>
             )}
 
@@ -278,7 +278,7 @@ export function EnvironmentVariableCard({
                 marginBottom: 4,
                 ...Typography.default()
             }}>
-                Default value:
+                기본값:
             </Text>
 
             {/* Default value input */}
@@ -293,7 +293,7 @@ export function EnvironmentVariableCard({
                     borderWidth: 1,
                     borderColor: theme.colors.textSecondary,
                 }}
-                placeholder={expectedValue || "Value"}
+                placeholder={expectedValue || "값"}
                 placeholderTextColor={theme.colors.input.placeholder}
                 value={defaultValue}
                 onChangeText={setDefaultValue}
@@ -310,7 +310,7 @@ export function EnvironmentVariableCard({
                     marginBottom: 8,
                     ...Typography.default()
                 }}>
-                    ⚠️ Overriding documented default: {expectedValue}
+                    ⚠️ 문서의 기본값을 덮어씁니다: {expectedValue}
                 </Text>
             )}
 
@@ -321,14 +321,14 @@ export function EnvironmentVariableCard({
                 marginTop: 4,
                 ...Typography.default()
             }}>
-                Session will receive: {variable.name} = {
+                세션에 반영될 값: {variable.name} = {
                     isSecret
                         ? (useRemoteVariable && remoteVariableName
-                            ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - hidden for security`
-                            : (defaultValue ? '***hidden***' : '(empty)'))
+                            ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - 보안상 숨김`
+                            : (defaultValue ? '***숨김***' : '(빈 값)'))
                         : (useRemoteVariable && remoteValue !== undefined && remoteValue !== null
                             ? remoteValue
-                            : defaultValue || '(empty)')
+                            : defaultValue || '(빈 값)')
                 }
             </Text>
         </View>

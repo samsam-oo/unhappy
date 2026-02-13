@@ -341,9 +341,9 @@ function SessionInfoContent({ session }: { session: Session }) {
                             title={t('sessionInfo.aiProvider')}
                             subtitle={(() => {
                                 const flavor = session.metadata.flavor || 'claude';
-                                if (flavor === 'claude') return 'Claude';
-                                if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
-                                if (flavor === 'gemini') return 'Gemini';
+                                if (flavor === 'claude') return t('agentInput.agent.claude');
+                                if (flavor === 'gpt' || flavor === 'openai') return t('agentInput.agent.codex');
+                                if (flavor === 'gemini') return t('agentInput.agent.gemini');
                                 return flavor;
                             })()}
                             icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
@@ -413,11 +413,11 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Raw JSON (Dev Mode Only) */}
                 {devModeEnabled && (
-                    <ItemGroup title="Raw JSON (Dev Mode)">
+                    <ItemGroup title="원본 JSON (개발자 모드)">
                         {session.agentState && (
                             <>
                                 <Item
-                                    title="Agent State"
+                                    title="에이전트 상태"
                                     icon={<Ionicons name="code-working-outline" size={29} color="#FF9500" />}
                                     showChevron={false}
                                 />
@@ -432,7 +432,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         {session.metadata && (
                             <>
                                 <Item
-                                    title="Metadata"
+                                    title="메타데이터"
                                     icon={<Ionicons name="information-circle-outline" size={29} color="#5856D6" />}
                                     showChevron={false}
                                 />
@@ -447,7 +447,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         {sessionStatus && (
                             <>
                                 <Item
-                                    title="Session Status"
+                                    title="세션 상태"
                                     icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
                                     showChevron={false}
                                 />
@@ -467,7 +467,7 @@ function SessionInfoContent({ session }: { session: Session }) {
                         )}
                         {/* Full Session Object */}
                         <Item
-                            title="Full Session Object"
+                            title="전체 세션 객체"
                             icon={<Ionicons name="document-text-outline" size={29} color="#34C759" />}
                             showChevron={false}
                         />

@@ -252,6 +252,9 @@ export const pt: TranslationStructure = {
     fileNotFound: 'Arquivo não encontrado',
     invalidFormat: 'Formato inválido',
     operationFailed: 'Operação falhou',
+    machineOffline: 'Machine is offline',
+    failedToListDirectory: 'Failed to list directory',
+    failedToParseDirectoryList: 'Failed to parse directory list',
     tryAgain: 'Por favor, tente novamente',
     contactSupport: 'Entre em contato com o suporte se o problema persistir',
     sessionNotFound: 'Sessão não encontrada',
@@ -467,6 +470,11 @@ export const pt: TranslationStructure = {
       acceptEdits: 'Aceitar edições',
       plan: 'Modo de planejamento',
       bypassPermissions: 'Modo Yolo',
+      askEveryAction: 'Ask every action',
+      planOnly: 'Plan only',
+      autoApproveEdits: 'Auto-approve edits',
+      readOnlyTools: 'Read-only tools',
+      autoApproveAll: 'Auto-approve all',
       badgeAcceptAllEdits: 'Aceitar todas as edições',
       badgeBypassAllPermissions: 'Ignorar todas as permissões',
       badgePlanMode: 'Modo de planejamento',
@@ -479,6 +487,7 @@ export const pt: TranslationStructure = {
     model: {
       title: 'MODELO',
       configureInCli: 'Configurar modelos nas configurações do CLI',
+      selectModel: 'Select model',
     },
     codexPermissionMode: {
       title: 'MODO DE PERMISSÃO CODEX',
@@ -509,6 +518,16 @@ export const pt: TranslationStructure = {
       badgeReadOnly: 'Somente leitura',
       badgeSafeYolo: 'YOLO seguro',
       badgeYolo: 'YOLO',
+    },
+    reasoningEffort: {
+      auto: 'Auto',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      max: 'Max',
+      label: 'Reasoning effort',
+      accessibilityHint: ({ current }: { current: string }) =>
+        `Cycles effort. Current: ${current}.`,
     },
     context: {
       remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
@@ -813,6 +832,9 @@ export const pt: TranslationStructure = {
     createAccount: 'Criar conta',
     linkOrRestoreAccount: 'Vincular ou restaurar conta',
     loginWithMobileApp: 'Fazer login com aplicativo móvel',
+    featureEncrypted: 'Criptografia E2E',
+    featureCrossPlatform: 'Multiplataforma',
+    featureInstantSync: 'Sincronização instantânea',
   },
 
   review: {

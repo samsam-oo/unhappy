@@ -4,8 +4,9 @@ import { Ionicons } from '@/icons/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { hapticsLight } from './haptics';
 import { useUnistyles } from 'react-native-unistyles';
+import { t, type TranslationKey } from '@/text';
 
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'allow-edits' | 'bypass';
 
 // Model is now treated as an external ID (returned by the CLI / server), not a closed set.
 export type ModelMode = string;
@@ -16,46 +17,68 @@ interface PermissionModeSelectorProps {
     disabled?: boolean;
 }
 
-const modeConfig = {
+type PermissionModeIcon =
+    | 'shield-checkmark'
+    | 'create'
+    | 'list'
+    | 'flash'
+    | 'eye'
+    | 'shield'
+    | 'rocket';
+
+const modeConfig: Record<
+    PermissionMode,
+    { label: TranslationKey; icon: PermissionModeIcon; description: TranslationKey }
+> = {
     default: {
-        label: 'Default',
+        label: 'agentInput.permissionMode.default',
         icon: 'shield-checkmark' as const,
-        description: 'Ask for permissions'
+        description: 'agentInput.permissionMode.askEveryAction'
     },
     acceptEdits: {
-        label: 'Accept Edits',
+        label: 'agentInput.permissionMode.acceptEdits',
         icon: 'create' as const,
-        description: 'Auto-approve edits'
+        description: 'agentInput.permissionMode.autoApproveEdits'
+    },
+    'allow-edits': {
+        label: 'agentInput.permissionMode.acceptEdits',
+        icon: 'create' as const,
+        description: 'agentInput.permissionMode.autoApproveEdits'
     },
     plan: {
-        label: 'Plan',
+        label: 'agentInput.permissionMode.plan',
         icon: 'list' as const,
-        description: 'Plan before executing'
+        description: 'agentInput.permissionMode.planOnly'
     },
     bypassPermissions: {
-        label: 'Yolo',
+        label: 'agentInput.permissionMode.bypassPermissions',
         icon: 'flash' as const,
-        description: 'Skip all permissions'
+        description: 'agentInput.permissionMode.autoApproveAll'
+    },
+    bypass: {
+        label: 'agentInput.permissionMode.bypassPermissions',
+        icon: 'flash' as const,
+        description: 'agentInput.permissionMode.autoApproveAll'
     },
     // Codex modes (not displayed in this component, but needed for type compatibility)
     'read-only': {
-        label: 'Read-only',
+        label: 'agentInput.codexPermissionMode.readOnly',
         icon: 'eye' as const,
-        description: 'Read-only mode'
+        description: 'agentInput.permissionMode.readOnlyTools'
     },
     'safe-yolo': {
-        label: 'Safe YOLO',
+        label: 'agentInput.codexPermissionMode.safeYolo',
         icon: 'shield' as const,
-        description: 'Safe YOLO mode'
+        description: 'agentInput.codexPermissionMode.safeYolo'
     },
     'yolo': {
-        label: 'YOLO',
+        label: 'agentInput.codexPermissionMode.yolo',
         icon: 'rocket' as const,
-        description: 'YOLO mode'
+        description: 'agentInput.codexPermissionMode.yolo'
     },
 };
 
-const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+const modeOrder: PermissionMode[] = ['default', 'plan', 'allow-edits', 'read-only', 'bypass'];
 
 export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     mode,
@@ -63,15 +86,21 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     disabled = false
 }) => {
     const { theme } = useUnistyles();
-    const currentConfig = modeConfig[mode];
+    const currentConfig = {
+        ...modeConfig[mode],
+        label: t(modeConfig[mode].label),
+        description: t(modeConfig[mode].description),
+    };
 
     const iconColor = (() => {
         switch (mode) {
             case 'acceptEdits':
+            case 'allow-edits':
                 return theme.colors.permission.acceptEdits;
             case 'plan':
                 return theme.colors.permission.plan;
             case 'bypassPermissions':
+            case 'bypass':
                 return theme.colors.permission.bypass;
             case 'read-only':
                 return theme.colors.permission.readOnly;
@@ -88,7 +117,7 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     const handleTap = () => {
         hapticsLight();
         const currentIndex = modeOrder.indexOf(mode);
-        const nextIndex = (currentIndex + 1) % modeOrder.length;
+        const nextIndex = ((currentIndex >= 0 ? currentIndex : 0) + 1) % modeOrder.length;
         onModeChange(modeOrder[nextIndex]);
     };
 

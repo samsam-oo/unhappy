@@ -27,7 +27,7 @@ export default function PurchasesDevScreen() {
 
     const handlePurchase = async () => {
         if (!productId.trim()) {
-            Modal.alert('Error', 'Please enter a product ID');
+            Modal.alert('오류', '상품 ID를 입력해 주세요');
             return;
         }
 
@@ -35,10 +35,10 @@ export default function PurchasesDevScreen() {
         try {
             const result = await sync.purchaseProduct(productId.trim());
             if (result.success) {
-                Modal.alert('Success', 'Purchase completed successfully');
+                Modal.alert('성공', '구매가 완료되었습니다');
                 setProductId('');
             } else {
-                Modal.alert('Purchase Failed', result.error || 'Unknown error');
+                Modal.alert('구매 실패', result.error || '알 수 없는 오류');
             }
         } catch (e) {
             console.error('Error purchasing product', e);
@@ -56,7 +56,7 @@ export default function PurchasesDevScreen() {
 
                 // Log full offerings data
                 console.log('=== RevenueCat Offerings ===');
-                console.log('Current offering:', result.offerings.current?.identifier || 'None');
+                console.log('현재 오퍼링:', result.offerings.current?.identifier || '없음');
 
                 if (result.offerings.current) {
                     console.log('\nCurrent Offering Packages:');
@@ -73,7 +73,7 @@ export default function PurchasesDevScreen() {
                 console.log('\nFull JSON:', JSON.stringify(result.offerings, null, 2));
                 console.log('===========================');
             } else {
-                Modal.alert('Error', result.error || 'Failed to fetch offerings');
+                Modal.alert('오류', result.error || '오퍼링 조회 실패');
             }
         } finally {
             setLoadingOfferings(false);
@@ -84,7 +84,7 @@ export default function PurchasesDevScreen() {
         <>
             <Stack.Screen
                 options={{
-                    title: 'Purchases',
+                    title: '구매',
                     headerShown: true
                 }}
             />
@@ -92,8 +92,8 @@ export default function PurchasesDevScreen() {
             <ItemList>
                 {/* Active Subscriptions */}
                 <ItemGroup
-                    title="Active Subscriptions"
-                    footer={purchases.activeSubscriptions.length === 0 ? "No active subscriptions" : undefined}
+                    title="활성 구독"
+                    footer={purchases.activeSubscriptions.length === 0 ? "활성 구독이 없습니다" : undefined}
                 >
                     {purchases.activeSubscriptions.length > 0 ? (
                         purchases.activeSubscriptions.map((productId, index) => (
@@ -109,8 +109,8 @@ export default function PurchasesDevScreen() {
 
                 {/* Entitlements */}
                 <ItemGroup
-                    title="Entitlements"
-                    footer={sortedEntitlements.length === 0 ? "No entitlements found" : "Green = active, Gray = inactive"}
+                    title="권한"
+                    footer={sortedEntitlements.length === 0 ? "권한 항목이 없습니다" : "녹색=활성, 회색=비활성"}
                 >
                     {sortedEntitlements.length > 0 ? (
                         sortedEntitlements.map(([id, isActive]) => (
@@ -124,7 +124,7 @@ export default function PurchasesDevScreen() {
                                         color={isActive ? "#34C759" : "#8E8E93"}
                                     />
                                 }
-                                detail={isActive ? "Active" : "Inactive"}
+                                detail={isActive ? "활성" : "비활성"}
                                 showChevron={false}
                             />
                         ))
@@ -132,7 +132,7 @@ export default function PurchasesDevScreen() {
                 </ItemGroup>
 
                 {/* Purchase Product */}
-                <ItemGroup title="Purchase Product" footer="Enter a product ID to purchase">
+                <ItemGroup title="상품 구매" footer="구매할 상품 ID를 입력하세요">
                     <View style={{
                         backgroundColor: '#fff',
                         paddingHorizontal: 16,
@@ -141,7 +141,7 @@ export default function PurchasesDevScreen() {
                         <TextInput
                             value={productId}
                             onChangeText={setProductId}
-                            placeholder="Enter product ID"
+                            placeholder="상품 ID 입력"
                             style={{
                                 fontSize: 17,
                                 paddingVertical: 8,
@@ -156,7 +156,7 @@ export default function PurchasesDevScreen() {
                             autoCorrect={false}
                         />
                         <Item
-                            title={isPurchasing ? "Purchasing..." : "Purchase"}
+                            title={isPurchasing ? "구매 진행 중..." : "구매"}
                             icon={isPurchasing ?
                                 <ActivityIndicator size="small" color="#007AFF" /> :
                                 <Ionicons name="card-outline" size={29} color="#007AFF" />
@@ -169,14 +169,14 @@ export default function PurchasesDevScreen() {
                 </ItemGroup>
 
                 {/* Actions */}
-                <ItemGroup title="Actions">
+                <ItemGroup title="동작">
                     <Item
-                        title="Refresh Purchases"
+                        title="구매 정보 갱신"
                         icon={<Ionicons name="refresh-outline" size={29} color="#007AFF" />}
                         onPress={() => sync.refreshPurchases()}
                     />
                     <Item
-                        title={loadingOfferings ? "Loading Offerings..." : "Log Offerings"}
+                        title={loadingOfferings ? "오퍼링 로딩 중..." : "오퍼링 로그"}
                         icon={loadingOfferings ?
                             <ActivityIndicator size="small" color="#007AFF" /> :
                             <Ionicons name="document-text-outline" size={29} color="#007AFF" />
@@ -188,20 +188,20 @@ export default function PurchasesDevScreen() {
 
                 {/* Offerings Info */}
                 {offerings && (
-                    <ItemGroup title="Offerings" footer="Check console logs for full details">
+                    <ItemGroup title="오퍼링" footer="전체 상세 내용은 콘솔 로그를 확인하세요">
                         <Item
-                            title="Current Offering"
-                            detail={offerings.current?.identifier || "None"}
+                            title="현재 오퍼링"
+                            detail={offerings.current?.identifier || '없음'}
                             showChevron={false}
                         />
                         <Item
-                            title="Total Offerings"
+                            title="전체 오퍼링"
                             detail={Object.keys(offerings.all || {}).length.toString()}
                             showChevron={false}
                         />
                         {offerings.current && (
                             <Item
-                                title="Available Packages"
+                                title="사용 가능 패키지"
                                 detail={Object.keys(offerings.current.availablePackages || {}).length.toString()}
                                 showChevron={false}
                             />
@@ -210,15 +210,15 @@ export default function PurchasesDevScreen() {
                 )}
 
                 {/* Debug Info */}
-                <ItemGroup title="Debug Info">
+                <ItemGroup title="디버그 정보">
                     <Item
-                        title="RevenueCat Status"
-                        detail={sync.revenueCatInitialized ? "Initialized" : "Not Initialized"}
+                        title="RevenueCat 상태"
+                        detail={sync.revenueCatInitialized ? "초기화됨" : "초기화 안 됨"}
                         showChevron={false}
                     />
                     <Item
-                        title="User ID"
-                        detail={sync.serverID || "Not available"}
+                        title="사용자 ID"
+                        detail={sync.serverID || "사용 불가"}
                         showChevron={false}
                     />
                 </ItemGroup>

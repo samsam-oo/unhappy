@@ -38,7 +38,7 @@ export const ZenAdd = React.memo(() => {
                             borderBottomColor: theme.colors.divider,
                         }
                     ]}
-                    placeholder="What needs to be done?"
+                    placeholder="무엇을 해야 할까요?"
                     placeholderTextColor={theme.colors.textSecondary}
                     value={text}
                     onChangeText={setText}

@@ -119,7 +119,7 @@ export default React.memo(() => {
     if (!sessionId || !messageId) {
         return (
             <View style={stylesheet.loadingContainer}>
-                <Text style={stylesheet.eventText}>Invalid session or message route.</Text>
+                <Text style={stylesheet.eventText}>유효하지 않은 세션 또는 메시지 경로입니다.</Text>
             </View>
         );
     }
@@ -175,7 +175,7 @@ export default React.memo(() => {
             {(message.kind === 'user-text' || message.kind === 'agent-text') && (
                 <Stack.Screen
                     options={{
-                        title: message.kind === 'user-text' ? 'Message' : 'Response',
+                        title: message.kind === 'user-text' ? '메시지' : '응답',
                         headerStyle: {
                             backgroundColor: theme.colors.header.background,
                         },

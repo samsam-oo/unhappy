@@ -39,6 +39,7 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
+import { normalizePermissionPolicy, toWirePermissionMode } from './permissionPolicy';
 
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
@@ -227,7 +228,9 @@ class Sync {
         }
 
         // Read permission mode from session state
-        const permissionMode = session.permissionMode || 'default';
+        const rawPermissionMode = session.permissionMode || 'default';
+        const permissionPolicy = normalizePermissionPolicy({ permissionMode: rawPermissionMode });
+        const wirePermissionMode = toWirePermissionMode({ permissionMode: rawPermissionMode });
         
         // Read model mode - for Gemini, default to gemini-2.5-pro if not set
         const flavor = session.metadata?.flavor;
@@ -275,7 +278,8 @@ class Sync {
             },
             meta: {
                 sentFrom,
-                permissionMode: permissionMode || 'default',
+                permissionMode: wirePermissionMode,
+                planOnly: permissionPolicy.planOnly,
                 model,
                 fallbackModel,
                 // `null` explicitly resets to backend default; omitted/undefined means "keep current".
@@ -305,7 +309,8 @@ class Sync {
             message: encryptedRawRecord,
             localId,
             sentFrom,
-            permissionMode: permissionMode || 'default'
+            permissionMode: wirePermissionMode,
+            planOnly: permissionPolicy.planOnly,
         });
     }
 

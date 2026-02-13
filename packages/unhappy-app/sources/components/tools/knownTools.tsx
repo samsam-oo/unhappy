@@ -104,7 +104,7 @@ export const knownTools = {
             if (typeof opts.tool.input.pattern === 'string') {
                 return `grep(pattern: ${opts.tool.input.pattern})`;
             }
-            return 'Search Content';
+            return t('tools.names.searchContent');
         },
         icon: ICON_READ,
         minimal: true,
@@ -129,7 +129,7 @@ export const knownTools = {
                     : opts.tool.input.pattern;
                 return `Search(pattern: ${pattern})`;
             }
-            return 'Search';
+            return t('tools.names.search');
         }
     },
     'LS': {

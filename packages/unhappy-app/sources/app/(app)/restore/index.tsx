@@ -135,13 +135,13 @@ export default function Restore() {
       style={styles.scrollView}
       contentContainerStyle={{ flexGrow: 1 }}
     >
-      <View style={styles.container}>
+        <View style={styles.container}>
         <View style={{ justifyContent: 'flex-end' }}>
-          <Text style={styles.secondInstructionText}>
-            1. Open Unhappy on your mobile device{'\n'}
-            2. Go to Settings → Account{'\n'}
-            3. Tap "Link New Device"{'\n'}
-            4. Scan this QR code
+            <Text style={styles.secondInstructionText}>
+            1. 모바일에서 Unhappy 앱을 엽니다{'\n'}
+            2. 설정 → 계정으로 이동합니다{'\n'}
+            3. "새 기기 연결"을 탭합니다{'\n'}
+            4. 이 QR 코드를 스캔합니다
           </Text>
         </View>
         {!authReady && (
@@ -169,8 +169,8 @@ export default function Restore() {
           />
         )}
         <View style={{ flexGrow: 4, paddingTop: 30 }}>
-          <RoundButton
-            title="Restore with Secret Key Instead"
+            <RoundButton
+            title={t('navigation.restoreWithSecretKey')}
             display="inverted"
             onPress={() => {
               router.push('/restore/manual');

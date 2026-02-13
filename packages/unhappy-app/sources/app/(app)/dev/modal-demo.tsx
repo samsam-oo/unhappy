@@ -15,7 +15,7 @@ function CustomContentModal({ onClose, title, message }: { onClose: () => void; 
             <Text style={[styles.customModalMessage, Typography.default()]}>{message}</Text>
             <View style={styles.customModalButtons}>
                 <RoundButton
-                    title="Close"
+                    title="닫기"
                     onPress={onClose}
                     size="normal"
                 />
@@ -25,131 +25,131 @@ function CustomContentModal({ onClose, title, message }: { onClose: () => void; 
 }
 
 export default function ModalDemoScreen() {
-    const [lastResult, setLastResult] = React.useState<string>('No action taken yet');
+    const [lastResult, setLastResult] = React.useState<string>('아직 작업이 없습니다');
 
     const showSimpleAlert = () => {
-        Modal.alert('Simple Alert', 'This is a simple alert modal.');
-        setLastResult('Showed simple alert');
+        Modal.alert('간단 알림', '간단한 알림 모달입니다.');
+        setLastResult('간단 알림을 표시했습니다');
     };
 
     const showAlertWithMessage = () => {
         Modal.alert(
-            'Alert with Message',
-            'This alert has a longer message that explains something in detail. It can span multiple lines if needed.'
+            '메시지 알림',
+            '이 알림은 상세한 메시지를 표시합니다. 필요 시 여러 줄로 표시됩니다.'
         );
-        setLastResult('Showed alert with message');
+        setLastResult('메시지 알림을 표시했습니다');
     };
 
     const showAlertWithButtons = () => {
         Modal.alert(
-            'Multiple Actions',
-            'Choose an action:',
+            '다중 액션',
+            '동작을 선택하세요:',
             [
-                { text: 'Cancel', style: 'cancel', onPress: () => setLastResult('Pressed Cancel') },
-                { text: 'Option 1', onPress: () => setLastResult('Pressed Option 1') },
-                { text: 'Option 2', onPress: () => setLastResult('Pressed Option 2') }
+                { text: '취소', style: 'cancel', onPress: () => setLastResult('취소 선택') },
+                { text: '옵션 1', onPress: () => setLastResult('옵션 1 선택') },
+                { text: '옵션 2', onPress: () => setLastResult('옵션 2 선택') }
             ]
         );
     };
 
     const showConfirm = async () => {
         const result = await Modal.confirm(
-            'Confirm Action',
-            'Are you sure you want to proceed?'
+            '작업 확인',
+            '계속 진행하시겠습니까?'
         );
-        setLastResult(`Confirm result: ${result ? 'Confirmed' : 'Cancelled'}`);
+        setLastResult(`확인 결과: ${result ? '확인' : '취소'}`);
     };
 
     const showDestructiveConfirm = async () => {
         const result = await Modal.confirm(
-            'Delete Item',
-            'This action cannot be undone. Are you sure?',
+            '항목 삭제',
+            '이 작업은 되돌릴 수 없습니다. 진행하시겠습니까?',
             {
-                confirmText: 'Delete',
-                cancelText: 'Keep',
+                confirmText: '삭제',
+                cancelText: '취소',
                 destructive: true
             }
         );
-        setLastResult(`Delete result: ${result ? 'Deleted' : 'Kept'}`);
+        setLastResult(`삭제 결과: ${result ? '삭제됨' : '취소됨'}`);
     };
 
     const showCustomModal = () => {
         Modal.show({
             component: CustomContentModal,
             props: {
-                title: 'Custom Modal',
-                message: 'This is a completely custom modal component. You can put anything in here!'
+                title: '맞춤 모달',
+                message: '완전히 커스텀된 모달 컴포넌트입니다. 원하는 내용을 넣을 수 있습니다.'
             }
         });
-        setLastResult('Showed custom modal');
+        setLastResult('맞춤 모달을 표시했습니다');
     };
 
     const showMultipleModals = async () => {
-        Modal.alert('First Modal', 'This is the first modal');
+        Modal.alert('첫 번째 모달', '첫 번째 모달입니다');
         
         setTimeout(() => {
-            Modal.alert('Second Modal', 'This modal appeared after the first one');
+            Modal.alert('두 번째 모달', '이 모달은 첫 번째 다음에 표시됩니다');
         }, 1500);
         
-        setLastResult('Showed multiple modals');
+        setLastResult('여러 모달을 표시했습니다');
     };
 
     return (
         <ScrollView style={styles.container}>
             <View style={styles.header}>
-                <Text style={[styles.title, Typography.default('semiBold')]}>Modal Demo</Text>
+                <Text style={[styles.title, Typography.default('semiBold')]}>모달 데모</Text>
                 <Text style={[styles.subtitle, Typography.default()]}>
-                    Platform: {Platform.OS} ({Platform.OS === 'web' ? 'Custom modals' : 'Native alerts'})
+                    플랫폼: {Platform.OS} ({Platform.OS === 'web' ? '커스텀 모달' : '기본 알림'})
                 </Text>
             </View>
 
             <ItemList>
-                <ItemGroup title="Alert Modals">
+                <ItemGroup title="알림 모달">
                     <Item
-                        title="Simple Alert"
-                        subtitle="Basic alert with title only"
+                        title="간단 알림"
+                        subtitle="제목만 있는 기본 알림"
                         onPress={showSimpleAlert}
                     />
                     <Item
-                        title="Alert with Message"
-                        subtitle="Alert with title and message"
+                        title="메시지 알림"
+                        subtitle="제목과 메시지를 함께 보여주는 알림"
                         onPress={showAlertWithMessage}
                     />
                     <Item
-                        title="Alert with Multiple Buttons"
-                        subtitle="Alert with custom buttons"
+                        title="다중 버튼 알림"
+                        subtitle="커스텀 버튼이 있는 알림"
                         onPress={showAlertWithButtons}
                     />
                 </ItemGroup>
 
-                <ItemGroup title="Confirmation Modals">
+                <ItemGroup title="확인 모달">
                     <Item
-                        title="Basic Confirmation"
-                        subtitle="Simple yes/no confirmation"
+                        title="기본 확인"
+                        subtitle="간단한 예/아니오 확인"
                         onPress={showConfirm}
                     />
                     <Item
-                        title="Destructive Confirmation"
-                        subtitle="Confirmation with destructive action"
+                        title="삭제 확인"
+                        subtitle="파괴적 액션이 포함된 확인"
                         onPress={showDestructiveConfirm}
                         destructive
                     />
                 </ItemGroup>
 
-                <ItemGroup title="Custom Modals">
+                <ItemGroup title="맞춤 모달">
                     <Item
-                        title="Custom Modal"
-                        subtitle="Fully custom modal component"
+                        title="맞춤 모달"
+                        subtitle="완전 커스텀 모달 컴포넌트"
                         onPress={showCustomModal}
                     />
                     <Item
-                        title="Multiple Modals"
-                        subtitle="Show multiple modals in sequence"
+                        title="연속 모달"
+                        subtitle="여러 모달을 순차적으로 표시"
                         onPress={showMultipleModals}
                     />
                 </ItemGroup>
 
-                <ItemGroup title="Last Action Result">
+                <ItemGroup title="마지막 작업 결과">
                     <View style={styles.resultContainer}>
                         <Text style={[styles.resultText, Typography.default()]}>
                             {lastResult}

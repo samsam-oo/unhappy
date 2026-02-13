@@ -160,7 +160,7 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                             styles.cancelText,
                             Typography.default()
                         ]}>
-                            {config.cancelText || 'Cancel'}
+                            {config.cancelText || '취소'}
                         </Text>
                     </Pressable>
                     <View style={styles.buttonSeparator} />
@@ -175,7 +175,7 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                             styles.buttonText,
                             Typography.default('semiBold')
                         ]}>
-                            {config.confirmText || 'OK'}
+                            {config.confirmText || '확인'}
                         </Text>
                     </Pressable>
                 </View>

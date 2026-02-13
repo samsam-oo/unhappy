@@ -109,7 +109,7 @@ export function EnvironmentVariablesList({
                 marginBottom: 12,
                 ...Typography.default('semiBold')
             }}>
-                Environment Variables
+                환경변수
             </Text>
 
             {/* Add Variable Button */}
@@ -133,7 +133,7 @@ export function EnvironmentVariablesList({
                     color: theme.colors.button.primary.tint,
                     ...Typography.default('semiBold')
                 }}>
-                    Add Variable
+                    변수 추가
                 </Text>
             </Pressable>
 
@@ -158,7 +158,7 @@ export function EnvironmentVariablesList({
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
                         }}
-                        placeholder="Variable name (e.g., MY_CUSTOM_VAR)"
+                        placeholder="변수 이름 (예: MY_CUSTOM_VAR)"
                         placeholderTextColor={theme.colors.input.placeholder}
                         value={newVarName}
                         onChangeText={setNewVarName}
@@ -176,7 +176,7 @@ export function EnvironmentVariablesList({
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
                         }}
-                        placeholder="Value (e.g., my-value or ${MY_VAR})"
+                        placeholder="값 (예: my-value 또는 ${MY_VAR})"
                         placeholderTextColor={theme.colors.input.placeholder}
                         value={newVarValue}
                         onChangeText={setNewVarValue}
@@ -205,7 +205,7 @@ export function EnvironmentVariablesList({
                                 color: theme.colors.textSecondary,
                                 ...Typography.default()
                             }}>
-                                Cancel
+                                취소
                             </Text>
                         </Pressable>
                         <Pressable
@@ -224,7 +224,7 @@ export function EnvironmentVariablesList({
                                 color: theme.colors.button.primary.tint,
                                 ...Typography.default('semiBold')
                             }}>
-                                Add
+                                추가
                             </Text>
                         </Pressable>
                     </View>

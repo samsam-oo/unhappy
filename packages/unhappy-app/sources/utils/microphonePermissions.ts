@@ -82,23 +82,23 @@ export async function checkMicrophonePermission(): Promise<MicrophonePermissionR
  * Show appropriate error message when permission is denied
  */
 export function showMicrophonePermissionDeniedAlert(canAskAgain: boolean = false) {
-  const title = 'Microphone Access Required';
+  const title = '마이크 접근 권한 필요';
   const message = canAskAgain
-    ? 'Unhappy needs access to your microphone for voice chat. Please grant permission when prompted.'
-    : 'Unhappy needs access to your microphone for voice chat. Please enable microphone access in your device settings.';
+    ? '음성 채팅을 사용하려면 마이크 접근 권한이 필요합니다. 권한 요청이 뜰 때 허용해 주세요.'
+    : '음성 채팅을 사용하려면 마이크 접근 권한이 필요합니다. 기기 설정에서 마이크 권한을 활성화해 주세요.';
 
   if (Platform.OS === 'web') {
     // Web: Show browser-specific instructions
     Modal.alert(
       title,
-      'Please allow microphone access in your browser settings. You may need to click the lock icon in the address bar and enable microphone permission for this site.',
-      [{ text: 'OK' }]
+      '브라우저 설정에서 이 사이트의 마이크 사용 권한을 허용해 주세요. 주소창의 잠금 아이콘을 클릭한 뒤 마이크 권한을 켜야 할 수 있습니다.',
+      [{ text: '확인' }]
     );
   } else {
     Modal.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: '취소', style: 'cancel' },
       {
-        text: 'Open Settings',
+        text: '설정 열기',
         onPress: () => {
           // Opens app settings on iOS/Android
           Linking.openSettings();

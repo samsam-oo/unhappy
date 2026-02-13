@@ -262,6 +262,9 @@ export const pl: TranslationStructure = {
     fileNotFound: 'Plik nie został znaleziony',
     invalidFormat: 'Nieprawidłowy format',
     operationFailed: 'Operacja nie powiodła się',
+    machineOffline: 'Machine is offline',
+    failedToListDirectory: 'Failed to list directory',
+    failedToParseDirectoryList: 'Failed to parse directory list',
     tryAgain: 'Spróbuj ponownie',
     contactSupport:
       'Skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał',
@@ -478,6 +481,11 @@ export const pl: TranslationStructure = {
       acceptEdits: 'Akceptuj edycje',
       plan: 'Tryb planowania',
       bypassPermissions: 'Tryb YOLO',
+      askEveryAction: 'Ask every action',
+      planOnly: 'Plan only',
+      autoApproveEdits: 'Auto-approve edits',
+      readOnlyTools: 'Read-only tools',
+      autoApproveAll: 'Auto-approve all',
       badgeAcceptAllEdits: 'Akceptuj wszystkie edycje',
       badgeBypassAllPermissions: 'Omiń wszystkie uprawnienia',
       badgePlanMode: 'Tryb planowania',
@@ -490,6 +498,7 @@ export const pl: TranslationStructure = {
     model: {
       title: 'MODEL',
       configureInCli: 'Skonfiguruj modele w ustawieniach CLI',
+      selectModel: 'Select model',
     },
     codexPermissionMode: {
       title: 'TRYB UPRAWNIEŃ CODEX',
@@ -520,6 +529,16 @@ export const pl: TranslationStructure = {
       badgeReadOnly: 'Tylko do odczytu',
       badgeSafeYolo: 'Bezpieczny YOLO',
       badgeYolo: 'YOLO',
+    },
+    reasoningEffort: {
+      auto: 'Auto',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      max: 'Max',
+      label: 'Reasoning effort',
+      accessibilityHint: ({ current }: { current: string }) =>
+        `Cycles effort. Current: ${current}.`,
     },
     context: {
       remaining: ({ percent }: { percent: number }) => `Pozostało ${percent}%`,
@@ -825,6 +844,9 @@ export const pl: TranslationStructure = {
     createAccount: 'Utwórz konto',
     linkOrRestoreAccount: 'Połącz lub przywróć konto',
     loginWithMobileApp: 'Zaloguj się przez aplikację mobilną',
+    featureEncrypted: 'Szyfrowanie E2E',
+    featureCrossPlatform: 'Wieloplatformowy',
+    featureInstantSync: 'Natychmiastowa synchronizacja',
   },
 
   review: {

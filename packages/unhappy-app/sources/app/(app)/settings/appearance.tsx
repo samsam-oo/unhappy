@@ -2,17 +2,14 @@ import { Ionicons } from '@/icons/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
+import { useSettingMutable } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import * as Localization from 'expo-localization';
-import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
+import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { Appearance } from 'react-native';
-import * as SystemUI from 'expo-system-ui';
-import { darkTheme, lightTheme } from '@/theme';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 
-// Define known avatar styles for this version of the app
+// 앱에서 지원하는 아바타 스타일을 지정
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
 
 const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
@@ -30,13 +27,12 @@ export default function AppearanceSettingsScreen() {
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
     const [compactSessionView, setCompactSessionView] = useSettingMutable('compactSessionView');
-    const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     const [preferredLanguage] = useSettingMutable('preferredLanguage');
     
-    // Ensure we have a valid style for display, defaulting to gradient for unknown values
+    // 표시할 수 있는 스타일이 아니면 기본값(그라디언트)으로 보정
     const displayStyle: KnownAvatarStyle = isKnownAvatarStyle(avatarStyle) ? avatarStyle : 'gradient';
     
-    // Language display
+    // 언어 표시 문자열 계산
     const getLanguageDisplayText = () => {
         if (preferredLanguage === null) {
             const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
@@ -53,42 +49,18 @@ export default function AppearanceSettingsScreen() {
     return (
         <ItemList style={{ paddingTop: 0 }}>
 
-            {/* Theme Settings */}
+            {/* 테마 설정 */}
             <ItemGroup title={t('settingsAppearance.theme')} footer={t('settingsAppearance.themeDescription')}>
                 <Item
                     title={t('settings.appearance')}
-                    subtitle={themePreference === 'adaptive' ? t('settingsAppearance.themeDescriptions.adaptive') : themePreference === 'light' ? t('settingsAppearance.themeDescriptions.light') : t('settingsAppearance.themeDescriptions.dark')}
+                    subtitle={t('settingsAppearance.themeDescriptions.dark')}
                     icon={<Ionicons name="contrast-outline" size={29} color={theme.colors.status.connecting} />}
-                    detail={themePreference === 'adaptive' ? t('settingsAppearance.themeOptions.adaptive') : themePreference === 'light' ? t('settingsAppearance.themeOptions.light') : t('settingsAppearance.themeOptions.dark')}
-                    onPress={() => {
-                        const currentIndex = themePreference === 'adaptive' ? 0 : themePreference === 'light' ? 1 : 2;
-                        const nextIndex = (currentIndex + 1) % 3;
-                        const nextTheme = nextIndex === 0 ? 'adaptive' : nextIndex === 1 ? 'light' : 'dark';
-                        
-                        // Update the setting
-                        setThemePreference(nextTheme);
-                        
-                        // Apply the theme change immediately
-                        if (nextTheme === 'adaptive') {
-                            // Enable adaptive themes and set to system theme
-                            UnistylesRuntime.setAdaptiveThemes(true);
-                            const systemTheme = Appearance.getColorScheme();
-                            const color = systemTheme === 'dark' ? darkTheme.colors.groupped.background : lightTheme.colors.groupped.background;
-                            UnistylesRuntime.setRootViewBackgroundColor(color);
-                            SystemUI.setBackgroundColorAsync(color);
-                        } else {
-                            // Disable adaptive themes and set explicit theme
-                            UnistylesRuntime.setAdaptiveThemes(false);
-                            UnistylesRuntime.setTheme(nextTheme);
-                            const color = nextTheme === 'dark' ? darkTheme.colors.groupped.background : lightTheme.colors.groupped.background;
-                            UnistylesRuntime.setRootViewBackgroundColor(color);
-                            SystemUI.setBackgroundColorAsync(color);
-                        }
-                    }}
+                    detail={t('settingsAppearance.themeOptions.dark')}
+                    disabled
                 />
             </ItemGroup>
 
-            {/* Language Settings */}
+            {/* 언어 설정 */}
             <ItemGroup title={t('settingsLanguage.title')} footer={t('settingsLanguage.description')}>
                 <Item
                     title={t('settingsLanguage.currentLanguage')}
@@ -98,27 +70,27 @@ export default function AppearanceSettingsScreen() {
                 />
             </ItemGroup>
 
-            {/* Text Settings */}
-            {/* <ItemGroup title="Text" footer="Adjust text size and font preferences">
+            {/* 텍스트 설정 */}
+            {/* <ItemGroup title="텍스트" footer="텍스트 크기와 글꼴 선호도를 조정">
                 <Item
-                    title="Text Size"
-                    subtitle="Make text larger or smaller"
+                    title="텍스트 크기"
+                    subtitle="텍스트를 더 크거나 작게 조정"
                     icon={<Ionicons name="text-outline" size={29} color="#FF9500" />}
-                    detail="Default"
+                    detail="기본"
                     onPress={() => { }}
                     disabled
                 />
                 <Item
-                    title="Font"
-                    subtitle="Choose your preferred font"
+                    title="글꼴"
+                    subtitle="선호하는 글꼴 선택"
                     icon={<Ionicons name="text-outline" size={29} color="#FF9500" />}
-                    detail="System"
+                    detail="시스템"
                     onPress={() => { }}
                     disabled
                 />
             </ItemGroup> */}
 
-            {/* Display Settings */}
+            {/* 표시 설정 */}
             <ItemGroup title={t('settingsAppearance.display')} footer={t('settingsAppearance.displayDescription')}>
                 <Item
                     title={t('settingsAppearance.compactSessionView')}
@@ -210,8 +182,8 @@ export default function AppearanceSettingsScreen() {
                     }
                 />
                 {/* <Item
-                    title="Compact Mode"
-                    subtitle="Reduce spacing between elements"
+                    title="컴팩트 모드"
+                    subtitle="요소 간 간격을 줄임"
                     icon={<Ionicons name="contract-outline" size={29} color="#5856D6" />}
                     disabled
                     rightElement={
@@ -222,8 +194,8 @@ export default function AppearanceSettingsScreen() {
                     }
                 />
                 <Item
-                    title="Show Avatars"
-                    subtitle="Display user and assistant avatars"
+                    title="아바타 표시"
+                    subtitle="사용자와 어시스턴트 아바타 표시"
                     icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
                     disabled
                     rightElement={
@@ -235,13 +207,13 @@ export default function AppearanceSettingsScreen() {
                 /> */}
             </ItemGroup>
 
-            {/* Colors */}
-            {/* <ItemGroup title="Colors" footer="Customize accent colors and highlights">
+            {/* 색상 */}
+            {/* <ItemGroup title="색상" footer="강조 색상과 하이라이트를 조정">
                 <Item
-                    title="Accent Color"
-                    subtitle="Choose your accent color"
+                    title="강조색"
+                    subtitle="강조 색상을 선택"
                     icon={<Ionicons name="color-palette-outline" size={29} color="#FF3B30" />}
-                    detail="Blue"
+                    detail="파랑"
                     onPress={() => { }}
                     disabled
                 />

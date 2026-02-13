@@ -120,8 +120,8 @@ export const RowActionMenu = React.memo(function RowActionMenu(props: RowActionM
                     styles.triggerButton,
                     IS_WEB && (hovered || pressed) && styles.triggerButtonHover,
                 ]}
-                accessibilityLabel="More actions"
-            >
+                accessibilityLabel="더 많은 작업"
+                >
                 <Ionicons name="ellipsis-vertical" size={compact ? 15 : 18} color={theme.colors.textSecondary} />
             </Pressable>
 

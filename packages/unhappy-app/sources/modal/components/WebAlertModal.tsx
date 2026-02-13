@@ -27,10 +27,10 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
 
     const buttons = isConfirm
         ? [
-            { text: config.cancelText || 'Cancel', style: 'cancel' as const },
-            { text: config.confirmText || 'OK', style: config.destructive ? 'destructive' as const : 'default' as const }
+            { text: config.cancelText || '취소', style: config.destructive ? 'destructive' as const : 'cancel' as const },
+            { text: config.confirmText || '확인', style: config.destructive ? 'destructive' as const : 'default' as const }
         ]
-        : config.buttons || [{ text: 'OK', style: 'default' as const }];
+        : config.buttons || [{ text: '확인', style: 'default' as const }];
 
     const styles = StyleSheet.create({
         container: {

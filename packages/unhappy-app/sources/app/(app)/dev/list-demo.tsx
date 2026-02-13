@@ -12,47 +12,47 @@ export default function ListDemoScreen() {
     return (
         <ItemList>
             {/* Basic Items */}
-            <ItemGroup title="Basic Items">
-                <Item title="Simple Item" />
+            <ItemGroup title="기본 항목">
+                <Item title="간단한 항목" />
                 <Item 
-                    title="Item with Subtitle" 
-                    subtitle="This is a subtitle that can span multiple lines if needed"
+                    title="부제목이 있는 항목"
+                    subtitle="필요하면 여러 줄로 표시되는 부제목입니다"
                 />
                 <Item 
-                    title="Item with Detail" 
-                    detail="Detail"
+                    title="세부 정보가 있는 항목"
+                    detail="세부 정보"
                 />
                 <Item 
-                    title="Clickable Item"
+                    title="터치 가능한 항목"
                     onPress={() => console.log('Item pressed')}
                 />
             </ItemGroup>
 
             {/* Items with Icons */}
-            <ItemGroup title="With Icons">
+            <ItemGroup title="아이콘 포함">
                 <Item 
-                    title="Settings"
+                    title="설정"
                     icon={<Ionicons name="settings-outline" size={28} color="#007AFF" />}
                     onPress={() => {}}
                 />
                 <Item 
-                    title="Notifications"
+                    title="알림"
                     icon={<Ionicons name="notifications-outline" size={28} color="#FF9500" />}
                     detail="5"
                     onPress={() => {}}
                 />
                 <Item 
-                    title="Privacy"
+                    title="개인정보"
                     icon={<Ionicons name="lock-closed-outline" size={28} color="#34C759" />}
-                    subtitle="Control your privacy settings"
+                    subtitle="개인정보 설정을 관리합니다"
                     onPress={() => {}}
                 />
             </ItemGroup>
 
             {/* Interactive Items */}
-            <ItemGroup title="Interactive" footer="These items demonstrate various interactive states and elements">
+            <ItemGroup title="인터랙션" footer="이 항목들은 다양한 상호작용 상태를 보여줍니다">
                 <Item 
-                    title="Toggle Switch"
+                    title="토글 스위치"
                     rightElement={
                         <Switch
                             value={isEnabled}
@@ -62,60 +62,60 @@ export default function ListDemoScreen() {
                     showChevron={false}
                 />
                 <Item 
-                    title="Selected Item"
+                    title="선택된 항목"
                     selected={selectedItem === 'item1'}
                     onPress={() => setSelectedItem('item1')}
                 />
                 <Item 
-                    title="Loading State"
+                    title="로딩 상태"
                     loading={true}
                     onPress={() => {}}
                 />
                 <Item 
-                    title="Disabled Item"
+                    title="비활성 항목"
                     disabled={true}
                     onPress={() => {}}
                 />
                 <Item 
-                    title="Destructive Action"
+                    title="위험 동작"
                     destructive={true}
                     onPress={() => {}}
                 />
             </ItemGroup>
 
             {/* Custom Styling */}
-            <ItemGroup title="Custom Styling">
+            <ItemGroup title="커스텀 스타일">
                 <Item 
-                    title="Custom Colors"
-                    subtitle="With custom text colors"
+                    title="사용자 지정 색상"
+                    subtitle="커스텀 텍스트 색상"
                     titleStyle={{ color: '#FF3B30' }}
                     subtitleStyle={{ color: '#FF9500' }}
                     onPress={() => {}}
                 />
                 <Item 
-                    title="No Divider"
+                    title="구분선 없음"
                     showDivider={false}
                 />
                 <Item 
-                    title="Custom Inset"
+                    title="여백 사용자 지정"
                     dividerInset={60}
                 />
                 <Item 
-                    title="No Chevron"
+                    title="화살표 없음"
                     showChevron={false}
                     onPress={() => {}}
                 />
             </ItemGroup>
 
             {/* Long Press */}
-            <ItemGroup title="Gestures">
+            <ItemGroup title="제스처">
                 <Item 
-                    title="Long Press Me"
-                    subtitle="Try long pressing this item"
+                    title="길게 누르기"
+                    subtitle="이 항목을 길게 눌러보세요"
                     onLongPress={() => console.log('Long pressed!')}
                 />
                 <Item 
-                    title="Press and Long Press"
+                    title="탭 및 롱 프레스"
                     onPress={() => console.log('Pressed')}
                     onLongPress={() => console.log('Long pressed')}
                 />

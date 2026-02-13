@@ -240,6 +240,9 @@ export const zhHant: TranslationStructure = {
     fileNotFound: '檔案未找到',
     invalidFormat: '格式無效',
     operationFailed: '操作失敗',
+    machineOffline: 'Machine is offline',
+    failedToListDirectory: 'Failed to list directory',
+    failedToParseDirectoryList: 'Failed to parse directory list',
     tryAgain: '請重試',
     contactSupport: '如果問題持續存在，請聯絡支援',
     sessionNotFound: '工作階段未找到',
@@ -442,6 +445,11 @@ export const zhHant: TranslationStructure = {
       acceptEdits: '接受編輯',
       plan: '計畫模式',
       bypassPermissions: 'Yolo 模式',
+      askEveryAction: 'Ask every action',
+      planOnly: 'Plan only',
+      autoApproveEdits: 'Auto-approve edits',
+      readOnlyTools: 'Read-only tools',
+      autoApproveAll: 'Auto-approve all',
       badgeAcceptAllEdits: '接受所有編輯',
       badgeBypassAllPermissions: '繞過所有權限',
       badgePlanMode: '計畫模式',
@@ -454,6 +462,7 @@ export const zhHant: TranslationStructure = {
     model: {
       title: '模型',
       configureInCli: '在 CLI 設定中配置模型',
+      selectModel: 'Select model',
     },
     codexPermissionMode: {
       title: 'CODEX 權限模式',
@@ -484,6 +493,16 @@ export const zhHant: TranslationStructure = {
       badgeReadOnly: '唯讀',
       badgeSafeYolo: '安全 YOLO',
       badgeYolo: 'YOLO',
+    },
+    reasoningEffort: {
+      auto: 'Auto',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      max: 'Max',
+      label: 'Reasoning effort',
+      accessibilityHint: ({ current }: { current: string }) =>
+        `Cycles effort. Current: ${current}.`,
     },
     context: {
       remaining: ({ percent }: { percent: number }) => `剩餘 ${percent}%`,
@@ -774,6 +793,9 @@ export const zhHant: TranslationStructure = {
     createAccount: '建立帳戶',
     linkOrRestoreAccount: '連結或恢復帳戶',
     loginWithMobileApp: '使用行動應用程式登入',
+    featureEncrypted: 'E2E 加密',
+    featureCrossPlatform: '跨平台',
+    featureInstantSync: '即時同步',
   },
 
   review: {

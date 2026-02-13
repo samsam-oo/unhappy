@@ -101,9 +101,10 @@ export const SettingsView = React.memo(function SettingsView() {
 
     // Anthropic disconnection
     const [disconnectingAnthropic, handleDisconnectAnthropic] = useHappyAction(async () => {
+        const serviceName = t('agentInput.agent.claude');
         const confirmed = await Modal.confirm(
-            t('modals.disconnectService', { service: 'Claude' }),
-            t('modals.disconnectServiceConfirm', { service: 'Claude' }),
+            t('modals.disconnectService', { service: serviceName }),
+            t('modals.disconnectServiceConfirm', { service: serviceName }),
             { confirmText: t('modals.disconnect'), destructive: true }
         );
         if (confirmed) {
@@ -194,7 +195,7 @@ export const SettingsView = React.memo(function SettingsView() {
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
-                    title="Claude Code"
+                    title={t('agentInput.agent.claude')}
                     subtitle={isAnthropicConnected
                         ? t('settingsAccount.statusActive')
                         : t('settings.connectAccount')
@@ -244,7 +245,7 @@ export const SettingsView = React.memo(function SettingsView() {
                 <ItemGroup title={t('settings.machines')}>
                     {[...allMachines].map((machine) => {
                         const isOnline = isMachineOnline(machine);
-                        const host = machine.metadata?.host || 'Unknown';
+                        const host = machine.metadata?.host || t('status.unknown');
                         const displayName = machine.metadata?.displayName;
                         const platform = machine.metadata?.platform || '';
 

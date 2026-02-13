@@ -331,6 +331,9 @@ export const ja: TranslationStructure = {
     fileNotFound: 'ファイルが見つかりません',
     invalidFormat: 'フォーマットが無効です',
     operationFailed: '操作に失敗しました',
+    machineOffline: 'Machine is offline',
+    failedToListDirectory: 'Failed to list directory',
+    failedToParseDirectoryList: 'Failed to parse directory list',
     tryAgain: '再試行してください',
     contactSupport: '問題が続く場合はサポートにお問い合わせください',
     sessionNotFound: 'セッションが見つかりません',
@@ -544,6 +547,11 @@ export const ja: TranslationStructure = {
       acceptEdits: '編集を許可',
       plan: 'プランモード',
       bypassPermissions: 'Yoloモード',
+      askEveryAction: 'Ask every action',
+      planOnly: 'Plan only',
+      autoApproveEdits: 'Auto-approve edits',
+      readOnlyTools: 'Read-only tools',
+      autoApproveAll: 'Auto-approve all',
       badgeAcceptAllEdits: 'すべての編集を許可',
       badgeBypassAllPermissions: 'すべての権限をバイパス',
       badgePlanMode: 'プランモード',
@@ -556,6 +564,7 @@ export const ja: TranslationStructure = {
     model: {
       title: 'モデル',
       configureInCli: 'CLIの設定でモデルを構成',
+      selectModel: 'Select model',
     },
     codexPermissionMode: {
       title: 'CODEX権限モード',
@@ -586,6 +595,16 @@ export const ja: TranslationStructure = {
       badgeReadOnly: '読み取り専用',
       badgeSafeYolo: '安全YOLO',
       badgeYolo: 'YOLO',
+    },
+    reasoningEffort: {
+      auto: 'Auto',
+      low: 'Low',
+      medium: 'Medium',
+      high: 'High',
+      max: 'Max',
+      label: 'Reasoning effort',
+      accessibilityHint: ({ current }: { current: string }) =>
+        `Cycles effort. Current: ${current}.`,
     },
     context: {
       remaining: ({ percent }: { percent: number }) => `残り ${percent}%`,
@@ -882,6 +901,9 @@ export const ja: TranslationStructure = {
     createAccount: 'アカウントを作成',
     linkOrRestoreAccount: 'アカウントをリンクまたは復元',
     loginWithMobileApp: 'モバイルアプリでログイン',
+    featureEncrypted: 'E2E暗号化',
+    featureCrossPlatform: 'クロスプラットフォーム',
+    featureInstantSync: '即時同期',
   },
 
   review: {

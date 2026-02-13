@@ -11,7 +11,7 @@ export default function Tools2Screen() {
     // Example tool calls data - matching ToolCall interface
     const examples = {
         read: {
-            name: 'Read',
+            name: '읽기',
             state: 'completed' as const,
             input: {
                 file_path: '/Users/steve/project/src/components/Header.tsx',
@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
             children: []
         },
         readError: {
-            name: 'Read',
+            name: '읽기',
             state: 'error' as const,
             input: {
                 file_path: '/Users/steve/project/src/components/NotFound.tsx'
@@ -57,11 +57,11 @@ const styles = StyleSheet.create({
             startedAt: Date.now() - 2900,
             completedAt: Date.now() - 2000,
             description: null,
-            result: 'File not found: /Users/steve/project/src/components/NotFound.tsx',
+            result: '파일을 찾을 수 없습니다: /Users/steve/project/src/components/NotFound.tsx',
             children: []
         },
         edit: {
-            name: 'Edit',
+            name: '편집',
             state: 'completed' as const,
             input: {
                 file_path: '/Users/steve/project/package.json',
@@ -73,21 +73,21 @@ const styles = StyleSheet.create({
             startedAt: Date.now() - 3900,
             completedAt: Date.now() - 3000,
             description: null,
-            result: 'File updated successfully',
+            result: '파일이 성공적으로 업데이트되었습니다',
             children: []
         },
         bash: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'completed' as const,
             input: {
                 command: 'npm install react-native-reanimated',
-                description: 'Install animation library',
+                description: '애니메이션 라이브러리 설치',
                 timeout: 60000
             },
             createdAt: Date.now() - 5000,
             startedAt: Date.now() - 4900,
             completedAt: Date.now() - 4000,
-            description: 'Install animation library',
+            description: '애니메이션 라이브러리 설치',
             result: `added 15 packages, and audited 1250 packages in 12s
 
 125 packages are looking for funding
@@ -97,29 +97,29 @@ found 0 vulnerabilities`,
             children: []
         },
         bashRunning: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'running' as const,
             input: {
                 command: 'npm run build',
-                description: 'Building the application'
+                description: '애플리케이션 빌드 중'
             },
             createdAt: Date.now() - 1000,
             startedAt: Date.now() - 900,
             completedAt: null,
-            description: 'Building the application',
+            description: '애플리케이션 빌드 중',
             children: []
         },
         bashError: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'error' as const,
             input: {
                 command: 'npm run nonexistent-script',
-                description: 'Run a script that doesn\'t exist'
+                description: '존재하지 않는 스크립트를 실행',
             },
             createdAt: Date.now() - 6000,
             startedAt: Date.now() - 5900,
             completedAt: Date.now() - 5000,
-            description: 'Run a script that doesn\'t exist',
+            description: '존재하지 않는 스크립트를 실행',
             result: `npm ERR! Missing script: "nonexistent-script"
 npm ERR! 
 npm ERR! Did you mean one of these?
@@ -129,16 +129,16 @@ npm ERR!     npm run start`,
             children: []
         },
         bashLongCommand: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'completed' as const,
             input: {
                 command: 'git log --pretty=format:"%h - %an, %ar : %s" --graph --since=2.weeks --author="John Doe" --grep="fix" --all',
-                description: 'Search git history for fixes'
+                description: '수정 이력을 검색'
             },
             createdAt: Date.now() - 7000,
             startedAt: Date.now() - 6900,
             completedAt: Date.now() - 6000,
-            description: 'Search git history for fixes',
+            description: '수정 이력을 검색',
             result: `* 3a4f5b6 - John Doe, 2 days ago : fix: resolve memory leak in worker threads
 * 1c2d3e4 - John Doe, 5 days ago : fix: correct typo in documentation
 * 9f8e7d6 - John Doe, 1 week ago : fix: handle edge case in data parser
@@ -146,16 +146,16 @@ npm ERR!     npm run start`,
             children: []
         },
         bashMultiline: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'completed' as const,
             input: {
                 command: 'echo "Starting deployment..." && npm run build && npm run test && echo "Deployment complete!"',
-                description: 'Multi-step deployment process'
+                description: '다단계 배포 프로세스',
             },
             createdAt: Date.now() - 8000,
             startedAt: Date.now() - 7900,
             completedAt: Date.now() - 7000,
-            description: 'Multi-step deployment process',
+            description: '다단계 배포 프로세스',
             result: `Starting deployment...
 
 > myapp@1.0.0 build
@@ -180,16 +180,16 @@ Deployment complete!`,
             children: []
         },
         bashLargeOutput: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'completed' as const,
             input: {
                 command: 'ls -la node_modules/.bin',
-                description: 'List all executable scripts'
+                description: '모든 실행 스크립트 목록',
             },
             createdAt: Date.now() - 9000,
             startedAt: Date.now() - 8900,
             completedAt: Date.now() - 8000,
-            description: 'List all executable scripts',
+            description: '모든 실행 스크립트 목록',
             result: `total 1864
 drwxr-xr-x  234 user  staff   7488 Dec 15 14:32 .
 drwxr-xr-x  782 user  staff  25024 Dec 15 14:32 ..
@@ -210,31 +210,31 @@ lrwxr-xr-x    1 user  staff     13 Dec 15 14:30 jest -> ../jest/bin/jest.js`,
             children: []
         },
         bashNoOutput: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'completed' as const,
             input: {
                 command: 'mkdir -p temp/test/dir',
-                description: 'Create nested directories'
+                description: '중첩 디렉터리 생성',
             },
             createdAt: Date.now() - 10000,
             startedAt: Date.now() - 9900,
             completedAt: Date.now() - 9000,
-            description: 'Create nested directories',
+            description: '중첩 디렉터리 생성',
             result: '',
             children: []
         },
         bashWithWarnings: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'completed' as const,
             input: {
                 command: 'npm audit',
-                description: 'Check for security vulnerabilities',
+                description: '보안 취약점 점검',
                 timeout: 30000
             },
             createdAt: Date.now() - 11000,
             startedAt: Date.now() - 10900,
             completedAt: Date.now() - 10000,
-            description: 'Check for security vulnerabilities',
+            description: '보안 취약점 점검',
             result: `found 3 vulnerabilities (1 low, 2 moderate)
 
 To address all issues, run:
@@ -245,7 +245,7 @@ To address issues that do not require attention, run:
             children: []
         },
         search: {
-            name: 'Search',
+            name: '검색',
             state: 'completed' as const,
             input: {
                 query: 'useState',
@@ -266,7 +266,7 @@ To address issues that do not require attention, run:
             children: []
         },
         write: {
-            name: 'Write',
+            name: '쓰기',
             state: 'completed' as const,
             input: {
                 file_path: '/Users/steve/project/src/utils/helpers.ts',
@@ -282,46 +282,46 @@ export function formatTime(date: Date): string {
             startedAt: Date.now() - 12900,
             completedAt: Date.now() - 12000,
             description: null,
-            result: 'File created successfully',
+                result: '파일이 성공적으로 생성되었습니다',
             children: []
         },
         // Permission states examples
         toolPending: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'running' as const,
             input: {
                 command: 'rm -rf /important/directory',
-                description: 'Delete important directory'
+                description: '중요 디렉터리 삭제'
             },
             createdAt: Date.now(),
             startedAt: Date.now(),
             completedAt: null,
-            description: 'Delete important directory',
+            description: '중요 디렉터리 삭제',
             permission: {
                 id: 'perm-1',
                 status: 'pending' as const,
-                reason: 'This action requires permission'
+                reason: '이 작업은 사용자 권한이 필요합니다'
             }
         },
         toolApproved: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'completed' as const,
             input: {
                 command: 'npm install',
-                description: 'Install dependencies'
+                description: '의존성 설치',
             },
             createdAt: Date.now() - 5000,
             startedAt: Date.now() - 4000,
             completedAt: Date.now() - 1000,
-            description: 'Install dependencies',
-            result: 'Successfully installed 250 packages',
+            description: '의존성 설치',
+                result: '250개의 패키지가 성공적으로 설치되었습니다',
             permission: {
                 id: 'perm-2',
                 status: 'approved' as const
             }
         },
         toolDenied: {
-            name: 'Write',
+            name: '쓰기',
             state: 'error' as const,
             input: {
                 file_path: '/etc/passwd',
@@ -330,30 +330,30 @@ export function formatTime(date: Date): string {
             createdAt: Date.now() - 10000,
             startedAt: Date.now() - 9000,
             completedAt: Date.now() - 8000,
-            description: 'Write to system file',
-            result: 'Permission denied by user',
+            description: '시스템 파일 쓰기',
+            result: '사용자가 접근을 거부했습니다',
             permission: {
                 id: 'perm-3',
                 status: 'denied' as const,
-                reason: 'User denied access to system files'
+                reason: '사용자가 시스템 파일 접근을 거부했습니다'
             }
         },
         toolCanceled: {
-            name: 'Bash',
+            name: '배시(Bash)',
             state: 'error' as const,
             input: {
                 command: 'curl https://suspicious-site.com/download',
-                description: 'Download from suspicious site'
+                description: '수상한 사이트에서 다운로드',
             },
             createdAt: Date.now() - 15000,
             startedAt: null,
             completedAt: Date.now() - 14000,
-            description: 'Download from suspicious site',
-            result: 'Operation canceled',
+            description: '수상한 사이트에서 다운로드',
+            result: '작업이 취소되었습니다',
             permission: {
                 id: 'perm-4',
                 status: 'canceled' as const,
-                reason: 'Operation was canceled by the system'
+                reason: '시스템에서 작업이 취소되었습니다'
             }
         }
     };
@@ -379,57 +379,57 @@ export function formatTime(date: Date): string {
         <>
             <Stack.Screen
                 options={{
-                    headerTitle: 'Tool Views Demo',
+                    headerTitle: '도구 뷰 데모',
                 }}
             />
             
             <ScrollView style={styles.container}>
                 <View style={styles.content}>
-                    <Text style={styles.pageTitle}>Tool View Components</Text>
+                    <Text style={styles.pageTitle}>도구 뷰 컴포넌트</Text>
                     <Text style={styles.description}>
-                        Examples of different tool calls and their visual representations
+                        다양한 도구 호출과 시각적 표현 예시
                     </Text>
 
-                    <ItemGroup title="Filter Examples">
+                    <ItemGroup title="필터 예시">
                         <Item
-                            title="All Examples"
+                            title="전체 예시"
                             selected={selectedExample === 'all'}
                             onPress={() => setSelectedExample('all')}
                         />
                         <Item
-                            title="Read Tool"
+                            title="읽기 도구"
                             selected={selectedExample === 'read'}
                             onPress={() => setSelectedExample('read')}
                         />
                         <Item
-                            title="Edit Tool"
+                            title="편집 도구"
                             selected={selectedExample === 'edit'}
                             onPress={() => setSelectedExample('edit')}
                         />
                         <Item
-                            title="Bash Tool"
+                            title="Bash 도구"
                             selected={selectedExample === 'bash'}
                             onPress={() => setSelectedExample('bash')}
                         />
                         <Item
-                            title="Other Tools"
+                            title="기타 도구"
                             selected={selectedExample === 'other'}
                             onPress={() => setSelectedExample('other')}
                         />
                         <Item
-                            title="Permission States"
+                            title="권한 상태"
                             selected={selectedExample === 'permissions'}
                             onPress={() => setSelectedExample('permissions')}
                         />
                         <Item
-                            title="Status Icons"
+                            title="상태 아이콘"
                             selected={selectedExample === 'status'}
                             onPress={() => setSelectedExample('status')}
                         />
                     </ItemGroup>
 
                     <View style={styles.examplesSection}>
-                        <Text style={styles.sectionTitle}>Examples</Text>
+                        <Text style={styles.sectionTitle}>예시</Text>
                         
                         {selectedExample === 'all' || selectedExample === 'read' ? (
                             <>
@@ -464,7 +464,7 @@ export function formatTime(date: Date): string {
 
                         {selectedExample === 'all' || selectedExample === 'permissions' ? (
                             <>
-                                <Text style={styles.subsectionTitle}>Permission States</Text>
+                                <Text style={styles.subsectionTitle}>권한 상태</Text>
                                 {renderExample('toolPending', examples.toolPending)}
                                 {renderExample('toolApproved', examples.toolApproved)}
                                 {renderExample('toolDenied', examples.toolDenied)}
@@ -474,16 +474,16 @@ export function formatTime(date: Date): string {
 
                         {selectedExample === 'status' ? (
                             <>
-                                <Text style={styles.subsectionTitle}>Status Icons Overview</Text>
+                                <Text style={styles.subsectionTitle}>상태 아이콘 요약</Text>
                                 <View style={styles.statusSection}>
                                     <Text style={styles.statusDescription}>
-                                        The following status icons are used in tool views:
+                                        다음 상태 아이콘은 도구 보기에서 사용됩니다.
                                     </Text>
-                                    {renderExample('bashRunning', { ...examples.bashRunning, name: 'Running State' })}
-                                    {renderExample('bash', { ...examples.bash, name: 'Completed State' })}
-                                    {renderExample('bashError', { ...examples.bashError, name: 'Error State (Warning Icon)' })}
-                                    {renderExample('toolDenied', { ...examples.toolDenied, name: 'Denied State (Neutral Icon)' })}
-                                    {renderExample('toolCanceled', { ...examples.toolCanceled, name: 'Canceled State (Neutral Icon)' })}
+                                    {renderExample('bashRunning', { ...examples.bashRunning, name: '실행 중 상태' })}
+                                    {renderExample('bash', { ...examples.bash, name: '완료 상태' })}
+                                    {renderExample('bashError', { ...examples.bashError, name: '오류 상태 (경고 아이콘)' })}
+                                    {renderExample('toolDenied', { ...examples.toolDenied, name: '거부 상태 (중립 아이콘)' })}
+                                    {renderExample('toolCanceled', { ...examples.toolCanceled, name: '취소 상태 (중립 아이콘)' })}
                                 </View>
                             </>
                         ) : null}

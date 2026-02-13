@@ -3,6 +3,7 @@ import { AppState, View, Text, Pressable, StyleSheet, Platform } from 'react-nat
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { storage, useSession, useSocketStatus } from '@/sync/storage';
+import { normalizePermissionPolicy } from '@/sync/permissionPolicy';
 import { t } from '@/text';
 import { Modal } from '@/modal';
 
@@ -128,7 +129,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
         if (!isPermissionIdValid) {
             dbg('approve: invalid permission id');
-            Modal.alert(t('common.error'), 'Invalid permission id (check Codex permission handler).');
+            Modal.alert(t('common.error'), '잘못된 권한 ID입니다 (Codex 권한 처리기를 확인).');
             return;
         }
 
@@ -144,7 +145,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 dbg('approve: ignored unavailable permission RPC');
                 return;
             }
-            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : '권한 승인에 실패했습니다');
         } finally {
             setLoadingButton(null);
         }
@@ -154,7 +155,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
         if (!isPermissionIdValid) {
             dbg('approveAllEdits: invalid permission id');
-            Modal.alert(t('common.error'), 'Invalid permission id (check permission handler).');
+            Modal.alert(t('common.error'), '잘못된 권한 ID입니다 (권한 처리기를 확인).');
             return;
         }
 
@@ -172,7 +173,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 dbg('approveAllEdits: ignored unavailable permission RPC');
                 return;
             }
-            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : '권한 승인에 실패했습니다');
         } finally {
             setLoadingAllEdits(false);
         }
@@ -182,7 +183,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession || !toolName) return;
         if (!isPermissionIdValid) {
             dbg('approveForSession: invalid permission id');
-            Modal.alert(t('common.error'), 'Invalid permission id (check permission handler).');
+            Modal.alert(t('common.error'), '잘못된 권한 ID입니다 (권한 처리기를 확인).');
             return;
         }
 
@@ -205,7 +206,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 dbg('approveForSession: ignored unavailable permission RPC');
                 return;
             }
-            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : '권한 승인에 실패했습니다');
         } finally {
             setLoadingForSession(false);
         }
@@ -215,7 +216,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
         if (!isPermissionIdValid) {
             dbg('deny: invalid permission id');
-            Modal.alert(t('common.error'), 'Invalid permission id (check permission handler).');
+            Modal.alert(t('common.error'), '잘못된 권한 ID입니다 (권한 처리기를 확인하세요).');
             return;
         }
 
@@ -231,7 +232,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 dbg('deny: ignored unavailable permission RPC');
                 return;
             }
-            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to deny permission');
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : '권한 거부에 실패했습니다');
         } finally {
             setLoadingButton(null);
         }
@@ -242,7 +243,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
         if (!isPermissionIdValid) {
             dbg('codexApprove: invalid permission id');
-            Modal.alert(t('common.error'), 'Invalid permission id (Codex). Update CLI and restart daemon/session.');
+            Modal.alert(t('common.error'), '잘못된 권한 ID입니다 (Codex). CLI를 업데이트하고 데몬/세션을 재시작하세요.');
             return;
         }
 
@@ -258,7 +259,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 dbg('codexApprove: ignored unavailable permission RPC');
                 return;
             }
-            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : '권한 승인에 실패했습니다');
         } finally {
             setLoadingButton(null);
         }
@@ -268,7 +269,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
         if (!isPermissionIdValid) {
             dbg('codexApproveForSession: invalid permission id');
-            Modal.alert(t('common.error'), 'Invalid permission id (Codex). Update CLI and restart daemon/session.');
+            Modal.alert(t('common.error'), '잘못된 권한 ID입니다 (Codex). CLI를 업데이트하고 데몬/세션을 재시작하세요.');
             return;
         }
 
@@ -284,7 +285,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 dbg('codexApproveForSession: ignored unavailable permission RPC');
                 return;
             }
-            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to approve permission');
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : '권한 승인에 실패했습니다');
         } finally {
             setLoadingForSession(false);
         }
@@ -294,7 +295,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
         if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
         if (!isPermissionIdValid) {
             dbg('codexAbort: invalid permission id');
-            Modal.alert(t('common.error'), 'Invalid permission id (Codex). Update CLI and restart daemon/session.');
+            Modal.alert(t('common.error'), '잘못된 권한 ID입니다 (Codex). CLI를 업데이트하고 데몬/세션을 재시작하세요.');
             return;
         }
 
@@ -310,7 +311,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 dbg('codexAbort: ignored unavailable permission RPC');
                 return;
             }
-            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to abort permission');
+            Modal.alert(t('common.error'), error instanceof Error ? error.message : '권한 요청 취소에 실패했습니다');
         } finally {
             setLoadingButton(null);
         }
@@ -319,6 +320,15 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     const isApproved = permission.status === 'approved';
     const isDenied = permission.status === 'denied';
     const isPending = permission.status === 'pending';
+    const normalizedPermissionMode = normalizePermissionPolicy({
+        permissionMode: (permission.mode ?? session?.permissionMode ?? undefined) as any,
+    }).permissionMode;
+    const isBypassAutoApproved = isApproved && normalizedPermissionMode === 'bypass';
+
+    // In bypass mode approvals are automatic, so there is no actionable prompt to show.
+    if (isBypassAutoApproved) {
+        return null;
+    }
 
     // Helper function to check if tool matches allowed pattern
     const isToolAllowed = (toolName: string, toolInput: any, allowedTools: string[] | undefined): boolean => {
@@ -543,18 +553,18 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
 
     if (isCodex) {
         const disabledBecauseControlled = controlledByUser
-            ? 'Permissions are shown in terminal only. Reset or send a message to control from app.'
+            ? '권한은 터미널에서만 표시됩니다. 앱에서 제어하려면 초기화하거나 메시지를 보내세요.'
             : undefined;
         const disabledBecauseNotPending =
             !isPending
-                ? `This request is no longer pending (status: ${permission.status}${permission.reason ? `, reason: ${permission.reason}` : ''}).`
+                ? `이 요청은 더 이상 대기 상태가 아닙니다 (상태: ${permission.status}${permission.reason ? `, 사유: ${permission.reason}` : ''}).`
                 : undefined;
 
         return (
             <View style={styles.container}>
                 {commandPreview ? (
                     <View style={styles.commandPreview}>
-                        <Text style={styles.commandPreviewLabel}>Command</Text>
+                        <Text style={styles.commandPreviewLabel}>명령어</Text>
                         <Text style={styles.commandPreviewText} selectable numberOfLines={4}>
                             {commandPreview}
                         </Text>
@@ -594,7 +604,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
                 </View>
                 {controlledByUser ? (
                     <Text style={styles.helperText}>
-                        Permissions shown in terminal only. Reset or send a message to control from app.
+                        권한은 터미널에서만 표시됩니다. 앱에서 제어하려면 초기화하거나 메시지를 보내세요.
                     </Text>
                 ) : null}
             </View>
@@ -602,23 +612,23 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
     }
 
     const disabledBecauseControlled = controlledByUser
-        ? 'Permissions are shown in terminal only. Reset or send a message to control from app.'
+        ? '권한은 터미널에서만 표시됩니다. 앱에서 제어하려면 초기화하거나 메시지를 보내세요.'
         : undefined;
     const disabledBecauseNotPending =
         !isPending
-            ? `This request is no longer pending (status: ${permission.status}${permission.reason ? `, reason: ${permission.reason}` : ''}).`
+            ? `이 요청은 더 이상 대기 상태가 아닙니다 (상태: ${permission.status}${permission.reason ? `, 사유: ${permission.reason}` : ''}).`
             : undefined;
 
     return (
         <View style={styles.container}>
-            {commandPreview ? (
-                <View style={styles.commandPreview}>
-                    <Text style={styles.commandPreviewLabel}>Command</Text>
-                    <Text style={styles.commandPreviewText} selectable numberOfLines={4}>
-                        {commandPreview}
-                    </Text>
-                </View>
-            ) : null}
+                {commandPreview ? (
+                    <View style={styles.commandPreview}>
+                        <Text style={styles.commandPreviewLabel}>명령어</Text>
+                        <Text style={styles.commandPreviewText} selectable numberOfLines={4}>
+                            {commandPreview}
+                        </Text>
+                    </View>
+                ) : null}
             <View style={styles.buttonContainer}>
                 <OptionButton
                     label={t('common.yes')}
@@ -670,7 +680,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({
             </View>
             {controlledByUser ? (
                 <Text style={styles.helperText}>
-                    Permissions shown in terminal only. Reset or send a message to control from app.
+                    권한은 터미널에서만 표시됩니다. 앱에서 제어하려면 초기화하거나 메시지를 보내세요.
                 </Text>
             ) : null}
         </View>

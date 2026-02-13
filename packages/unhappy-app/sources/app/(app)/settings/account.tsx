@@ -174,9 +174,9 @@ export default React.memo(() => {
                 {profile.connectedServices && profile.connectedServices.length > 0 && (() => {
                     // Map of service IDs to display names and icons
                     const knownServices = {
-                        anthropic: { name: 'Claude Code', icon: require('@/assets/images/icon-claude.png'), tintColor: null },
-                        gemini: { name: 'Google Gemini', icon: require('@/assets/images/icon-gemini.png'), tintColor: null },
-                        openai: { name: 'OpenAI Codex', icon: require('@/assets/images/icon-gpt.png'), tintColor: theme.colors.text }
+                        anthropic: { name: t('agentInput.agent.claude'), icon: require('@/assets/images/icon-claude.png'), tintColor: null },
+                        gemini: { name: t('agentInput.agent.gemini'), icon: require('@/assets/images/icon-gemini.png'), tintColor: null },
+                        openai: { name: t('agentInput.agent.codex'), icon: require('@/assets/images/icon-gpt.png'), tintColor: theme.colors.text }
                     };
                     
                     // Filter to only known services

@@ -34,147 +34,147 @@ export default function DeviceInfo() {
         <>
             <Stack.Screen
                 options={{
-                    title: 'Device Info',
+                    title: '기기 정보',
                     headerLargeTitle: false,
                 }}
             />
             <ItemList>
-                <ItemGroup title="Safe Area Insets">
+                <ItemGroup title="안전 영역 인셋">
                     <Item
-                        title="Top"
+                        title="상단"
                         detail={`${insets.top}px`}
                     />
                     <Item
-                        title="Bottom"
+                        title="하단"
                         detail={`${insets.bottom}px`}
                     />
                     <Item
-                        title="Left"
+                        title="왼쪽"
                         detail={`${insets.left}px`}
                     />
                     <Item
-                        title="Right"
+                        title="오른쪽"
                         detail={`${insets.right}px`}
                     />
                 </ItemGroup>
 
-                <ItemGroup title="Device Detection">
+                <ItemGroup title="기기 감지">
                     <Item
-                        title="Device Type"
-                        detail={deviceType === 'tablet' ? 'Tablet' : 'Phone'}
+                        title="기기 종류"
+                        detail={deviceType === 'tablet' ? '태블릿' : '휴대폰'}
                     />
                     <Item
-                        title="Detection Method"
+                        title="감지 방식"
                         // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
-                        detail={Platform.OS === 'ios' && Platform.isPad ? 'iOS isPad' : `${diagonalInches.toFixed(1)}" diagonal`}
+                        detail={Platform.OS === 'ios' && Platform.isPad ? 'iOS iPad' : `${diagonalInches.toFixed(1)}" 대각선`}
                     />
                     <Item
-                        title="Mac Catalyst"
-                        detail={isRunningOnMacCatalyst ? 'Yes' : 'No'}
+                        title="Mac 카탈리스트"
+                        detail={isRunningOnMacCatalyst ? '예' : '아니오'}
                     />
                     <Item
-                        title="Header Height"
-                        detail={`${headerHeight} points`}
+                        title="헤더 높이"
+                        detail={`${headerHeight} 포인트`}
                     />
                     <Item
-                        title="Diagonal Size"
-                        detail={`${diagonalInches.toFixed(2)} inches`}
+                        title="대각선 크기"
+                        detail={`${diagonalInches.toFixed(2)} 인치`}
                     />
                     <Item
-                        title="Width (inches)"
+                        title="너비 (인치)"
                         detail={`${widthInches.toFixed(2)}"`}
                     />
                     <Item
-                        title="Height (inches)"
+                        title="높이 (인치)"
                         detail={`${heightInches.toFixed(2)}"`}
                     />
                     <Item
-                        title="Pixel Density"
+                        title="픽셀 밀도"
                         detail={`${pixelDensity}x`}
                     />
                     <Item
-                        title="Points per Inch"
+                        title="인치당 포인트"
                         detail={Platform.OS === 'ios' ? '163' : '160'}
                     />
                     <Item
-                        title="Layout Max Width"
+                        title="최대 레이아웃 너비"
                         detail={`${layout.maxWidth}px`}
                     />
                 </ItemGroup>
 
-                <ItemGroup title="Screen Dimensions">
+                <ItemGroup title="화면 크기">
                     <Item
-                        title="Window Width"
-                        detail={`${width} points`}
+                        title="창 너비"
+                        detail={`${width} 포인트`}
                     />
                     <Item
-                        title="Window Height"
-                        detail={`${height} points`}
+                        title="창 높이"
+                        detail={`${height} 포인트`}
                     />
                     <Item
-                        title="Screen Width"
-                        detail={`${screenDimensions.width} points`}
+                        title="화면 너비"
+                        detail={`${screenDimensions.width} 포인트`}
                     />
                     <Item
-                        title="Screen Height"
-                        detail={`${screenDimensions.height} points`}
+                        title="화면 높이"
+                        detail={`${screenDimensions.height} 포인트`}
                     />
                     <Item
-                        title="Physical Pixels (width)"
+                        title="실제 픽셀 (너비)"
                         detail={`${Math.round(screenDimensions.width * pixelDensity)}px`}
                     />
                     <Item
-                        title="Physical Pixels (height)"
+                        title="실제 픽셀 (높이)"
                         detail={`${Math.round(screenDimensions.height * pixelDensity)}px`}
                     />
                     <Item
-                        title="Aspect Ratio"
+                        title="가로 세로 비율"
                         detail={`${(height / width).toFixed(3)}`}
                     />
                 </ItemGroup>
 
-                <ItemGroup title="Platform Info">
+                <ItemGroup title="플랫폼 정보">
                     <Item
-                        title="Platform"
+                        title="플랫폼"
                         detail={Platform.OS}
                     />
                     <Item
-                        title="Version"
-                        detail={Platform.Version?.toString() || 'N/A'}
+                        title="버전"
+                        detail={Platform.Version?.toString() || '해당 없음'}
                     />
                     {Platform.OS === 'ios' && (
                         <>
                             <Item
-                                title="iOS Interface"
+                                title="iOS 인터페이스"
                                 // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
                                 detail={Platform.isPad ? 'iPad' : 'iPhone'}
                             />
                             <Item
-                                title="iOS Version"
-                                detail={Platform.Version?.toString() || 'N/A'}
+                                title="iOS 버전"
+                                detail={Platform.Version?.toString() || '해당 없음'}
                             />
                         </>
                     )}
                     {Platform.OS === 'android' && (
                         <Item
-                            title="API Level"
-                            detail={Platform.Version?.toString() || 'N/A'}
+                            title="API 레벨"
+                            detail={Platform.Version?.toString() || '해당 없음'}
                         />
                     )}
                 </ItemGroup>
 
-                <ItemGroup title="App Info">
+                <ItemGroup title="앱 정보">
                     <Item
-                        title="App Version"
-                        detail={Constants.expoConfig?.version || 'N/A'}
+                        title="앱 버전"
+                        detail={Constants.expoConfig?.version || '해당 없음'}
                     />
                     <Item
-                        title="SDK Version"
-                        detail={Constants.expoConfig?.sdkVersion || 'N/A'}
+                        title="SDK 버전"
+                        detail={Constants.expoConfig?.sdkVersion || '해당 없음'}
                     />
                     <Item
-                        title="Build Number"
-                        detail={Constants.expoConfig?.ios?.buildNumber || Constants.expoConfig?.android?.versionCode?.toString() || 'N/A'}
+                        title="빌드 번호"
+                        detail={Constants.expoConfig?.ios?.buildNumber || Constants.expoConfig?.android?.versionCode?.toString() || '해당 없음'}
                     />
                 </ItemGroup>
             </ItemList>

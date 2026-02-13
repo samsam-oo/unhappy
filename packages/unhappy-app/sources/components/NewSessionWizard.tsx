@@ -5,7 +5,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { Ionicons } from '@/icons/vector-icons';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
-import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useAllMachines, useSetting, storage } from '@/sync/storage';
@@ -15,6 +15,7 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { profileSyncService } from '@/sync/profileSync';
 import { machineListDirectory } from '@/sync/ops';
+import { normalizePermissionPolicy } from '@/sync/permissionPolicy';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -272,7 +273,7 @@ function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit
                                 color: theme.colors.textSecondary,
                                 marginTop: 2,
                             }}>
-                                Built-in preset
+                                기본 프리셋
                             </Text>
                         )}
                     </View>
@@ -320,7 +321,7 @@ function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit
                                 marginLeft: 6,
                                 ...Typography.default('semiBold'),
                             }}>
-                                Use As-Is
+                                그대로 사용
                             </Text>
                         </Pressable>
 
@@ -347,7 +348,7 @@ function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit
                                 marginLeft: 6,
                                 ...Typography.default('semiBold'),
                             }}>
-                                Edit
+                                편집
                             </Text>
                         </Pressable>
                     </View>
@@ -380,9 +381,9 @@ function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit
                                     fontWeight: '600',
                                     marginLeft: 4,
                                     ...Typography.default('semiBold'),
-                                }}>
-                                    Duplicate
-                                </Text>
+                            }}>
+                                복제
+                            </Text>
                             </Pressable>
 
                             <Pressable
@@ -407,9 +408,9 @@ function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit
                                     fontWeight: '600',
                                     marginLeft: 4,
                                     ...Typography.default('semiBold'),
-                                }}>
-                                    Delete
-                                </Text>
+                            }}>
+                                삭제
+                            </Text>
                             </Pressable>
                         </View>
                     )}
@@ -466,14 +467,14 @@ function ManualConfigurationItem({ isSelected, onSelect, onUseCliVars, onConfigu
                             marginBottom: 4,
                             ...Typography.default('semiBold'),
                         }}>
-                            Manual Configuration
+                            수동 설정
                         </Text>
                         <Text style={{
                             fontSize: 14,
                             color: theme.colors.textSecondary,
                             ...Typography.default(),
                         }}>
-                            Use CLI environment variables or configure manually
+                            CLI 환경변수를 사용하거나 수동으로 설정하세요
                         </Text>
                     </View>
                     {isSelected && (
@@ -515,7 +516,7 @@ function ManualConfigurationItem({ isSelected, onSelect, onUseCliVars, onConfigu
                             marginLeft: 6,
                             ...Typography.default('semiBold'),
                         }}>
-                            Use CLI Vars
+                            CLI 변수 사용
                         </Text>
                     </Pressable>
 
@@ -542,7 +543,7 @@ function ManualConfigurationItem({ isSelected, onSelect, onUseCliVars, onConfigu
                             marginLeft: 6,
                             ...Typography.default('semiBold'),
                         }}>
-                            Configure
+                            설정
                         </Text>
                     </Pressable>
                 </View>
@@ -557,6 +558,7 @@ interface NewSessionWizardProps {
         profileId: string | null;
         agentType: 'claude' | 'codex';
         permissionMode: PermissionMode;
+        planOnly: boolean;
         modelMode: ModelMode;
         machineId: string;
         path: string;
@@ -576,6 +578,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
+    const lastUsedPlanOnly = useSetting('lastUsedPlanOnly');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const profiles = useSetting('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
@@ -585,18 +588,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             ? lastUsedAgent
             : 'claude';
 
-    const resolvedInitialPermissionMode: PermissionMode = (() => {
+    const resolvedInitialPermissionPolicy = (() => {
         const raw = typeof lastUsedPermissionMode === 'string' ? lastUsedPermissionMode.trim() : '';
-        const allowed: PermissionMode[] = [
-            'default',
-            'acceptEdits',
-            'plan',
-            'bypassPermissions',
-            'read-only',
-            'safe-yolo',
-            'yolo',
-        ];
-        return allowed.includes(raw as PermissionMode) ? (raw as PermissionMode) : 'default';
+        return normalizePermissionPolicy({
+            permissionMode: raw ? (raw as PermissionMode) : undefined,
+            planOnly: lastUsedPlanOnly,
+        });
     })();
 
     const resolvedInitialModelMode: ModelMode = (() => {
@@ -611,7 +608,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
     const [agentType, setAgentType] = useState<'claude' | 'codex'>(resolvedInitialAgentType);
-    const [permissionMode, setPermissionMode] = useState<PermissionMode>(resolvedInitialPermissionMode);
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>(resolvedInitialPermissionPolicy.permissionMode);
+    const [planOnly, setPlanOnly] = useState<boolean>(resolvedInitialPermissionPolicy.planOnly);
     const [modelMode, setModelMode] = useState<ModelMode>(resolvedInitialModelMode);
     const modelTouchedRef = useRef(false);
     const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
@@ -623,7 +621,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         {
             id: 'anthropic',
             name: 'Anthropic (Claude API)',
-            description: 'Direct Anthropic Claude backend (uses ANTHROPIC_* environment variables)',
+            description: 'Anthropic Claude 직접 연동 백엔드(ANTHROPIC_* 환경변수 사용)',
             anthropicConfig: {},
             environmentVariables: [],
             compatibility: { claude: true, codex: false, gemini: false },
@@ -635,7 +633,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         {
             id: 'deepseek',
             name: 'DeepSeek (Reasoner)',
-            description: 'DeepSeek reasoning model with proxy to Anthropic API',
+            description: 'Anthropic API 프록시를 사용하는 DeepSeek 추론 모델',
             anthropicConfig: {
                 baseUrl: 'https://api.deepseek.com/anthropic',
                 model: 'deepseek-reasoner',
@@ -654,7 +652,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         {
             id: 'openai',
             name: 'OpenAI (GPT-4/Codex)',
-            description: 'OpenAI GPT-4 and Codex models',
+            description: 'OpenAI GPT-4 / Codex 모델',
             openaiConfig: {
                 baseUrl: 'https://api.openai.com/v1',
                 model: 'gpt-4-turbo',
@@ -669,7 +667,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         {
             id: 'azure-openai-codex',
             name: 'Azure OpenAI (Codex)',
-            description: 'Microsoft Azure OpenAI for Codex agents',
+            description: 'Codex 에이전트용 Microsoft Azure OpenAI',
             azureOpenAIConfig: {
                 endpoint: 'https://your-resource.openai.azure.com/',
                 apiVersion: '2024-02-15-preview',
@@ -685,7 +683,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         {
             id: 'azure-openai',
             name: 'Azure OpenAI',
-            description: 'Microsoft Azure OpenAI configuration',
+            description: 'Microsoft Azure OpenAI 구성',
             azureOpenAIConfig: {
                 apiVersion: '2024-02-15-preview',
             },
@@ -701,7 +699,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         {
             id: 'zai',
             name: 'Z.ai (GLM-4.6)',
-            description: 'Z.ai GLM-4.6 model with proxy to Anthropic API',
+            description: 'Anthropic API 프록시를 사용하는 Z.ai GLM-4.6 모델',
             anthropicConfig: {
                 baseUrl: 'https://api.z.ai/api/anthropic',
                 model: 'glm-4.6',
@@ -716,7 +714,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         {
             id: 'microsoft',
             name: 'Microsoft Azure',
-            description: 'Microsoft Azure AI services',
+            description: 'Microsoft Azure AI 서비스',
             openaiConfig: {
                 baseUrl: 'https://api.openai.azure.com',
                 model: 'gpt-4-turbo',
@@ -825,33 +823,33 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         switch (profile.id) {
             case 'deepseek':
                 return [
-                    { key: 'ANTHROPIC_AUTH_TOKEN', label: 'DeepSeek API Key', placeholder: 'DEEPSEEK_API_KEY', isPassword: true }
+                    { key: 'ANTHROPIC_AUTH_TOKEN', label: 'DeepSeek API 키', placeholder: 'DEEPSEEK_API_KEY', isPassword: true }
                 ];
             case 'openai':
                 return [
-                    { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', placeholder: 'sk-...', isPassword: true }
+                    { key: 'OPENAI_API_KEY', label: 'OpenAI API 키', placeholder: 'sk-...', isPassword: true }
                 ];
             case 'azure-openai':
                 return [
-                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure OpenAI API Key', placeholder: 'Enter your Azure OpenAI API key', isPassword: true },
-                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure Endpoint', placeholder: 'https://your-resource.openai.azure.com/' },
-                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: 'Deployment Name', placeholder: 'gpt-4-turbo' }
+                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure OpenAI API 키', placeholder: 'Azure OpenAI API 키를 입력하세요', isPassword: true },
+                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure 엔드포인트', placeholder: 'https://your-resource.openai.azure.com/' },
+                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: '배포 이름', placeholder: 'gpt-4-turbo' }
                 ];
             case 'zai':
                 return [
-                    { key: 'ANTHROPIC_AUTH_TOKEN', label: 'Z.ai API Key', placeholder: 'Z_AI_API_KEY', isPassword: true }
+                    { key: 'ANTHROPIC_AUTH_TOKEN', label: 'Z.ai API 키', placeholder: 'Z_AI_API_KEY', isPassword: true }
                 ];
             case 'microsoft':
                 return [
-                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure API Key', placeholder: 'Enter your Azure API key', isPassword: true },
-                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure Endpoint', placeholder: 'https://your-resource.openai.azure.com/' },
-                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: 'Deployment Name', placeholder: 'gpt-4-turbo' }
+                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure API 키', placeholder: 'Azure API 키를 입력하세요', isPassword: true },
+                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure 엔드포인트', placeholder: 'https://your-resource.openai.azure.com/' },
+                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: '배포 이름', placeholder: 'gpt-4-turbo' }
                 ];
             case 'azure-openai-codex':
                 return [
-                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure OpenAI API Key', placeholder: 'Enter your Azure OpenAI API key', isPassword: true },
-                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure Endpoint', placeholder: 'https://your-resource.openai.azure.com/' },
-                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: 'Deployment Name', placeholder: 'gpt-4-turbo' }
+                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure OpenAI API 키', placeholder: 'Azure OpenAI API 키를 입력하세요', isPassword: true },
+                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure 엔드포인트', placeholder: 'https://your-resource.openai.azure.com/' },
+                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: '배포 이름', placeholder: 'gpt-4-turbo' }
                 ];
             default:
                 return [];
@@ -941,7 +939,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
         if (!selectedMachineIsOnline) {
             setBrowseEntries([]);
-            setBrowseError('Machine is offline');
+            setBrowseError('머신이 오프라인 상태입니다');
             setIsBrowsing(false);
             return;
         }
@@ -977,7 +975,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
             if (!response.success) {
                 setBrowseEntries([]);
-                setBrowseError(response.error || 'Failed to list directory');
+                setBrowseError(response.error || '디렉토리 목록을 불러오지 못했습니다');
                 return;
             }
 
@@ -1022,6 +1020,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             profileId: profile.id,
             agentType: agentType || (profile.compatibility.claude ? 'claude' : 'codex'),
             permissionMode,
+            planOnly,
             modelMode,
             machineId: selectedMachineId,
             path: showCustomPathInput && customPath.trim() ? customPath.trim() : selectedPath,
@@ -1054,19 +1053,19 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     // Handler for "Create New Profile"
     const handleCreateProfile = () => {
         Modal.prompt(
-            'Create New Profile',
-            'Enter a name for your new profile:',
+            '새 프로필 만들기',
+            '새 프로필 이름을 입력하세요:',
             {
-                defaultValue: 'My Custom Profile',
-                confirmText: 'Create',
-                cancelText: 'Cancel'
+                defaultValue: '내 커스텀 프로필',
+                confirmText: '생성',
+                cancelText: '취소'
             }
         ).then((profileName) => {
             if (profileName && profileName.trim()) {
                 const newProfile: AIBackendProfile = {
                     id: crypto.randomUUID(),
                     name: profileName.trim(),
-                    description: 'Custom AI profile',
+                    description: '사용자 정의 AI 프로필',
                     anthropicConfig: {},
                     environmentVariables: [],
                     compatibility: { claude: true, codex: true, gemini: true },
@@ -1097,12 +1096,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     // Handler for "Duplicate Profile"
     const handleDuplicateProfile = (profile: AIBackendProfile) => {
         Modal.prompt(
-            'Duplicate Profile',
-            `Enter a name for the duplicate of "${profile.name}":`,
+            '프로필 복제',
+            `"${profile.name}"의 복제본 이름을 입력하세요:`,
             {
-                defaultValue: `${profile.name} (Copy)`,
-                confirmText: 'Duplicate',
-                cancelText: 'Cancel'
+                defaultValue: `${profile.name} (복사본)`,
+                confirmText: '복제',
+                cancelText: '취소'
             }
         ).then((newName) => {
             if (newName && newName.trim()) {
@@ -1110,7 +1109,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                     ...profile,
                     id: crypto.randomUUID(),
                     name: newName.trim(),
-                    description: profile.description ? `Copy of ${profile.description}` : 'Custom AI profile',
+                    description: profile.description ? `${profile.description} 복사본` : '사용자 정의 AI 프로필',
                     isBuiltIn: false,
                     createdAt: Date.now(),
                     updatedAt: Date.now(),
@@ -1134,10 +1133,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     // Handler for "Delete Profile"
     const handleDeleteProfile = (profile: AIBackendProfile) => {
         Modal.confirm(
-            'Delete Profile',
-            `Are you sure you want to delete "${profile.name}"? This action cannot be undone.`,
+            '프로필 삭제',
+            `"${profile.name}"을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`,
             {
-                confirmText: 'Delete',
+                confirmText: '삭제',
                 destructive: true
             }
         ).then((confirmed) => {
@@ -1172,6 +1171,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             profileId: null,
             agentType,
             permissionMode,
+            planOnly,
             modelMode,
             machineId: selectedMachineId,
             path: showCustomPathInput && customPath.trim() ? customPath.trim() : selectedPath,
@@ -1235,6 +1235,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 profileId: selectedProfileId,
                 agentType,
                 permissionMode,
+                planOnly,
                 modelMode,
                 machineId: selectedMachineId,
                 path: showCustomPathInput && customPath.trim() ? customPath.trim() : selectedPath,
@@ -1286,12 +1287,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'profile':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Choose AI Backend Preset</Text>
+                        <Text style={styles.stepTitle}>AI 백엔드 프리셋 선택</Text>
                         <Text style={styles.stepDescription}>
-                            A preset is a bundle of provider settings (endpoint, model, and environment variables).
+                            프리셋은 제공업체 설정(엔드포인트, 모델, 환경변수)을 묶은 구성입니다.
                         </Text>
 
-                        <ItemGroup title="Built-in Presets">
+                        <ItemGroup title="기본 프리셋">
                             {builtInProfiles.map((profile) => (
                                 <ProfileSelectionItem
                                     key={profile.id}
@@ -1305,7 +1306,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                         </ItemGroup>
 
                         {profiles.length > 0 && (
-                            <ItemGroup title="Custom Presets">
+                            <ItemGroup title="사용자 정의 프리셋">
                                 {profiles.map((profile) => (
                                     <ProfileSelectionItem
                                         key={profile.id}
@@ -1355,20 +1356,20 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                         marginBottom: 4,
                                         ...Typography.default('semiBold'),
                                     }}>
-                                        Create New Profile
+                                        새 프로필 만들기
                                     </Text>
                                     <Text style={{
                                         fontSize: 14,
                                         color: theme.colors.textSecondary,
                                         ...Typography.default(),
                                     }}>
-                                        Set up a custom AI backend configuration
+                                        사용자 정의 AI 백엔드 구성을 설정하세요
                                     </Text>
                                 </View>
                             </View>
                         </Pressable>
 
-                        <ItemGroup title="Manual Configuration">
+                        <ItemGroup title="수동 설정">
                             <ManualConfigurationItem
                                 isSelected={selectedProfileId === null}
                                 onSelect={() => setSelectedProfileId(null)}
@@ -1390,28 +1391,28 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 color: theme.colors.textSecondary,
                                 marginBottom: 4,
                             }}>
-                                Profile options:
+                                프리셋 동작 방식:
                             </Text>
                             <Text style={{
                                 fontSize: 12,
                                 color: theme.colors.textSecondary,
                                 marginTop: 4,
                             }}>
-                                • Use As-Is: Quick session creation with current preset settings
+                                • 현재 프리셋 그대로 사용: 현재 프리셋 설정으로 바로 세션 생성
                             </Text>
                             <Text style={{
                                 fontSize: 12,
                                 color: theme.colors.textSecondary,
                                 marginTop: 4,
                             }}>
-                                • Edit: Configure API keys and settings before session creation
+                                • 편집: 세션 생성 전 API 키 및 설정 변경
                             </Text>
                             <Text style={{
                                 fontSize: 12,
                                 color: theme.colors.textSecondary,
                                 marginTop: 4,
                             }}>
-                                • Manual: Use CLI environment variables without preset configuration
+                                • 수동: 프리셋 설정 없이 CLI 환경변수 사용
                             </Text>
                         </View>
                     </View>
@@ -1421,8 +1422,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 if (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId)) {
                     return (
                         <View>
-                            <Text style={styles.stepTitle}>Profile Configuration</Text>
-                            <Text style={styles.stepDescription}>Skipping configuration...</Text>
+                            <Text style={styles.stepTitle}>프리셋 설정</Text>
+                            <Text style={styles.stepDescription}>설정을 건너뜁니다...</Text>
                             <ActivityIndicator />
                         </View>
                     );
@@ -1430,12 +1431,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Configure {allProfiles.find(p => p.id === selectedProfileId)?.name || 'Profile'}</Text>
+                        <Text style={styles.stepTitle}>{allProfiles.find(p => p.id === selectedProfileId)?.name || '프로필'} 설정</Text>
                         <Text style={styles.stepDescription}>
-                            Enter your API keys and configuration details
+                            API 키와 설정 정보를 입력하세요
                         </Text>
 
-                        <ItemGroup title="Required Configuration">
+                        <ItemGroup title="필수 설정">
                             {getProfileRequiredFields(selectedProfileId).map((field) => (
                                 <View key={field.key} style={{ marginBottom: 16 }}>
                                     <Text style={{
@@ -1498,14 +1499,14 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 color: theme.colors.textSecondary,
                                 marginBottom: 4,
                             }}>
-                                💡 Tip: Your API keys are only used for this session and are not stored permanently
+                                💡 팁: API 키는 이 세션에서만 사용되며 영구 저장되지 않습니다
                             </Text>
                             <Text style={{
                                 fontSize: 12,
                                 color: theme.colors.textSecondary,
                                 marginTop: 4,
                             }}>
-                                📝 Note: Leave fields empty to use CLI environment variables if they're already set
+                                📝 참고: CLI 환경변수가 이미 설정돼 있으면 입력란을 비워두세요
                             </Text>
                         </View>
                     </View>
@@ -1514,45 +1515,45 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'sessionType':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Choose AI Backend & Session Type</Text>
+                        <Text style={styles.stepTitle}>AI 백엔드와 세션 유형 선택</Text>
                         <Text style={styles.stepDescription}>
-                            Select your AI provider and how you want to work with your code
+                            AI 제공업체와 코드 작업 방식을 선택하세요
                         </Text>
 
-                        <ItemGroup title="AI Backend">
+                        <ItemGroup title="AI 백엔드">
                             {[
                                 {
                                     id: 'anthropic',
                                     name: 'Anthropic Claude',
-                                    description: 'Advanced reasoning and coding assistant',
+                                    description: '고급 추론 및 코딩 지원',
                                     icon: 'cube-outline',
                                     agentType: 'claude' as const
                                 },
                                 {
                                     id: 'openai',
                                     name: 'OpenAI GPT-5',
-                                    description: 'Specialized coding assistant',
+                                    description: '특화된 코딩 비서',
                                     icon: 'code-outline',
                                     agentType: 'codex' as const
                                 },
                                 {
                                     id: 'deepseek',
                                     name: 'DeepSeek Reasoner',
-                                    description: 'Advanced reasoning model',
+                                    description: '고급 추론 모델',
                                     icon: 'analytics-outline',
                                     agentType: 'claude' as const
                                 },
                                 {
                                     id: 'zai',
                                     name: 'Z.ai',
-                                    description: 'AI assistant for development',
+                                    description: '개발용 AI 어시스턴트',
                                     icon: 'flash-outline',
                                     agentType: 'claude' as const
                                 },
                                 {
                                     id: 'microsoft',
                                     name: 'Microsoft Azure',
-                                    description: 'Enterprise AI services',
+                                    description: '기업용 AI 서비스',
                                     icon: 'cloud-outline',
                                     agentType: 'codex' as const
                                 },
@@ -1593,9 +1594,9 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'agent':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Choose AI Agent</Text>
+                        <Text style={styles.stepTitle}>AI 에이전트 선택</Text>
                         <Text style={styles.stepDescription}>
-                            Select which AI assistant you want to use
+                            사용할 AI 비서를 선택하세요
                         </Text>
 
                         {selectedProfileId && (
@@ -1612,7 +1613,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                     color: theme.colors.textSecondary,
                                     marginBottom: 4
                                 }}>
-                                    Profile: {allProfiles.find(p => p.id === selectedProfileId)?.name || 'Unknown'}
+                                    프로필: {allProfiles.find(p => p.id === selectedProfileId)?.name || '알 수 없음'}
                                 </Text>
                                 <Text style={{
                                     fontSize: 12,
@@ -1645,11 +1646,11 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                             <View style={styles.agentInfo}>
                                 <Text style={styles.agentName}>Claude</Text>
                                 <Text style={styles.agentDescription}>
-                                    Anthropic's AI assistant, great for coding and analysis
+                                    코딩과 분석에 강점이 있는 Anthropic AI 비서
                                 </Text>
                                 {selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.claude && (
                                     <Text style={{ fontSize: 12, color: theme.colors.textDestructive, marginTop: 4 }}>
-                                        Not compatible with selected profile
+                                        선택한 프로필과 호환되지 않습니다
                                     </Text>
                                 )}
                             </View>
@@ -1680,11 +1681,11 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                             <View style={styles.agentInfo}>
                                 <Text style={styles.agentName}>Codex</Text>
                                 <Text style={styles.agentDescription}>
-                                    OpenAI's specialized coding assistant
+                                    OpenAI의 특화된 코딩 비서
                                 </Text>
                                 {selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.codex && (
                                     <Text style={{ fontSize: 12, color: theme.colors.textDestructive, marginTop: 4 }}>
-                                        Not compatible with selected profile
+                                        선택한 프로필과 호환되지 않습니다
                                     </Text>
                                 )}
                             </View>
@@ -1698,9 +1699,9 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'options':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Agent Options</Text>
+                        <Text style={styles.stepTitle}>에이전트 옵션</Text>
                         <Text style={styles.stepDescription}>
-                            Configure how the AI agent should behave
+                            AI 에이전트가 동작할 방식을 설정하세요
                         </Text>
 
                         {selectedProfileId && (
@@ -1717,59 +1718,99 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                     color: theme.colors.textSecondary,
                                     marginBottom: 4
                                 }}>
-                                    Using profile: {allProfiles.find(p => p.id === selectedProfileId)?.name || 'Unknown'}
+                                    사용 중인 프로필: {allProfiles.find(p => p.id === selectedProfileId)?.name || '알 수 없음'}
                                 </Text>
                                 <Text style={{
                                     fontSize: 12,
                                     color: theme.colors.textSecondary
                                 }}>
-                                    Environment variables will be applied automatically
+                                    환경변수는 자동으로 적용됩니다
                                 </Text>
                             </View>
                         )}
-                        <ItemGroup title="Permission Mode">
+                        <ItemGroup title="권한 모드">
                             {([
-                                { value: 'default', label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                { value: 'acceptEdits', label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                { value: 'plan', label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                { value: 'bypassPermissions', label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                            ] as const).map((option, index, array) => (
-                                <Item
-                                    key={option.value}
-                                    title={option.label}
-                                    subtitle={option.description}
-                                    leftElement={
-                                        <Ionicons
-                                            name={option.icon}
-                                            size={24}
-                                            color={theme.colors.textSecondary}
-                                        />
-                                    }
-                                    rightElement={permissionMode === option.value ? (
-                                        <Ionicons
-                                            name="checkmark-circle"
-                                            size={20}
-                                            color={theme.colors.button.primary.background}
-                                        />
-                                    ) : null}
-                                    onPress={() => setPermissionMode(option.value as PermissionMode)}
-                                    showChevron={false}
-                                    selected={permissionMode === option.value}
-                                    showDivider={index < array.length - 1}
-                                />
-                            ))}
+                                {
+                                    kind: 'mode',
+                                    value: 'default',
+                                    label: t('agentInput.permissionMode.default'),
+                                    description: t('agentInput.permissionMode.askEveryAction'),
+                                    icon: 'shield-outline'
+                                },
+                                {
+                                    kind: 'plan',
+                                    label: t('agentInput.permissionMode.plan'),
+                                    description: t('agentInput.permissionMode.planOnly'),
+                                    icon: 'list-outline'
+                                },
+                                {
+                                    kind: 'mode',
+                                    value: 'allow-edits',
+                                    label: t('agentInput.permissionMode.acceptEdits'),
+                                    description: t('agentInput.permissionMode.autoApproveEdits'),
+                                    icon: 'create-outline'
+                                },
+                                {
+                                    kind: 'mode',
+                                    value: 'read-only',
+                                    label: t('agentInput.codexPermissionMode.readOnly'),
+                                    description: t('agentInput.permissionMode.readOnlyTools'),
+                                    icon: 'eye-outline'
+                                },
+                                {
+                                    kind: 'mode',
+                                    value: 'bypass',
+                                    label: t('agentInput.permissionMode.bypassPermissions'),
+                                    description: t('agentInput.permissionMode.autoApproveAll'),
+                                    icon: 'flash-outline'
+                                },
+                            ] as const).map((row, index, array) => {
+                                const isSelected = row.kind === 'plan' ? planOnly : !planOnly && permissionMode === row.value;
+                                return (
+                                    <Item
+                                        key={row.kind === 'plan' ? 'planning' : row.value}
+                                        title={row.label}
+                                        subtitle={row.description}
+                                        leftElement={
+                                            <Ionicons
+                                                name={row.icon}
+                                                size={24}
+                                                color={theme.colors.textSecondary}
+                                            />
+                                        }
+                                        rightElement={isSelected ? (
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={20}
+                                                color={theme.colors.button.primary.background}
+                                            />
+                                        ) : null}
+                                        onPress={() => {
+                                            if (row.kind === 'plan') {
+                                                setPlanOnly(!planOnly);
+                                                return;
+                                            }
+                                            setPlanOnly(false);
+                                            setPermissionMode(row.value as PermissionMode);
+                                        }}
+                                        showChevron={false}
+                                        selected={isSelected}
+                                        showDivider={index < array.length - 1}
+                                    />
+                                );
+                            })}
                         </ItemGroup>
 
-                        <ItemGroup title="Model Mode">
+                        <ItemGroup title="모델 모드">
                             {(agentType === 'claude' ? [
-                                { value: 'default', label: 'Default', description: 'Balanced performance', icon: 'cube-outline' },
-                                { value: 'adaptiveUsage', label: 'Adaptive Usage', description: 'Automatically choose model', icon: 'analytics-outline' },
-                                { value: 'sonnet', label: 'Sonnet', description: 'Fast and efficient', icon: 'speedometer-outline' },
-                                { value: 'opus', label: 'Opus', description: 'Most capable model', icon: 'diamond-outline' },
+                                { value: 'default', label: '기본', description: '균형 잡힌 성능', icon: 'cube-outline' },
+                                { value: 'adaptiveUsage', label: '적응형 사용', description: '모델 자동 선택', icon: 'analytics-outline' },
+                                { value: 'sonnet', label: 'Sonnet', description: '빠르고 효율적', icon: 'speedometer-outline' },
+                                { value: 'opus', label: 'Opus', description: '가장 성능이 높은 모델', icon: 'diamond-outline' },
                             ] as const : [
-                                { value: 'gpt-5-codex-high', label: 'GPT-5 Codex High', description: 'Best for complex coding', icon: 'diamond-outline' },
-                                { value: 'gpt-5-codex-medium', label: 'GPT-5 Codex Medium', description: 'Balanced coding assistance', icon: 'cube-outline' },
-                                { value: 'gpt-5-codex-low', label: 'GPT-5 Codex Low', description: 'Fast coding help', icon: 'speedometer-outline' },
+                                { value: 'gpt-5-codex-high', label: 'GPT-5 코덱스 고성능', description: '복잡한 코딩에 최적', icon: 'diamond-outline' },
+                                { value: 'gpt-5-codex-medium', label: 'GPT-5 코덱스 중간', description: '균형 잡힌 코딩 지원', icon: 'cube-outline' },
+                                { value: 'gpt-5-codex-low', label: 'GPT-5 코덱스 저용량', description: '빠른 코딩 지원', icon: 'speedometer-outline' },
                             ] as const).map((option, index, array) => (
                                 <Item
                                     key={option.value}
@@ -1805,12 +1846,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'machine':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Select Machine</Text>
+                        <Text style={styles.stepTitle}>기기 선택</Text>
                         <Text style={styles.stepDescription}>
-                            Choose which machine to run your session on
+                            세션을 실행할 기기를 선택하세요
                         </Text>
 
-                        <ItemGroup title="Available Machines">
+                        <ItemGroup title="사용 가능한 기기">
                             {machines.map((machine, index) => (
                                 <Item
                                     key={machine.id}
@@ -1849,12 +1890,12 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'path':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Working Directory</Text>
+                        <Text style={styles.stepTitle}>작업 디렉토리</Text>
                         <Text style={styles.stepDescription}>
-                            Choose the directory to work in
+                            작업할 디렉토리를 선택하세요
                         </Text>
 
-                        {/* File Explorer */}
+                        {/* 파일 탐색기 */}
                         <ItemGroup
                             title={(() => {
                                 const root = normalizeRemotePath(browseRoot || '/');
@@ -1877,7 +1918,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                                 textTransform: 'uppercase',
                                                 fontWeight: Platform.select({ ios: 'normal', default: '500' }) as any,
                                             }}>
-                                                File Explorer
+                                                파일 탐색기
                                             </Text>
 
                                             <Pressable
@@ -1949,7 +1990,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 	                            })()}
                             headerStyle={{
                                 // Balance vertical rhythm: the default ItemGroup header is top-heavy (esp. iOS),
-                                // which makes this "File Explorer" block feel like it has extra top margin but
+                                // which makes this "파일 탐색기" block feel like it has extra top margin but
                                 // not enough space before the folder list.
                                 paddingTop: Platform.select({ ios: 18, web: 10, default: 14 }),
                                 paddingBottom: Platform.select({ ios: 12, web: 10, default: 12 }),
@@ -1977,10 +2018,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 	                                }}
 	                            />
 
-	                            {browseError && (
-	                                <Item
-	                                    title="Unable to load folders"
-	                                    subtitle={browseError}
+                            {browseError && (
+                                <Item
+                                    title="폴더 목록을 불러오지 못했습니다"
+                                    subtitle={browseError}
                                     subtitleLines={2}
                                     leftElement={
                                         <Ionicons
@@ -1996,8 +2037,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
                             {isBrowsing && (
                                 <Item
-                                    title="Loading..."
-                                    subtitle="Fetching folders from machine"
+                                    title="불러오는 중..."
+                                    subtitle="기기에서 폴더를 가져오는 중"
                                     leftElement={<ActivityIndicator />}
                                     showChevron={false}
                                     disabled={true}
@@ -2006,8 +2047,8 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
                             {!isBrowsing && !browseError && browseEntries.length === 0 && (
                                 <Item
-                                    title="No folders"
-                                    subtitle="This directory is empty"
+                                    title="폴더가 없습니다"
+                                    subtitle="이 디렉토리는 비어 있습니다"
                                     leftElement={
                                         <Ionicons
                                             name="folder-outline"
@@ -2044,15 +2085,15 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 	                        </ItemGroup>
 
                         {/* Common Directories */}
-                        <ItemGroup title="Common Directories">
+                        <ItemGroup title="자주 사용하는 디렉토리">
                             {(() => {
                                 const machine = machines.find(m => m.id === selectedMachineId);
                                 const homeDir = machine?.metadata?.homeDir || '/home';
                                 const pathOptions = [
-                                    { value: homeDir, label: homeDir, description: 'Home directory' },
-                                    { value: `${homeDir}/projects`, label: `${homeDir}/projects`, description: 'Projects folder' },
-                                    { value: `${homeDir}/Documents`, label: `${homeDir}/Documents`, description: 'Documents folder' },
-                                    { value: `${homeDir}/Desktop`, label: `${homeDir}/Desktop`, description: 'Desktop folder' },
+                                    { value: homeDir, label: homeDir, description: '홈 디렉터리' },
+                                    { value: `${homeDir}/projects`, label: `${homeDir}/projects`, description: '프로젝트 폴더' },
+                                    { value: `${homeDir}/Documents`, label: `${homeDir}/Documents`, description: '문서 폴더' },
+                                    { value: `${homeDir}/Desktop`, label: `${homeDir}/Desktop`, description: '바탕화면 폴더' },
                                 ];
                                 return pathOptions.map((option, index) => (
                                     <Item
@@ -2087,10 +2128,10 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                         </ItemGroup>
 
                         {/* Custom Path Option */}
-                        <ItemGroup title="Custom Directory">
+                        <ItemGroup title="직접 지정 디렉토리">
                             <Item
-                                title="Enter custom path"
-                                subtitle={showCustomPathInput && customPath ? customPath : "Specify a custom directory path"}
+                                title="직접 경로 입력"
+                                subtitle={showCustomPathInput && customPath ? customPath : "직접 지정한 디렉터리 경로를 입력하세요"}
                                 leftElement={
                                     <Ionicons
                                         name="create-outline"
@@ -2114,7 +2155,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
                                     <TextInput
                                         style={styles.textInput}
-                                        placeholder="Enter directory path (e.g. /home/user/my-project)"
+                                        placeholder="디렉토리 경로를 입력하세요 (예: /home/user/my-project)"
                                         placeholderTextColor={theme.colors.textSecondary}
                                         value={customPath}
                                         onChangeText={setCustomPath}
@@ -2131,9 +2172,9 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'prompt':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Initial Message</Text>
+                        <Text style={styles.stepTitle}>초기 메시지</Text>
                         <Text style={styles.stepDescription}>
-                            Write your first message to the AI agent
+                            AI 에이전트에게 보낼 첫 메시지를 작성하세요
                         </Text>
 
                         <TextInput
@@ -2158,7 +2199,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>New Session</Text>
+                <Text style={styles.headerTitle}>새 세션</Text>
                 <Pressable onPress={onCancel}>
                     <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
                 </Pressable>
@@ -2190,7 +2231,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                     onPress={handleBack}
                 >
                     <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
-                        {isFirstStep ? 'Cancel' : 'Back'}
+                        {isFirstStep ? '취소' : '이전'}
                     </Text>
                 </Pressable>
 
@@ -2204,7 +2245,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                     disabled={!canProceed}
                 >
                     <Text style={[styles.buttonText, styles.buttonTextPrimary]}>
-                        {isLastStep ? 'Create Session' : 'Next'}
+                        {isLastStep ? '세션 생성' : '다음'}
                     </Text>
                 </Pressable>
             </View>

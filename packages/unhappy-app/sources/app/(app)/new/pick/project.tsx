@@ -38,7 +38,7 @@ async function listChildDirectories(machineId: string, absPath: string): Promise
   const out = (result.stdout || '').trim();
   if (!out) {
     const err = (result.stderr || '').trim();
-    return { ok: false, error: err || 'Failed to list directory' };
+    return { ok: false, error: err || t('errors.failedToListDirectory') };
   }
 
   try {
@@ -46,9 +46,15 @@ async function listChildDirectories(machineId: string, absPath: string): Promise
     if (parsed && parsed.success === true && Array.isArray(parsed.dirs)) {
       return { ok: true, dirs: parsed.dirs.filter((d: any) => typeof d === 'string') };
     }
-    return { ok: false, error: (parsed && typeof parsed.error === 'string' ? parsed.error : 'Failed to list directory') };
+    return {
+      ok: false,
+      error:
+        parsed && typeof parsed.error === 'string'
+          ? parsed.error
+          : t('errors.failedToListDirectory'),
+    };
   } catch {
-    return { ok: false, error: 'Failed to parse directory list' };
+    return { ok: false, error: t('errors.failedToParseDirectoryList') };
   }
 }
 
@@ -125,12 +131,12 @@ export default function ProjectPickerScreen() {
         <Stack.Screen
           options={{
             headerShown: true,
-            headerTitle: 'Select Project',
+            headerTitle: '프로젝트 선택',
             headerBackTitle: t('common.back'),
           }}
         />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-          <Text style={[Typography.default(), { color: theme.colors.textSecondary }]}>No machine selected</Text>
+          <Text style={[Typography.default(), { color: theme.colors.textSecondary }]}>머신이 선택되지 않았습니다</Text>
         </View>
       </>
     );
@@ -141,7 +147,7 @@ export default function ProjectPickerScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Select Project',
+          headerTitle: '프로젝트 선택',
           headerBackTitle: t('common.back'),
           headerRight: () => (
             <Pressable
@@ -173,7 +179,7 @@ export default function ProjectPickerScreen() {
             />
             {error ? (
               <Item
-                title="Failed to load folders"
+                title="폴더 목록을 불러오지 못했습니다"
                 subtitle={error}
                 subtitleLines={0}
                 showChevron={false}
@@ -181,11 +187,11 @@ export default function ProjectPickerScreen() {
             ) : null}
           </ItemGroup>
 
-          <ItemGroup title="Folders">
+          <ItemGroup title="폴더">
             {canGoUp ? (
               <Item
-                title=".."
-                subtitle="Up one level"
+                title="상위 폴더"
+                subtitle="한 단계 위로"
                 leftElement={<Ionicons name="arrow-up-outline" size={18} color={theme.colors.textSecondary} />}
                 onPress={() => setCurrentPath(parentDir(currentPath))}
                 showChevron={false}
@@ -194,8 +200,8 @@ export default function ProjectPickerScreen() {
 
             {dirs.length === 0 && !loading && !error ? (
               <Item
-                title="No folders"
-                subtitle="This directory has no child folders."
+                title="폴더가 없습니다"
+                subtitle="이 디렉터리는 하위 폴더가 없습니다."
                 showChevron={false}
               />
             ) : null}

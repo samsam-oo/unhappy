@@ -26,8 +26,8 @@ export default function TodoDemoScreen() {
     return (
         <View style={{ flex: 1 }}>
             <TextInput value={newTodo} onChangeText={setNewTodo} />
-            <Button title="Add" onPress={() => setModel([{ id: randomUUID(), value: newTodo, done: false }, ...model])} />
-            <Button title="Shuffle" onPress={shuffleTodos} />
+            <Button title="추가" onPress={() => setModel([{ id: randomUUID(), value: newTodo, done: false }, ...model])} />
+            <Button title="섞기" onPress={shuffleTodos} />
             <ScrollView style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
                     <View style={{ maxWidth: layout.maxWidth, flex: 1 }}>

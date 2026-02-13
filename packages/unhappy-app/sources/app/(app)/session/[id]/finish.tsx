@@ -104,7 +104,7 @@ function FinishSessionContent({ session }: { session: Session }) {
             mainBranch,
             { push: pushAfterMerge }
         );
-        if (!result.success) throw new HappyError(result.error || 'Merge failed', false);
+        if (!result.success) throw new HappyError(result.error || '병합에 실패했습니다', false);
         Modal.alert(
             t('finishSession.mergeSuccess'),
             pushAfterMerge
@@ -147,7 +147,7 @@ function FinishSessionContent({ session }: { session: Session }) {
             worktreeBranchName,
             mainBranch
         );
-        if (!result.success) throw new HappyError(result.error || 'Failed to create PR', false);
+        if (!result.success) throw new HappyError(result.error || 'PR 생성에 실패했습니다', false);
         if (result.prUrl) {
             Modal.alert(
                 t('finishSession.prCreated'),
@@ -181,7 +181,7 @@ function FinishSessionContent({ session }: { session: Session }) {
             worktreeBranchName,
             worktreeSessionIds
         );
-        if (!result.success) throw new HappyError(result.error || 'Delete failed', false);
+        if (!result.success) throw new HappyError(result.error || '삭제에 실패했습니다', false);
         Modal.alert(t('finishSession.deleteSuccess'), t('finishSession.deleteSuccessMessage'));
         router.replace('/');
     });

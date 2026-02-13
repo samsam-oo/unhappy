@@ -289,7 +289,7 @@ interface StorageState {
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
-    updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
+    updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => void;
     updateSessionModelMode: (sessionId: string, mode: string | null) => void;
     updateSessionEffortMode: (sessionId: string, mode: ReasoningEffortMode | null) => void;
     updateSessionProfileId: (sessionId: string, profileId: string | null) => void;
@@ -372,13 +372,13 @@ function buildSessionListViewData(
 
                 let headerTitle: string;
                 if (sessionDateOnly.getTime() === today.getTime()) {
-                    headerTitle = 'Today';
+                    headerTitle = '오늘';
                 } else if (sessionDateOnly.getTime() === yesterday.getTime()) {
-                    headerTitle = 'Yesterday';
+                    headerTitle = '어제';
                 } else {
                     const diffTime = today.getTime() - sessionDateOnly.getTime();
                     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                    headerTitle = `${diffDays} days ago`;
+                    headerTitle = `${diffDays}일 전`;
                 }
 
                 listData.push({ type: 'header', title: headerTitle });
@@ -402,13 +402,13 @@ function buildSessionListViewData(
 
         let headerTitle: string;
         if (sessionDateOnly.getTime() === today.getTime()) {
-            headerTitle = 'Today';
+            headerTitle = '오늘';
         } else if (sessionDateOnly.getTime() === yesterday.getTime()) {
-            headerTitle = 'Yesterday';
+            headerTitle = '어제';
         } else {
             const diffTime = today.getTime() - sessionDateOnly.getTime();
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            headerTitle = `${diffDays} days ago`;
+            headerTitle = `${diffDays}일 전`;
         }
 
         listData.push({ type: 'header', title: headerTitle });
@@ -1023,7 +1023,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
-        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => set((state) => {
+        updateSessionPermissionMode: (sessionId: string, mode: PermissionMode) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 

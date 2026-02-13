@@ -5,7 +5,7 @@ import { Typography } from '@/constants/Typography';
 
 export default function MultiTextInputDemo() {
     const [text1, setText1] = React.useState('');
-    const [text2, setText2] = React.useState('This is some initial text that demonstrates how the component handles existing content.');
+    const [text2, setText2] = React.useState('이 텍스트는 컴포넌트가 기존 내용을 어떻게 처리하는지 보여주는 예시입니다.');
     const [text3, setText3] = React.useState('');
     const [text4, setText4] = React.useState('');
     const [text5, setText5] = React.useState('');
@@ -20,7 +20,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        Basic Usage
+                        기본 사용법
                     </Text>
                     <Text style={{ 
                         fontSize: 14, 
@@ -28,7 +28,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 12,
                         ...Typography.default()
                     }}>
-                        Standard multi-line text input with default max height (120px)
+                        기본 최대 높이(120px)가 적용된 다중 줄 텍스트 입력
                     </Text>
                     <View style={{
                         backgroundColor: '#f5f5f5',
@@ -38,7 +38,7 @@ export default function MultiTextInputDemo() {
                         <MultiTextInput
                             value={text1}
                             onChangeText={setText1}
-                            placeholder="Type something here..."
+                        placeholder="여기에 입력하세요..."
                         />
                     </View>
                     <Text style={{ 
@@ -47,7 +47,7 @@ export default function MultiTextInputDemo() {
                         marginTop: 4,
                         ...Typography.default()
                     }}>
-                        Characters: {text1.length}
+                        글자 수: {text1.length}
                     </Text>
                 </View>
 
@@ -57,7 +57,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        With Initial Value
+                        초기값 예시
                     </Text>
                     <Text style={{ 
                         fontSize: 14, 
@@ -65,7 +65,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 12,
                         ...Typography.default()
                     }}>
-                        Pre-populated with text
+                        미리 채워진 텍스트가 있습니다
                     </Text>
                     <View style={{
                         backgroundColor: '#f0f7ff',
@@ -75,7 +75,7 @@ export default function MultiTextInputDemo() {
                         <MultiTextInput
                             value={text2}
                             onChangeText={setText2}
-                            placeholder="This won't show because there's already text"
+                        placeholder="이미 텍스트가 있어 표시되지 않습니다"
                         />
                     </View>
                     <Text style={{ 
@@ -84,7 +84,7 @@ export default function MultiTextInputDemo() {
                         marginTop: 4,
                         ...Typography.default()
                     }}>
-                        Characters: {text2.length}
+                        글자 수: {text2.length}
                     </Text>
                 </View>
 
@@ -94,7 +94,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        Limited Height (60px)
+                        제한 높이 (60px)
                     </Text>
                     <Text style={{ 
                         fontSize: 14, 
@@ -102,7 +102,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 12,
                         ...Typography.default()
                     }}>
-                        This input has a lower max height, so it will scroll sooner
+                        이 입력창은 최대 높이가 낮아 더 빨리 스크롤됩니다
                     </Text>
                     <View style={{
                         backgroundColor: '#fff5f5',
@@ -112,7 +112,7 @@ export default function MultiTextInputDemo() {
                         <MultiTextInput
                             value={text3}
                             onChangeText={setText3}
-                            placeholder="Type multiple lines to see scrolling..."
+                        placeholder="여러 줄을 입력해 스크롤을 확인해 보세요..."
                             maxHeight={60}
                         />
                     </View>
@@ -122,7 +122,7 @@ export default function MultiTextInputDemo() {
                         marginTop: 4,
                         ...Typography.default()
                     }}>
-                        Characters: {text3.length} | Max height: 60px
+                        글자 수: {text3.length} | 최대 높이: 60px
                     </Text>
                 </View>
 
@@ -132,7 +132,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                    Larger Height (200px)
+                    더 큰 높이 (200px)
                     </Text>
                     <Text style={{ 
                         fontSize: 14, 
@@ -140,7 +140,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 12,
                         ...Typography.default()
                     }}>
-                        This input can grow much taller before scrolling
+                        이 입력창은 더 큰 높이로 확장되어 스크롤이 늦게 발생합니다
                     </Text>
                     <View style={{
                         backgroundColor: '#f5fff5',
@@ -150,7 +150,7 @@ export default function MultiTextInputDemo() {
                         <MultiTextInput
                             value={text4}
                             onChangeText={setText4}
-                            placeholder="You can write a lot more here before it starts scrolling..."
+                        placeholder="더 많은 텍스트를 작성해도 스크롤이 늦게 시작됩니다..."
                             maxHeight={200}
                         />
                     </View>
@@ -160,7 +160,7 @@ export default function MultiTextInputDemo() {
                         marginTop: 4,
                         ...Typography.default()
                     }}>
-                        Characters: {text4.length} | Max height: 200px
+                        글자 수: {text4.length} | 최대 높이: 200px
                     </Text>
                 </View>
 
@@ -170,7 +170,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        With Keyboard Handling
+                        키보드 제어 예시
                     </Text>
                     <Text style={{ 
                         fontSize: 14, 
@@ -178,7 +178,7 @@ export default function MultiTextInputDemo() {
                         marginBottom: 12,
                         ...Typography.default()
                     }}>
-                        Press Enter to submit (clears the field), Escape to clear, or use arrow keys
+                        엔터: 전송(필드 초기화), 이스케이프: 입력 취소, 화살표 키 사용 가능
                     </Text>
                     <View style={{
                         backgroundColor: '#fff0f5',
@@ -188,7 +188,7 @@ export default function MultiTextInputDemo() {
                         <MultiTextInput
                             value={text5}
                             onChangeText={setText5}
-                            placeholder="Try pressing Enter, Escape, or arrow keys..."
+                        placeholder="엔터, 이스케이프, 방향키를 눌러 이동하세요"
                             onKeyPress={(event: KeyPressEvent): boolean => {
                                 setLastKey(`${event.key}${event.shiftKey ? ' + Shift' : ''}`);
                                 
@@ -213,7 +213,7 @@ export default function MultiTextInputDemo() {
                         marginTop: 4,
                         ...Typography.default()
                     }}>
-                        Last key pressed: {lastKey || 'None'} | Characters: {text5.length}
+                        마지막 키: {lastKey || '없음'} | 글자 수: {text5.length}
                     </Text>
                 </View>
 

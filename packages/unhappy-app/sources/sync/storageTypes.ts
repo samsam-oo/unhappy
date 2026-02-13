@@ -105,6 +105,8 @@ export interface Session {
     | 'read-only'
     | 'safe-yolo'
     | 'yolo'
+    | 'allow-edits'
+    | 'bypass'
     | null; // Local permission mode, not synced to server
   modelMode?: string | null; // Local-only: model override, not synced to server
   effortMode?: ReasoningEffortMode | null; // Local-only: reasoning effort override, not synced to server

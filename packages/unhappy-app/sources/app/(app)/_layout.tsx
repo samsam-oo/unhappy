@@ -264,50 +264,50 @@ export default function RootLayout() {
             <Stack.Screen
                 name="dev/index"
                 options={{
-                    headerTitle: 'Developer Tools',
+                    headerTitle: '개발자 도구',
                 }}
             />
 
             <Stack.Screen
                 name="dev/list-demo"
                 options={{
-                    headerTitle: 'List Components Demo',
+                    headerTitle: '컴포넌트 데모 목록',
                 }}
             />
             <Stack.Screen
                 name="dev/typography"
                 options={{
-                    headerTitle: 'Typography',
+                    headerTitle: '타이포그래피',
                 }}
             />
             <Stack.Screen
                 name="dev/colors"
                 options={{
-                    headerTitle: 'Colors',
+                    headerTitle: '색상',
                 }}
             />
             <Stack.Screen
                 name="dev/tools2"
                 options={{
-                    headerTitle: 'Tool Views Demo',
+                    headerTitle: '도구 뷰 데모',
                 }}
             />
             <Stack.Screen
                 name="dev/masked-progress"
                 options={{
-                    headerTitle: 'Masked Progress',
+                    headerTitle: '마스크드 진행 표시',
                 }}
             />
             <Stack.Screen
                 name="dev/shimmer-demo"
                 options={{
-                    headerTitle: 'Shimmer View Demo',
+                    headerTitle: '시머 뷰 데모',
                 }}
             />
             <Stack.Screen
                 name="dev/multi-text-input"
                 options={{
-                    headerTitle: 'Multi Text Input',
+                    headerTitle: '멀티 텍스트 입력',
                 }}
             />
             <Stack.Screen
@@ -322,7 +322,7 @@ export default function RootLayout() {
                 name="settings/connect/claude"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Connect to Claude',
+                    headerTitle: '클로드 연결',
                     headerBackTitle: t('common.back'),
                     // headerStyle: {
                     //     backgroundColor: Platform.OS === 'web' ? theme.colors.header.background : '#1F1E1C',
@@ -378,7 +378,7 @@ export default function RootLayout() {
                 name="zen/new"
                 options={{
                     presentation: 'modal',
-                    headerTitle: 'New Task',
+                    headerTitle: '새 작업',
                     headerBackTitle: t('common.cancel'),
                 }}
             />
@@ -386,7 +386,7 @@ export default function RootLayout() {
                 name="zen/view"
                 options={{
                     presentation: 'modal',
-                    headerTitle: 'Task Details',
+                    headerTitle: '작업 상세',
                     headerBackTitle: t('common.back'),
                 }}
             />

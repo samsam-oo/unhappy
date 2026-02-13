@@ -134,7 +134,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
     
     const loadUsageData = async () => {
         if (!auth.credentials) {
-            setError('Not authenticated');
+            setError(t('errors.authenticationFailed'));
             return;
         }
         
@@ -150,7 +150,7 @@ export const UsagePanel: React.FC<{ sessionId?: string }> = ({ sessionId }) => {
             if (err instanceof HappyError) {
                 setError(err.message);
             } else {
-                setError('Failed to load usage data');
+                setError(t('errors.operationFailed'));
             }
         } finally {
             setLoading(false);

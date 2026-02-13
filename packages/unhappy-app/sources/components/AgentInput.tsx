@@ -22,6 +22,7 @@ import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata, type ReasoningEffortMode } from '@/sync/storageTypes';
 import { SHOW_GEMINI_UI } from '@/config';
+import { CanonicalPermissionMode, normalizePermissionPolicy } from '@/sync/permissionPolicy';
 
 interface AgentInputProps {
     value: string;
@@ -33,6 +34,8 @@ interface AgentInputProps {
     sendIcon?: React.ReactNode;
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
+    planOnly?: boolean;
+    onPlanOnlyChange?: (planOnly: boolean) => void;
     modelMode?: string | null;
     onModelModeChange?: (mode: string | null) => void;
     effortMode?: ReasoningEffortMode | null;
@@ -505,7 +508,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         if (filtered.length === availableModels.length) return;
         if (filtered.length === 0) {
             setAvailableModels(null);
-            setModelLoadError('No supported Claude models found.');
+            setModelLoadError('지원되는 Claude 모델이 없습니다.');
             return;
         }
         setAvailableModels(filtered);
@@ -538,18 +541,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             : (resp.models || []);
                         if (models.length === 0) {
                             setAvailableModels(null);
-                            setModelLoadError(agentFlavor === 'claude' ? 'No supported Claude models found.' : 'No models found.');
+                            setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
                         } else {
                             setAvailableModels(models);
                             ensureValidSelectedModel(models);
                         }
                     } else {
                         setAvailableModels(null);
-                        setModelLoadError(resp.error || 'Failed to load models.');
+                        setModelLoadError(resp.error || '모델 목록을 불러오지 못했습니다.');
                     }
                 } catch (e) {
                     setAvailableModels(null);
-                    setModelLoadError(e instanceof Error ? e.message : 'Failed to load models.');
+                    setModelLoadError(e instanceof Error ? e.message : '모델 목록을 불러오지 못했습니다.');
                 } finally {
                     setIsLoadingModels(false);
                 }
@@ -569,18 +572,18 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     : (resp.models || []);
                 if (models.length === 0) {
                     setAvailableModels(null);
-                    setModelLoadError(agentFlavor === 'claude' ? 'No supported Claude models found.' : 'No models found.');
+                    setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
                 } else {
                     setAvailableModels(models);
                     ensureValidSelectedModel(models);
                 }
             } else {
                 setAvailableModels(null);
-                setModelLoadError(resp.error || 'Failed to load models.');
+                setModelLoadError(resp.error || '모델 목록을 불러오지 못했습니다.');
             }
         } catch (e) {
             setAvailableModels(null);
-            setModelLoadError(e instanceof Error ? e.message : 'Failed to load models.');
+            setModelLoadError(e instanceof Error ? e.message : '모델 목록을 불러오지 못했습니다.');
         } finally {
             setIsLoadingModels(false);
         }
@@ -628,10 +631,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [props.onAgentTypeChange, props.onModelModeChange]);
 
     const openPermissionOverlay = React.useCallback(() => {
-        if (!props.onPermissionModeChange) return;
+        if (!props.onPermissionModeChange && !props.onPlanOnlyChange) return;
         hapticsLight();
         setOverlayKind('permission');
-    }, [props.onPermissionModeChange]);
+    }, [props.onPermissionModeChange, props.onPlanOnlyChange]);
 
     const openModelOverlay = React.useCallback(async () => {
         if (!props.onModelModeChange) return;
@@ -646,8 +649,15 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const handlePermissionSelect = React.useCallback((mode: PermissionMode) => {
         hapticsLight();
+        // Selecting a concrete mode should exit plan-only state.
+        props.onPlanOnlyChange?.(false);
         props.onPermissionModeChange?.(mode);
-    }, [props.onPermissionModeChange]);
+    }, [props.onPermissionModeChange, props.onPlanOnlyChange]);
+
+    const handlePlanOnlyToggle = React.useCallback(() => {
+        hapticsLight();
+        props.onPlanOnlyChange?.(!(props.planOnly ?? false));
+    }, [props.onPlanOnlyChange, props.planOnly]);
 
     const handleModelSelect = React.useCallback((model: string | null) => {
         hapticsLight();
@@ -655,44 +665,79 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         setOverlayKind(null);
     }, [props.onModelModeChange]);
 
+    const normalizedPermissionPolicy = React.useMemo(
+        () =>
+            normalizePermissionPolicy({
+                permissionMode: props.permissionMode ?? 'default',
+                planOnly: props.planOnly ?? false,
+            }),
+        [props.permissionMode, props.planOnly]
+    );
+    const normalizedPermissionMode = normalizedPermissionPolicy.permissionMode;
+    const isPlanOnly = normalizedPermissionPolicy.planOnly;
+
     const permissionModeLabel = React.useMemo(() => {
-        const mode = props.permissionMode ?? 'default';
-        if (isCodex || (isGemini && !SHOW_GEMINI_UI)) {
-            return mode === 'default' ? t('agentInput.codexPermissionMode.default') :
-                mode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                    mode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                        mode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : '';
+        if (isPlanOnly) {
+            return t('agentInput.permissionMode.plan');
         }
-        if (isGemini) {
-            return mode === 'default' ? t('agentInput.geminiPermissionMode.default') :
-                mode === 'read-only' ? t('agentInput.geminiPermissionMode.badgeReadOnly') :
-                    mode === 'safe-yolo' ? t('agentInput.geminiPermissionMode.badgeSafeYolo') :
-                        mode === 'yolo' ? t('agentInput.geminiPermissionMode.badgeYolo') : '';
+        if (normalizedPermissionMode === 'default') {
+            return t('agentInput.permissionMode.default');
         }
-        return mode === 'default' ? t('agentInput.permissionMode.default') :
-            mode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                mode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                    mode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : '';
-    }, [isCodex, isGemini, props.permissionMode]);
+        if (normalizedPermissionMode === 'read-only') {
+            return t('agentInput.codexPermissionMode.badgeReadOnly');
+        }
+        if (normalizedPermissionMode === 'allow-edits') {
+            return t('agentInput.permissionMode.acceptEdits');
+        }
+        return t('agentInput.permissionMode.badgeBypassAllPermissions');
+    }, [isPlanOnly, normalizedPermissionMode]);
 
     const permissionModeColor = React.useMemo(() => {
-        const mode = props.permissionMode ?? 'default';
-        return mode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
-            mode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                mode === 'plan' ? theme.colors.permission.plan :
-                    mode === 'read-only' ? theme.colors.permission.readOnly :
-                        mode === 'safe-yolo' ? theme.colors.permission.safeYolo :
-                            mode === 'yolo' ? theme.colors.permission.yolo :
-                                theme.colors.button.secondary.tint;
-    }, [props.permissionMode, theme.colors]);
+        if (isPlanOnly) return theme.colors.permission.plan;
+        switch (normalizedPermissionMode) {
+            case 'allow-edits':
+                return theme.colors.permission.acceptEdits;
+            case 'bypass':
+                return theme.colors.permission.bypass;
+            case 'read-only':
+                return theme.colors.permission.readOnly;
+            case 'default':
+            default:
+                return theme.colors.button.secondary.tint;
+        }
+    }, [isPlanOnly, normalizedPermissionMode, theme.colors]);
 
-    const effectiveEffortLabel: string = props.effortMode ?? 'Default';
-    const effortChipLabel = React.useMemo(() => {
-        const mode = props.effortMode ?? null;
-        if (!mode) return 'Auto';
-        if (mode === 'medium') return 'Med';
-        return mode.charAt(0).toUpperCase() + mode.slice(1);
+    const permissionModeIcon = React.useMemo(() => {
+        if (isPlanOnly) return 'list-outline' as const;
+        switch (normalizedPermissionMode) {
+            case 'read-only':
+                return 'eye-outline' as const;
+            case 'allow-edits':
+                return 'create-outline' as const;
+            case 'bypass':
+                return 'flash-outline' as const;
+            case 'default':
+            default:
+                return 'shield-checkmark-outline' as const;
+        }
+    }, [isPlanOnly, normalizedPermissionMode]);
+
+    const effectiveEffortLabel: string = React.useMemo(() => {
+        if (!props.effortMode) {
+            return t('agentInput.reasoningEffort.auto');
+        }
+        if (props.effortMode === 'low') {
+            return t('agentInput.reasoningEffort.low');
+        }
+        if (props.effortMode === 'medium') {
+            return t('agentInput.reasoningEffort.medium');
+        }
+        if (props.effortMode === 'high') {
+            return t('agentInput.reasoningEffort.high');
+        }
+        return t('agentInput.reasoningEffort.max');
     }, [props.effortMode]);
+    const effortChipLabel = effectiveEffortLabel;
     const handleEffortPress = React.useCallback(() => {
         if (!props.onEffortModeChange) return;
         hapticsLight();
@@ -773,10 +818,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = isCodex
-                    ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude and Gemini share same modes
-                const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
+                const modeOrder: CanonicalPermissionMode[] = ['default', 'read-only', 'allow-edits', 'bypass'];
+                const currentIndex = modeOrder.indexOf(normalizedPermissionMode);
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
                 hapticsLight();
@@ -785,7 +828,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, normalizedPermissionMode, props.onPermissionModeChange]);
 
 
 
@@ -831,40 +874,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {overlayKind === 'permission' ? (
                                     <View style={styles.overlaySection}>
                                         <Text style={styles.overlaySectionTitle}>
-                                            {(isCodex || (isGemini && !SHOW_GEMINI_UI))
-                                                ? t('agentInput.codexPermissionMode.title')
-                                                : isGemini
-                                                    ? t('agentInput.geminiPermissionMode.title')
-                                                    : t('agentInput.permissionMode.title')}
+                                            {t('agentInput.permissionMode.title')}
                                         </Text>
-                                        {((isCodex || isGemini)
-                                            ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                                            : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
-                                        ).map((mode) => {
-                                            const modeConfig = (isCodex || (isGemini && !SHOW_GEMINI_UI)) ? {
-                                                'default': { label: t('agentInput.codexPermissionMode.default') },
-                                                'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
-                                                'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
-                                                'yolo': { label: t('agentInput.codexPermissionMode.yolo') },
-                                            } : isGemini ? {
-                                                'default': { label: t('agentInput.geminiPermissionMode.default') },
-                                                'read-only': { label: t('agentInput.geminiPermissionMode.readOnly') },
-                                                'safe-yolo': { label: t('agentInput.geminiPermissionMode.safeYolo') },
-                                                'yolo': { label: t('agentInput.geminiPermissionMode.yolo') },
-                                            } : {
-                                                default: { label: t('agentInput.permissionMode.default') },
-                                                acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
-                                                plan: { label: t('agentInput.permissionMode.plan') },
-                                                bypassPermissions: { label: t('agentInput.permissionMode.bypassPermissions') },
-                                            };
-                                            const config = modeConfig[mode as keyof typeof modeConfig];
-                                            if (!config) return null;
-                                            const isSelected = props.permissionMode === mode;
-
+                                        {([
+                                            { kind: 'mode', value: 'default', label: t('agentInput.permissionMode.default'), hint: t('agentInput.permissionMode.askEveryAction'), icon: 'shield-checkmark-outline' },
+                                            { kind: 'plan', label: t('agentInput.permissionMode.plan'), hint: t('agentInput.permissionMode.planOnly'), icon: 'list-outline' },
+                                            { kind: 'mode', value: 'allow-edits', label: t('agentInput.permissionMode.acceptEdits'), hint: t('agentInput.permissionMode.autoApproveEdits'), icon: 'create-outline' },
+                                            { kind: 'mode', value: 'read-only', label: t('agentInput.codexPermissionMode.readOnly'), hint: t('agentInput.permissionMode.readOnlyTools'), icon: 'eye-outline' },
+                                            { kind: 'mode', value: 'bypass', label: t('agentInput.permissionMode.bypassPermissions'), hint: t('agentInput.permissionMode.autoApproveAll'), icon: 'flash-outline' },
+                                        ] as const).map((row) => {
+                                            if (row.kind === 'plan' && !props.onPlanOnlyChange) return null;
+                                            const isSelected = row.kind === 'plan' ? isPlanOnly : !isPlanOnly && normalizedPermissionMode === row.value;
                                             return (
                                                 <Pressable
-                                                    key={mode}
-                                                    onPress={() => handlePermissionSelect(mode)}
+                                                    key={row.kind === 'plan' ? 'planning' : row.value}
+                                                    onPress={() => row.kind === 'plan' ? handlePlanOnlyToggle() : handlePermissionSelect(row.value)}
                                                     style={({ pressed, hovered }: any) => ({
                                                         flexDirection: 'row',
                                                         alignItems: 'center',
@@ -898,13 +922,29 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                             }} />
                                                         )}
                                                     </View>
-                                                    <Text style={{
-                                                        fontSize: 14,
-                                                        color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        {config.label}
-                                                    </Text>
+                                                    <Ionicons
+                                                        name={row.icon as any}
+                                                        size={16}
+                                                        color={isSelected ? theme.colors.radio.active : theme.colors.textSecondary}
+                                                        style={{ marginRight: 8 }}
+                                                    />
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {row.label}
+                                                        </Text>
+                                                        <Text style={{
+                                                            fontSize: 11,
+                                                            marginLeft: 6,
+                                                            color: theme.colors.textSecondary,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {row.hint}
+                                                        </Text>
+                                                    </View>
                                                 </Pressable>
                                             );
                                         })}
@@ -959,7 +999,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                                 color: active ? theme.colors.button.primary.background : theme.colors.textSecondary,
                                                                 ...Typography.default('semiBold'),
                                                             }}>
-                                                                {k === 'claude' ? 'Claude' : k === 'codex' ? 'Codex' : 'Gemini'}
+                                                                {k === 'claude'
+                                                                    ? t('agentInput.agent.claude')
+                                                                    : k === 'codex'
+                                                                        ? t('agentInput.agent.codex')
+                                                                        : t('agentInput.agent.gemini')}
                                                             </Text>
                                                         </Pressable>
                                                     );
@@ -989,7 +1033,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     }}>
                                                         {modelLoadError} {' '}
                                                         <Text style={{ color: theme.colors.button.secondary.tint, fontWeight: '600', ...Typography.default('semiBold') }}>
-                                                            Tap to retry
+                                                            {t('common.retry')}
                                                         </Text>
                                                     </Text>
                                             </Pressable>
@@ -1310,7 +1354,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 styles.worktreeNameAction,
                                                 p.pressed ? { opacity: 0.85 } : null,
                                             ])}
-                                            accessibilityLabel="Generate worktree name"
+                                            accessibilityLabel="워크트리 이름 생성"
                                         >
                                             <Ionicons name="shuffle" size={16} color={theme.colors.textSecondary} />
                                         </Pressable>
@@ -1373,7 +1417,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         })}
                                     >
                                         <Ionicons
-                                            name="shield-checkmark-outline"
+                                            name={permissionModeIcon}
                                             size={14}
                                             color={permissionModeColor}
                                         />
@@ -1429,7 +1473,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 ? t('common.loading')
                                                 : (props.modelMode && props.modelMode !== 'default'
                                                     ? props.modelMode
-                                                    : 'Select model')}
+                                                    : t('agentInput.model.selectModel'))}
                                         </Text>
                                         <Ionicons
                                             name="chevron-down"
@@ -1447,8 +1491,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         onPress={handleEffortPress}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         accessibilityRole="button"
-                                        accessibilityLabel={`Reasoning effort: ${effectiveEffortLabel}`}
-                                        accessibilityHint={`Cycles effort. Current: ${effortChipLabel}.`}
+                                        accessibilityLabel={`${t('agentInput.reasoningEffort.label')}: ${effectiveEffortLabel}`}
+                                        accessibilityHint={t('agentInput.reasoningEffort.accessibilityHint', { current: effortChipLabel })}
                                         style={(p) => ({
                                             flexDirection: 'row',
                                             alignItems: 'center',
