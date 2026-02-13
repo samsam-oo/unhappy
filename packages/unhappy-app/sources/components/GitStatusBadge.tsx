@@ -70,6 +70,18 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
                     )}
                 </View>
             )}
+            {!hasLineChanges && (
+                <Text
+                    style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        fontWeight: '600',
+                    }}
+                    numberOfLines={1}
+                >
+                    -
+                </Text>
+            )}
         </View>
     );
 }
