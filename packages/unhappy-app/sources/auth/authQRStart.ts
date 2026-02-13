@@ -28,6 +28,7 @@ export async function authQRStart(keypair: QRAuthKeyPair): Promise<boolean> {
 
         await axios.post(`${serverUrl}/v1/auth/account/request`, {
             publicKey: encodeBase64(keypair.publicKey),
+            supportsEncryptedToken: true,
         });
 
         if (process.env.EXPO_PUBLIC_DEBUG) {

@@ -46,6 +46,7 @@ export async function doAuth(): Promise<Credentials | null> {
     await axios.post(`${configuration.serverUrl}/v1/auth/request`, {
       publicKey: encodeBase64(keypair.publicKey),
       supportsV2: true,
+      supportsEncryptedToken: true,
     });
     if (process.env.DEBUG) {
       console.log(`[AUTH DEBUG] Auth request sent successfully`);
@@ -190,10 +191,29 @@ async function waitForAuthentication(
           {
             publicKey: encodeBase64(keypair.publicKey),
             supportsV2: true,
+            supportsEncryptedToken: true,
           },
         );
         if (response.data.state === 'authorized') {
-          let token = response.data.token as string;
+          let token = response.data.token as string | undefined;
+          const encryptedToken = response.data.encryptedToken as string | undefined;
+          if (encryptedToken) {
+            const decryptedToken = decryptWithEphemeralKey(
+              decodeBase64(encryptedToken),
+              keypair.secretKey,
+            );
+            if (!decryptedToken) {
+              console.log(
+                '\n\nFailed to decrypt authentication token. Please try again.',
+              );
+              return null;
+            }
+            token = new TextDecoder().decode(decryptedToken);
+          }
+          if (!token) {
+            console.log('\n\nAuthentication token is missing. Please try again.');
+            return null;
+          }
           let r = decodeBase64(response.data.response);
           let decrypted = decryptWithEphemeralKey(r, keypair.secretKey);
           if (decrypted) {

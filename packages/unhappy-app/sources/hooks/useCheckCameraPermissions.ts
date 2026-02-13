@@ -1,12 +1,10 @@
 import { useCameraPermissions } from "expo-camera";
-import { Platform } from "react-native";
 
 export function useCheckScannerPermissions(): (needsCameraPermission?: boolean) => Promise<boolean> {
     const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
     return async (needsCameraPermission = true) => {
         if (!needsCameraPermission) return true;
-        if (Platform.OS === 'web') return false;
 
         if (!cameraPermission) {
             // Permission state is still loading; request to unblock first scan attempt.
