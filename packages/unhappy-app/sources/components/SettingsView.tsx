@@ -76,7 +76,6 @@ export const SettingsView = React.memo(function SettingsView() {
     const isGitHubConnected = !!profile.github;
     const isAnthropicConnected = profile.connectedServices?.includes('anthropic') || false;
     const accentPrimary = theme.dark ? 'rgba(203,213,225,0.86)' : 'rgba(71,85,105,0.78)';
-    const accentSecondary = theme.dark ? 'rgba(148,163,184,0.80)' : 'rgba(100,116,139,0.74)';
     const accentWarm = theme.dark ? 'rgba(180,196,214,0.80)' : 'rgba(90,105,122,0.72)';
     const accentSuccess = theme.dark ? 'rgba(176,190,206,0.86)' : 'rgba(90,103,120,0.78)';
     const accentDanger = theme.dark ? 'rgba(248,113,113,0.84)' : 'rgba(185,28,28,0.78)';
@@ -312,12 +311,6 @@ export const SettingsView = React.memo(function SettingsView() {
                     subtitle={t('settings.featuresSubtitle')}
                     icon={<Ionicons name="flask-outline" size={SETTINGS_ICON_SIZE} color={accentWarm} />}
                     onPress={() => router.push('/settings/features')}
-                />
-                <Item
-                    title={t('settings.profiles')}
-                    subtitle={t('settings.profilesSubtitle')}
-                    icon={<Ionicons name="person-outline" size={SETTINGS_ICON_SIZE} color={accentSecondary} />}
-                    onPress={() => router.push('/settings/profiles')}
                 />
                 {experiments && (
                     <Item
