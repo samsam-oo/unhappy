@@ -207,6 +207,19 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
 }
 
 /**
+ * Request daemon update on a specific machine (E2E RPC).
+ * The daemon installs latest CLI and restarts itself.
+ */
+export async function machineUpdateDaemon(machineId: string): Promise<{ message: string }> {
+    const result = await apiSocket.machineRPC<{ message: string }, {}>(
+        machineId,
+        'update-daemon',
+        {}
+    );
+    return result;
+}
+
+/**
  * Execute a bash command on a specific machine
  */
 export async function machineBash(

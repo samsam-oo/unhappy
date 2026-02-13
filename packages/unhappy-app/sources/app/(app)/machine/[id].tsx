@@ -6,7 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Ionicons, Octicons } from '@/icons/vector-icons';
 import { Modal } from '@/modal';
-import { machineSpawnNewSession, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineSpawnNewSession, machineStopDaemon, machineUpdateDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { useMachine, useSessions, useSettingMutable } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -15,6 +15,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { formatPathRelativeToProjectBase, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isAbsolutePathLike, joinBasePath } from '@/utils/basePathUtils';
+import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, Platform, Pressable, RefreshControl, Text, View } from 'react-native';
@@ -71,6 +72,7 @@ export default function MachineDetailScreen() {
     const navigateToSession = useNavigateToSession();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
+    const [isUpdatingDaemon, setIsUpdatingDaemon] = useState(false);
     const [isRenamingMachine, setIsRenamingMachine] = useState(false);
     const [customPath, setCustomPath] = useState('');
     const [isSpawning, setIsSpawning] = useState(false);
@@ -130,6 +132,25 @@ export default function MachineDetailScreen() {
         return t('status.unknown');
     }, [daemonStatus]);
 
+    const daemonCliVersion = useMemo(() => {
+        if (!machine) return undefined;
+        const daemonStateVersion =
+            machine.daemonState &&
+            typeof machine.daemonState.startedWithCliVersion === 'string'
+                ? machine.daemonState.startedWithCliVersion
+                : undefined;
+        const metadataVersion =
+            machine.metadata && typeof machine.metadata.happyCliVersion === 'string'
+                ? machine.metadata.happyCliVersion
+                : undefined;
+        return daemonStateVersion ?? metadataVersion;
+    }, [machine]);
+
+    const isCliOutdated = useMemo(() => {
+        if (!daemonCliVersion) return false;
+        return !isVersionSupported(daemonCliVersion, MINIMUM_CLI_VERSION);
+    }, [daemonCliVersion]);
+
     const handleStopDaemon = async () => {
         // Show confirmation modal using alert with buttons
         Modal.alert(
@@ -159,6 +180,24 @@ export default function MachineDetailScreen() {
                 }
             ]
         );
+    };
+
+    const handleUpdateDaemon = async () => {
+        if (!machine || !machineId || isUpdatingDaemon || !isMachineOnline(machine)) return;
+
+        setIsUpdatingDaemon(true);
+        try {
+            const result = await machineUpdateDaemon(machineId);
+            Modal.alert(t('common.success'), result.message);
+            await sync.refreshMachines();
+        } catch (error) {
+            Modal.alert(
+                t('common.error'),
+                error instanceof Error ? error.message : t('common.error')
+            );
+        } finally {
+            setIsUpdatingDaemon(false);
+        }
     };
 
     // inline control below
@@ -455,6 +494,48 @@ export default function MachineDetailScreen() {
                             }}
                             showChevron={false}
                         />
+                        {isCliOutdated && daemonCliVersion && (
+                            <>
+                                <Item
+                                    title={t('sessionInfo.cliVersionOutdated')}
+                                    subtitle={t('sessionInfo.cliVersionOutdatedMessage', {
+                                        currentVersion: daemonCliVersion,
+                                        requiredVersion: MINIMUM_CLI_VERSION
+                                    })}
+                                    subtitleLines={2}
+                                    showChevron={false}
+                                    rightElement={
+                                        <Ionicons name="warning-outline" size={20} color="#FF9500" />
+                                    }
+                                />
+                                <Item
+                                    title="unhappy daemon update"
+                                    onPress={handleUpdateDaemon}
+                                    disabled={isUpdatingDaemon || !isMachineOnline(machine)}
+                                    titleStyle={{
+                                        color:
+                                            isUpdatingDaemon || !isMachineOnline(machine)
+                                                ? '#999'
+                                                : theme.colors.button.primary.background
+                                    }}
+                                    rightElement={
+                                        isUpdatingDaemon ? (
+                                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                                        ) : (
+                                            <Ionicons
+                                                name="download-outline"
+                                                size={20}
+                                                color={
+                                                    !isMachineOnline(machine)
+                                                        ? '#999'
+                                                        : theme.colors.button.primary.background
+                                                }
+                                            />
+                                        )
+                                    }
+                                />
+                            </>
+                        )}
                         <Item
                             title={t('machine.stopDaemon')}
                             titleStyle={{ 
