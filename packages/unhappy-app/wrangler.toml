@@ -6,7 +6,7 @@ compatibility_date = "2026-02-10"
 #
 # Build:
 #   # from repo root
-#   yarn workspace unhappy-app expo export --platform web --output-dir dist
+#   yarn workspace unhappy-app export:web
 #
 # Dev:
 #   npx wrangler --cwd packages/unhappy-app dev

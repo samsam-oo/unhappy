@@ -34,7 +34,7 @@ ENV EXPO_PUBLIC_UNHAPPY_SERVER_URL=$EXPO_PUBLIC_UNHAPPY_SERVER_URL
 
 COPY packages/unhappy-app ./packages/unhappy-app
 
-RUN yarn workspace unhappy-app expo export --platform web --output-dir dist
+RUN yarn workspace unhappy-app export:web
 
 # Stage 3: runtime with Nginx
 FROM nginx:alpine AS runner
