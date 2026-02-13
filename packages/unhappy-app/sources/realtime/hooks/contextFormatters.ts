@@ -1,5 +1,6 @@
 import { Session } from "@/sync/storageTypes";
 import { Message } from "@/sync/typesMessage";
+import { resolveSessionSummaryTitle } from "@/utils/sessionUtils";
 import { trimIdent } from "@/utils/trimIdent";
 import { VOICE_CONFIG } from "../voiceConfig";
 
@@ -86,7 +87,7 @@ export function formatHistory(sessionId: string, messages: Message[]): string {
 //
 
 export function formatSessionFull(session: Session, messages: Message[]): string {
-    const sessionName = session.metadata?.summary?.text;
+    const sessionName = resolveSessionSummaryTitle(session.metadata?.summary?.text);
     const sessionPath = session.metadata?.path;
     const lines: string[] = [];
 
@@ -98,7 +99,7 @@ export function formatSessionFull(session: Session, messages: Message[]): string
     // Add session metadata if available
     if (session.metadata?.summary?.text) {
         lines.push('## Session Summary');
-        lines.push(session.metadata.summary.text);
+        lines.push(resolveSessionSummaryTitle(session.metadata.summary.text));
         lines.push('');
     }
 

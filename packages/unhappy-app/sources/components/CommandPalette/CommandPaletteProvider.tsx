@@ -10,6 +10,7 @@ import { storage } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { t } from '@/text';
+import { getSessionName } from '@/utils/sessionUtils';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
@@ -82,7 +83,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             .slice(0, 5);
 
         recentSessions.forEach(session => {
-            const sessionName = session.metadata?.name || t('status.unknown');
+            const sessionName = getSessionName(session);
             cmds.push({
                 id: `session-${session.id}`,
                 title: sessionName,

@@ -13,7 +13,7 @@ import { sync } from '@/sync/sync';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { t } from '@/text';
 import { HappyError } from '@/utils/errors';
-import { useSessionStatus } from '@/utils/sessionUtils';
+import { resolveSessionSummaryTitle, useSessionStatus } from '@/utils/sessionUtils';
 import { Modal } from '@/modal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
@@ -529,7 +529,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     });
 
     const sessionStatus = useSessionStatus(props.session);
-    const rawSessionTitle = props.session.metadata?.summary?.text?.trim() || t('files.untitledSession');
+    const rawSessionTitle = resolveSessionSummaryTitle(props.session.metadata?.summary?.text);
     const sessionTitle = truncateWithEllipsis(rawSessionTitle, compact ? 44 : 30);
 
     const iconColor = React.useMemo(() => {
@@ -1732,7 +1732,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             </Text>
                                             <View style={styles.subtitleRow}>
                                                 <Text style={styles.subtitle} numberOfLines={1}>
-                                                    {t('files.worktree')}
+                                                    {t('newSession.sessionType.worktree')}
                                                 </Text>
                                                 {hasGitStatus && (
                                                     <>

@@ -1,8 +1,9 @@
-import * as React from 'react';
-import { Session } from '@/sync/storageTypes';
-import { t } from '@/text';
 import { storage } from '@/sync/storage';
+import { Session } from '@/sync/storageTypes';
+import { getCurrentLanguage, t } from '@/text';
+import { VIBING_MESSAGES_BY_LANGUAGE } from '@/text/translations/vibing';
 import { pathRelativeToBase } from '@/utils/basePathUtils';
+import * as React from 'react';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -16,6 +17,22 @@ export interface SessionStatus {
     isPulsing?: boolean;
 }
 
+const SESSION_TITLE_I18N_KEY_PATTERN = /^(files|machine)\.[A-Za-z0-9_.-]+$/;
+
+function isSessionTitleI18nKey(value: string | undefined | null): boolean {
+    if (!value) return false;
+    return SESSION_TITLE_I18N_KEY_PATTERN.test(value.trim());
+}
+
+export function resolveSessionSummaryTitle(summaryText?: string | null): string {
+    const trimmed = summaryText?.trim();
+    if (!trimmed || isSessionTitleI18nKey(trimmed)) {
+        return t('machine.untitledSession');
+    }
+
+    return trimmed;
+}
+
 /**
  * Get the current state of a session based on presence and thinking status.
  * Uses centralized session state from storage.ts
@@ -23,10 +40,12 @@ export interface SessionStatus {
 export function useSessionStatus(session: Session): SessionStatus {
     const isOnline = session.presence === "online";
     const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+    const currentLanguage = getCurrentLanguage();
 
-    const vibingMessage = React.useMemo(() => {
-        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [isOnline, hasPermissions, session.thinking]);
+const vibingMessage = React.useMemo(() => {
+        const messages = VIBING_MESSAGES_BY_LANGUAGE[currentLanguage] ?? VIBING_MESSAGES_BY_LANGUAGE.en;
+        return messages[Math.floor(Math.random() * messages.length)].toLowerCase() + '…';
+    }, [currentLanguage, isOnline, hasPermissions, session.thinking]);
 
     if (!isOnline) {
         return {
@@ -80,12 +99,15 @@ export function useSessionStatus(session: Session): SessionStatus {
  */
 export function getSessionName(session: Session): string {
     if (session.metadata?.summary) {
-        return session.metadata.summary.text;
+        return resolveSessionSummaryTitle(session.metadata.summary.text);
     } else if (session.metadata) {
         const segments = session.metadata.path.split('/').filter(Boolean);
         const lastSegment = segments.pop();
         if (!lastSegment) {
             return t('status.unknown');
+        }
+        if (isSessionTitleI18nKey(lastSegment)) {
+            return t('machine.untitledSession');
         }
         return lastSegment;
     }
@@ -243,5 +265,3 @@ export function formatLastSeen(activeAt: number, isActive: boolean = false): str
         return date.toLocaleDateString(undefined, options);
     }
 }
-
-const vibingMessages = ["Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing", "Calculating", "Cerebrating", "Channelling", "Churning", "Clauding", "Coalescing", "Cogitating", "Computing", "Combobulating", "Concocting", "Conjuring", "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Deciphering", "Deliberating", "Determining", "Discombobulating", "Divining", "Doing", "Effecting", "Elucidating", "Enchanting", "Envisioning", "Finagling", "Flibbertigibbeting", "Forging", "Forming", "Frolicking", "Generating", "Germinating", "Hatching", "Herding", "Honking", "Ideating", "Imagining", "Incubating", "Inferring", "Manifesting", "Marinating", "Meandering", "Moseying", "Mulling", "Mustering", "Musing", "Noodling", "Percolating", "Perusing", "Philosophising", "Pontificating", "Pondering", "Processing", "Puttering", "Puzzling", "Reticulating", "Ruminating", "Scheming", "Schlepping", "Shimmying", "Simmering", "Smooshing", "Spelunking", "Spinning", "Stewing", "Sussing", "Synthesizing", "Thinking", "Tinkering", "Transmuting", "Unfurling", "Unravelling", "Vibing", "Wandering", "Whirring", "Wibbling", "Wizarding", "Working", "Wrangling"];

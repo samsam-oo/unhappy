@@ -198,6 +198,31 @@ function scheduleWorktreeDiscovery(candidates: WorktreeDiscoveryCandidate[]) {
     for (const c of candidates) void discoverWorktreesForWorkspace(c);
 }
 
+const SESSION_TITLE_I18N_KEY_PATTERN = /^(files|machine)\.[A-Za-z0-9_.-]+$/;
+
+function isRawSessionTitleKey(value: string | undefined | null): boolean {
+    if (!value) return false;
+    return SESSION_TITLE_I18N_KEY_PATTERN.test(value.trim());
+}
+
+function normalizeSessionMetadataTitles(metadata: Session['metadata']): Session['metadata'] {
+    if (!metadata) return metadata;
+
+    const shouldNormalizeSummary = isRawSessionTitleKey(metadata.summary?.text);
+    const shouldNormalizeName = isRawSessionTitleKey(metadata.name);
+    if (!shouldNormalizeSummary && !shouldNormalizeName) {
+        return metadata;
+    }
+
+    return {
+        ...metadata,
+        ...(shouldNormalizeSummary && metadata.summary
+            ? { summary: { ...metadata.summary, text: '' } }
+            : {}),
+        ...(shouldNormalizeName ? { name: undefined } : {}),
+    };
+}
+
 /**
  * Centralized session online state resolver
  * Returns either "online" (string) or a timestamp (number) for last seen
@@ -497,8 +522,13 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Update sessions with calculated presence using centralized resolver
             sessions.forEach(session => {
+                const normalizedMetadata = normalizeSessionMetadataTitles(session.metadata);
+                const normalizedSession = normalizedMetadata === session.metadata
+                    ? session
+                    : { ...session, metadata: normalizedMetadata };
+
                 // Use centralized resolver for consistent state management
-                const presence = resolveSessionOnlineState(session);
+                const presence = resolveSessionOnlineState(normalizedSession);
 
                 // Preserve existing draft and permission mode if they exist, or load from saved data
                 const existingDraft = state.sessions[session.id]?.draft;
@@ -515,7 +545,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // Detect thinking -> not-thinking transition for unread marking
                 const previousSession = state.sessions[session.id];
                 const wasThinking = previousSession?.thinking === true;
-                const isNowNotThinking = session.thinking === false;
+                const isNowNotThinking = normalizedSession.thinking === false;
                 const isCurrentlyViewed = _currentViewedSessionId === session.id;
                 let unread = previousSession?.unread ?? false;
                 if (wasThinking && isNowNotThinking && !isCurrentlyViewed) {
@@ -523,13 +553,13 @@ export const storage = create<StorageState>()((set, get) => {
                 }
 
                 mergedSessions[session.id] = {
-                    ...session,
+                    ...normalizedSession,
                     presence,
-                    draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default',
-                    profileId: existingProfileId ?? savedProfileId ?? session.profileId ?? null,
-                    modelMode: existingModelMode ?? savedModelMode ?? session.modelMode ?? null,
-                    effortMode: existingEffortMode ?? savedEffortMode ?? session.effortMode ?? null,
+                    draft: existingDraft || savedDraft || normalizedSession.draft || null,
+                    permissionMode: existingPermissionMode || savedPermissionMode || normalizedSession.permissionMode || 'default',
+                    profileId: existingProfileId ?? savedProfileId ?? normalizedSession.profileId ?? null,
+                    modelMode: existingModelMode ?? savedModelMode ?? normalizedSession.modelMode ?? null,
+                    effortMode: existingEffortMode ?? savedEffortMode ?? normalizedSession.effortMode ?? null,
                     unread,
                 };
             });
