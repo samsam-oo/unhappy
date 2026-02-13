@@ -7,6 +7,7 @@ import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
 import { backoff } from '@/utils/time';
 import { io, Socket } from 'socket.io-client';
+import { z } from 'zod';
 import {
   registerCommonHandlers,
   SpawnSessionOptions,
@@ -99,7 +100,10 @@ type MachineRpcHandlers = {
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   stopSession: (sessionId: string) => boolean;
   requestShutdown: () => void;
+  requestUpdate: () => { message: string };
 };
+
+const EmptyParamsSchema = z.object({}).strict();
 
 export class ApiMachineClient {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
@@ -130,6 +134,7 @@ export class ApiMachineClient {
     spawnSession,
     stopSession,
     requestShutdown,
+    requestUpdate,
   }: MachineRpcHandlers) {
     // Register spawn session handler
     this.rpcHandlerManager.registerHandler(
@@ -200,7 +205,8 @@ export class ApiMachineClient {
     });
 
     // Register stop daemon handler
-    this.rpcHandlerManager.registerHandler('stop-daemon', () => {
+    this.rpcHandlerManager.registerHandler('stop-daemon', (params: unknown) => {
+      EmptyParamsSchema.parse(params);
       logger.debug('[API MACHINE] Received stop-daemon RPC request');
 
       // Trigger shutdown callback after a delay
@@ -213,6 +219,12 @@ export class ApiMachineClient {
         message:
           'Daemon stop request acknowledged, starting shutdown sequence...',
       };
+    });
+
+    this.rpcHandlerManager.registerHandler('update-daemon', (params: unknown) => {
+      EmptyParamsSchema.parse(params);
+      logger.debug('[API MACHINE] Received update-daemon RPC request');
+      return requestUpdate();
     });
 
     // Model listing for UI dropdowns (best-effort).

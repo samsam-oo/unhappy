@@ -894,12 +894,40 @@ export async function startDaemon(): Promise<void> {
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
+    let updateAlreadyRequested = false;
+
+    const requestUpdate = (): { message: string } => {
+      if (updateAlreadyRequested) {
+        return { message: 'Daemon update is already in progress' };
+      }
+
+      try {
+        const updater = spawnUnhappyCLI(['daemon', 'update', '--quiet'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env,
+        });
+        updater.unref();
+        updateAlreadyRequested = true;
+        logger.debug('[DAEMON RUN] Daemon updater process spawned');
+        return {
+          message:
+            'Daemon update requested. Installing latest CLI and restarting daemon.',
+        };
+      } catch (error) {
+        logger.debug('[DAEMON RUN] Failed to spawn daemon updater', error);
+        throw new Error(
+          `Failed to start daemon update: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    };
 
     // Set RPC handlers
     apiMachine.setRPCHandlers({
       spawnSession,
       stopSession,
       requestShutdown: () => requestShutdown('unhappy-app'),
+      requestUpdate,
     });
 
     // Connect to server

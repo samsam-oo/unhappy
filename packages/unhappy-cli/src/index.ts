@@ -26,6 +26,7 @@ import { killRunawayHappyProcesses } from './daemon/doctor';
 import { install } from './daemon/install';
 import { startDaemon } from './daemon/run';
 import { uninstall } from './daemon/uninstall';
+import { runDaemonUpdate } from './daemon/update';
 import { readCredentials, readSettings } from './persistence';
 import { authAndSetupMachineIfNeeded } from './ui/auth';
 import { runDoctorCommand } from './ui/doctor';
@@ -507,6 +508,23 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
         );
         process.exit(1);
       }
+    } else if (daemonSubcommand === 'update') {
+      const quiet = args.includes('--quiet');
+
+      try {
+        const result = await runDaemonUpdate({ quiet });
+        if (!quiet) {
+          console.log(`CLI updated using: ${result.command}`);
+          console.log('Daemon restart requested');
+        }
+        process.exit(0);
+      } catch (error) {
+        console.error(
+          chalk.red('Error:'),
+          error instanceof Error ? error.message : 'Unknown error',
+        );
+        process.exit(1);
+      }
     } else {
       console.log(`
 ${chalk.bold('unhappy daemon')} - Daemon management
@@ -514,6 +532,7 @@ ${chalk.bold('unhappy daemon')} - Daemon management
 ${chalk.bold('Usage:')}
   unhappy daemon start              Start the daemon (detached)
   unhappy daemon stop               Stop the daemon (sessions stay alive)
+  unhappy daemon update             Update CLI and restart daemon
   unhappy daemon status             Show daemon status
   unhappy daemon list               List active sessions
 

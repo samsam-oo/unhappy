@@ -18,7 +18,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync, spawn } from 'child_process';
 import { existsSync, unlinkSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import path, { join } from 'path';
+import { io } from 'socket.io-client';
 import { configuration } from '@/configuration';
+import { ApiClient } from '@/api/api';
+import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
 import { 
   listDaemonSessions, 
   stopDaemonSession, 
@@ -27,10 +30,11 @@ import {
   notifyDaemonSessionStarted, 
   stopDaemon
 } from '@/daemon/controlClient';
-import { readDaemonState, clearDaemonState } from '@/persistence';
+import { readCredentials, readDaemonState, clearDaemonState, readSettings } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import { getLatestDaemonLog } from '@/ui/logger';
+import { initialMachineMetadata } from './run';
 
 // Utility to wait for condition
 async function waitFor(
@@ -44,6 +48,66 @@ async function waitFor(
     await new Promise(resolve => setTimeout(resolve, interval));
   }
   throw new Error('Timeout waiting for condition');
+}
+
+async function callMachineRpc<TResponse>(opts: {
+  token: string;
+  machineId: string;
+  encryptionKey: Uint8Array;
+  encryptionVariant: 'legacy' | 'dataKey';
+  method: string;
+  params: unknown;
+}): Promise<TResponse> {
+  const endpoint = configuration.serverUrl.replace(/^http/, 'ws');
+  const socket = io(endpoint, {
+    transports: ['websocket'],
+    auth: {
+      token: opts.token,
+      clientType: 'user-scoped',
+    },
+    path: '/v1/updates',
+    reconnection: false,
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    socket.once('connect', () => resolve());
+    socket.once('connect_error', (error) => reject(error));
+  });
+
+  try {
+    const encryptedParams = encodeBase64(
+      encrypt(opts.encryptionKey, opts.encryptionVariant, opts.params),
+    );
+    const result: any = await socket.timeout(30_000).emitWithAck('rpc-call', {
+      method: `${opts.machineId}:${opts.method}`,
+      params: encryptedParams,
+    });
+
+    if (!result || typeof result !== 'object' || !result.ok) {
+      const errorMessage =
+        result && typeof result.error === 'string'
+          ? result.error
+          : 'RPC call failed';
+      throw new Error(errorMessage);
+    }
+
+    const decrypted = decrypt(
+      opts.encryptionKey,
+      opts.encryptionVariant,
+      decodeBase64(result.result),
+    );
+    if (
+      decrypted &&
+      typeof decrypted === 'object' &&
+      'error' in decrypted &&
+      typeof (decrypted as any).error === 'string'
+    ) {
+      throw new Error((decrypted as any).error);
+    }
+    return decrypted as TResponse;
+  } finally {
+    socket.close();
+  }
 }
 
 // Check if dev server is running and properly configured
@@ -75,6 +139,7 @@ async function isServerHealthy(): Promise<boolean> {
 
 describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout: 20_000 }, () => {
   let daemonPid: number;
+  const testUpdateCommand = 'node -e "process.exit(0)"';
 
   beforeEach(async () => {
     // First ensure no daemon is running by checking PID in metadata file
@@ -83,7 +148,11 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     // Start fresh daemon for this test
     // This will return and start a background process - we don't need to wait for it
     void spawnUnhappyCLI(['daemon', 'start'], {
-      stdio: 'ignore'
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        UNHAPPY_DAEMON_UPDATE_COMMAND: testUpdateCommand,
+      },
     });
     
     // Wait for daemon to write its state file (it needs to auth, setup, and start server)
@@ -273,6 +342,43 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
     // Should report that daemon is already running
     expect(output).toContain('already running');
+  });
+
+  it('should handle update-daemon via encrypted machine RPC and restart daemon', { timeout: 40_000 }, async () => {
+    const initialState = await readDaemonState();
+    expect(initialState).toBeTruthy();
+    const initialPid = initialState!.pid;
+
+    const credentials = await readCredentials();
+    expect(credentials).toBeTruthy();
+
+    const settings = await readSettings();
+    expect(settings.machineId).toBeTruthy();
+
+    const api = await ApiClient.create(credentials!);
+    const machine = await api.getOrCreateMachine({
+      machineId: settings.machineId!,
+      metadata: initialMachineMetadata,
+    });
+
+    const response = await callMachineRpc<{ message: string }>({
+      token: credentials!.token,
+      machineId: machine.id,
+      encryptionKey: machine.encryptionKey,
+      encryptionVariant: machine.encryptionVariant,
+      method: 'update-daemon',
+      params: {},
+    });
+    expect(response.message.toLowerCase()).toContain('update');
+
+    await waitFor(async () => {
+      const state = await readDaemonState();
+      return !!state && state.pid !== initialPid;
+    }, 30_000, 250);
+
+    const finalState = await readDaemonState();
+    expect(finalState).toBeTruthy();
+    expect(finalState!.pid).not.toBe(initialPid);
   });
 
   it('should handle concurrent session operations', async () => {

@@ -52,7 +52,7 @@ unhappy connect gemini
 - `unhappy auth` – Manage authentication
 - `unhappy connect` – Store AI vendor API keys in Unhappy cloud
 - `unhappy notify` – Send a push notification to your devices
-- `unhappy daemon` – Manage background service
+- `unhappy daemon` – Manage background service (`start`, `stop`, `status`, `list`, `update`)
 - `unhappy doctor` – System diagnostics & troubleshooting
 
 ### Connect Subcommands

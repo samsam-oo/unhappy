@@ -52,7 +52,7 @@ export class RpcHandlerManager {
      * @param request - The RPC request data
      * @param callback - The response callback
      */
-    async handleRequest(
+  async handleRequest(
         request: RpcRequest,
     ): Promise<any> {
         try {
@@ -66,7 +66,21 @@ export class RpcHandlerManager {
             }
 
             // Decrypt the incoming params
-            const decryptedParams = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(request.params));
+            const decryptedParams = decrypt(
+                this.encryptionKey,
+                this.encryptionVariant,
+                decodeBase64(request.params),
+            );
+            if (decryptedParams === null) {
+                this.logger('[RPC] [ERROR] Failed to decrypt RPC params', {
+                    method: request.method,
+                });
+                const errorResponse = { error: 'Failed to decrypt RPC params' };
+                const encryptedError = encodeBase64(
+                    encrypt(this.encryptionKey, this.encryptionVariant, errorResponse),
+                );
+                return encryptedError;
+            }
 
             // Call the handler
             this.logger('[RPC] Calling handler', { method: request.method });
