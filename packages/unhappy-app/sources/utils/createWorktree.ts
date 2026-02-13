@@ -44,6 +44,10 @@ function deriveWorktreeFolderName(branchName: string): string {
     return folder;
 }
 
+function isBranchAlreadyExistsError(error: string): boolean {
+    return /already exists/.test(error) && /branch/.test(error);
+}
+
 export async function createWorktree(
     machineId: string,
     basePath: string,
@@ -181,11 +185,48 @@ export async function createWorktree(
         const pathExists = await machineBash(machineId, `test -e ${bashQuote(worktreePathAbs)}`, safeCwd);
         if (pathExists.success) continue;
 
-        const result = await machineBash(
+        const ensureRootResult = await machineBash(
             machineId,
-            `mkdir -p ${bashQuote(worktreeRootAbs)} && git -C ${bashQuote(repoRoot)} worktree add -b ${bashQuote(cand.branch)} ${bashQuote(worktreePathAbs)}`,
+            `mkdir -p ${bashQuote(worktreeRootAbs)}`,
             safeCwd
         );
+        if (!ensureRootResult.success) {
+            lastError = (ensureRootResult.stderr || ensureRootResult.stdout || 'Failed to prepare worktree root').trim();
+            return {
+                success: false,
+                worktreePath: '',
+                branchName: '',
+                errorCode: 'WORKTREE_ERROR',
+                error: lastError || 'Failed to create worktree'
+            };
+        }
+
+        const addWithNewBranchCmd = `git -C ${bashQuote(repoRoot)} worktree add -b ${bashQuote(cand.branch)} ${bashQuote(worktreePathAbs)}`;
+        const result = await machineBash(machineId, addWithNewBranchCmd, safeCwd);
+
+        if (!result.success && requestedBranchName && isBranchAlreadyExistsError((result.stderr || result.stdout || '').trim())) {
+            // If the branch already exists, attach the worktree to that branch instead of creating a new one.
+            const checkoutExistingCmd = `git -C ${bashQuote(repoRoot)} worktree add ${bashQuote(worktreePathAbs)} ${bashQuote(cand.branch)}`;
+            const existingBranchResult = await machineBash(machineId, checkoutExistingCmd, safeCwd);
+            if (existingBranchResult.success) {
+                return {
+                    success: true,
+                    worktreePath: worktreePathAbs,
+                    branchName: cand.branch,
+                    error: undefined
+                };
+            }
+
+            lastError = (existingBranchResult.stderr || existingBranchResult.stdout || 'Failed to attach existing branch worktree').trim();
+            return {
+                success: false,
+                worktreePath: '',
+                branchName: '',
+                errorCode: 'WORKTREE_ERROR',
+                error: lastError || 'Failed to create worktree'
+            };
+        }
+
         if (result.success) {
             return {
                 success: true,

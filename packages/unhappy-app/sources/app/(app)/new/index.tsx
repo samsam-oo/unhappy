@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput, Keyboard } from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
 import Constants from 'expo-constants';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
@@ -39,6 +39,7 @@ import { SearchableListSelector, SelectorConfig } from '@/components/SearchableL
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import type { ReasoningEffortMode } from '@/sync/storageTypes';
 import { SHOW_GEMINI_UI } from '@/config';
+import { normalizePermissionPolicy } from '@/sync/permissionPolicy';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -339,6 +340,7 @@ function NewSessionWizard() {
     // Variant B (true): Enhanced profile-first wizard with sections
     const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
+    const lastUsedPlanOnly = useSetting('lastUsedPlanOnly');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const lastUsedEffortMode = useSetting('lastUsedEffortMode');
     const experimentsEnabled = useSetting('experiments');
@@ -417,20 +419,12 @@ function NewSessionWizard() {
         didInitWorktreeNameRef.current = true;
         setWorktreeName((prev) => (prev.trim() ? prev : generateWorktreeName()));
     }, [sessionType]);
-    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        // Initialize with last used permission mode if valid, otherwise default to 'default'
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-
-        if (lastUsedPermissionMode) {
-            if ((agentType === 'codex' || agentType === 'gemini') && validCodexGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            }
-        }
-        return 'default';
-    });
+    const initialPermissionPolicy = React.useMemo(() => normalizePermissionPolicy({
+        permissionMode: lastUsedPermissionMode as PermissionMode | null,
+        planOnly: lastUsedPlanOnly,
+    }), [lastUsedPermissionMode, lastUsedPlanOnly]);
+    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(initialPermissionPolicy.permissionMode);
+    const [planOnly, setPlanOnly] = React.useState<boolean>(initialPermissionPolicy.planOnly);
 
     // NOTE: Permission mode reset on agentType change is handled by the validation useEffect below (lines ~670-681)
     // which intelligently resets only when the current mode is invalid for the new agent type.
@@ -488,9 +482,15 @@ function NewSessionWizard() {
     }, [selectedMachineId, machines, recentMachinePaths]);
 
     const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
+        const normalized = normalizePermissionPolicy({ permissionMode: mode });
+        setPlanOnly(false);
+        setPermissionMode(normalized.permissionMode);
         // Save the new selection immediately
-        sync.applySettings({ lastUsedPermissionMode: mode });
+        sync.applySettings({ lastUsedPermissionMode: normalized.permissionMode, lastUsedPlanOnly: false });
+    }, []);
+    const handlePlanOnlyChange = React.useCallback((nextPlanOnly: boolean) => {
+        setPlanOnly(nextPlanOnly);
+        sync.applySettings({ lastUsedPlanOnly: nextPlanOnly });
     }, []);
 
     const handleModelModeChange = React.useCallback((mode: string | null) => {
@@ -646,7 +646,7 @@ function NewSessionWizard() {
             const supportedAgents = (Object.entries(profile.compatibility) as [string, boolean][])
                 .filter(([agent, supported]) => supported && agent !== agentType)
                 .map(([agent]) => agent.charAt(0).toUpperCase() + agent.slice(1)); // 'claude' -> 'Claude'
-            const required = supportedAgents.join(' or ') || 'another agent';
+            const required = supportedAgents.join(' 또는 ') || '다른 에이전트';
             return {
                 available: false,
                 reason: `requires-agent:${required}`,
@@ -825,24 +825,15 @@ function NewSessionWizard() {
             }
             // Set permission mode from profile's default
             if (profile.defaultPermissionMode) {
-                setPermissionMode(profile.defaultPermissionMode as PermissionMode);
+                const normalized = normalizePermissionPolicy({
+                    permissionMode: profile.defaultPermissionMode as PermissionMode,
+                    planOnly: profile.defaultPlanOnly,
+                });
+                setPermissionMode(normalized.permissionMode);
+                setPlanOnly(normalized.planOnly);
             }
         }
     }, [profileMap, cliAvailability.claude, cliAvailability.codex, cliAvailability.gemini, experimentsEnabled]);
-
-    // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
-    React.useEffect(() => {
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexGeminiModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-
-        const isValidForCurrentAgent = (agentType === 'codex' || agentType === 'gemini')
-            ? validCodexGeminiModes.includes(permissionMode)
-            : validClaudeModes.includes(permissionMode);
-
-        if (!isValidForCurrentAgent) {
-            setPermissionMode('default');
-        }
-    }, [agentType, permissionMode]);
 
     // Keep model selection sane when switching providers.
     React.useEffect(() => {
@@ -895,7 +886,13 @@ function NewSessionWizard() {
     }, [scrollToSection]);
 
     const handleAgentInputPermissionChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
+        const normalized = normalizePermissionPolicy({ permissionMode: mode });
+        setPlanOnly(false);
+        setPermissionMode(normalized.permissionMode);
+        scrollToSection(permissionSectionRef);
+    }, [scrollToSection]);
+    const handleAgentInputPlanOnlyChange = React.useCallback((nextPlanOnly: boolean) => {
+        setPlanOnly(nextPlanOnly);
         scrollToSection(permissionSectionRef);
     }, [scrollToSection]);
 
@@ -929,7 +926,7 @@ function NewSessionWizard() {
         const duplicatedProfile: AIBackendProfile = {
             ...profile,
             id: randomUUID(),
-            name: `${profile.name} (Copy)`,
+            name: `${profile.name} (복사본)`,
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -945,12 +942,12 @@ function NewSessionWizard() {
 
         // Add "Built-in" indicator first for built-in profiles
         if (profile.isBuiltIn) {
-            parts.push('Built-in');
+            parts.push('기본 제공');
         }
 
         // Add CLI type second (before warnings/availability)
         if (profile.compatibility.claude && profile.compatibility.codex) {
-            parts.push('Claude & Codex CLI');
+            parts.push('Claude 및 Codex CLI');
         } else if (profile.compatibility.claude) {
             parts.push('Claude CLI');
         } else if (profile.compatibility.codex) {
@@ -961,11 +958,11 @@ function NewSessionWizard() {
         if (!availability.available && availability.reason) {
             if (availability.reason.startsWith('requires-agent:')) {
                 const required = availability.reason.split(':')[1];
-                parts.push(`⚠️ This profile uses ${required} CLI only`);
+                parts.push(`⚠️ 이 프로필은 ${required} CLI만 사용합니다`);
             } else if (availability.reason.startsWith('cli-not-detected:')) {
                 const cli = availability.reason.split(':')[1];
                 const cliName = cli === 'claude' ? 'Claude' : 'Codex';
-                parts.push(`⚠️ ${cliName} CLI not detected (this profile needs it)`);
+                parts.push(`⚠️ ${cliName} CLI가 감지되지 않았습니다(이 프로필에 필요함)`);
             }
         }
 
@@ -1127,6 +1124,7 @@ function NewSessionWizard() {
         try {
             const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
             let actualPath = selectedPath;
+            let worktreeBranchName = '';
 
             // Handle worktree creation
             if (sessionType === 'worktree') {
@@ -1141,14 +1139,15 @@ function NewSessionWizard() {
                     if (worktreeResult.errorCode === 'NOT_GIT_REPO' || worktreeResult.error === 'Not a Git repository') {
                         Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
                     } else {
-                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
+                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || t('errors.unknownError') }));
                     }
                     setIsCreating(false);
                     return;
                 }
 
-                actualPath = worktreeResult.worktreePath;
-            }
+                    actualPath = worktreeResult.worktreePath;
+                    worktreeBranchName = worktreeResult.branchName || requestedName;
+                }
 
             // Save settings
             const updatedPaths = [{ machineId: selectedMachineId, path: selectedPath }, ...recentMachinePaths.filter(rp => rp.machineId !== selectedMachineId)].slice(0, 10);
@@ -1157,6 +1156,7 @@ function NewSessionWizard() {
                 lastUsedAgent: agentType,
                 lastUsedProfile: selectedProfileId,
                 lastUsedPermissionMode: permissionMode,
+                lastUsedPlanOnly: planOnly,
                 lastUsedModelMode: modelMode,
                 lastUsedEffortMode: effortMode,
             });
@@ -1208,13 +1208,30 @@ function NewSessionWizard() {
             }
 
             if (createdSessionId) {
+                await sync.refreshSessions();
+
+                if (sessionType === 'worktree' && worktreeBranchName) {
+                    const createdSession = storage.getState().sessions[createdSessionId];
+                    if (createdSession?.metadata) {
+                        const summary = {
+                            text: worktreeBranchName,
+                            updatedAt: Date.now(),
+                        };
+                        storage.getState().applySessions([{
+                            ...createdSession,
+                            metadata: {
+                                ...createdSession.metadata,
+                                summary,
+                            },
+                        }]);
+                    }
+                }
+
                 // Clear draft state on successful session creation
                 clearNewSessionDraft();
 
-                await sync.refreshSessions();
-
                 // Set permission mode and model mode on the session
-                storage.getState().updateSessionPermissionMode(createdSessionId, permissionMode);
+                storage.getState().updateSessionPermissionMode(createdSessionId, planOnly ? 'plan' : permissionMode);
                 storage.getState().updateSessionProfileId(createdSessionId, selectedProfileId);
                 storage.getState().updateSessionEffortMode(createdSessionId, effortMode);
                 if (modelMode && modelMode !== 'default') {
@@ -1234,22 +1251,22 @@ function NewSessionWizard() {
             } else {
                 throw new Error(result.type === 'error'
                     ? result.errorMessage
-                    : 'Session spawning failed - no session ID returned.');
+                    : t('newSession.sessionSpawningFailed'));
             }
         } catch (error) {
             console.error('Failed to start session', error);
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+            let errorMessage = t('newSession.failedToStart');
             if (error instanceof Error) {
                 if (error.message.includes('timeout')) {
-                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
+                    errorMessage = t('newSession.sessionTimeout');
                 } else if (error.message.includes('Socket not connected')) {
-                    errorMessage = 'Not connected to server. Check your internet connection.';
+                    errorMessage = t('newSession.notConnectedToServer');
                 }
             }
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, effortMode, recentMachinePaths, profileMap, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, planOnly, modelMode, effortMode, recentMachinePaths, profileMap, router]);
 
     const screenWidth = useWindowDimensions().width;
 
@@ -1262,14 +1279,14 @@ function NewSessionWizard() {
         const includeCLI = selectedMachineId && cliAvailability.timestamp > 0;
 
         return {
-            text: isOnline ? 'online' : 'offline',
+            text: isOnline ? t('common.online') : t('common.offline'),
             color: isOnline ? theme.colors.success : theme.colors.textDestructive,
             dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
             isPulsing: isOnline,
             cliStatus: includeCLI ? {
                 claude: cliAvailability.claude,
                 codex: cliAvailability.codex,
-                ...(SHOW_GEMINI_UI && experimentsEnabled && { gemini: cliAvailability.gemini }),
+                ...((SHOW_GEMINI_UI && experimentsEnabled) ? { gemini: cliAvailability.gemini } : {}),
             } : undefined,
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, experimentsEnabled, theme]);
@@ -1311,7 +1328,7 @@ function NewSessionWizard() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
                 style={styles.container}
             >
-                <Pressable style={{ flex: 1, justifyContent: 'flex-end' }} onPress={() => Keyboard.dismiss()}>
+                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
                         <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
@@ -1321,7 +1338,7 @@ function NewSessionWizard() {
                                 onSend={handleCreateSession}
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
-                                placeholder="What would you like to work on?"
+                                placeholder="무엇을 작업하고 싶으신가요?"
                                 autocompletePrefixes={[]}
                                 autocompleteSuggestions={async () => []}
                                 agentType={agentType}
@@ -1329,6 +1346,8 @@ function NewSessionWizard() {
                                 machineId={selectedMachineId ?? undefined}
                                 permissionMode={permissionMode}
                                 onPermissionModeChange={handlePermissionModeChange}
+                                planOnly={planOnly}
+                                onPlanOnlyChange={handlePlanOnlyChange}
                                 modelMode={modelMode}
                                 onModelModeChange={handleModelModeChange}
                                 effortMode={effortMode}
@@ -1346,7 +1365,7 @@ function NewSessionWizard() {
                             />
                         </View>
                     </View>
-                </Pressable>
+                </View>
             </KeyboardAvoidingView>
         );
     }
@@ -1391,7 +1410,7 @@ function NewSessionWizard() {
                                     <Ionicons name="desktop-outline" size={16} color={theme.colors.textSecondary} />
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_ITEM_GAP, flexWrap: 'wrap' }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
+                                            {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || '머신'}:
                                         </Text>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                             <StatusDot
@@ -1438,10 +1457,10 @@ function NewSessionWizard() {
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
                                 {/* "Profile" here means backend preset, not a user profile. */}
                                 <Ionicons name="layers-outline" size={18} color={theme.colors.text} />
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Backend Preset</Text>
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>AI 백엔드 프리셋 선택</Text>
                             </View>
                             <Text style={styles.sectionDescription}>
-                                Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
+                                세션을 실행할 AI 백엔드를 선택하세요(Claude 또는 Codex). 대체 API를 사용하려면 사용자 정의 프로필을 만드세요.
                             </Text>
 
                             {/* Missing CLI Installation Banners */}
@@ -1458,11 +1477,11 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Claude CLI Not Detected
+                                                Claude CLI를 찾을 수 없습니다
                                             </Text>
                                             <View style={{ flex: 1, minWidth: 20 }} />
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
+                                                이 알림을 더 이상 표시하지 않기:
                                             </Text>
                                             <Pressable
                                                 onPress={() => handleCLIBannerDismiss('claude', 'machine')}
@@ -1475,7 +1494,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
+                                                    이 머신에서만
                                                 </Text>
                                             </Pressable>
                                             <Pressable
@@ -1489,7 +1508,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
+                                                    모든 머신에서
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -1502,7 +1521,7 @@ function NewSessionWizard() {
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g @anthropic-ai/claude-code •
+                                            설치: npm install -g @anthropic-ai/claude-code •
                                         </Text>
                                         <Pressable onPress={() => {
                                             if (Platform.OS === 'web') {
@@ -1510,7 +1529,7 @@ function NewSessionWizard() {
                                             }
                                         }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
+                                                설치 가이드 보기 →
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -1530,11 +1549,11 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Codex CLI Not Detected
+                                                Codex CLI를 찾을 수 없습니다
                                             </Text>
                                             <View style={{ flex: 1, minWidth: 20 }} />
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
+                                                이 알림을 더 이상 표시하지 않기:
                                             </Text>
                                             <Pressable
                                                 onPress={() => handleCLIBannerDismiss('codex', 'machine')}
@@ -1547,7 +1566,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
+                                                    이 머신에서만
                                                 </Text>
                                             </Pressable>
                                             <Pressable
@@ -1561,7 +1580,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
+                                                    모든 머신에서
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -1574,7 +1593,7 @@ function NewSessionWizard() {
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g codex-cli •
+                                            설치: npm install -g codex-cli •
                                         </Text>
                                         <Pressable onPress={() => {
                                             if (Platform.OS === 'web') {
@@ -1582,7 +1601,7 @@ function NewSessionWizard() {
                                             }
                                         }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
+                                                설치 가이드 보기 →
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -1602,11 +1621,11 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Gemini CLI Not Detected
+                                                Gemini CLI를 찾을 수 없습니다
                                             </Text>
                                             <View style={{ flex: 1, minWidth: 20 }} />
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show this popup for
+                                                이 알림을 더 이상 표시하지 않기:
                                             </Text>
                                             <Pressable
                                                 onPress={() => handleCLIBannerDismiss('gemini', 'machine')}
@@ -1619,7 +1638,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    this machine
+                                                    이 머신에서만
                                                 </Text>
                                             </Pressable>
                                             <Pressable
@@ -1633,7 +1652,7 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                    any machine
+                                                    모든 머신에서
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -1646,7 +1665,7 @@ function NewSessionWizard() {
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install gemini CLI if available •
+                                            가능한 경우 Gemini CLI를 설치하세요 •
                                         </Text>
                                         <Pressable onPress={() => {
                                             if (Platform.OS === 'web') {
@@ -1654,7 +1673,7 @@ function NewSessionWizard() {
                                             }
                                         }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Gemini Docs →
+                                                Gemini 문서 보기 →
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -1780,7 +1799,7 @@ function NewSessionWizard() {
                                 >
                                     <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
                                     <Text style={styles.addProfileButtonText}>
-                                        Add
+                                        추가
                                     </Text>
                                 </Pressable>
                                 <Pressable
@@ -1794,7 +1813,7 @@ function NewSessionWizard() {
                                 >
                                     <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
                                     <Text style={styles.addProfileButtonText}>
-                                        Duplicate
+                                        복제
                                     </Text>
                                 </Pressable>
                                 <Pressable
@@ -1808,7 +1827,7 @@ function NewSessionWizard() {
                                 >
                                     <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
                                     <Text style={[styles.addProfileButtonText, { color: theme.colors.deleteAction }]}>
-                                        Delete
+                                        삭제
                                     </Text>
                                 </Pressable>
                             </View>
@@ -1818,7 +1837,7 @@ function NewSessionWizard() {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
                                     <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>머신 선택</Text>
                                 </View>
                             </View>
 
@@ -1845,7 +1864,7 @@ function NewSessionWizard() {
                                     getItemStatus: (machine) => {
                                         const offline = !isMachineOnline(machine);
                                         return {
-                                            text: offline ? 'offline' : 'online',
+                                            text: offline ? t('common.offline') : t('common.online'),
                                             color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                                             dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
                                             isPulsing: !offline,
@@ -1863,10 +1882,10 @@ function NewSessionWizard() {
                                         const search = searchText.toLowerCase();
                                         return displayName.includes(search) || host.includes(search);
                                     },
-                                    searchPlaceholder: "Type to filter machines...",
-                                    recentSectionTitle: "Recent Machines",
-                                    favoritesSectionTitle: "Favorite Machines",
-                                    noItemsMessage: "No machines available",
+                                    searchPlaceholder: "머신 이름으로 검색",
+                                    recentSectionTitle: "최근 머신",
+                                    favoritesSectionTitle: "즐겨찾기 머신",
+                                    noItemsMessage: "사용 가능한 머신이 없습니다",
                                     showFavorites: true,
                                     showRecent: true,
                                     showSearch: true,
@@ -1898,7 +1917,7 @@ function NewSessionWizard() {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
                                     <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>작업 디렉터리 선택</Text>
                                 </View>
                             </View>
 
@@ -1935,10 +1954,10 @@ function NewSessionWizard() {
                                     filterItem: (path, searchText) => {
                                         return formatWorkingDirForUser(path).toLowerCase().includes(searchText.toLowerCase());
                                     },
-                                    searchPlaceholder: "Type to filter or enter custom directory...",
-                                    recentSectionTitle: "Recent Directories",
-                                    favoritesSectionTitle: "Favorite Directories",
-                                    noItemsMessage: "No recent directories",
+                                    searchPlaceholder: "검색하거나 직접 경로 입력",
+                                    recentSectionTitle: "최근 디렉터리",
+                                    favoritesSectionTitle: "즐겨찾기 디렉터리",
+                                    noItemsMessage: "최근 디렉터리가 없습니다",
                                     showFavorites: true,
                                     showRecent: true,
                                     showSearch: true,
@@ -1989,7 +2008,7 @@ function NewSessionWizard() {
                                     <ItemGroup title={t('finishSession.basePath')}>
                                         <Item
                                             title={t('common.open')}
-                                            subtitle="Pick a project folder"
+                                            subtitle="프로젝트 폴더 열기"
                                             subtitleLines={0}
                                             icon={<Ionicons name="folder-open-outline" size={29} color={theme.colors.textSecondary} />}
                                             onPress={() => {
@@ -2058,7 +2077,7 @@ function NewSessionWizard() {
                                                             onPress={() => setWorktreeName(generateWorktreeName())}
                                                             hitSlop={10}
                                                             style={styles.worktreeNameAction}
-                                                            accessibilityLabel="Generate worktree name"
+                                                            accessibilityLabel="워크트리 이름 생성"
                                                         >
                                                             <Ionicons name="shuffle" size={16} color={theme.colors.textSecondary} />
                                                         </Pressable>
@@ -2083,52 +2102,55 @@ function NewSessionWizard() {
 
                             {/* Section 4: Permission Mode */}
                             <View ref={permissionSectionRef}>
-                                <Text style={styles.sectionHeader}>4. Permission Mode</Text>
+                                <Text style={styles.sectionHeader}>4. 권한 모드</Text>
                             </View>
                             <ItemGroup title="">
-                                {(agentType === 'codex'
-                                    ? [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'read-only' as PermissionMode, label: 'Read Only', description: 'Read-only mode', icon: 'eye-outline' },
-                                        { value: 'safe-yolo' as PermissionMode, label: 'Safe YOLO', description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
-                                        { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'Full access, skip permissions', icon: 'flash-outline' },
-                                    ]
-                                    : [
-                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                                    ]
-                                ).map((option, index, array) => (
-                                    <Item
-                                        key={option.value}
-                                        title={option.label}
-                                        subtitle={option.description}
-                                        leftElement={
-                                            <Ionicons
-                                                name={option.icon as any}
-                                                size={24}
-                                                color={permissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
-                                            />
-                                        }
-                                        rightElement={permissionMode === option.value ? (
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.button.primary.tint}
-                                            />
-                                        ) : null}
-                                        onPress={() => setPermissionMode(option.value)}
-                                        showChevron={false}
-                                        selected={permissionMode === option.value}
-                                        showDivider={index < array.length - 1}
-                                        style={permissionMode === option.value ? {
-                                            borderWidth: 2,
-                                            borderColor: theme.colors.button.primary.tint,
-                                            borderRadius: Platform.select({ ios: 10, default: 16 }),
-                                        } : undefined}
-                                    />
-                                ))}
+                                {([
+                                    { kind: 'mode', value: 'default', label: '기본', description: '권한을 요청합니다', icon: 'shield-outline' },
+                                    { kind: 'plan', label: '계획 모드', description: '실행 전 계획 수립', icon: 'list-outline' },
+                                    { kind: 'mode', value: 'allow-edits', label: '편집 허용', description: '편집을 자동 승인', icon: 'create-outline' },
+                                    { kind: 'mode', value: 'read-only', label: '읽기 전용', description: '읽기 전용 모드', icon: 'eye-outline' },
+                                    { kind: 'mode', value: 'bypass', label: '우회', description: '모든 권한 요청 건너뛰기', icon: 'flash-outline' },
+                                ] as const).map((row, index, array) => {
+                                    const isSelected = row.kind === 'plan' ? planOnly : !planOnly && permissionMode === row.value;
+                                    return (
+                                        <Item
+                                            key={row.kind === 'plan' ? 'planning' : row.value}
+                                            title={row.label}
+                                            subtitle={row.description}
+                                            leftElement={
+                                                <Ionicons
+                                                    name={row.icon as any}
+                                                    size={24}
+                                                    color={isSelected ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                                />
+                                            }
+                                            rightElement={isSelected ? (
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={20}
+                                                    color={theme.colors.button.primary.tint}
+                                                />
+                                            ) : null}
+                                            onPress={() => {
+                                                if (row.kind === 'plan') {
+                                                    setPlanOnly(!planOnly);
+                                                    return;
+                                                }
+                                                setPlanOnly(false);
+                                                setPermissionMode(row.value);
+                                            }}
+                                            showChevron={false}
+                                            selected={isSelected}
+                                            showDivider={index < array.length - 1}
+                                            style={isSelected ? {
+                                                borderWidth: 2,
+                                                borderColor: theme.colors.button.primary.tint,
+                                                borderRadius: Platform.select({ ios: 10, default: 16 }),
+                                            } : undefined}
+                                        />
+                                    );
+                                })}
                             </ItemGroup>
                         </View>
                     </View>
@@ -2138,13 +2160,13 @@ function NewSessionWizard() {
                 {/* Section 5: AgentInput - Sticky at bottom */}
                 <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
                     <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
-                        <AgentInput
-                            value={sessionPrompt}
-                            onChangeText={setSessionPrompt}
-                            onSend={handleCreateSession}
-                            isSendDisabled={!canCreate}
-                            isSending={isCreating}
-                            placeholder="What would you like to work on?"
+                            <AgentInput
+                                value={sessionPrompt}
+                                onChangeText={setSessionPrompt}
+                                onSend={handleCreateSession}
+                                isSendDisabled={!canCreate}
+                                isSending={isCreating}
+                                placeholder="무엇을 작업하고 싶으신가요?"
                             autocompletePrefixes={[]}
                             autocompleteSuggestions={async () => []}
                             agentType={agentType}
@@ -2152,6 +2174,8 @@ function NewSessionWizard() {
                             machineId={selectedMachineId ?? undefined}
                             permissionMode={permissionMode}
                             onPermissionModeChange={handleAgentInputPermissionChange}
+                            planOnly={planOnly}
+                            onPlanOnlyChange={handleAgentInputPlanOnlyChange}
                             modelMode={modelMode}
                             onModelModeChange={handleModelModeChange}
                             effortMode={effortMode}
