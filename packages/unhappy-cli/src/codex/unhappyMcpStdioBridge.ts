@@ -83,11 +83,17 @@ async function main() {
         // Pass-through response from HTTP server
         return response as any;
       } catch (error) {
+        const statusSuffix =
+          typeof (error as { code?: unknown })?.code === 'number'
+            ? ` (HTTP ${(error as { code: number }).code})`
+            : '';
+        const message =
+          error instanceof Error ? error.message : String(error);
         return {
           content: [
             {
               type: 'text',
-              text: `Failed to change chat title: ${error instanceof Error ? error.message : String(error)}`,
+              text: `Failed to change chat title${statusSuffix}: ${message}`,
             },
           ],
           isError: true,

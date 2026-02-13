@@ -12,6 +12,20 @@ import { createServer } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { z } from 'zod';
 
+function formatUnknownError(error: unknown): string {
+  if (error instanceof Error) {
+    if (typeof error.stack === 'string' && error.stack.length > 0) {
+      return error.stack;
+    }
+    return error.message;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
 export async function startHappyServer(client: ApiSessionClient) {
   // Handler that sends title updates via the client
   const handler = async (title: string) => {
@@ -81,6 +95,9 @@ export async function startHappyServer(client: ApiSessionClient) {
     // sdk spawn to fail with `Invalid Request: Server already initialized`
     sessionIdGenerator: undefined,
   });
+  transport.onerror = (error) => {
+    logger.debug('[happyMCP] Transport error:', formatUnknownError(error));
+  };
   await mcp.connect(transport);
 
   //
@@ -91,9 +108,16 @@ export async function startHappyServer(client: ApiSessionClient) {
     try {
       await transport.handleRequest(req, res);
     } catch (error) {
-      logger.debug('Error handling request:', error);
+      const errorText = formatUnknownError(error);
+      logger.debug(
+        `[happyMCP] Error handling request (${req.method ?? 'UNKNOWN'} ${req.url ?? '/'}): ${errorText}`,
+      );
       if (!res.headersSent) {
-        res.writeHead(500).end();
+        res
+          .writeHead(500, {
+            'content-type': 'text/plain; charset=utf-8',
+          })
+          .end(errorText);
       }
     }
   });
