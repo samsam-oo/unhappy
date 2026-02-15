@@ -23,9 +23,6 @@ import { ActivityIndicator, LayoutAnimation, Platform, Pressable, UIManager, Vie
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
     Easing,
-    FadeIn,
-    FadeOut,
-    LinearTransition,
     cancelAnimation,
     runOnJS,
     useAnimatedStyle,
@@ -1285,20 +1282,6 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
         return map;
     }, [sessionById, visibleProjectGroups]);
 
-    // Reanimated layout transitions can be glitchy on web/react-native-web (especially inside FlatList).
-    // We keep native animations, and disable them on web to avoid "bouncy/jittery" expand/collapse.
-    const listItemLayoutAnimation = React.useMemo(() => {
-        if (IS_WEB) return undefined;
-        return LinearTransition.duration(140);
-    }, []);
-    const listItemEntering = React.useMemo(() => {
-        // Enter/exit-only animations are stable enough on web, unlike layout transitions.
-        return FadeIn.duration(IS_WEB ? 110 : 140);
-    }, []);
-    const listItemExiting = React.useMemo(() => {
-        return FadeOut.duration(IS_WEB ? 90 : 120);
-    }, []);
-
     return (
         <View style={styles.container}>
             <View style={styles.sectionHeader}>
@@ -1355,7 +1338,6 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                         if (row.type === 'worktree') return `w:${getProjectStableId(row.project)}`;
                         return `s:${row.session.id}`;
                     }}
-                    itemLayoutAnimation={listItemLayoutAnimation as any}
                     ListEmptyComponent={() => {
                         return (
                             <View style={styles.emptyState}>
@@ -1700,154 +1682,144 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                 row.project.key.machineId;
 
                             return (
-                                <Animated.View
-                                    entering={listItemEntering}
-                                    exiting={listItemExiting}
+                                <Pressable
+                                    onPress={() => toggleExpanded(expandedKey)}
+                                    style={({ hovered, pressed }: any) => [
+                                        styles.row,
+                                        groupChromeStyle,
+                                        styles.mobileIndent1,
+                                        (IS_WEB && hovered) && styles.rowHover,
+                                        pressed && styles.rowPressed,
+                                    ]}
                                 >
-                                    <Pressable
-                                        onPress={() => toggleExpanded(expandedKey)}
-                                        style={({ hovered, pressed }: any) => [
-                                            styles.row,
-                                            groupChromeStyle,
-                                            styles.mobileIndent1,
-                                            (IS_WEB && hovered) && styles.rowHover,
-                                            pressed && styles.rowPressed,
-                                        ]}
-                                    >
-                                        {/* Keep alignment consistent with session rows (which reserve a chevron slot). */}
-                                        <View style={styles.chevron}>
-                                            <>
-                                                <View style={styles.nestRail} />
-                                                <View style={styles.treeDotWrap} pointerEvents="none">
-                                                    <View style={[styles.treeDot, styles.treeDotWorktree]} />
-                                                </View>
-                                            </>
-                                        </View>
-                                        <View style={styles.icon}>
-                                            <Octicons name="file-directory" size={UI_ICONS.folder} color={theme.colors.textSecondary} />
-                                        </View>
-                                        <View style={styles.textBlock}>
-                                            <Text style={styles.title} numberOfLines={1}>
-                                                {title}
-                                            </Text>
-                                            <View style={styles.subtitleRow}>
-                                                <Text style={styles.subtitle} numberOfLines={1}>
-                                                    {t('newSession.sessionType.worktree')}
-                                                </Text>
-                                                {hasGitStatus && (
-                                                    <>
-                                                        <Octicons name="git-branch" size={UI_ICONS.gitBranch} color={theme.colors.textSecondary} />
-                                                        <Text style={styles.subtitle} numberOfLines={1}>
-                                                            {branch || t('files.detachedHead')}
-                                                        </Text>
-                                                    </>
-                                                )}
-                                                <Text style={styles.subtitle} numberOfLines={1}>
-                                                    {machineName}
-                                                </Text>
+                                    {/* Keep alignment consistent with session rows (which reserve a chevron slot). */}
+                                    <View style={styles.chevron}>
+                                        <>
+                                            <View style={styles.nestRail} />
+                                            <View style={styles.treeDotWrap} pointerEvents="none">
+                                                <View style={[styles.treeDot, styles.treeDotWorktree]} />
                                             </View>
-                                        </View>
-                                        <View style={styles.projectActions}>
-                                            {attentionCount > 0 && (
-                                                <View style={styles.badge}>
-                                                    <Text style={styles.badgeText}>{badgeText}</Text>
-                                                </View>
+                                        </>
+                                    </View>
+                                    <View style={styles.icon}>
+                                        <Octicons name="file-directory" size={UI_ICONS.folder} color={theme.colors.textSecondary} />
+                                    </View>
+                                    <View style={styles.textBlock}>
+                                        <Text style={styles.title} numberOfLines={1}>
+                                            {title}
+                                        </Text>
+                                        <View style={styles.subtitleRow}>
+                                            <Text style={styles.subtitle} numberOfLines={1}>
+                                                {t('newSession.sessionType.worktree')}
+                                            </Text>
+                                            {hasGitStatus && (
+                                                <>
+                                                    <Octicons name="git-branch" size={UI_ICONS.gitBranch} color={theme.colors.textSecondary} />
+                                                    <Text style={styles.subtitle} numberOfLines={1}>
+                                                        {branch || t('files.detachedHead')}
+                                                    </Text>
+                                                </>
                                             )}
-                                            {(() => {
-                                                const allIds = row.project.sessionIds || [];
-                                                const activeIds = allIds.filter((id) => activeSessionIds.has(id));
-                                                const candidates = activeIds.length ? activeIds : allIds;
-                                                const preferredReviewSessionId =
-                                                    candidates.length === 0
-                                                        ? null
-                                                        : (selectedSessionId && candidates.includes(selectedSessionId))
-                                                            ? selectedSessionId
-                                                            : candidates[0];
-                                                const loadingKey = `worktree:${stableId}`;
-                                                const isMenuLoading = menuLoading[loadingKey] === true;
-
-                                                return (
-                                            <RowActionMenu
-                                                onOpen={() => {
-                                                    if (!preferredReviewSessionId) return;
-                                                    if (menuLoadingInFlightRef.current.has(loadingKey)) return;
-                                                    menuLoadingInFlightRef.current.add(loadingKey);
-                                                    setMenuLoading((prev) => ({ ...prev, [loadingKey]: true }));
-                                                    void gitStatusSync
-                                                        .getSync(preferredReviewSessionId)
-                                                        .invalidateAndAwait()
-                                                        .finally(() => {
-                                                            menuLoadingInFlightRef.current.delete(loadingKey);
-                                                            if (!mountedRef.current) return;
-                                                            setMenuLoading((prev) => ({ ...prev, [loadingKey]: false }));
-                                                        });
-                                                }}
-                                                actions={(() => {
-                                                const actions: RowAction[] = [
-                                                    {
-                                                        key: 'add-session',
-                                                        label: t('newSession.startNewSessionInFolder'),
-                                                        icon: 'add',
-                                                        onPress: () => {
-                                                            router.push({
-                                                                pathname: '/new',
-                                                                params: { machineId: row.project.key.machineId, path: row.project.key.path },
-                                                            });
-                                                        },
-                                                    },
-                                                ];
-                                                actions.push({
-                                                    key: 'review-diff',
-                                                    label: t('files.diff'),
-                                                    icon: 'file-diff',
-                                                    iconPack: 'octicons',
-                                                    loading: isMenuLoading,
-                                                    disabled: isMenuLoading || !isDirty || !preferredReviewSessionId,
-                                                    onPress: () => {
-                                                        if (!preferredReviewSessionId) return;
-                                                        router.push(`/session/${preferredReviewSessionId}/review`);
-                                                    },
-                                                });
-                                                actions.push({
-                                                    key: 'delete',
-                                                    label: t('workspaceExplorer.deleteWorktree'),
-                                                    icon: 'trash',
-                                                    destructive: true,
-                                                    onPress: async () => {
-                                                        const confirmed = await Modal.confirm(
-                                                            t('workspaceExplorer.deleteWorktree'),
-                                                            t('workspaceExplorer.deleteWorktreeConfirm'),
-                                                            { destructive: true },
-                                                        );
-                                                        if (!confirmed) return;
-                                                        const ids = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
-                                                        void archiveSessions(stableId, ids);
-                                                    },
-                                                });
-                                                return actions;
-                                            })()}
-                                            />
-                                                );
-                                            })()}
+                                            <Text style={styles.subtitle} numberOfLines={1}>
+                                                {machineName}
+                                            </Text>
                                         </View>
-                                    </Pressable>
-                                </Animated.View>
+                                    </View>
+                                    <View style={styles.projectActions}>
+                                        {attentionCount > 0 && (
+                                            <View style={styles.badge}>
+                                                <Text style={styles.badgeText}>{badgeText}</Text>
+                                            </View>
+                                        )}
+                                        {(() => {
+                                            const allIds = row.project.sessionIds || [];
+                                            const activeIds = allIds.filter((id) => activeSessionIds.has(id));
+                                            const candidates = activeIds.length ? activeIds : allIds;
+                                            const preferredReviewSessionId =
+                                                candidates.length === 0
+                                                    ? null
+                                                    : (selectedSessionId && candidates.includes(selectedSessionId))
+                                                        ? selectedSessionId
+                                                        : candidates[0];
+                                            const loadingKey = `worktree:${stableId}`;
+                                            const isMenuLoading = menuLoading[loadingKey] === true;
+
+                                            return (
+                                        <RowActionMenu
+                                            onOpen={() => {
+                                                if (!preferredReviewSessionId) return;
+                                                if (menuLoadingInFlightRef.current.has(loadingKey)) return;
+                                                menuLoadingInFlightRef.current.add(loadingKey);
+                                                setMenuLoading((prev) => ({ ...prev, [loadingKey]: true }));
+                                                void gitStatusSync
+                                                    .getSync(preferredReviewSessionId)
+                                                    .invalidateAndAwait()
+                                                    .finally(() => {
+                                                        menuLoadingInFlightRef.current.delete(loadingKey);
+                                                        if (!mountedRef.current) return;
+                                                        setMenuLoading((prev) => ({ ...prev, [loadingKey]: false }));
+                                                    });
+                                            }}
+                                            actions={(() => {
+                                            const actions: RowAction[] = [
+                                                {
+                                                    key: 'add-session',
+                                                    label: t('newSession.startNewSessionInFolder'),
+                                                    icon: 'add',
+                                                    onPress: () => {
+                                                        router.push({
+                                                            pathname: '/new',
+                                                            params: { machineId: row.project.key.machineId, path: row.project.key.path },
+                                                        });
+                                                    },
+                                                },
+                                            ];
+                                            actions.push({
+                                                key: 'review-diff',
+                                                label: t('files.diff'),
+                                                icon: 'file-diff',
+                                                iconPack: 'octicons',
+                                                loading: isMenuLoading,
+                                                disabled: isMenuLoading || !isDirty || !preferredReviewSessionId,
+                                                onPress: () => {
+                                                    if (!preferredReviewSessionId) return;
+                                                    router.push(`/session/${preferredReviewSessionId}/review`);
+                                                },
+                                            });
+                                            actions.push({
+                                                key: 'delete',
+                                                label: t('workspaceExplorer.deleteWorktree'),
+                                                icon: 'trash',
+                                                destructive: true,
+                                                onPress: async () => {
+                                                    const confirmed = await Modal.confirm(
+                                                        t('workspaceExplorer.deleteWorktree'),
+                                                        t('workspaceExplorer.deleteWorktreeConfirm'),
+                                                        { destructive: true },
+                                                    );
+                                                    if (!confirmed) return;
+                                                    const ids = (row.project.sessionIds || []).filter((id) => activeSessionIds.has(id));
+                                                    void archiveSessions(stableId, ids);
+                                                },
+                                            });
+                                            return actions;
+                                        })()}
+                                        />
+                                            );
+                                        })()}
+                                    </View>
+                                </Pressable>
                             );
                         }
 
             const isSelected = selectedSessionId === row.session.id;
             return (
-                <Animated.View
-                    entering={listItemEntering}
-                    exiting={listItemExiting}
-                >
-                    <WorkspaceExplorerSessionRow
-                        session={row.session}
-                        selected={isSelected}
-                        depth={row.depth}
-                        groupChromeStyle={groupChromeStyle}
-                    />
-                </Animated.View>
+                <WorkspaceExplorerSessionRow
+                    session={row.session}
+                    selected={isSelected}
+                    depth={row.depth}
+                    groupChromeStyle={groupChromeStyle}
+                />
             );
         }}
     />
