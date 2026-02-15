@@ -22,7 +22,8 @@ export default {
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
         notification: {
-            icon: "./sources/assets/images/icon-notification.png",
+            icon: "./sources/assets/images/icon.png",
+            color: "#1C1C1E",
             iosDisplayInForeground: true
         },
         ios: {
@@ -135,16 +136,16 @@ export default {
                 'expo-splash-screen',
                 {
                     ios: {
-                        image: "./sources/assets/images/splash-ios-light.png",
-                        backgroundColor: "#F2F2F7",
+                        image: "./sources/assets/images/splash-ios-dark.png",
+                        backgroundColor: "#1C1C1E",
                         dark: {
                             image: "./sources/assets/images/splash-ios-dark.png",
                             backgroundColor: "#1C1C1E",
                         }
                     },
                     android: {
-                        image: "./sources/assets/images/splash-android-light.png",
-                        backgroundColor: "#F5F5F5",
+                        image: "./sources/assets/images/splash-android-dark.png",
+                        backgroundColor: "#1e1e1e",
                         dark: {
                             image: "./sources/assets/images/splash-android-dark.png",
                             backgroundColor: "#1e1e1e",
