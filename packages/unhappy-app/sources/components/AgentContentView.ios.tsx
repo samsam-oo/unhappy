@@ -1,8 +1,8 @@
 import { useHeaderHeight } from '@/utils/responsive';
 import * as React from 'react';
 import { View, Keyboard, Pressable } from 'react-native';
-import { useKeyboardHandler, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { ScrollView } from 'react-native-gesture-handler';
+import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface AgentContentViewProps {
@@ -13,41 +13,19 @@ interface AgentContentViewProps {
 
 export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ input, content, placeholder }) => {
     const safeArea = useSafeAreaInsets();
-    const height = useReanimatedKeyboardAnimation();
     const headerHeight = useHeaderHeight();
-    const animatedPadding = useSharedValue(0);
-    useKeyboardHandler({
-        onEnd(e) {
-            'worklet';
-            animatedPadding.value = e.progress === 1 ? (-height.height.value - safeArea.bottom) : 0;
-        },
-        onStart(e) {
-            'worklet';
-            animatedPadding.value = 0;
-        },
-    },[safeArea.bottom]);
-    const animatedStyle = useAnimatedStyle(() => ({
-        paddingTop: animatedPadding.value,
-        transform: [{ translateY: height.height.value + safeArea.bottom * height.progress.value }]
-    }), [safeArea.bottom]);
-    const animatedInputStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: height.height.value + safeArea.bottom * height.progress.value }]
-    }), [safeArea.bottom]);
-    const animatePlaceholderdStyle = useAnimatedStyle(() => ({
-        paddingTop: height.progress.value === 1 ? height.height.value : 0,
-        transform: [{ translateY: (height.height.value  + safeArea.bottom * height.progress.value) / 2 }]
-    }), [safeArea.bottom]);
+    const state = useKeyboardState();
     return (
-        <View style={{ flexBasis:0, flexGrow:1 }}>
+        <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: state.isVisible ? state.height - safeArea.bottom : 0 }}>
             <View style={{ flexBasis:0, flexGrow:1 }}>
                 {content && (
-                    <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }, animatedStyle]}>
+                    <View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}>
                         {content}
-                    </Animated.View>
+                    </View>
                 )}
                 {placeholder && (
-                    <Animated.ScrollView
-                        style={[{ position: 'absolute', top: safeArea.top + headerHeight, left: 0, right: 0, bottom: 0 }, animatePlaceholderdStyle]}
+                    <ScrollView
+                        style={[{ position: 'absolute', top: safeArea.top + headerHeight, left: 0, right: 0, bottom: 0 }]}
                         contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}
                         keyboardShouldPersistTaps="handled"
                         keyboardDismissMode="interactive"
@@ -56,12 +34,12 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ i
                         <Pressable onPress={() => Keyboard.dismiss()} style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                             {placeholder}
                         </Pressable>
-                    </Animated.ScrollView>
+                    </ScrollView>
                 )}
             </View>
-            <Animated.View style={[animatedInputStyle]}>
+            <View>
                 {input}
-            </Animated.View>
+            </View>
         </View>
     );
 });

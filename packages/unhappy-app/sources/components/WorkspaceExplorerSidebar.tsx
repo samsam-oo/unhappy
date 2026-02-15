@@ -139,13 +139,6 @@ function getSelectedSessionIdFromPathname(pathname: string): string | null {
     return match?.[1] ?? null;
 }
 
-function truncateWithEllipsis(text: string, maxChars: number): string {
-    const t = text.trim();
-    if (t.length <= maxChars) return t;
-    if (maxChars <= 3) return t.slice(0, maxChars);
-    return t.slice(0, maxChars - 3).trimEnd() + '...';
-}
-
 const WORKTREE_SEGMENT_POSIX = '/.unhappy/worktree/';
 const WORKTREE_SEGMENT_WIN = '\\.unhappy\\worktree\\';
 
@@ -526,8 +519,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
     });
 
     const sessionStatus = useSessionStatus(props.session);
-    const rawSessionTitle = resolveSessionSummaryTitle(props.session.metadata?.summary?.text);
-    const sessionTitle = truncateWithEllipsis(rawSessionTitle, compact ? 44 : 30);
+    const sessionTitle = resolveSessionSummaryTitle(props.session.metadata?.summary?.text);
 
     const iconColor = React.useMemo(() => {
         if (props.selected) return theme.colors.text;
@@ -657,7 +649,7 @@ const WorkspaceExplorerSessionRow = React.memo(function WorkspaceExplorerSession
                 }
             </View>
             <View style={styles.textBlock}>
-                <Text style={styles.title} numberOfLines={1}>
+                <Text style={styles.title}>
                     {sessionTitle}
                 </Text>
             </View>
@@ -1116,7 +1108,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
         });
     }, [dragGrabOffset, dragOverlayTop, dragStartOverlayTop, listPageY, listPageYReady, orderedGroupStableIds]);
 
-    const updateWorkspaceDrag = React.useCallback(() => {
+    const updateWorkspaceDrag = React.useCallback((overlayTopInContainer: number) => {
         const draggingId = draggingStableIdRef.current;
         if (!draggingId) return;
 
@@ -1128,7 +1120,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
 
         // Use the animated overlay position instead of window measurements. This avoids "teleporting"
         // when coordinate conversions are briefly stale on web/desktop.
-        const rowCenterY = dragOverlayTop.value + scrollOffsetRef.current + dragRowHeightRef.current / 2;
+        const rowCenterY = overlayTopInContainer + scrollOffsetRef.current + dragRowHeightRef.current / 2;
 
         const order = draftOrderRef.current;
         if (!order.length) return;
@@ -1159,7 +1151,7 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
             }
         }
         setWorkspaceOrder(nextOrder);
-    }, [dragOverlayTop]);
+    }, []);
 
     const endWorkspaceDrag = React.useCallback(() => {
         const draggingId = draggingStableIdRef.current;
@@ -1437,12 +1429,12 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                 })
                                 .onUpdate((e) => {
                                     'worklet';
+                                    let nextOverlayTop = dragStartOverlayTop.value + e.translationY;
                                     if (listPageYReady.value) {
-                                        dragOverlayTop.value = (e.absoluteY - listPageY.value) - dragGrabOffset.value;
-                                    } else {
-                                        dragOverlayTop.value = dragStartOverlayTop.value + e.translationY;
+                                        nextOverlayTop = (e.absoluteY - listPageY.value) - dragGrabOffset.value;
                                     }
-                                    runOnJS(updateWorkspaceDrag)();
+                                    dragOverlayTop.value = nextOverlayTop;
+                                    runOnJS(updateWorkspaceDrag)(nextOverlayTop);
                                 })
                                 .onFinalize(() => {
                                     'worklet';

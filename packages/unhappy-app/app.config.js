@@ -17,7 +17,7 @@ export default {
         version: "1.6.2",
         runtimeVersion: "18",
         orientation: "default",
-        icon: "./sources/assets/images/icon.png",
+        icon: "./sources/assets/images/icon-ios.png",
         scheme: "unhappy",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
@@ -27,6 +27,7 @@ export default {
         },
         ios: {
             supportsTablet: true,
+            icon: "./sources/assets/images/icon-ios.png",
             bundleIdentifier: bundleId,
             config: {
                 usesNonExemptEncryption: false
@@ -134,8 +135,10 @@ export default {
                 'expo-splash-screen',
                 {
                     ios: {
+                        image: "./sources/assets/images/splash-ios-light.png",
                         backgroundColor: "#F2F2F7",
                         dark: {
+                            image: "./sources/assets/images/splash-ios-dark.png",
                             backgroundColor: "#1C1C1E",
                         }
                     },
