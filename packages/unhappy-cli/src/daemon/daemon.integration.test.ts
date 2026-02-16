@@ -50,6 +50,29 @@ async function waitFor(
   throw new Error('Timeout waiting for condition');
 }
 
+async function runCliCommand(args: string[]): Promise<{ exitCode: number | null; output: string }> {
+  const child = spawnUnhappyCLI(args, {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let output = '';
+  child.stdout?.on('data', (data) => {
+    output += data.toString();
+  });
+  child.stderr?.on('data', (data) => {
+    output += data.toString();
+  });
+
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (code) => resolve(code));
+  });
+
+  return { exitCode, output };
+}
+
 async function callMachineRpc<TResponse>(opts: {
   token: string;
   machineId: string;
@@ -342,6 +365,62 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
     // Should report that daemon is already running
     expect(output).toContain('already running');
+  });
+
+  it('regression: should fail daemon start when lock is held by non-daemon process and state is missing', { timeout: 20_000 }, async () => {
+    await stopDaemon();
+    await clearDaemonState();
+
+    if (existsSync(configuration.daemonLockFile)) {
+      unlinkSync(configuration.daemonLockFile);
+    }
+
+    writeFileSync(configuration.daemonLockFile, String(process.pid), 'utf8');
+
+    try {
+      const { exitCode, output } = await runCliCommand(['daemon', 'start']);
+      expect(exitCode).toBe(1);
+      expect(output).toContain('Failed to start daemon');
+
+      const state = await readDaemonState();
+      expect(state).toBeNull();
+    } finally {
+      if (existsSync(configuration.daemonLockFile)) {
+        unlinkSync(configuration.daemonLockFile);
+      }
+    }
+  });
+
+  it('regression: should recover by restarting daemon when state is missing but lock is held by real daemon', { timeout: 30_000 }, async () => {
+    const initialState = await readDaemonState();
+    expect(initialState).toBeTruthy();
+    const initialPid = initialState!.pid;
+
+    expect(existsSync(configuration.daemonStateFile)).toBe(true);
+    expect(existsSync(configuration.daemonLockFile)).toBe(true);
+    unlinkSync(configuration.daemonStateFile);
+    expect(existsSync(configuration.daemonStateFile)).toBe(false);
+
+    const { exitCode, output } = await runCliCommand(['daemon', 'start']);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Daemon started successfully');
+
+    await waitFor(async () => {
+      const state = await readDaemonState();
+      return !!state && state.pid !== initialPid;
+    }, 15_000, 200);
+
+    const finalState = await readDaemonState();
+    expect(finalState).toBeTruthy();
+    expect(finalState!.pid).not.toBe(initialPid);
+
+    let oldPidIsAlive = true;
+    try {
+      process.kill(initialPid, 0);
+    } catch {
+      oldPidIsAlive = false;
+    }
+    expect(oldPidIsAlive).toBe(false);
   });
 
   it('should handle update-daemon via encrypted machine RPC and restart daemon', { timeout: 40_000 }, async () => {

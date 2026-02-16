@@ -1,3 +1,4 @@
+import { spawnSync } from 'child_process';
 import fs from 'fs/promises';
 import os from 'os';
 
@@ -29,10 +30,12 @@ import { TrackedSession } from './types';
 import { projectPath } from '@/projectPath';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { getTmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import {
+  checkIfDaemonRunningAndCleanupStaleState,
   cleanupDaemonState,
+  getLiveDaemonLockPid,
   isDaemonRunningCurrentlyInstalledHappyVersion,
   stopDaemon,
 } from './controlClient';
@@ -180,25 +183,42 @@ export async function startDaemon(): Promise<void> {
   logger.debug('[DAEMON RUN] Starting daemon process...');
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
 
-  // Check if already running
-  // Check if running daemon version matches current CLI version
-  const runningDaemonVersionMatches =
-    await isDaemonRunningCurrentlyInstalledHappyVersion();
-  if (!runningDaemonVersionMatches) {
+  // Check current daemon state before attempting lock acquisition.
+  const daemonIsRunning = await checkIfDaemonRunningAndCleanupStaleState();
+  if (daemonIsRunning) {
+    const runningDaemonVersionMatches =
+      await isDaemonRunningCurrentlyInstalledHappyVersion();
+
+    if (runningDaemonVersionMatches) {
+      logger.debug(
+        '[DAEMON RUN] Daemon already running (version matches or state missing), keeping existing daemon',
+      );
+      console.log('Daemon already running');
+      process.exit(0);
+    }
+
     logger.debug(
       '[DAEMON RUN] Daemon version mismatch detected, restarting daemon with current CLI version',
     );
     await stopDaemon();
   } else {
-    logger.debug(
-      '[DAEMON RUN] Daemon version matches, keeping existing daemon',
-    );
-    console.log('Daemon already running with matching version');
-    process.exit(0);
+    logger.debug('[DAEMON RUN] No running daemon detected, proceeding with startup');
   }
 
   // Acquire exclusive lock (proves daemon is running)
-  const daemonLockHandle = await acquireDaemonLock(5, 200);
+  let daemonLockHandle = await acquireDaemonLock(5, 200);
+  if (!daemonLockHandle) {
+    // Recovery path: state file missing but lock held by a daemon process.
+    // This can happen after crashes/manual cleanup and leads to false start failures.
+    const state = await readDaemonState();
+    if (!state) {
+      const recovered = await recoverMissingStateWithHeldLock();
+      if (recovered) {
+        daemonLockHandle = await acquireDaemonLock(5, 200);
+      }
+    }
+  }
+
   if (!daemonLockHandle) {
     logger.debug(
       '[DAEMON RUN] Daemon lock file already held, another daemon is running',
@@ -1111,4 +1131,112 @@ export async function startDaemon(): Promise<void> {
     );
     process.exit(1);
   }
+}
+
+function isLikelyUnhappyDaemonProcess(pid: number): boolean {
+  let command = '';
+
+  try {
+    const procCmdlinePath = `/proc/${pid}/cmdline`;
+    if (existsSync(procCmdlinePath)) {
+      command = readFileSync(procCmdlinePath, 'utf-8').replace(/\0/g, ' ').trim();
+    }
+  } catch {
+    // Fall through to ps-based lookup.
+  }
+
+  if (!command) {
+    try {
+      const psResult = spawnSync('ps', ['-p', String(pid), '-o', 'command='], {
+        encoding: 'utf8',
+      });
+      if (psResult.status === 0) {
+        command = psResult.stdout.trim();
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  if (!command) {
+    return false;
+  }
+
+  return (
+    command.includes('daemon start-sync') &&
+    (command.includes('unhappy') ||
+      command.includes('dist/index.mjs') ||
+      command.includes('src/index.ts'))
+  );
+}
+
+async function waitForProcessDeath(pid: number, timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      process.kill(pid, 0);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function recoverMissingStateWithHeldLock(): Promise<boolean> {
+  const lockPid = getLiveDaemonLockPid();
+  if (!lockPid) {
+    return false;
+  }
+
+  if (!isLikelyUnhappyDaemonProcess(lockPid)) {
+    logger.debug(
+      `[DAEMON RUN] Lock file held by PID ${lockPid}, but process is not recognized as unhappy daemon. Skipping auto-recovery.`,
+    );
+    return false;
+  }
+
+  logger.debug(
+    `[DAEMON RUN] State file missing while lock is held by daemon PID ${lockPid}. Restarting daemon to recover state.`,
+  );
+
+  try {
+    process.kill(lockPid, 'SIGTERM');
+  } catch (error) {
+    logger.debug(
+      `[DAEMON RUN] Failed to send SIGTERM to lock PID ${lockPid} during recovery`,
+      error,
+    );
+    return false;
+  }
+
+  const terminated = await waitForProcessDeath(lockPid, 2_000);
+  if (!terminated) {
+    logger.debug(
+      `[DAEMON RUN] Lock PID ${lockPid} did not exit after SIGTERM, sending SIGKILL`,
+    );
+    try {
+      process.kill(lockPid, 'SIGKILL');
+    } catch (error) {
+      logger.debug(
+        `[DAEMON RUN] Failed to send SIGKILL to lock PID ${lockPid} during recovery`,
+        error,
+      );
+      return false;
+    }
+
+    const killed = await waitForProcessDeath(lockPid, 2_000);
+    if (!killed) {
+      logger.debug(
+        `[DAEMON RUN] Lock PID ${lockPid} is still alive after SIGKILL, recovery aborted`,
+      );
+      return false;
+    }
+  }
+
+  await cleanupDaemonState();
+  logger.debug(
+    `[DAEMON RUN] Recovery cleanup complete after stopping PID ${lockPid}`,
+  );
+  return true;
 }

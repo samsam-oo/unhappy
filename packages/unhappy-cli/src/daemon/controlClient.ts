@@ -11,6 +11,33 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { configuration } from '@/configuration';
 
+function readLiveDaemonPidFromLockFile(): number | null {
+  try {
+    const lockPidText = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
+    if (!lockPidText) {
+      return null;
+    }
+
+    const lockPid = Number(lockPidText);
+    if (Number.isNaN(lockPid)) {
+      return null;
+    }
+
+    try {
+      process.kill(lockPid, 0);
+      return lockPid;
+    } catch {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
+export function getLiveDaemonLockPid(): number | null {
+  return readLiveDaemonPidFromLockFile();
+}
+
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
   if (!state?.httpPort) {
