@@ -113,6 +113,98 @@ const styles = StyleSheet.create((theme, rt) => ({
         justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
         paddingTop: Platform.OS === 'web' ? 0 : 40,
     },
+    simpleLayout: {
+        flex: 1,
+        justifyContent: 'flex-end',
+    },
+    webStage: {
+        justifyContent: 'center',
+        paddingTop: 10,
+        paddingBottom: 16,
+    },
+    webHeroSection: {
+        width: '100%',
+        alignSelf: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
+        paddingHorizontal: 10,
+    },
+    webHeroEyebrow: {
+        fontSize: 10,
+        letterSpacing: 1.4,
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+        ...Typography.default('semiBold'),
+    },
+    webHeroTitle: {
+        fontSize: 40,
+        lineHeight: 46,
+        fontWeight: '700',
+        color: theme.colors.text,
+        textAlign: 'center',
+        maxWidth: 760,
+        letterSpacing: -0.4,
+        ...Typography.default('semiBold'),
+    },
+    webHeroSubtitle: {
+        marginTop: 8,
+        fontSize: 14,
+        lineHeight: 20,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        maxWidth: 560,
+        ...Typography.default(),
+    },
+    mobileHeroSection: {
+        width: '100%',
+        alignSelf: 'center',
+        marginBottom: 12,
+        paddingHorizontal: 16,
+        alignItems: 'flex-start',
+    },
+    mobileHeroSectionCompact: {
+        paddingHorizontal: 12,
+    },
+    mobileHeroEyebrow: {
+        fontSize: 10,
+        letterSpacing: 1.1,
+        color: theme.colors.textSecondary,
+        marginBottom: 6,
+        ...Typography.default('semiBold'),
+    },
+    mobileHeroTitle: {
+        fontSize: 28,
+        lineHeight: 34,
+        color: theme.colors.text,
+        letterSpacing: -0.3,
+        ...Typography.default('semiBold'),
+    },
+    mobileHeroTitleCompact: {
+        fontSize: 24,
+        lineHeight: 30,
+    },
+    mobileHeroSubtitle: {
+        marginTop: 6,
+        fontSize: 13,
+        lineHeight: 18,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
+    },
+    mobileHeroSubtitleCompact: {
+        fontSize: 12,
+        lineHeight: 17,
+    },
+    webInputDock: {
+        width: '100%',
+        paddingBottom: 16,
+    },
+    webInputCard: {
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.input.background,
+        padding: 8,
+    },
     scrollContainer: {
         flex: 1,
     },
@@ -122,12 +214,60 @@ const styles = StyleSheet.create((theme, rt) => ({
         paddingTop: rt.insets.top,
         paddingBottom: 16,
     },
+    webContentContainer: {
+        paddingTop: rt.insets.top + 8,
+        paddingBottom: 20,
+    },
+    webScrollOuter: {
+        width: '100%',
+    },
+    webScrollInner: {
+        maxWidth: 980,
+        width: '100%',
+        alignSelf: 'center',
+    },
     wizardContainer: {
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
         marginHorizontal: 16,
         padding: 16,
         marginBottom: 16,
+    },
+    wizardContainerWeb: {
+        marginHorizontal: 0,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+        padding: 14,
+    },
+    wizardContainerMobileFlat: {
+        marginHorizontal: 0,
+        borderRadius: 0,
+        padding: 0,
+        marginBottom: 0,
+        backgroundColor: 'transparent',
+    },
+    webSettingsIntro: {
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        backgroundColor: theme.colors.surfacePressed,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        marginBottom: 12,
+    },
+    webSettingsIntroTitle: {
+        fontSize: 14,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    webSettingsIntroDescription: {
+        marginTop: 4,
+        fontSize: 12,
+        lineHeight: 18,
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
     },
     sectionHeader: {
         fontSize: 14,
@@ -302,10 +442,13 @@ const styles = StyleSheet.create((theme, rt) => ({
         borderRadius: 8,
         backgroundColor: theme.colors.surfacePressed,
     },
+    webBottomInputContainer: {
+        paddingTop: 8,
+    },
 }));
 
 function NewSessionWizard() {
-    const { theme, rt } = useUnistyles();
+    const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const { prompt, dataId, machineId: machineIdParam, path: pathParam } = useLocalSearchParams<{
@@ -382,17 +525,6 @@ function NewSessionWizard() {
         }
         return 'claude';
     });
-
-    // Agent cycling handler (for cycling through claude -> codex -> gemini)
-    // Note: Does NOT persist immediately - persistence is handled by useEffect below
-    const handleAgentClick = React.useCallback(() => {
-        setAgentType(prev => {
-            // Cycle: claude -> codex -> gemini (if experiments) -> claude
-            if (prev === 'claude') return 'codex';
-            if (prev === 'codex') return (experimentsEnabled && SHOW_GEMINI_UI) ? 'gemini' : 'claude';
-            return 'claude';
-        });
-    }, [experimentsEnabled]);
 
     // Persist agent selection changes (separate from setState to avoid race condition)
     // This runs after agentType state is updated, ensuring the value is stable
@@ -1299,6 +1431,32 @@ function NewSessionWizard() {
     }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, planOnly, modelMode, effortMode, recentMachinePaths, profileMap, router, selectedMachine]);
 
     const screenWidth = useWindowDimensions().width;
+    const isWebLayout = Platform.OS === 'web';
+    const isNarrowMobile = !isWebLayout && screenWidth < 390;
+    const horizontalPadding = isWebLayout ? (screenWidth > 700 ? 16 : 8) : 12;
+    const mobileInputBottomPadding = Math.max(12, safeArea.bottom + 6);
+    const mobileScrollBottomPadding = Math.max(236, safeArea.bottom + 196);
+
+    const webHeroHeading = isWebLayout ? (
+        <View style={styles.webHeroSection}>
+            <Text style={styles.webHeroEyebrow}>NEW SESSION</Text>
+            <Text style={styles.webHeroTitle}>새 세션 시작</Text>
+            <Text style={styles.webHeroSubtitle}>
+                프롬프트를 입력하고 기준 설정을 선택하세요.
+            </Text>
+        </View>
+    ) : null;
+    const mobileHeroHeading = !isWebLayout && useEnhancedSessionWizard ? (
+        <View style={[styles.mobileHeroSection, isNarrowMobile && styles.mobileHeroSectionCompact]}>
+            <Text style={styles.mobileHeroEyebrow}>NEW SESSION</Text>
+            <Text style={[styles.mobileHeroTitle, isNarrowMobile && styles.mobileHeroTitleCompact]}>
+                새 세션 시작
+            </Text>
+            <Text style={[styles.mobileHeroSubtitle, isNarrowMobile && styles.mobileHeroSubtitleCompact]}>
+                프롬프트를 입력하고 기준 설정을 선택하세요.
+            </Text>
+        </View>
+    ) : null;
 
     // Machine online status for AgentInput (DRY - reused in info box too)
     const connectionStatus = React.useMemo(() => {
@@ -1358,10 +1516,17 @@ function NewSessionWizard() {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
                 style={styles.container}
             >
-                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <View style={[styles.simpleLayout, isWebLayout && styles.webStage]}>
+                    {webHeroHeading}
                     {/* AgentInput with inline chips - sticky at bottom */}
-                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
-                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                    <View style={[
+                        { paddingHorizontal: horizontalPadding, paddingBottom: isWebLayout ? Math.max(16, safeArea.bottom) : mobileInputBottomPadding },
+                        isWebLayout && styles.webInputDock,
+                    ]}>
+                        <View style={[
+                            { maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' },
+                            isWebLayout && styles.webInputCard,
+                        ]}>
                             <AgentInput
                                 value={sessionPrompt}
                                 onChangeText={setSessionPrompt}
@@ -1410,22 +1575,76 @@ function NewSessionWizard() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
             style={styles.container}
         >
-            <View style={{ flex: 1 }}>
+            <View style={[{ flex: 1 }, isWebLayout && styles.webStage]}>
                 <ScrollView
                     ref={scrollViewRef}
                     style={styles.scrollContainer}
-                    contentContainerStyle={styles.contentContainer}
+                    contentContainerStyle={[
+                        styles.contentContainer,
+                        isWebLayout && styles.webContentContainer,
+                        !isWebLayout && { paddingBottom: mobileScrollBottomPadding },
+                    ]}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
                 >
                     <Pressable onPress={Keyboard.dismiss}>
                         <View style={[
-                            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+                            { paddingHorizontal: horizontalPadding },
+                            isWebLayout && styles.webScrollOuter,
                         ]}>
                             <View style={[
-                                { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
+                                { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' },
+                                isWebLayout && styles.webScrollInner,
                             ]}>
-                                <View ref={profileSectionRef} style={styles.wizardContainer}>
+                                {isWebLayout ? webHeroHeading : mobileHeroHeading}
+                                {isWebLayout && (
+                                    <View style={styles.webInputCard}>
+                                        <AgentInput
+                                            value={sessionPrompt}
+                                            onChangeText={setSessionPrompt}
+                                            onSend={handleCreateSession}
+                                            isSendDisabled={!canCreate}
+                                            isSending={isCreating}
+                                            placeholder="무엇을 작업하고 싶으신가요?"
+                                            autocompletePrefixes={[]}
+                                            autocompleteSuggestions={async () => []}
+                                            agentType={agentType}
+                                            onAgentTypeChange={setAgentType}
+                                            machineId={selectedMachineId ?? undefined}
+                                            permissionMode={permissionMode}
+                                            onPermissionModeChange={handleAgentInputPermissionChange}
+                                            planOnly={planOnly}
+                                            onPlanOnlyChange={handleAgentInputPlanOnlyChange}
+                                            modelMode={modelMode}
+                                            onModelModeChange={handleModelModeChange}
+                                            effortMode={effortMode}
+                                            onEffortModeChange={handleEffortModeChange}
+                                            connectionStatus={connectionStatus}
+                                            machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                                            onMachineClick={handleAgentInputMachineClick}
+                                            currentPath={formatWorkingDirForUser(selectedPath)}
+                                            onPathClick={handleAgentInputPathClick}
+                                            profileId={selectedProfileId}
+                                            onProfileClick={handleAgentInputProfileClick}
+                                        />
+                                    </View>
+                                )}
+                                <View
+                                    ref={profileSectionRef}
+                                    style={[
+                                        styles.wizardContainer,
+                                        isWebLayout && styles.wizardContainerWeb,
+                                        !isWebLayout && styles.wizardContainerMobileFlat,
+                                    ]}
+                                >
+                            {isWebLayout && (
+                                <View style={styles.webSettingsIntro}>
+                                    <Text style={styles.webSettingsIntroTitle}>기준 설정</Text>
+                                    <Text style={styles.webSettingsIntroDescription}>
+                                        세션 시작 전에 프로필, 머신, 작업 경로, 세션 타입, 권한 모드를 확인하세요.
+                                    </Text>
+                                </View>
+                            )}
                             {/* CLI Detection Status Banner - shows after detection completes */}
                             {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
                                 <View style={{
@@ -2189,9 +2408,12 @@ function NewSessionWizard() {
                     </Pressable>
                 </ScrollView>
 
-                {/* Section 5: AgentInput - Sticky at bottom */}
-                <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
-                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                {!isWebLayout && (
+                    <View style={[
+                        { paddingHorizontal: horizontalPadding, paddingBottom: mobileInputBottomPadding },
+                        styles.webBottomInputContainer,
+                    ]}>
+                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
                             <AgentInput
                                 value={sessionPrompt}
                                 onChangeText={setSessionPrompt}
@@ -2199,29 +2421,30 @@ function NewSessionWizard() {
                                 isSendDisabled={!canCreate}
                                 isSending={isCreating}
                                 placeholder="무엇을 작업하고 싶으신가요?"
-                            autocompletePrefixes={[]}
-                            autocompleteSuggestions={async () => []}
-                            agentType={agentType}
-                            onAgentTypeChange={setAgentType}
-                            machineId={selectedMachineId ?? undefined}
-                            permissionMode={permissionMode}
-                            onPermissionModeChange={handleAgentInputPermissionChange}
-                            planOnly={planOnly}
-                            onPlanOnlyChange={handleAgentInputPlanOnlyChange}
-                            modelMode={modelMode}
-                            onModelModeChange={handleModelModeChange}
-                            effortMode={effortMode}
-                            onEffortModeChange={handleEffortModeChange}
-                            connectionStatus={connectionStatus}
-                            machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                            onMachineClick={handleAgentInputMachineClick}
-                            currentPath={formatWorkingDirForUser(selectedPath)}
-                            onPathClick={handleAgentInputPathClick}
-                            profileId={selectedProfileId}
-                            onProfileClick={handleAgentInputProfileClick}
-                        />
+                                autocompletePrefixes={[]}
+                                autocompleteSuggestions={async () => []}
+                                agentType={agentType}
+                                onAgentTypeChange={setAgentType}
+                                machineId={selectedMachineId ?? undefined}
+                                permissionMode={permissionMode}
+                                onPermissionModeChange={handleAgentInputPermissionChange}
+                                planOnly={planOnly}
+                                onPlanOnlyChange={handleAgentInputPlanOnlyChange}
+                                modelMode={modelMode}
+                                onModelModeChange={handleModelModeChange}
+                                effortMode={effortMode}
+                                onEffortModeChange={handleEffortModeChange}
+                                connectionStatus={connectionStatus}
+                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                                onMachineClick={handleAgentInputMachineClick}
+                                currentPath={formatWorkingDirForUser(selectedPath)}
+                                onPathClick={handleAgentInputPathClick}
+                                profileId={selectedProfileId}
+                                onProfileClick={handleAgentInputProfileClick}
+                            />
+                        </View>
                     </View>
-                </View>
+                )}
             </View>
         </KeyboardAvoidingView>
     );
