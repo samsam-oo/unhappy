@@ -5,6 +5,7 @@ import * as Updates from 'expo-updates';
 import { clearPersistence } from '@/sync/persistence';
 import { DevSettings, Platform } from 'react-native';
 import { trackLogout } from '@/track';
+import { router } from 'expo-router';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -44,6 +45,14 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         // Update React state to ensure UI consistency
         setCredentials(null);
         setIsAuthenticated(false);
+
+        // Always return user to landing after logout, even if reload fails.
+        try {
+            router.dismissAll();
+        } catch {}
+        try {
+            router.replace('/');
+        } catch {}
         
         if (Platform.OS === 'web') {
             window.location.reload();

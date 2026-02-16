@@ -102,7 +102,7 @@ export default React.memo(() => {
             { confirmText: t('common.logout'), destructive: true }
         );
         if (confirmed) {
-            auth.logout();
+            await auth.logout();
         }
     };
 

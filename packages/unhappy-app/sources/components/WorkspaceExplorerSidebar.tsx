@@ -1668,11 +1668,6 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                             const isDirty = row.project.gitStatus?.isDirty === true;
                             const attentionCount = attentionCountByStableId.get(stableId) ?? 0;
                             const badgeText = formatBadgeCount(attentionCount);
-                            const machineName =
-                                row.project.machineMetadata?.displayName ||
-                                row.project.machineMetadata?.host ||
-                                row.project.key.machineId;
-
                             return (
                                 <Pressable
                                     onPress={() => toggleExpanded(expandedKey)}
@@ -1712,9 +1707,6 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     </Text>
                                                 </>
                                             )}
-                                            <Text style={styles.subtitle} numberOfLines={1}>
-                                                {machineName}
-                                            </Text>
                                         </View>
                                     </View>
                                     <View style={styles.projectActions}>
