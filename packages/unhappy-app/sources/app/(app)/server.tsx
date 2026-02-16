@@ -174,6 +174,65 @@ export default function ServerConfigScreen() {
     }
   };
 
+  const serverSettingsContent = (
+    <ItemGroup footer={t('server.advancedFeatureFooter')}>
+      <View style={styles.contentContainer}>
+        <Text style={styles.labelText}>
+          {t('server.customServerUrlLabel').toUpperCase()}
+        </Text>
+        <TextInput
+          style={[
+            styles.textInput,
+            isValidating && styles.textInputValidating,
+          ]}
+          value={inputUrl}
+          onChangeText={(text) => {
+            setInputUrl(text);
+            setError(null);
+          }}
+          placeholder={t('common.urlPlaceholder')}
+          placeholderTextColor={theme.colors.input.placeholder}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          editable={!isValidating}
+        />
+        {error && <Text style={styles.errorText}>{error}</Text>}
+        {isValidating && (
+          <Text style={styles.validatingText}>
+            {t('server.validatingServer')}
+          </Text>
+        )}
+        <View style={styles.buttonRow}>
+          <View style={styles.buttonWrapper}>
+            <RoundButton
+              title={t('server.resetToDefault')}
+              size="normal"
+              display="inverted"
+              onPress={handleReset}
+              disabled={!serverInfo.isCustom}
+            />
+          </View>
+          <View style={styles.buttonWrapper}>
+            <RoundButton
+              title={
+                isValidating ? t('server.validating') : t('common.save')
+              }
+              size="normal"
+              action={handleSave}
+              disabled={isValidating}
+            />
+          </View>
+        </View>
+        {serverInfo.isCustom && (
+          <Text style={styles.statusText}>
+            {t('server.currentlyUsingCustomServer')}
+          </Text>
+        )}
+      </View>
+    </ItemGroup>
+  );
+
   return (
     <>
       <Stack.Screen
@@ -193,64 +252,13 @@ export default function ServerConfigScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          <Pressable onPress={Keyboard.dismiss}>
-            <ItemGroup footer={t('server.advancedFeatureFooter')}>
-              <View style={styles.contentContainer}>
-                <Text style={styles.labelText}>
-                  {t('server.customServerUrlLabel').toUpperCase()}
-                </Text>
-                <TextInput
-                  style={[
-                    styles.textInput,
-                    isValidating && styles.textInputValidating,
-                  ]}
-                  value={inputUrl}
-                  onChangeText={(text) => {
-                    setInputUrl(text);
-                    setError(null);
-                  }}
-                  placeholder={t('common.urlPlaceholder')}
-                  placeholderTextColor={theme.colors.input.placeholder}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                  editable={!isValidating}
-                />
-                {error && <Text style={styles.errorText}>{error}</Text>}
-                {isValidating && (
-                  <Text style={styles.validatingText}>
-                    {t('server.validatingServer')}
-                  </Text>
-                )}
-                <View style={styles.buttonRow}>
-                  <View style={styles.buttonWrapper}>
-                    <RoundButton
-                      title={t('server.resetToDefault')}
-                      size="normal"
-                      display="inverted"
-                      onPress={handleReset}
-                      disabled={!serverInfo.isCustom}
-                    />
-                  </View>
-                  <View style={styles.buttonWrapper}>
-                    <RoundButton
-                      title={
-                        isValidating ? t('server.validating') : t('common.save')
-                      }
-                      size="normal"
-                      action={handleSave}
-                      disabled={isValidating}
-                    />
-                  </View>
-                </View>
-                {serverInfo.isCustom && (
-                  <Text style={styles.statusText}>
-                    {t('server.currentlyUsingCustomServer')}
-                  </Text>
-                )}
-              </View>
-            </ItemGroup>
-          </Pressable>
+          {Platform.OS === 'web' ? (
+            serverSettingsContent
+          ) : (
+            <Pressable onPress={Keyboard.dismiss}>
+              {serverSettingsContent}
+            </Pressable>
+          )}
         </ItemList>
       </KeyboardAvoidingView>
     </>
