@@ -42,7 +42,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
   }
 
   // Check if first argument is a subcommand
-  const subcommand = args[0];
+  const subcommand = args[0]?.toLowerCase();
 
   // Log which subcommand was detected (for debugging)
   if (!args.includes('--version')) {
@@ -374,15 +374,19 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       process.exit(1);
     }
     return;
-  } else if (subcommand === 'logout') {
-    // Keep for backward compatibility - redirect to auth logout
+  } else if (
+    subcommand === 'login' ||
+    subcommand === 'logout' ||
+    subcommand === 'status'
+  ) {
+    // Keep for backward compatibility - redirect top-level auth aliases
     console.log(
       chalk.yellow(
-        'Note: "unhappy logout" is deprecated. Use "unhappy auth logout" instead.\n',
+        `Note: "unhappy ${subcommand}" is deprecated. Use "unhappy auth ${subcommand}" instead.\n`,
       ),
     );
     try {
-      await handleAuthCommand(['logout']);
+      await handleAuthCommand([subcommand, ...args.slice(1)]);
     } catch (error) {
       console.error(
         chalk.red('Error:'),
