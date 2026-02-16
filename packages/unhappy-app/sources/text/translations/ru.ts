@@ -501,7 +501,7 @@ export const ru: TranslationStructure = {
     codexPermissionMode: {
       title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
       default: 'Настройки CLI',
-      readOnly: 'Read Only Mode',
+      readOnly: 'Read Only',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
       badgeReadOnly: 'Только чтение',

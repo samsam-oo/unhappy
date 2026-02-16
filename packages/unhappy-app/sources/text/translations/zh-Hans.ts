@@ -467,10 +467,10 @@ export const zhHans: TranslationStructure = {
     codexPermissionMode: {
       title: 'CODEX 权限模式',
       default: 'CLI 设置',
-      readOnly: 'Read Only Mode',
+      readOnly: 'Read Only',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only Mode',
+      badgeReadOnly: 'Read Only',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },

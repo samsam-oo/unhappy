@@ -503,10 +503,10 @@ export const pl: TranslationStructure = {
     codexPermissionMode: {
       title: 'TRYB UPRAWNIEŃ CODEX',
       default: 'Ustawienia CLI',
-      readOnly: 'Read Only Mode',
+      readOnly: 'Read Only',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only Mode',
+      badgeReadOnly: 'Read Only',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },

@@ -492,10 +492,10 @@ export const pt: TranslationStructure = {
     codexPermissionMode: {
       title: 'MODO DE PERMISSÃO CODEX',
       default: 'Configurações do CLI',
-      readOnly: 'Read Only Mode',
+      readOnly: 'Read Only',
       safeYolo: 'Safe YOLO',
       yolo: 'YOLO',
-      badgeReadOnly: 'Read Only Mode',
+      badgeReadOnly: 'Read Only',
       badgeSafeYolo: 'Safe YOLO',
       badgeYolo: 'YOLO',
     },
