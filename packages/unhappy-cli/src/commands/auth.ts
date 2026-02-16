@@ -11,6 +11,7 @@ import {
 } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { logger } from '@/ui/logger';
+import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import chalk from 'chalk';
 import { existsSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -127,12 +128,87 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     const result = await authAndSetupMachineIfNeeded();
     console.log(chalk.green('\n✓ Authentication successful'));
     console.log(chalk.gray(`  Machine ID: ${result.machineId}`));
+    await promptDaemonRegistrationAfterLogin();
   } catch (error) {
     console.error(
       chalk.red('Authentication failed:'),
       error instanceof Error ? error.message : 'Unknown error',
     );
     process.exit(1);
+  }
+}
+
+async function promptDaemonRegistrationAfterLogin(): Promise<void> {
+  const printManualDaemonStartHint = () => {
+    console.log(
+      chalk.gray('  You can enable it anytime with ') +
+        chalk.cyan('unhappy daemon start'),
+    );
+  };
+
+  try {
+    const running = await checkIfDaemonRunningAndCleanupStaleState();
+    if (running) {
+      console.log(chalk.gray('  Background daemon is already active'));
+      return;
+    }
+  } catch {
+    // Ignore and continue to prompt or fallback hint below
+  }
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    console.log(chalk.gray('  Background daemon is not running'));
+    printManualDaemonStartHint();
+    return;
+  }
+
+  console.log(
+    chalk.gray('  Enable the background daemon to manage sessions for you'),
+  );
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const answer = await new Promise<string>((resolve) => {
+    rl.question(
+      chalk.yellow('\nEnable background daemon now? (Y/n): '),
+      resolve,
+    );
+  });
+  rl.close();
+
+  const normalized = answer.trim().toLowerCase();
+  const shouldStart =
+    normalized === '' || normalized === 'y' || normalized === 'yes';
+
+  if (!shouldStart) {
+    console.log(chalk.gray('  Skipped for now'));
+    printManualDaemonStartHint();
+    return;
+  }
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const daemonProcess = spawnUnhappyCLI(['daemon', 'start'], {
+        stdio: 'inherit',
+        env: process.env,
+      });
+      daemonProcess.once('error', reject);
+      daemonProcess.once('close', (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        reject(new Error(`daemon start exited with code ${code}`));
+      });
+    });
+    console.log(chalk.green('  ✓ Background daemon enabled'));
+  } catch (error) {
+    logger.debug('Failed to start daemon after login prompt:', error);
+    console.log(chalk.yellow('  Could not enable daemon automatically'));
+    printManualDaemonStartHint();
   }
 }
 
