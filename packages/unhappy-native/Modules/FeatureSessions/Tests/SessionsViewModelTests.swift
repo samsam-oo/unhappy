@@ -23,7 +23,9 @@ struct SessionsViewModelTests {
         let loader = MockSessionsLoader(result: .success(expected))
         let model = SessionsViewModel(
             loader: loader,
-            poller: MockSessionsPoller(rows: [])
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
         )
 
         await model.load(
@@ -67,7 +69,9 @@ struct SessionsViewModelTests {
         let loader = MockSessionsLoader(result: .success(expected))
         let model = SessionsViewModel(
             loader: loader,
-            poller: MockSessionsPoller(rows: [])
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
         )
 
         await model.load(
@@ -96,7 +100,9 @@ struct SessionsViewModelTests {
         ]
         let model = SessionsViewModel(
             loader: MockSessionsLoader(result: .success([])),
-            poller: MockSessionsPoller(rows: expected)
+            poller: MockSessionsPoller(rows: expected),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
         )
 
         await model.startPolling(
@@ -108,6 +114,120 @@ struct SessionsViewModelTests {
         #expect(model.sessions == expected)
         #expect(model.errorMessage == nil)
         #expect(model.isLoading == false)
+    }
+
+    @Test
+    func loadMessagesSuccessPublishesSelectedSessionMessages() async throws {
+        let message = APISessionMessage(
+            id: "m1",
+            seq: 1,
+            localId: "l1",
+            content: APIEncryptedMessageContent(t: "encrypted", c: "abc"),
+            createdAt: 10,
+            updatedAt: 12
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([message])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadMessages(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.selectedSessionID == "session-1")
+        #expect(model.selectedSessionMessages == [message])
+        #expect(model.selectedSessionErrorMessage == nil)
+    }
+
+    @Test
+    func deleteSessionRemovesSessionFromList() async throws {
+        let sessions = [
+            APISession(
+                id: "s1",
+                active: false,
+                activeAt: 10,
+                createdAt: 1,
+                updatedAt: 11,
+                metadataVersion: 2,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success(sessions)),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        await model.deleteSession(
+            sessionID: "s1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.sessions.isEmpty)
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test
+    func messageCacheIsBoundedToPreventUnboundedGrowth() async throws {
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: SessionAwareMessagesLoader(),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        for idx in 1...8 {
+            await model.loadMessages(
+                for: "session-\(idx)",
+                serverURLString: "https://api.unhappy.im",
+                token: "token"
+            )
+        }
+
+        #expect(model.cachedSessionMessagesCount == 4)
+    }
+
+    @Test
+    func loadMessagesTrimsPerSessionMessageCount() async throws {
+        let overLimitMessages = (1...200).map { idx in
+            APISessionMessage(
+                id: "m\(idx)",
+                seq: idx,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "encrypted", c: "\(idx)"),
+                createdAt: TimeInterval(idx),
+                updatedAt: TimeInterval(idx)
+            )
+        }
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success(overLimitMessages)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadMessages(
+            for: "session-over-limit",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.selectedSessionMessages.count == 150)
+        #expect(model.selectedSessionMessages.first?.seq == 51)
+        #expect(model.selectedSessionMessages.last?.seq == 200)
     }
 }
 
@@ -128,10 +248,16 @@ private struct MockSessionsLoader: SessionsLoading {
     }
 }
 
-private struct MockSessionsServiceForValidation: SessionsFetching {
+private struct MockSessionsServiceForValidation: SessionsFetching, SessionMessagesFetching, SessionDeleting {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         []
     }
+
+    func fetchSessionMessages(serverURL: URL, token: String, sessionID: String) async throws -> [APISessionMessage] {
+        []
+    }
+
+    func deleteSession(serverURL: URL, token: String, sessionID: String) async throws {}
 }
 
 private struct MockSessionsPoller: SessionsPolling {
@@ -145,6 +271,55 @@ private struct MockSessionsPoller: SessionsPolling {
         AsyncThrowingStream { continuation in
             continuation.yield(rows)
             continuation.finish()
+        }
+    }
+}
+
+private enum MockSessionsMessagesLoaderError: Error, Sendable {
+    case failed
+}
+
+private struct MockSessionsMessagesLoader: SessionsMessagesLoading {
+    let result: Result<[APISessionMessage], MockSessionsMessagesLoaderError>
+
+    func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
+        switch result {
+        case .success(let messages):
+            return messages
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private struct SessionAwareMessagesLoader: SessionsMessagesLoading {
+    func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
+        [
+            APISessionMessage(
+                id: "m-\(sessionID)",
+                seq: 1,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "encrypted", c: "payload"),
+                createdAt: 1,
+                updatedAt: 1
+            )
+        ]
+    }
+}
+
+private enum MockSessionDeleteUseCaseError: Error, Sendable {
+    case failed
+}
+
+private struct MockSessionDeleteUseCase: SessionDeletingAction {
+    let result: Result<Void, MockSessionDeleteUseCaseError>
+
+    func deleteSession(serverURLString: String, token: String, sessionID: String) async throws {
+        switch result {
+        case .success:
+            return
+        case .failure(let error):
+            throw error
         }
     }
 }
