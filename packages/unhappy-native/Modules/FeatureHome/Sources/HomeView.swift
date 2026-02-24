@@ -35,6 +35,9 @@ public struct HomeView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
         }
+        .task {
+            await viewModel.loadFromStore()
+        }
     }
 }
 

@@ -18,9 +18,9 @@ struct FeatureHomeTests {
     }
 }
 
-private final class MockAppSettingsStore: AppSettingsStore {
-    func serverURLString() -> String { "https://api.unhappy.im" }
-    func apiToken() -> String { "" }
-    func setServerURLString(_ value: String) {}
-    func setAPIToken(_ value: String) {}
+private actor MockAppSettingsStore: AppSettingsStore {
+    func serverURLString() async -> String { "https://api.unhappy.im" }
+    func apiToken() async -> String { "" }
+    func setServerURLString(_ value: String) async {}
+    func setAPIToken(_ value: String) async {}
 }
