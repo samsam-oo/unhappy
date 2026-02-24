@@ -7,6 +7,10 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import {
+    findConnectedSession,
+    invokePublicCommand
+} from "./codexPublicCommands";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -415,6 +419,117 @@ export function sessionRoutes(app: Fastify) {
         return reply.send({
             success: true,
             title: normalizedTitle
+        });
+    });
+
+    app.get('/v1/sessions/:sessionId/codex/threads', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            querystring: z.object({
+                limit: z.coerce.number().int().min(1).max(100).default(20)
+            }).optional()
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const limit = request.query?.limit ?? 20;
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const target = findConnectedSession(userId, sessionId);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'codex-list-threads',
+            params: { limit }
+        });
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to list Codex threads'
+            });
+        }
+
+        return reply.send(result);
+    });
+
+    app.patch('/v1/sessions/:sessionId/codex/title', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                name: z.string().max(120)
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const normalizedName = request.body.name.trim();
+
+        if (!normalizedName) {
+            return reply.code(400).send({ error: 'Session title cannot be empty' });
+        }
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const target = findConnectedSession(userId, sessionId);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'codex-set-thread-name',
+            params: { name: normalizedName }
+        });
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to rename Codex thread'
+            });
+        }
+
+        await db.session.updateMany({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            data: {
+                displayName: normalizedName
+            }
+        });
+
+        return reply.send({
+            success: true,
+            title: normalizedName
         });
     });
 }

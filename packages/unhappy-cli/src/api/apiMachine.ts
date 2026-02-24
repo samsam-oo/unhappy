@@ -31,6 +31,10 @@ interface ServerToDaemonEvents {
     data: { method: string; params: string },
     callback: (response: string) => void,
   ) => void;
+  'public-command': (
+    data: { command: string; params?: any },
+    callback: (response: any) => void,
+  ) => void;
   'rpc-registered': (data: { method: string }) => void;
   'rpc-unregistered': (data: { method: string }) => void;
   'rpc-error': (data: { type: string; error: string }) => void;
@@ -588,6 +592,41 @@ export class ApiMachineClient {
       ) => {
         logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
         callback(await this.rpcHandlerManager.handleRequest(data));
+      },
+    );
+
+    this.socket.on(
+      'public-command',
+      async (
+        data: { command: string; params?: any },
+        callback: (response: any) => void,
+      ) => {
+        const command = typeof data?.command === 'string' ? data.command : '';
+        if (!command) {
+          callback({ success: false, error: 'Command is required' });
+          return;
+        }
+        if (command !== 'codex-list-threads') {
+          callback({ success: false, error: 'Unsupported command' });
+          return;
+        }
+        if (!this.rpcHandlerManager.hasHandler(command)) {
+          callback({ success: false, error: 'RPC method not available' });
+          return;
+        }
+        try {
+          const result = await this.rpcHandlerManager.invokeLocal(
+            command,
+            data?.params ?? {},
+          );
+          callback(result);
+        } catch (error) {
+          callback({
+            success: false,
+            error:
+              error instanceof Error ? error.message : 'Failed to execute command',
+          });
+        }
       },
     );
 
