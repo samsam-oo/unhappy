@@ -40,6 +40,7 @@ const mockState = vi.hoisted(() => {
 
   const client = {
     connect: vi.fn(async () => {}),
+    listRecentThreadsByCwd: vi.fn(async () => []),
     setPermissionHandler: vi.fn(),
     setHandler: vi.fn(),
     startSession: vi

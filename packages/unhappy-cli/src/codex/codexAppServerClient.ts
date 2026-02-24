@@ -59,6 +59,15 @@ type CodexToolCallLike = {
   error?: { message?: string } | string;
 };
 
+export type CodexThreadSummary = {
+  id: string;
+  name?: string;
+  cwd?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  archived?: boolean;
+};
+
 export type CodexPermissionHandlerLike = {
   handleToolCall(
     toolCallId: string,
@@ -320,26 +329,37 @@ export class CodexAppServerClient {
   }
 
   async findMostRecentThreadIdByCwd(cwd: string): Promise<string | null> {
+    const threads = await this.listRecentThreadsByCwd(cwd, { limit: 20 });
+    return threads.length > 0 ? threads[0].id : null;
+  }
+
+  async listRecentThreadsByCwd(
+    cwd: string,
+    options?: { limit?: number },
+  ): Promise<CodexThreadSummary[]> {
     if (!this.connected) await this.connect();
     const normalizedCwd = cwd.trim();
-    if (!normalizedCwd) return null;
+    if (!normalizedCwd) return [];
+    const limit =
+      typeof options?.limit === 'number' && Number.isFinite(options.limit)
+        ? Math.max(1, Math.min(100, Math.floor(options.limit)))
+        : 20;
     try {
       const response = await this.callRpc(
         'thread/list',
         {
           cwd: normalizedCwd,
-          limit: 20,
+          limit,
           sortKey: 'updated_at',
           archived: false,
         },
         { timeout: THREAD_META_TIMEOUT_MS },
       );
 
-      const threadIds = this.extractThreadIdsFromListResponse(response);
-      return threadIds.length > 0 ? threadIds[0] : null;
+      return this.extractThreadSummariesFromListResponse(response);
     } catch (error) {
       logger.debug('[CodexAppServer] thread/list lookup failed', error);
-      return null;
+      return [];
     }
   }
 
@@ -1259,7 +1279,9 @@ export class CodexAppServerClient {
     }
   }
 
-  private extractThreadIdsFromListResponse(response: unknown): string[] {
+  private extractThreadSummariesFromListResponse(
+    response: unknown,
+  ): CodexThreadSummary[] {
     const rows = isRecord(response)
       ? Array.isArray(response.data)
         ? response.data
@@ -1268,25 +1290,70 @@ export class CodexAppServerClient {
           : []
       : [];
 
-    const ids: string[] = [];
+    const summaries: CodexThreadSummary[] = [];
+    const seen = new Set<string>();
     for (const row of rows) {
       if (!isRecord(row)) continue;
-      const directId = typeof row.id === 'string' ? row.id.trim() : '';
-      if (directId) {
-        ids.push(directId);
-        continue;
-      }
       const nestedThread = isRecord(row.thread) ? row.thread : null;
+      const directId = typeof row.id === 'string' ? row.id.trim() : '';
       const nestedId =
-        nestedThread && typeof nestedThread.id === 'string'
+        nestedThread && typeof nestedThread.id === 'string' && nestedThread.id.trim()
           ? nestedThread.id.trim()
           : '';
-      if (nestedId) {
-        ids.push(nestedId);
-      }
+      const id = directId || nestedId;
+      if (!id || seen.has(id)) continue;
+
+      seen.add(id);
+      summaries.push({
+        id,
+        name: getFirstNonEmptyString([
+          row.name,
+          row.title,
+          row.threadName,
+          row.thread_name,
+          nestedThread?.name,
+          nestedThread?.title,
+          nestedThread?.threadName,
+          nestedThread?.thread_name,
+        ]) ?? undefined,
+        cwd:
+          getFirstNonEmptyString([row.cwd, nestedThread?.cwd]) ?? undefined,
+        updatedAt:
+          this.normalizeThreadTimestamp(
+            row.updatedAt ??
+              row.updated_at ??
+              nestedThread?.updatedAt ??
+              nestedThread?.updated_at,
+          ) ?? undefined,
+        createdAt:
+          this.normalizeThreadTimestamp(
+            row.createdAt ??
+              row.created_at ??
+              nestedThread?.createdAt ??
+              nestedThread?.created_at,
+          ) ?? undefined,
+        archived:
+          typeof row.archived === 'boolean'
+            ? row.archived
+            : typeof nestedThread?.archived === 'boolean'
+              ? nestedThread.archived
+              : undefined,
+      });
     }
 
-    return ids.filter((id, index) => ids.indexOf(id) === index);
+    return summaries;
+  }
+
+  private normalizeThreadTimestamp(value: unknown): string | null {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const millis = value > 1_000_000_000_000 ? value : value * 1000;
+      return new Date(millis).toISOString();
+    }
+    return null;
   }
 
   private sendResponse(id: RequestId, result: unknown): void {
