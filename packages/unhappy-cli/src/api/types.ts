@@ -337,6 +337,11 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  collab?: {
+    state: 'in_progress' | 'completed',
+    updatedAt: number,
+    activeCount?: number
+  }
   requests?: {
     [id: string]: {
       tool: string,

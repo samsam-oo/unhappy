@@ -935,6 +935,25 @@ export class CodexAppServerClient {
       return;
     }
 
+    if (method === 'turn/started') {
+      const turn = isRecord(params.turn) ? (params.turn as TurnState) : null;
+      if (turn && typeof turn.id === 'string') {
+        this.activeTurnId = turn.id;
+      }
+      if (!this.sawLegacyCodexEvents) {
+        this.handler?.({
+          type: 'task_started',
+          id:
+            turn && typeof turn.id === 'string'
+              ? turn.id
+              : typeof params.turnId === 'string'
+                ? params.turnId
+                : randomUUID(),
+        });
+      }
+      return;
+    }
+
     if (method === 'turn/completed') {
       const turn = isRecord(params.turn) ? (params.turn as TurnState) : null;
       if (turn && typeof turn.id === 'string') {
@@ -947,9 +966,13 @@ export class CodexAppServerClient {
         } else {
           this.completedTurns.set(turn.id, turn);
         }
-        // When legacy codex/event stream is available, it already emits turn_aborted.
-        if (turn.status === 'interrupted' && !this.sawLegacyCodexEvents) {
-          this.handler?.({ type: 'turn_aborted' });
+        // When legacy codex/event stream is available, it already emits task lifecycle events.
+        if (!this.sawLegacyCodexEvents) {
+          if (turn.status === 'interrupted') {
+            this.handler?.({ type: 'turn_aborted', id: turn.id });
+          } else {
+            this.handler?.({ type: 'task_complete', id: turn.id });
+          }
         }
       }
       return;
@@ -984,6 +1007,20 @@ export class CodexAppServerClient {
           logger.debug('[CodexAppServer] Suppressed duplicate agent_message from item/completed');
         }
       }
+    }
+
+    if (
+      method === 'item/agentMessage/delta' &&
+      typeof params.delta === 'string' &&
+      !this.sawLegacyCodexEvents
+    ) {
+      this.handler?.({
+        type: 'agent_message_delta',
+        delta: params.delta,
+        item_id: params.itemId,
+        turn_id: params.turnId,
+        thread_id: params.threadId,
+      });
     }
   }
 
