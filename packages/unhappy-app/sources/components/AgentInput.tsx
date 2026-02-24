@@ -81,6 +81,10 @@ interface AgentInputProps {
     minHeight?: number;
     profileId?: string | null;
     onProfileClick?: () => void;
+    showSteerModeControl?: boolean;
+    steerMode?: 'queue' | 'immediate';
+    onSteerModeChange?: (mode: 'queue' | 'immediate') => void;
+    collabInProgress?: boolean;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -414,8 +418,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             : props.agentType === 'gemini' || props.metadata?.flavor === 'gemini'
                 ? 'gemini'
                 : 'claude';
-    const isCodex = agentFlavor === 'codex';
     const isGemini = agentFlavor === 'gemini';
+    const steerMode: 'queue' | 'immediate' =
+        props.steerMode === 'immediate' ? 'immediate' : 'queue';
+    const steerModeLabel = steerMode === 'immediate' ? 'Steer now' : 'Queue';
+    const steerModeIcon = steerMode === 'immediate' ? 'navigate-outline' : 'time-outline';
 
     // Calculate context warning (always shown when contextSize is known)
     const contextSize = props.usageData?.contextSize;
@@ -747,6 +754,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         const next = order[(idx >= 0 ? idx + 1 : 0) % order.length] ?? null;
         props.onEffortModeChange(next);
     }, [props.onEffortModeChange, props.effortMode]);
+
+    const handleToggleSteerMode = React.useCallback(() => {
+        if (!props.onSteerModeChange) return;
+        hapticsLight();
+        props.onSteerModeChange(steerMode === 'queue' ? 'immediate' : 'queue');
+    }, [props.onSteerModeChange, steerMode]);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
@@ -1396,6 +1409,80 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={styles.actionButtonsLeft}>
+                            {props.collabInProgress && (
+                                <View style={styles.actionButtonItem}>
+                                    <View
+                                        style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            height: 32,
+                                            gap: 6,
+                                            backgroundColor: theme.colors.button.primary.background + '14',
+                                            borderWidth: 1,
+                                            borderColor: theme.colors.button.primary.background + '42',
+                                        }}
+                                    >
+                                        <ActivityIndicator size="small" color={theme.colors.button.primary.background} />
+                                        <Text
+                                            style={{
+                                                fontSize: 12,
+                                                color: theme.colors.button.primary.background,
+                                                fontWeight: '700',
+                                                ...Typography.default('semiBold'),
+                                            }}
+                                            numberOfLines={1}
+                                        >
+                                            Multi-agent running
+                                        </Text>
+                                    </View>
+                                </View>
+                            )}
+
+                            {props.showSteerModeControl && props.onSteerModeChange && (
+                                <View style={styles.actionButtonItem}>
+                                    <Pressable
+                                        onPress={handleToggleSteerMode}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        style={(p) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 10,
+                                            paddingVertical: 6,
+                                            height: 32,
+                                            gap: 6,
+                                            opacity: p.pressed ? 0.75 : 1,
+                                            backgroundColor: steerMode === 'immediate'
+                                                ? theme.colors.box.warning.background
+                                                : theme.colors.surfacePressed,
+                                            borderWidth: 1,
+                                            borderColor: steerMode === 'immediate'
+                                                ? theme.colors.box.warning.border
+                                                : theme.colors.divider,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name={steerModeIcon as any}
+                                            size={14}
+                                            color={steerMode === 'immediate' ? theme.colors.box.warning.text : theme.colors.textSecondary}
+                                        />
+                                        <Text
+                                            style={{
+                                                fontSize: 12,
+                                                color: steerMode === 'immediate' ? theme.colors.box.warning.text : theme.colors.textSecondary,
+                                                fontWeight: '700',
+                                                ...Typography.default('semiBold'),
+                                            }}
+                                        >
+                                            {steerModeLabel}
+                                        </Text>
+                                    </Pressable>
+                                </View>
+                            )}
+
                             {/* Permission mode (YOLO / approvals) */}
                             {props.permissionMode && (
                                 <View style={styles.actionButtonItem}>

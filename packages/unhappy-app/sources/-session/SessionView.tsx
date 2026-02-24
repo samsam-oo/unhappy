@@ -554,9 +554,33 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const modelMode: string | null = session.modelMode ?? (isGeminiSession ? 'gemini-2.5-pro' : null);
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
+    const [codexSteerMode, setCodexSteerMode] = React.useState<'queue' | 'immediate'>('queue');
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
+
+    React.useEffect(() => {
+        setCodexSteerMode('queue');
+    }, [sessionId]);
+
+    React.useEffect(() => {
+        if (sessionStatus.state !== 'thinking') {
+            setCodexSteerMode('queue');
+        }
+    }, [sessionStatus.state]);
+
+    const isCodexSession = session.metadata?.flavor === 'codex';
+    const collabInProgress = React.useMemo(() => {
+        if (!isCodexSession) return false;
+        for (let i = messages.length - 1; i >= 0; i -= 1) {
+            const item = messages[i];
+            if (item.kind !== 'agent-text') continue;
+            const normalized = item.text.trim().toLowerCase();
+            if (normalized === 'sub-agent completed') return false;
+            if (normalized === 'sub-agent in progress') return true;
+        }
+        return false;
+    }, [isCodexSession, messages]);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -679,12 +703,22 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
                 if (message.trim()) {
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
+                    const steerMode = isCodexSession && sessionStatus.state === 'thinking'
+                        ? codexSteerMode
+                        : 'queue';
+                    sync.sendMessage(sessionId, message, undefined, { steerMode });
+                    if (steerMode === 'immediate') {
+                        setCodexSteerMode('queue');
+                    }
                     trackMessageSent();
                 }
             }}
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking'}
+            showSteerModeControl={isCodexSession && sessionStatus.state === 'thinking'}
+            steerMode={codexSteerMode}
+            onSteerModeChange={setCodexSteerMode}
+            collabInProgress={collabInProgress && sessionStatus.state === 'thinking'}
             onFileViewerPress={() => router.push({ pathname: '/session/[id]/review', params: { id: sessionId } })}
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}

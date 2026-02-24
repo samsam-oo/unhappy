@@ -211,7 +211,12 @@ class Sync {
     }
 
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    async sendMessage(
+        sessionId: string,
+        text: string,
+        displayText?: string,
+        options?: { steerMode?: 'queue' | 'immediate' }
+    ) {
         // Get session data from storage
         const session = storage.getState().sessions[sessionId];
         if (!session) {
@@ -273,6 +278,7 @@ class Sync {
                 sentFrom,
                 permissionMode: wirePermissionMode,
                 planOnly: permissionPolicy.planOnly,
+                ...(options?.steerMode ? { steerMode: options.steerMode } : {}),
                 model,
                 fallbackModel,
                 // `null` explicitly resets to backend default; omitted/undefined means "keep current".
