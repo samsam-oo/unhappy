@@ -6,7 +6,7 @@ import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Ionicons, Octicons } from '@/icons/vector-icons';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import type { Project } from '@/sync/projectManager';
-import { sessionKill } from '@/sync/ops';
+import { sessionKill, machineCodexListThreads, type CodexThreadSummary } from '@/sync/ops';
 import { useAllSessions, useProjects } from '@/sync/storage';
 import type { Session } from '@/sync/storageTypes';
 import { sync } from '@/sync/sync';
@@ -123,6 +123,23 @@ function formatBadgeCount(count: number): string {
     if (count <= 0) return '';
     if (count > 99) return '99+';
     return String(count);
+}
+
+function buildCodexThreadListForModal(threads: CodexThreadSummary[]): string {
+    return threads
+        .map((thread, index) => {
+            const title =
+                typeof thread.name === 'string' && thread.name.trim().length > 0
+                    ? thread.name.trim()
+                    : '(untitled)';
+            const dateRaw = thread.updatedAt || thread.createdAt;
+            const when = dateRaw ? new Date(dateRaw).toLocaleString() : null;
+            const parts = [`${index + 1}. ${title}`];
+            if (when) parts.push(when);
+            parts.push(thread.id);
+            return parts.join(' • ');
+        })
+        .join('\n');
 }
 
 function getProjectStableId(project: Project): string {
@@ -1621,6 +1638,39 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                     },
                                                 });
                                                 actions.push({
+                                                    key: 'codex-thread-list',
+                                                    label: 'List Codex Sessions',
+                                                    icon: 'list-outline',
+                                                    onPress: async () => {
+                                                        const result = await machineCodexListThreads(
+                                                            row.project.key.machineId,
+                                                            {
+                                                                cwd: row.project.key.path,
+                                                                limit: 20,
+                                                            },
+                                                        );
+                                                        if (!result.success) {
+                                                            Modal.alert(
+                                                                t('common.error'),
+                                                                result.error || 'Failed to load Codex sessions',
+                                                            );
+                                                            return;
+                                                        }
+                                                        const threads = result.threads || [];
+                                                        if (threads.length === 0) {
+                                                            Modal.alert(
+                                                                'Codex Sessions',
+                                                                'No existing Codex sessions found for this workspace.',
+                                                            );
+                                                            return;
+                                                        }
+                                                        Modal.alert(
+                                                            'Codex Sessions',
+                                                            buildCodexThreadListForModal(threads),
+                                                        );
+                                                    },
+                                                });
+                                                actions.push({
                                                     key: 'delete',
                                                     label: t('workspaceExplorer.deleteWorkspace'),
                                                     icon: 'trash',
@@ -1768,6 +1818,39 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                 onPress: () => {
                                                     if (!preferredReviewSessionId) return;
                                                     router.push(`/session/${preferredReviewSessionId}/review`);
+                                                },
+                                            });
+                                            actions.push({
+                                                key: 'codex-thread-list',
+                                                label: 'List Codex Sessions',
+                                                icon: 'list-outline',
+                                                onPress: async () => {
+                                                    const result = await machineCodexListThreads(
+                                                        row.project.key.machineId,
+                                                        {
+                                                            cwd: row.project.key.path,
+                                                            limit: 20,
+                                                        },
+                                                    );
+                                                    if (!result.success) {
+                                                        Modal.alert(
+                                                            t('common.error'),
+                                                            result.error || 'Failed to load Codex sessions',
+                                                        );
+                                                        return;
+                                                    }
+                                                    const threads = result.threads || [];
+                                                    if (threads.length === 0) {
+                                                        Modal.alert(
+                                                            'Codex Sessions',
+                                                            'No existing Codex sessions found for this workspace.',
+                                                        );
+                                                        return;
+                                                    }
+                                                    Modal.alert(
+                                                        'Codex Sessions',
+                                                        buildCodexThreadListForModal(threads),
+                                                    );
                                                 },
                                             });
                                             actions.push({
