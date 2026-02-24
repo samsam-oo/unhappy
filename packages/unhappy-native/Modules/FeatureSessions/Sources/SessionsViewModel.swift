@@ -17,6 +17,10 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var selectedSessionMessages: [APISessionMessage] = []
     @Published public private(set) var isLoadingSessionMessages = false
     @Published public private(set) var selectedSessionErrorMessage: String?
+    @Published public private(set) var selectedCodexThreads: [APICodexThreadSummary] = []
+    @Published public private(set) var isLoadingCodexThreads = false
+    @Published public private(set) var selectedCodexThreadsErrorMessage: String?
+    @Published public private(set) var selectedCodexThreadsSessionID: String?
     @Published public private(set) var deletingSessionIDs: Set<String> = []
     @Published public private(set) var renamingSessionIDs: Set<String> = []
 
@@ -24,6 +28,7 @@ public final class SessionsViewModel: ObservableObject {
     private let pageLoader: any SessionsPageLoading
     private let poller: any SessionsPolling
     private let messageLoader: any SessionsMessagesLoading
+    private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
     private let deleteUseCase: any SessionDeletingAction
     private let titleUseCase: any SessionTitleUpdatingAction
     private var messagesBySessionID: [String: [APISessionMessage]] = [:]
@@ -35,6 +40,7 @@ public final class SessionsViewModel: ObservableObject {
         pageLoader: any SessionsPageLoading,
         poller: any SessionsPolling,
         messageLoader: any SessionsMessagesLoading,
+        codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
         deleteUseCase: any SessionDeletingAction,
         titleUseCase: any SessionTitleUpdatingAction
     ) {
@@ -42,12 +48,13 @@ public final class SessionsViewModel: ObservableObject {
         self.pageLoader = pageLoader
         self.poller = poller
         self.messageLoader = messageLoader
+        self.codexThreadsLoader = codexThreadsLoader
         self.deleteUseCase = deleteUseCase
         self.titleUseCase = titleUseCase
     }
 
     public convenience init(
-        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating
+        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating & SessionCodexThreadsFetching
     ) {
         let loader = SessionsLoadUseCase(service: service)
         self.init(
@@ -55,6 +62,7 @@ public final class SessionsViewModel: ObservableObject {
             pageLoader: SessionsPageLoadUseCase(service: service),
             poller: SessionsPollingUseCase(loader: loader),
             messageLoader: SessionMessagesLoadUseCase(service: service),
+            codexThreadsLoader: SessionCodexThreadsLoadUseCase(service: service),
             deleteUseCase: SessionDeleteUseCase(service: service),
             titleUseCase: SessionTitleUpdateUseCase(service: service)
         )
@@ -198,6 +206,37 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    public func loadCodexThreads(for sessionID: String, serverURLString: String, token: String, limit: Int = 20) async {
+        selectedCodexThreadsSessionID = sessionID
+        selectedCodexThreadsErrorMessage = nil
+        selectedCodexThreads = []
+        isLoadingCodexThreads = true
+        defer { isLoadingCodexThreads = false }
+
+        guard let codexThreadsLoader else {
+            selectedCodexThreadsErrorMessage = "Codex thread listing is unavailable in this build"
+            return
+        }
+
+        do {
+            let threads = try await codexThreadsLoader.loadCodexThreads(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                limit: limit
+            )
+            if selectedCodexThreadsSessionID == sessionID {
+                selectedCodexThreads = threads
+                selectedCodexThreadsErrorMessage = nil
+            }
+        } catch {
+            if selectedCodexThreadsSessionID == sessionID {
+                selectedCodexThreads = []
+                selectedCodexThreadsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+    }
+
     public func deleteSession(sessionID: String, serverURLString: String, token: String) async {
         deletingSessionIDs.insert(sessionID)
         defer { deletingSessionIDs.remove(sessionID) }
@@ -227,6 +266,11 @@ public final class SessionsViewModel: ObservableObject {
         selectedSessionID = nil
         selectedSessionMessages = []
         selectedSessionErrorMessage = nil
+        if selectedCodexThreadsSessionID == sessionID {
+            selectedCodexThreadsSessionID = nil
+            selectedCodexThreads = []
+            selectedCodexThreadsErrorMessage = nil
+        }
     }
 
     public func setSessionTitle(

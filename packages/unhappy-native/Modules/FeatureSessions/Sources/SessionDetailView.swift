@@ -11,6 +11,7 @@ public struct SessionDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirmation = false
     @State private var showRenameSheet = false
+    @State private var showCodexThreadsSheet = false
     @State private var renameDraft = ""
 
     public init(
@@ -27,6 +28,21 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         List {
+            Section("Multi-Agent") {
+                HStack {
+                    Text(viewModel.activeSessionsCount == 1 ? "1 active session" : "\(viewModel.activeSessionsCount) active sessions")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(viewModel.multiAgentInProgress ? "진행중" : "완료됨")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(viewModel.multiAgentInProgress ? Color.green.opacity(0.16) : Color.gray.opacity(0.14))
+                        .foregroundStyle(viewModel.multiAgentInProgress ? Color.green : Color.secondary)
+                        .clipShape(Capsule())
+                }
+            }
+
             Section("Session") {
                 LabeledContent("Title") {
                     Text(currentSession.displayName ?? "Untitled")
@@ -84,6 +100,16 @@ public struct SessionDetailView: View {
                     ProgressView()
                 } else {
                     Menu {
+                        Button("List Codex Sessions", systemImage: "list.bullet") {
+                            showCodexThreadsSheet = true
+                            Task {
+                                await viewModel.loadCodexThreads(
+                                    for: session.id,
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                            }
+                        }
                         Button("Rename", systemImage: "pencil") {
                             renameDraft = currentSession.displayName ?? ""
                             showRenameSheet = true
@@ -152,6 +178,50 @@ public struct SessionDetailView: View {
             }
             .presentationDetents([.medium])
         }
+        .sheet(isPresented: $showCodexThreadsSheet) {
+            NavigationStack {
+                List {
+                    if viewModel.isLoadingCodexThreads {
+                        ProgressView("Loading Codex sessions…")
+                    } else if let error = viewModel.selectedCodexThreadsErrorMessage {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Unable to load Codex sessions")
+                                .font(.headline)
+                            Text(error)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Button("Retry") {
+                                Task {
+                                    await viewModel.loadCodexThreads(
+                                        for: session.id,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    } else if viewModel.selectedCodexThreads.isEmpty {
+                        Text("No existing Codex sessions")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(viewModel.selectedCodexThreads) { thread in
+                            CodexThreadRow(thread: thread)
+                        }
+                    }
+                }
+                .navigationTitle("Codex Sessions")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            showCodexThreadsSheet = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .alert(
             "Delete session?",
             isPresented: $showDeleteConfirmation,
@@ -178,6 +248,56 @@ public struct SessionDetailView: View {
 
     private var currentSession: APISession {
         viewModel.sessions.first(where: { $0.id == session.id }) ?? session
+    }
+}
+
+private struct CodexThreadRow: View {
+    private static let formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let fallbackFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    let thread: APICodexThreadSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(threadName)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            Text(thread.id)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if let dateText {
+                Text(dateText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var threadName: String {
+        let trimmed = thread.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed, !trimmed.isEmpty {
+            return trimmed
+        }
+        return "Untitled"
+    }
+
+    private var dateText: String? {
+        let candidate = thread.updatedAt ?? thread.createdAt
+        guard let candidate else { return nil }
+        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
+            return candidate
+        }
+        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
 }
 
