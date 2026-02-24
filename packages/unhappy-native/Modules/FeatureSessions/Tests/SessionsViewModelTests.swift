@@ -361,6 +361,39 @@ struct SessionsViewModelTests {
         #expect(model.selectedCodexThreads == expected)
         #expect(model.selectedCodexThreadsErrorMessage == nil)
     }
+
+    @Test
+    func loadClaudeSessionsPublishesRows() async throws {
+        let expected = [
+            APIClaudeSessionSummary(
+                id: "a1b2c3d4-1111-2222-3333-444444444444",
+                cwd: "/tmp/project",
+                updatedAt: "2026-02-24T10:00:00.000Z",
+                createdAt: "2026-02-24T09:00:00.000Z"
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            codexThreadsLoader: MockSessionCodexThreadsLoader(result: .success([])),
+            claudeSessionsLoader: MockSessionClaudeSessionsLoader(result: .success(expected)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.loadClaudeSessions(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            limit: 20
+        )
+
+        #expect(model.selectedClaudeSessionsSessionID == "session-1")
+        #expect(model.selectedClaudeSessions == expected)
+        #expect(model.selectedClaudeSessionsErrorMessage == nil)
+    }
 }
 
 private enum MockSessionsLoaderError: Error, Sendable {
@@ -380,7 +413,7 @@ private struct MockSessionsLoader: SessionsLoading {
     }
 }
 
-private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching {
+private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         []
     }
@@ -398,6 +431,10 @@ private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagin
     func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws {}
 
     func fetchCodexThreads(serverURL: URL, token: String, sessionID: String, limit: Int) async throws -> [APICodexThreadSummary] {
+        []
+    }
+
+    func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int) async throws -> [APIClaudeSessionSummary] {
         []
     }
 }
@@ -523,6 +560,23 @@ private struct MockSessionCodexThreadsLoader: SessionCodexThreadsLoading {
     let result: Result<[APICodexThreadSummary], MockSessionCodexThreadsLoaderError>
 
     func loadCodexThreads(serverURLString: String, token: String, sessionID: String, limit: Int) async throws -> [APICodexThreadSummary] {
+        switch result {
+        case .success(let rows):
+            return rows
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private enum MockSessionClaudeSessionsLoaderError: Error, Sendable {
+    case failed
+}
+
+private struct MockSessionClaudeSessionsLoader: SessionClaudeSessionsLoading {
+    let result: Result<[APIClaudeSessionSummary], MockSessionClaudeSessionsLoaderError>
+
+    func loadClaudeSessions(serverURLString: String, token: String, sessionID: String, limit: Int) async throws -> [APIClaudeSessionSummary] {
         switch result {
         case .success(let rows):
             return rows

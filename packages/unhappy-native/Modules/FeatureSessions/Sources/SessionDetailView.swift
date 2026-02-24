@@ -12,6 +12,7 @@ public struct SessionDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showRenameSheet = false
     @State private var showCodexThreadsSheet = false
+    @State private var showClaudeSessionsSheet = false
     @State private var renameDraft = ""
 
     public init(
@@ -104,6 +105,16 @@ public struct SessionDetailView: View {
                             showCodexThreadsSheet = true
                             Task {
                                 await viewModel.loadCodexThreads(
+                                    for: session.id,
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                            }
+                        }
+                        Button("List Claude Sessions", systemImage: "list.bullet.rectangle") {
+                            showClaudeSessionsSheet = true
+                            Task {
+                                await viewModel.loadClaudeSessions(
                                     for: session.id,
                                     serverURLString: serverURLString,
                                     token: token
@@ -222,6 +233,50 @@ public struct SessionDetailView: View {
             }
             .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showClaudeSessionsSheet) {
+            NavigationStack {
+                List {
+                    if viewModel.isLoadingClaudeSessions {
+                        ProgressView("Loading Claude sessions…")
+                    } else if let error = viewModel.selectedClaudeSessionsErrorMessage {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Unable to load Claude sessions")
+                                .font(.headline)
+                            Text(error)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Button("Retry") {
+                                Task {
+                                    await viewModel.loadClaudeSessions(
+                                        for: session.id,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    } else if viewModel.selectedClaudeSessions.isEmpty {
+                        Text("No existing Claude sessions")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(viewModel.selectedClaudeSessions) { session in
+                            ClaudeSessionRow(session: session)
+                        }
+                    }
+                }
+                .navigationTitle("Claude Sessions")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") {
+                            showClaudeSessionsSheet = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
         .alert(
             "Delete session?",
             isPresented: $showDeleteConfirmation,
@@ -293,6 +348,50 @@ private struct CodexThreadRow: View {
 
     private var dateText: String? {
         let candidate = thread.updatedAt ?? thread.createdAt
+        guard let candidate else { return nil }
+        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
+            return candidate
+        }
+        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+    }
+}
+
+private struct ClaudeSessionRow: View {
+    private static let formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let fallbackFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    let session: APIClaudeSessionSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(session.id)
+                .font(.caption.monospaced())
+                .lineLimit(1)
+            if let cwd = session.cwd, !cwd.isEmpty {
+                Text(cwd)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if let dateText {
+                Text(dateText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var dateText: String? {
+        let candidate = session.updatedAt ?? session.createdAt
         guard let candidate else { return nil }
         guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
             return candidate

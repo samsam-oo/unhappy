@@ -21,6 +21,10 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var isLoadingCodexThreads = false
     @Published public private(set) var selectedCodexThreadsErrorMessage: String?
     @Published public private(set) var selectedCodexThreadsSessionID: String?
+    @Published public private(set) var selectedClaudeSessions: [APIClaudeSessionSummary] = []
+    @Published public private(set) var isLoadingClaudeSessions = false
+    @Published public private(set) var selectedClaudeSessionsErrorMessage: String?
+    @Published public private(set) var selectedClaudeSessionsSessionID: String?
     @Published public private(set) var deletingSessionIDs: Set<String> = []
     @Published public private(set) var renamingSessionIDs: Set<String> = []
 
@@ -29,6 +33,7 @@ public final class SessionsViewModel: ObservableObject {
     private let poller: any SessionsPolling
     private let messageLoader: any SessionsMessagesLoading
     private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
+    private let claudeSessionsLoader: (any SessionClaudeSessionsLoading)?
     private let deleteUseCase: any SessionDeletingAction
     private let titleUseCase: any SessionTitleUpdatingAction
     private var messagesBySessionID: [String: [APISessionMessage]] = [:]
@@ -41,6 +46,7 @@ public final class SessionsViewModel: ObservableObject {
         poller: any SessionsPolling,
         messageLoader: any SessionsMessagesLoading,
         codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
+        claudeSessionsLoader: (any SessionClaudeSessionsLoading)? = nil,
         deleteUseCase: any SessionDeletingAction,
         titleUseCase: any SessionTitleUpdatingAction
     ) {
@@ -49,12 +55,13 @@ public final class SessionsViewModel: ObservableObject {
         self.poller = poller
         self.messageLoader = messageLoader
         self.codexThreadsLoader = codexThreadsLoader
+        self.claudeSessionsLoader = claudeSessionsLoader
         self.deleteUseCase = deleteUseCase
         self.titleUseCase = titleUseCase
     }
 
     public convenience init(
-        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating & SessionCodexThreadsFetching
+        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating & SessionCodexThreadsFetching & SessionClaudeSessionsFetching
     ) {
         let loader = SessionsLoadUseCase(service: service)
         self.init(
@@ -63,6 +70,7 @@ public final class SessionsViewModel: ObservableObject {
             poller: SessionsPollingUseCase(loader: loader),
             messageLoader: SessionMessagesLoadUseCase(service: service),
             codexThreadsLoader: SessionCodexThreadsLoadUseCase(service: service),
+            claudeSessionsLoader: SessionClaudeSessionsLoadUseCase(service: service),
             deleteUseCase: SessionDeleteUseCase(service: service),
             titleUseCase: SessionTitleUpdateUseCase(service: service)
         )
@@ -237,6 +245,37 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    public func loadClaudeSessions(for sessionID: String, serverURLString: String, token: String, limit: Int = 20) async {
+        selectedClaudeSessionsSessionID = sessionID
+        selectedClaudeSessionsErrorMessage = nil
+        selectedClaudeSessions = []
+        isLoadingClaudeSessions = true
+        defer { isLoadingClaudeSessions = false }
+
+        guard let claudeSessionsLoader else {
+            selectedClaudeSessionsErrorMessage = "Claude session listing is unavailable in this build"
+            return
+        }
+
+        do {
+            let rows = try await claudeSessionsLoader.loadClaudeSessions(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                limit: limit
+            )
+            if selectedClaudeSessionsSessionID == sessionID {
+                selectedClaudeSessions = rows
+                selectedClaudeSessionsErrorMessage = nil
+            }
+        } catch {
+            if selectedClaudeSessionsSessionID == sessionID {
+                selectedClaudeSessions = []
+                selectedClaudeSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+    }
+
     public func deleteSession(sessionID: String, serverURLString: String, token: String) async {
         deletingSessionIDs.insert(sessionID)
         defer { deletingSessionIDs.remove(sessionID) }
@@ -270,6 +309,11 @@ public final class SessionsViewModel: ObservableObject {
             selectedCodexThreadsSessionID = nil
             selectedCodexThreads = []
             selectedCodexThreadsErrorMessage = nil
+        }
+        if selectedClaudeSessionsSessionID == sessionID {
+            selectedClaudeSessionsSessionID = nil
+            selectedClaudeSessions = []
+            selectedClaudeSessionsErrorMessage = nil
         }
     }
 
