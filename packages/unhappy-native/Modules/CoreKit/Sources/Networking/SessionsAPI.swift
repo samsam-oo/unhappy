@@ -1,6 +1,35 @@
 import Foundation
 
 public enum SessionsAPI {
+    public static func makePagedListRequest(
+        serverURL: URL,
+        token: String,
+        cursor: String? = nil,
+        limit: Int = 50
+    ) throws -> URLRequest {
+        let boundedLimit = min(max(limit, 1), 200)
+        let sessionsURL = serverURL.appending(path: "v2/sessions")
+        guard var components = URLComponents(url: sessionsURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+
+        var queryItems = [URLQueryItem(name: "limit", value: "\(boundedLimit)")]
+        if let cursor, !cursor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        components.queryItems = queryItems
+
+        guard let requestURL = components.url else {
+            throw URLError(.badURL)
+        }
+
+        return try makeRequest(
+            url: requestURL,
+            method: "GET",
+            token: token
+        )
+    }
+
     public static func makeListRequest(serverURL: URL, token: String) throws -> URLRequest {
         let sessionsURL = serverURL.appending(path: "v1/sessions")
         return try makeRequest(
@@ -42,6 +71,16 @@ public enum SessionsAPI {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsListResponse.self, from: data)
         return response.sessions
+    }
+
+    public static func decodePagedListResponse(_ data: Data) throws -> APISessionsPage {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(SessionsPagedListResponse.self, from: data)
+        return APISessionsPage(
+            sessions: response.sessions,
+            nextCursor: response.nextCursor,
+            hasNext: response.hasNext
+        )
     }
 
     public static func decodeMessagesResponse(_ data: Data) throws -> [APISessionMessage] {
@@ -89,8 +128,23 @@ private struct SessionsMessagesResponse: Decodable {
     let messages: [APISessionMessage]
 }
 
+private struct SessionsPagedListResponse: Decodable {
+    let sessions: [APISession]
+    let nextCursor: String?
+    let hasNext: Bool
+}
+
 public protocol SessionsFetching: Sendable {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession]
+}
+
+public protocol SessionsPagingFetching: Sendable {
+    func fetchSessionsPage(
+        serverURL: URL,
+        token: String,
+        cursor: String?,
+        limit: Int
+    ) async throws -> APISessionsPage
 }
 
 public protocol SessionMessagesFetching: Sendable {
@@ -101,11 +155,31 @@ public protocol SessionDeleting: Sendable {
     func deleteSession(serverURL: URL, token: String, sessionID: String) async throws
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionMessagesFetching, SessionDeleting {
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
-        let request = try SessionsAPI.makeListRequest(serverURL: serverURL, token: token)
+        let page = try await fetchSessionsPage(
+            serverURL: serverURL,
+            token: token,
+            cursor: nil,
+            limit: 50
+        )
+        return page.sessions.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    public func fetchSessionsPage(
+        serverURL: URL,
+        token: String,
+        cursor: String?,
+        limit: Int
+    ) async throws -> APISessionsPage {
+        let request = try SessionsAPI.makePagedListRequest(
+            serverURL: serverURL,
+            token: token,
+            cursor: cursor,
+            limit: limit
+        )
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let http = response as? HTTPURLResponse else {
@@ -115,7 +189,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionMessagesFetchin
             throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
         }
 
-        return try SessionsAPI.decodeListResponse(data)
+        return try SessionsAPI.decodePagedListResponse(data)
     }
 
     public func fetchSessionMessages(serverURL: URL, token: String, sessionID: String) async throws -> [APISessionMessage] {

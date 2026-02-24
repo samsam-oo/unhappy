@@ -58,6 +58,54 @@ struct SessionsAPITests {
     }
 
     @Test
+    func pagedListRequestIncludesExpectedQuery() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makePagedListRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            cursor: "cursor_v1_abc",
+            limit: 80
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v2/sessions?limit=80&cursor=cursor_v1_abc")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
+    func decodePagedListResponseParsesPageRows() throws {
+        let json = """
+        {
+          "sessions": [
+            {
+              "id": "s1",
+              "seq": 10,
+              "active": false,
+              "activeAt": 1700000000,
+              "createdAt": 1699999900,
+              "updatedAt": 1700000010,
+              "metadataVersion": 1,
+              "metadata": "ZW5jcnlwdGVk",
+              "agentState": null,
+              "agentStateVersion": null,
+              "dataEncryptionKey": null
+            }
+          ],
+          "nextCursor": "cursor_v1_s1",
+          "hasNext": true
+        }
+        """.data(using: .utf8)!
+
+        let page = try SessionsAPI.decodePagedListResponse(json)
+
+        #expect(page.sessions.count == 1)
+        #expect(page.sessions.first?.id == "s1")
+        #expect(page.sessions.first?.seq == 10)
+        #expect(page.nextCursor == "cursor_v1_s1")
+        #expect(page.hasNext == true)
+    }
+
+    @Test
     func decodeMessagesResponseParsesMessageRows() throws {
         let json = """
         {
