@@ -9,8 +9,8 @@ struct FeatureHomeTests {
     @Test
     func homeViewCanInitialize() {
         _ = HomeView(
-            makeHomeViewModel: {
-                HomeViewModel(settingsManager: MockSettingsManager())
+            makeSettingsViewModel: {
+                SettingsViewModel(settingsManager: MockSettingsManager())
             },
             makeSessionsViewModel: {
                 SessionsViewModel(service: URLSessionSessionsService())

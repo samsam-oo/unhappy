@@ -1,18 +1,17 @@
 import Foundation
 import Testing
-@testable import FeatureHome
-import FeatureSettings
+@testable import FeatureSettings
 
 @MainActor
-struct HomeViewModelTests {
+struct SettingsViewModelTests {
     @Test
     func loadFromStoreAppliesStoredValues() async {
         let settingsManager = MemorySettingsManager(
             initialServerURLString: "https://api.example.com",
             initialAPIToken: "token-123"
         )
+        let model = SettingsViewModel(settingsManager: settingsManager)
 
-        let model = HomeViewModel(settingsManager: settingsManager)
         await model.loadFromStore()
 
         #expect(model.serverURLString == "https://api.example.com")
@@ -20,9 +19,9 @@ struct HomeViewModelTests {
     }
 
     @Test
-    func updatesPersistIntoStore() async {
+    func updatesPersistIntoSettingsManager() async {
         let settingsManager = MemorySettingsManager()
-        let model = HomeViewModel(settingsManager: settingsManager)
+        let model = SettingsViewModel(settingsManager: settingsManager)
         await model.loadFromStore()
 
         model.serverURLString = "https://new.example.com"
