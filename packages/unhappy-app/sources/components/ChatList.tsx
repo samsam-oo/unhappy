@@ -37,13 +37,26 @@ const ChatListInternal = React.memo((props: {
     sessionId: string,
     messages: Message[],
 }) => {
+    const visibleMessages = React.useMemo(() => {
+        return props.messages.filter((message) => {
+            if (message.kind !== 'agent-text') return true;
+            const normalized = message.text.trim().toLowerCase();
+            return (
+                normalized !== 'sub-agent in progress' &&
+                normalized !== 'sub-agent completed' &&
+                normalized !== 'multi-agent running' &&
+                normalized !== 'multi-agent completed'
+            );
+        });
+    }, [props.messages]);
+
     const keyExtractor = useCallback((item: any) => item.id, []);
     const renderItem = useCallback(({ item }: { item: any }) => (
         <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
     ), [props.metadata, props.sessionId]);
     return (
         <FlatList
-            data={props.messages}
+            data={visibleMessages}
             inverted={true}
             keyExtractor={keyExtractor}
             maintainVisibleContentPosition={{

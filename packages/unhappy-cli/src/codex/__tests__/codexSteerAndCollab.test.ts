@@ -184,6 +184,78 @@ describe('Codex turn/steer and collab forwarding', () => {
     expect(client.getActiveTurnId()).toBeNull();
   });
 
+  it('emits task_started when turn/started is received on new streams', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'turn/started',
+      params: {
+        threadId: 'thread-1',
+        turn: {
+          id: 'turn-start-1',
+          status: 'inProgress',
+        },
+      },
+    });
+
+    expect(seen).toContainEqual({
+      type: 'task_started',
+      id: 'turn-start-1',
+    });
+    expect(client.getActiveTurnId()).toBe('turn-start-1');
+  });
+
+  it('emits task_complete when turn/completed is received on new streams', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'thread-1',
+        turn: {
+          id: 'turn-end-1',
+          status: 'completed',
+        },
+      },
+    });
+
+    expect(seen).toContainEqual({
+      type: 'task_complete',
+      id: 'turn-end-1',
+    });
+  });
+
+  it('forwards agent message deltas from item/agentMessage/delta notifications', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        itemId: 'item-1',
+        delta: 'Hello',
+      },
+    });
+
+    expect(seen).toContainEqual({
+      type: 'agent_message_delta',
+      delta: 'Hello',
+      item_id: 'item-1',
+      turn_id: 'turn-1',
+      thread_id: 'thread-1',
+    });
+  });
+
   it('finds the most recent thread id for a cwd using thread/list', async () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;

@@ -317,6 +317,7 @@ export async function runCodex(opts: {
   session.updateAgentState((currentState) => ({
     ...currentState,
     controlledByUser: opts.startedBy !== 'daemon',
+    collab: undefined,
   }));
 
   // Always report to daemon if it exists (skip if offline)
@@ -684,6 +685,56 @@ export async function runCodex(opts: {
     return cachedModelList;
   });
 
+  // Expose recent Codex thread history for UI surfaces that want to show/import legacy sessions.
+  session.rpcHandlerManager.registerHandler(
+    'codex-list-threads',
+    async (params?: { cwd?: string; limit?: number }) => {
+      try {
+        const threads = await client.listRecentThreadsByCwd(
+          typeof params?.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : cwd,
+          { limit: typeof params?.limit === 'number' ? params.limit : 20 },
+        );
+        return { success: true, threads };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to list Codex threads',
+        };
+      }
+    },
+  );
+
+  session.rpcHandlerManager.registerHandler(
+    'codex-set-thread-name',
+    async (params?: { name?: string }) => {
+      const name =
+        typeof params?.name === 'string' && params.name.trim()
+          ? params.name.trim()
+          : '';
+      if (!name) {
+        return { success: false, error: 'Thread name cannot be empty' };
+      }
+      try {
+        await client.setThreadName(name);
+        const now = Date.now();
+        await session.updateMetadata((currentMetadata) => ({
+          ...currentMetadata,
+          name,
+          summary: {
+            text: name,
+            updatedAt: now,
+          },
+        }));
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to set Codex thread name',
+        };
+      }
+    },
+  );
+
   registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
 
   //
@@ -966,27 +1017,51 @@ export async function runCodex(opts: {
   client.setPermissionHandler(permissionHandler);
   const activeExecCallIds: string[] = [];
   const activeCollabKeys = new Set<string>();
-  const COLLAB_REMINDER_INTERVAL_MS = 15000;
-  let collabStatusVisible = false;
-  let lastCollabIndicatorSentAt = 0;
-  const emitCollabIndicator = (message: string) => {
-    messageBuffer.addMessage(message, 'status');
-    session.sendCodexMessage({
-      type: 'message',
-      message,
-      id: randomUUID(),
+  type CollabIndicatorState = 'in_progress' | 'completed' | null;
+  let collabStatusState: CollabIndicatorState = null;
+  let collabStatusUpdatedAt = 0;
+  let collabStatusCount = 0;
+  const applyCollabStatus = (next: CollabIndicatorState) => {
+    const nextCount = next === 'in_progress' ? activeCollabKeys.size : 0;
+    const changedState = next !== collabStatusState;
+    const changedCount = nextCount !== collabStatusCount;
+    if (!changedState && !changedCount) return;
+
+    collabStatusState = next;
+    collabStatusCount = nextCount;
+    collabStatusUpdatedAt = Date.now();
+
+    if (next === 'in_progress') {
+      messageBuffer.addMessage('Multi-agent running', 'status');
+    } else if (next === 'completed') {
+      messageBuffer.addMessage('Multi-agent completed', 'status');
+    }
+
+    session.updateAgentState((currentState) => {
+      const state = currentState ?? {};
+      if (!next) {
+        return {
+          ...state,
+          collab: undefined,
+        };
+      }
+      return {
+        ...state,
+        collab: {
+          state: next,
+          updatedAt: collabStatusUpdatedAt,
+          activeCount: nextCount,
+        },
+      };
     });
-    lastCollabIndicatorSentAt = Date.now();
   };
   const syncCollabStatusIndicator = () => {
     const hasInProgressCollab = activeCollabKeys.size > 0;
-    if (hasInProgressCollab === collabStatusVisible) {
-      return;
+    if (hasInProgressCollab) {
+      applyCollabStatus('in_progress');
+    } else if (collabStatusState === 'in_progress') {
+      applyCollabStatus('completed');
     }
-    collabStatusVisible = hasInProgressCollab;
-    emitCollabIndicator(
-      hasInProgressCollab ? 'Sub-agent in progress' : 'Sub-agent completed',
-    );
   };
   const rememberExecCallId = (callId: string) => {
     if (!callId) return;
@@ -1008,13 +1083,6 @@ export async function runCodex(opts: {
       ? activeExecCallIds[activeExecCallIds.length - 1]
       : null;
   };
-  const collabReminderInterval = setInterval(() => {
-    if (!collabStatusVisible) return;
-    const now = Date.now();
-    if (now - lastCollabIndicatorSentAt < COLLAB_REMINDER_INTERVAL_MS) return;
-    emitCollabIndicator('Sub-agent in progress');
-  }, COLLAB_REMINDER_INTERVAL_MS);
-
   client.setHandler((msg: any) => {
     // Avoid logging the full raw Codex event payloads (can be huge and include prompt contents).
     const msgType = typeof msg?.type === 'string' ? msg.type : 'unknown';
@@ -1132,6 +1200,10 @@ export async function runCodex(opts: {
       messageBuffer.addMessage('Task completed', 'status');
     } else if (msg.type === 'turn_aborted') {
       messageBuffer.addMessage('Turn aborted', 'status');
+    } else if (msg.type === 'request_user_input') {
+      messageBuffer.addMessage('User input requested (auto-selecting recommended option)', 'status');
+    } else if (msg.type === 'dynamic_tool_call_request') {
+      messageBuffer.addMessage('Dynamic tool call is not supported in this client', 'status');
     }
 
     if (msg.type === 'task_started') {
@@ -1728,8 +1800,6 @@ export async function runCodex(opts: {
     // Clear periodic keep-alive to avoid keeping event loop alive
     logger.debug('[codex]: clearInterval(keepAlive)');
     clearInterval(keepAliveInterval);
-    logger.debug('[codex]: clearInterval(collabReminder)');
-    clearInterval(collabReminderInterval);
     if (inkInstance) {
       logger.debug('[codex]: inkInstance.unmount()');
       inkInstance.unmount();

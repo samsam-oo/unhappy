@@ -32,6 +32,13 @@ export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
   controlledByUser: z.boolean().nullish(),
+  collab: z
+    .object({
+      state: z.enum(['in_progress', 'completed']),
+      updatedAt: z.number(),
+      activeCount: z.number().optional(),
+    })
+    .nullish(),
   requests: z
     .record(
       z.string(),
