@@ -10,11 +10,11 @@ public struct SessionsView: View {
     public init(
         serverURLString: String,
         token: String,
-        viewModel: SessionsViewModel? = nil
+        makeViewModel: @escaping @MainActor () -> SessionsViewModel
     ) {
         self.serverURLString = serverURLString
         self.token = token
-        _viewModel = StateObject(wrappedValue: viewModel ?? SessionsViewModel())
+        _viewModel = StateObject(wrappedValue: makeViewModel())
     }
 
     public var body: some View {
@@ -91,5 +91,9 @@ public struct SessionsView: View {
 }
 
 #Preview {
-    SessionsView(serverURLString: "https://api.unhappy.im", token: "")
+    SessionsView(
+        serverURLString: "https://api.unhappy.im",
+        token: "",
+        makeViewModel: { SessionsViewModel(service: URLSessionSessionsService()) }
+    )
 }

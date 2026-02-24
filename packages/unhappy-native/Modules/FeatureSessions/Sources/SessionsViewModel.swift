@@ -7,9 +7,9 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
 
-    private let service: SessionsFetching
+    private let service: any SessionsFetching
 
-    public init(service: SessionsFetching = URLSessionSessionsService()) {
+    public init(service: any SessionsFetching) {
         self.service = service
     }
 

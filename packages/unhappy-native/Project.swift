@@ -30,6 +30,7 @@ let project = Project(
                 "Modules/FeatureHome/Sources",
             ],
             dependencies: [
+                .target(name: "CoreKit"),
                 .target(name: "FeatureSessions"),
                 .target(name: "FeatureSettings"),
             ],
