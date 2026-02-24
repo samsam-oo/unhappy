@@ -183,4 +183,140 @@ describe('Codex turn/steer and collab forwarding', () => {
 
     expect(client.getActiveTurnId()).toBeNull();
   });
+
+  it('finds the most recent thread id for a cwd using thread/list', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const callRpc = vi.fn().mockResolvedValue({
+      data: [
+        { id: 'thread-latest', cwd: '/repo' },
+        { id: 'thread-older', cwd: '/repo' },
+      ],
+    });
+
+    anyClient.connected = true;
+    anyClient.callRpc = callRpc;
+
+    const threadId = await client.findMostRecentThreadIdByCwd('/repo');
+
+    expect(threadId).toBe('thread-latest');
+    expect(callRpc).toHaveBeenCalledWith(
+      'thread/list',
+      expect.objectContaining({
+        cwd: '/repo',
+        limit: 20,
+        sortKey: 'updated_at',
+        archived: false,
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('finds thread id from thread/list items[] with nested thread objects', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const callRpc = vi.fn().mockResolvedValue({
+      items: [{ thread: { id: 'thread-from-items' } }],
+    });
+
+    anyClient.connected = true;
+    anyClient.callRpc = callRpc;
+
+    const threadId = await client.findMostRecentThreadIdByCwd('/repo');
+
+    expect(threadId).toBe('thread-from-items');
+  });
+
+  it('falls back to latest thread/list result when preferred resume id fails', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    anyClient.connected = true;
+    anyClient.preferredResumeThreadId = 'thread-stale';
+    anyClient.flushPendingThreadName = vi.fn().mockResolvedValue(undefined);
+
+    const callRpc = vi.fn(
+      async (method: string, params: Record<string, unknown>) => {
+        if (method === 'thread/resume' && params.threadId === 'thread-stale') {
+          throw new Error('resume not found');
+        }
+        if (method === 'thread/list') {
+          return {
+            items: [{ thread: { id: 'thread-fresh' } }],
+          };
+        }
+        if (method === 'thread/resume' && params.threadId === 'thread-fresh') {
+          return { thread: { id: 'thread-fresh' } };
+        }
+        throw new Error(`unexpected method ${method}`);
+      },
+    );
+
+    anyClient.callRpc = callRpc;
+
+    await anyClient.ensureThread({
+      prompt: 'hello',
+      cwd: '/repo',
+      sandbox: 'workspace-write',
+      'approval-policy': 'on-request',
+    });
+
+    expect(callRpc).toHaveBeenCalledWith(
+      'thread/resume',
+      expect.objectContaining({ threadId: 'thread-stale' }),
+      expect.any(Object),
+    );
+    expect(callRpc).toHaveBeenCalledWith(
+      'thread/list',
+      expect.objectContaining({ cwd: '/repo' }),
+      expect.any(Object),
+    );
+    expect(callRpc).toHaveBeenCalledWith(
+      'thread/resume',
+      expect.objectContaining({ threadId: 'thread-fresh' }),
+      expect.any(Object),
+    );
+  });
+
+  it('sets thread name via thread/name/set when session exists', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const callRpc = vi.fn().mockResolvedValue({});
+
+    anyClient.connected = true;
+    anyClient.sessionId = 'thread-rename-1';
+    anyClient.callRpc = callRpc;
+
+    await client.setThreadName('My New Session Title');
+
+    expect(callRpc).toHaveBeenCalledWith(
+      'thread/name/set',
+      {
+        threadId: 'thread-rename-1',
+        name: 'My New Session Title',
+      },
+      expect.objectContaining({ timeout: 30000 }),
+    );
+  });
+
+  it('forwards thread/name/updated notifications as thread_name_updated events', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'thread/name/updated',
+      params: {
+        threadId: 'thread-xyz',
+        threadName: 'Renamed Session',
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      type: 'thread_name_updated',
+      thread_id: 'thread-xyz',
+      thread_name: 'Renamed Session',
+    });
+  });
 });
