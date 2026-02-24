@@ -1,13 +1,13 @@
 import Foundation
 
-public protocol AppSettingsStore {
-    func serverURLString() -> String
-    func apiToken() -> String
-    func setServerURLString(_ value: String)
-    func setAPIToken(_ value: String)
+public protocol AppSettingsStore: Sendable {
+    func serverURLString() async -> String
+    func apiToken() async -> String
+    func setServerURLString(_ value: String) async
+    func setAPIToken(_ value: String) async
 }
 
-public final class UserDefaultsAppSettingsStore: AppSettingsStore {
+public actor UserDefaultsAppSettingsStore: AppSettingsStore {
     private let defaults: UserDefaults
     private let serverURLKey: String
     private let apiTokenKey: String
@@ -25,7 +25,7 @@ public final class UserDefaultsAppSettingsStore: AppSettingsStore {
         self.defaultServerURL = defaultServerURL
     }
 
-    public func serverURLString() -> String {
+    public func serverURLString() async -> String {
         let saved = defaults.string(forKey: serverURLKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let saved, !saved.isEmpty else {
@@ -34,15 +34,15 @@ public final class UserDefaultsAppSettingsStore: AppSettingsStore {
         return saved
     }
 
-    public func apiToken() -> String {
+    public func apiToken() async -> String {
         defaults.string(forKey: apiTokenKey) ?? ""
     }
 
-    public func setServerURLString(_ value: String) {
+    public func setServerURLString(_ value: String) async {
         defaults.set(value, forKey: serverURLKey)
     }
 
-    public func setAPIToken(_ value: String) {
+    public func setAPIToken(_ value: String) async {
         defaults.set(value, forKey: apiTokenKey)
     }
 }

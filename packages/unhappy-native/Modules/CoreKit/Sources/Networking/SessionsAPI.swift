@@ -44,7 +44,7 @@ public protocol SessionsFetching: Sendable {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession]
 }
 
-public struct URLSessionSessionsService: SessionsFetching {
+public actor URLSessionSessionsService: SessionsFetching {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
