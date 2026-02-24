@@ -3,27 +3,34 @@ import CoreKit
 import FeatureSessions
 import FeatureSettings
 
+@MainActor
 public struct HomeView: View {
-    @AppStorage("unhappy.native.serverURL") private var serverURLString = "https://api.unhappy.im"
-    @AppStorage("unhappy.native.apiToken") private var apiToken = ""
+    @StateObject private var viewModel: HomeViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
 
-    public init(makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel) {
+    public init(
+        makeHomeViewModel: @escaping @MainActor () -> HomeViewModel,
+        makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel
+    ) {
+        _viewModel = StateObject(wrappedValue: makeHomeViewModel())
         self.makeSessionsViewModel = makeSessionsViewModel
     }
 
     public var body: some View {
         TabView {
             SessionsView(
-                serverURLString: serverURLString,
-                token: apiToken,
+                serverURLString: viewModel.serverURLString,
+                token: viewModel.apiToken,
                 makeViewModel: makeSessionsViewModel
             )
                 .tabItem {
                     Label("Sessions", systemImage: "bubble.left.and.bubble.right")
                 }
 
-            SettingsView(serverURLString: $serverURLString, apiToken: $apiToken)
+            SettingsView(
+                serverURLString: $viewModel.serverURLString,
+                apiToken: $viewModel.apiToken
+            )
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
@@ -33,6 +40,7 @@ public struct HomeView: View {
 
 #Preview {
     HomeView(
+        makeHomeViewModel: { HomeViewModel(store: UserDefaultsAppSettingsStore()) },
         makeSessionsViewModel: { SessionsViewModel(service: URLSessionSessionsService()) }
     )
 }
