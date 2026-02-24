@@ -91,6 +91,34 @@ public enum SessionsAPI {
         return request
     }
 
+    public static func makeSetCodexTitleRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        name: String
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty else {
+            throw SessionsAPIError.missingSessionTitle
+        }
+
+        let titleURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/codex/title")
+        var request = try makeRequest(
+            url: titleURL,
+            method: "PATCH",
+            token: token
+        )
+
+        let payload = SessionCodexTitlePayload(name: normalizedName)
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
     public static func makeCodexThreadsRequest(
         serverURL: URL,
         token: String,
@@ -165,6 +193,7 @@ public enum SessionsAPI {
 public enum SessionsAPIError: LocalizedError, Equatable {
     case missingToken
     case missingSessionID
+    case missingSessionTitle
     case invalidHTTPStatus(Int)
 
     public var errorDescription: String? {
@@ -173,6 +202,8 @@ public enum SessionsAPIError: LocalizedError, Equatable {
             return "API token is required"
         case .missingSessionID:
             return "Session ID is required"
+        case .missingSessionTitle:
+            return "Session title is required"
         case .invalidHTTPStatus(let code):
             return "Request failed with status \(code)"
         }
@@ -195,6 +226,10 @@ private struct SessionsPagedListResponse: Decodable {
 
 private struct SessionTitlePayload: Encodable {
     let title: String?
+}
+
+private struct SessionCodexTitlePayload: Encodable {
+    let name: String
 }
 
 private struct SessionsCodexThreadsResponse: Decodable {
@@ -311,19 +346,44 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
     }
 
     public func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws {
-        let request = try SessionsAPI.makeSetTitleRequest(
+        let normalizedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let persistedTitle: String? = normalizedTitle?.isEmpty == true ? nil : normalizedTitle
+
+        if let persistedTitle {
+            let codexRequest = try SessionsAPI.makeSetCodexTitleRequest(
+                serverURL: serverURL,
+                token: token,
+                sessionID: sessionID,
+                name: persistedTitle
+            )
+            let (_, codexResponse) = try await URLSession.shared.data(for: codexRequest)
+
+            guard let codexHTTP = codexResponse as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            if (200..<300).contains(codexHTTP.statusCode) {
+                return
+            }
+            // Older servers or non-codex sessions may not support codex rename RPC.
+            // Fall back to legacy session title endpoint in these cases.
+            if codexHTTP.statusCode != 404 && codexHTTP.statusCode != 409 && codexHTTP.statusCode != 502 {
+                throw SessionsAPIError.invalidHTTPStatus(codexHTTP.statusCode)
+            }
+        }
+
+        let legacyRequest = try SessionsAPI.makeSetTitleRequest(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            title: title
+            title: persistedTitle
         )
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, legacyResponse) = try await URLSession.shared.data(for: legacyRequest)
 
-        guard let http = response as? HTTPURLResponse else {
+        guard let legacyHTTP = legacyResponse as? HTTPURLResponse else {
             throw URLError(.badServerResponse)
         }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        guard (200..<300).contains(legacyHTTP.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(legacyHTTP.statusCode)
         }
     }
 

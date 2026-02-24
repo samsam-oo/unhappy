@@ -168,6 +168,25 @@ struct SessionsAPITests {
     }
 
     @Test
+    func setCodexTitleRequestUsesPatchMethodAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSetCodexTitleRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            name: "Codex Session"
+        )
+
+        #expect(request.httpMethod == "PATCH")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/codex/title")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["name"] as? String == "Codex Session")
+    }
+
+    @Test
     func requestWithoutSessionIDThrowsValidationError() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
 
@@ -176,6 +195,20 @@ struct SessionsAPITests {
                 serverURL: baseURL,
                 token: "abc123",
                 sessionID: "   "
+            )
+        }
+    }
+
+    @Test
+    func codexTitleRequestWithoutNameThrowsValidationError() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+
+        #expect(throws: SessionsAPIError.missingSessionTitle) {
+            _ = try SessionsAPI.makeSetCodexTitleRequest(
+                serverURL: baseURL,
+                token: "abc123",
+                sessionID: "session-1",
+                name: "   "
             )
         }
     }
