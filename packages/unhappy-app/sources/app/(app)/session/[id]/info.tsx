@@ -8,10 +8,10 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession, useIsDataReady } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToProjectBase, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToProjectBase, getSessionAvatarId, resolveSessionSummaryTitle } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill, sessionDelete } from '@/sync/ops';
+import { sessionKill, sessionDelete, sessionCodexListThreads, sessionCodexSetThreadName } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -20,6 +20,7 @@ import { CodeView } from '@/components/CodeView';
 import { Session } from '@/sync/storageTypes';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { HappyError } from '@/utils/errors';
+import { sync } from '@/sync/sync';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -66,6 +67,7 @@ function SessionInfoContent({ session }: { session: Session }) {
     const devModeEnabled = __DEV__;
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
+    const isCodexSession = session.metadata?.flavor === 'codex';
     
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
@@ -139,6 +141,56 @@ function SessionInfoContent({ session }: { session: Session }) {
             ]
         );
     }, [performDelete]);
+
+    const [listingCodexThreads, performListCodexThreads] = useHappyAction(async () => {
+        const result = await sessionCodexListThreads(session.id, {
+            cwd: session.metadata?.path,
+            limit: 20,
+        });
+        if (!result.success) {
+            throw new HappyError(result.error || 'Failed to load Codex sessions', false);
+        }
+
+        const threads = result.threads || [];
+        if (threads.length === 0) {
+            Modal.alert('Codex Sessions', 'No existing Codex sessions found for this workspace.');
+            return;
+        }
+
+        const lines = threads.map((thread, idx) => {
+            const name = thread.name?.trim() ? thread.name.trim() : '(untitled)';
+            const dateRaw = thread.updatedAt || thread.createdAt;
+            const when = dateRaw ? new Date(dateRaw).toLocaleString() : null;
+            const parts = [`${idx + 1}. ${name}`];
+            if (when) parts.push(when);
+            parts.push(thread.id);
+            return parts.join(' • ');
+        });
+        Modal.alert('Codex Sessions', lines.join('\n'));
+    });
+
+    const [renamingCodexThread, performRenameCodexThread] = useHappyAction(async () => {
+        const defaultTitle = resolveSessionSummaryTitle(session.metadata?.summary?.text);
+        const nextName = await Modal.prompt(
+            'Rename Codex Session',
+            'Enter a new title for this Codex thread.',
+            {
+                defaultValue: defaultTitle,
+                placeholder: defaultTitle,
+                confirmText: t('common.rename'),
+            }
+        );
+        const normalized = nextName?.trim();
+        if (!normalized) return;
+
+        const result = await sessionCodexSetThreadName(session.id, normalized);
+        if (!result.success) {
+            throw new HappyError(result.error || 'Failed to rename Codex session', false);
+        }
+
+        await sync.refreshSessions();
+        Modal.alert(t('common.success'), normalized);
+    });
 
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
@@ -301,6 +353,28 @@ function SessionInfoContent({ session }: { session: Session }) {
                             subtitle={t('sessionInfo.deleteSessionSubtitle')}
                             icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
                             onPress={handleDeleteSession}
+                        />
+                    )}
+                    {isCodexSession && (
+                        <Item
+                            title="List Codex Sessions"
+                            subtitle={listingCodexThreads ? t('common.loading') : 'Show recent Codex threads for this workspace'}
+                            icon={<Ionicons name="list-outline" size={29} color="#5856D6" />}
+                            onPress={() => {
+                                if (listingCodexThreads) return;
+                                performListCodexThreads();
+                            }}
+                        />
+                    )}
+                    {isCodexSession && (
+                        <Item
+                            title="Rename Codex Session"
+                            subtitle={renamingCodexThread ? t('common.loading') : 'Update this session title in Codex'}
+                            icon={<Ionicons name="create-outline" size={29} color="#5856D6" />}
+                            onPress={() => {
+                                if (renamingCodexThread) return;
+                                performRenameCodexThread();
+                            }}
                         />
                     )}
                 </ItemGroup>

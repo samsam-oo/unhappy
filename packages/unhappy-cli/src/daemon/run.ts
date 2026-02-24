@@ -249,6 +249,56 @@ export async function startDaemon(): Promise<void> {
 
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
+    let staleVersionRestartRequested = false;
+
+    const guardRequestHandlingAgainstStaleVersion = (
+      requestName: string,
+    ): boolean => {
+      let installedVersion: string | null = null;
+      try {
+        installedVersion = JSON.parse(
+          readFileSync(join(projectPath(), 'package.json'), 'utf-8'),
+        ).version;
+      } catch (error) {
+        logger.debug(
+          `[DAEMON RUN] Failed to read installed CLI version before ${requestName}`,
+          error,
+        );
+        return true;
+      }
+
+      if (!installedVersion || installedVersion === configuration.currentCliVersion) {
+        return true;
+      }
+
+      logger.debug(
+        `[DAEMON RUN] Refusing ${requestName} on stale daemon version (${configuration.currentCliVersion} -> ${installedVersion}), requesting self-restart`,
+      );
+
+      if (!staleVersionRestartRequested) {
+        staleVersionRestartRequested = true;
+        try {
+          const child = spawnUnhappyCLI(['daemon', 'start'], {
+            detached: true,
+            stdio: 'ignore',
+            env: process.env,
+          });
+          child.unref();
+        } catch (error) {
+          logger.debug(
+            '[DAEMON RUN] Failed to spawn replacement daemon for stale-version guard',
+            error,
+          );
+        }
+
+        requestShutdown(
+          'unhappy-cli',
+          `Stale daemon version detected while handling ${requestName}`,
+        );
+      }
+
+      return false;
+    };
 
     // Handle webhook from unhappy session reporting itself
     const onUnhappySessionWebhook = (
@@ -309,6 +359,13 @@ export async function startDaemon(): Promise<void> {
     const spawnSession = async (
       options: SpawnSessionOptions,
     ): Promise<SpawnSessionResult> => {
+      if (!guardRequestHandlingAgainstStaleVersion('spawnSession')) {
+        return {
+          type: 'error',
+          errorMessage:
+            'Daemon is restarting to pick up a newer CLI version. Please retry shortly.',
+        };
+      }
       logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
       const parsedWebhookTimeoutMs = parseInt(
         process.env.UNHAPPY_SESSION_WEBHOOK_TIMEOUT_MS || '30000',
@@ -816,6 +873,9 @@ export async function startDaemon(): Promise<void> {
 
     // Stop a session by sessionId or PID fallback
     const stopSession = (sessionId: string): boolean => {
+      if (!guardRequestHandlingAgainstStaleVersion('stopSession')) {
+        return false;
+      }
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
 
       // Try to find by sessionId first

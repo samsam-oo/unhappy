@@ -64,7 +64,8 @@ export function startDaemonControlServer({
             children: z.array(z.object({
               startedBy: z.string(),
               happySessionId: z.string(),
-              pid: z.number()
+              pid: z.number(),
+              metadata: z.any().optional(),
             }))
           })
         }
@@ -78,7 +79,8 @@ export function startDaemonControlServer({
           .map(child => ({
             startedBy: child.startedBy,
             happySessionId: child.happySessionId!,
-            pid: child.pid
+            pid: child.pid,
+            metadata: child.happySessionMetadataFromLocalWebhook,
           }))
       }
     });

@@ -131,6 +131,35 @@ interface SessionKillResponse {
     message: string;
 }
 
+interface CodexThreadSummary {
+    id: string;
+    name?: string;
+    cwd?: string;
+    updatedAt?: string;
+    createdAt?: string;
+    archived?: boolean;
+}
+
+interface SessionCodexListThreadsRequest {
+    cwd?: string;
+    limit?: number;
+}
+
+interface SessionCodexListThreadsResponse {
+    success: boolean;
+    threads?: CodexThreadSummary[];
+    error?: string;
+}
+
+interface SessionCodexSetThreadNameRequest {
+    name: string;
+}
+
+interface SessionCodexSetThreadNameResponse {
+    success: boolean;
+    error?: string;
+}
+
 function isRpcMethodUnavailableError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error ?? '');
     return message.includes('RPC method not available');
@@ -575,6 +604,72 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
 }
 
 /**
+ * List recent Codex threads for this session's working directory.
+ */
+export async function sessionCodexListThreads(
+    sessionId: string,
+    request: SessionCodexListThreadsRequest = {}
+): Promise<SessionCodexListThreadsResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<SessionCodexListThreadsResponse, SessionCodexListThreadsRequest>(
+            sessionId,
+            'codex-list-threads',
+            request
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * List recent Codex threads from daemon scope (no active session required).
+ */
+export async function machineCodexListThreads(
+    machineId: string,
+    request: SessionCodexListThreadsRequest
+): Promise<SessionCodexListThreadsResponse> {
+    try {
+        const response = await apiSocket.machineRPC<SessionCodexListThreadsResponse, SessionCodexListThreadsRequest>(
+            machineId,
+            'codex-list-threads',
+            request
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
+ * Rename the active Codex thread title for this session.
+ */
+export async function sessionCodexSetThreadName(
+    sessionId: string,
+    name: string
+): Promise<SessionCodexSetThreadNameResponse> {
+    try {
+        const response = await apiSocket.sessionRPC<SessionCodexSetThreadNameResponse, SessionCodexSetThreadNameRequest>(
+            sessionId,
+            'codex-set-thread-name',
+            { name }
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+/**
  * Permanently delete a session from the server
  * This will remove the session and all its associated data (messages, usage reports, access keys)
  * The session should be inactive/archived before deletion
@@ -617,5 +712,8 @@ export type {
     SessionGetDirectoryTreeResponse,
     TreeNode,
     SessionRipgrepResponse,
-    SessionKillResponse
+    SessionKillResponse,
+    CodexThreadSummary,
+    SessionCodexListThreadsResponse,
+    SessionCodexSetThreadNameResponse,
 };
