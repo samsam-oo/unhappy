@@ -21,7 +21,10 @@ struct SessionsViewModelTests {
             )
         ]
         let loader = MockSessionsLoader(result: .success(expected))
-        let model = SessionsViewModel(loader: loader)
+        let model = SessionsViewModel(
+            loader: loader,
+            poller: MockSessionsPoller(rows: [])
+        )
 
         await model.load(
             serverURLString: "https://api.unhappy.im",
@@ -62,7 +65,10 @@ struct SessionsViewModelTests {
             )
         ]
         let loader = MockSessionsLoader(result: .success(expected))
-        let model = SessionsViewModel(loader: loader)
+        let model = SessionsViewModel(
+            loader: loader,
+            poller: MockSessionsPoller(rows: [])
+        )
 
         await model.load(
             serverURLString: "https://api.unhappy.im",
@@ -71,6 +77,37 @@ struct SessionsViewModelTests {
 
         #expect(model.errorMessage == nil)
         #expect(model.multiAgentInProgress == false)
+    }
+
+    @Test
+    func startPollingPublishesRowsFromPoller() async throws {
+        let expected = [
+            APISession(
+                id: "poll",
+                active: true,
+                activeAt: 1,
+                createdAt: 1,
+                updatedAt: 3,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            poller: MockSessionsPoller(rows: expected)
+        )
+
+        await model.startPolling(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            interval: .seconds(60)
+        )
+
+        #expect(model.sessions == expected)
+        #expect(model.errorMessage == nil)
+        #expect(model.isLoading == false)
     }
 }
 
@@ -94,5 +131,20 @@ private struct MockSessionsLoader: SessionsLoading {
 private struct MockSessionsServiceForValidation: SessionsFetching {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         []
+    }
+}
+
+private struct MockSessionsPoller: SessionsPolling {
+    let rows: [APISession]
+
+    func makePollingStream(
+        serverURLString: String,
+        token: String,
+        interval: Duration
+    ) async -> AsyncThrowingStream<[APISession], Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(rows)
+            continuation.finish()
+        }
     }
 }
