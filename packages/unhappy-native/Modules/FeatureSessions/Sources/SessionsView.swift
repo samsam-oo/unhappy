@@ -182,8 +182,8 @@ private struct SessionsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(session.id)
-                    .font(.footnote.monospaced())
+                Text(session.displayName ?? session.id)
+                    .font(session.displayName == nil ? .footnote.monospaced() : .subheadline.weight(.semibold))
                     .lineLimit(1)
                 if isDeleting {
                     ProgressView()
@@ -197,6 +197,12 @@ private struct SessionsRow: View {
                 Text(session.active ? "Active" : "Inactive")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if session.displayName != nil {
+                    Text(session.id)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
                 Text("Updated \(Date(timeIntervalSince1970: session.updatedAt), style: .relative)")
                     .font(.caption)
                     .foregroundStyle(.secondary)

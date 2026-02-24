@@ -26,7 +26,8 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: expected, nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success([])),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.load(
@@ -73,7 +74,8 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: expected, nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success([])),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.load(
@@ -105,7 +107,8 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: expected),
             messageLoader: MockSessionsMessagesLoader(result: .success([])),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.startPolling(
@@ -134,7 +137,8 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success([message])),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.loadMessages(
@@ -168,7 +172,8 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: sessions, nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success([])),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.load(
@@ -192,7 +197,8 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: SessionAwareMessagesLoader(),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         for idx in 1...8 {
@@ -223,7 +229,8 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success(overLimitMessages)),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.loadMessages(
@@ -274,7 +281,8 @@ struct SessionsViewModelTests {
             pageLoader: pageLoader,
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success([])),
-            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
@@ -282,6 +290,42 @@ struct SessionsViewModelTests {
 
         #expect(model.sessions.map(\.id) == ["s2", "s1"])
         #expect(model.hasMoreSessions == false)
+    }
+
+    @Test
+    func setSessionTitleUpdatesSessionDisplayName() async throws {
+        let sessions = [
+            APISession(
+                id: "session-1",
+                active: false,
+                activeAt: 1,
+                createdAt: 1,
+                updatedAt: 10,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success(sessions)),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: sessions, nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.setSessionTitle(
+            sessionID: "session-1",
+            title: "New Title",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.sessions.first?.displayName == "New Title")
+        #expect(model.errorMessage == nil)
     }
 }
 
@@ -302,7 +346,7 @@ private struct MockSessionsLoader: SessionsLoading {
     }
 }
 
-private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting {
+private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         []
     }
@@ -316,6 +360,8 @@ private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagin
     }
 
     func deleteSession(serverURL: URL, token: String, sessionID: String) async throws {}
+
+    func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws {}
 }
 
 private struct MockSessionsPoller: SessionsPolling {
@@ -405,6 +451,23 @@ private struct MockSessionDeleteUseCase: SessionDeletingAction {
     let result: Result<Void, MockSessionDeleteUseCaseError>
 
     func deleteSession(serverURLString: String, token: String, sessionID: String) async throws {
+        switch result {
+        case .success:
+            return
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private enum MockSessionTitleUseCaseError: Error, Sendable {
+    case failed
+}
+
+private struct MockSessionTitleUseCase: SessionTitleUpdatingAction {
+    let result: Result<Void, MockSessionTitleUseCaseError>
+
+    func setSessionTitle(serverURLString: String, token: String, sessionID: String, title: String?) async throws {
         switch result {
         case .success:
             return

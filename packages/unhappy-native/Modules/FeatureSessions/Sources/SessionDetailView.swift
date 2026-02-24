@@ -10,6 +10,8 @@ public struct SessionDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirmation = false
+    @State private var showRenameSheet = false
+    @State private var renameDraft = ""
 
     public init(
         session: APISession,
@@ -26,16 +28,20 @@ public struct SessionDetailView: View {
     public var body: some View {
         List {
             Section("Session") {
+                LabeledContent("Title") {
+                    Text(currentSession.displayName ?? "Untitled")
+                        .foregroundStyle(currentSession.displayName == nil ? .secondary : .primary)
+                }
                 LabeledContent("ID") {
-                    Text(session.id)
+                    Text(currentSession.id)
                         .font(.footnote.monospaced())
                 }
                 LabeledContent("Status") {
-                    Text(session.active ? "Active" : "Inactive")
-                        .foregroundStyle(session.active ? Color.green : Color.secondary)
+                    Text(currentSession.active ? "Active" : "Inactive")
+                        .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
                 }
                 LabeledContent("Updated") {
-                    Text(Date(timeIntervalSince1970: session.updatedAt), style: .relative)
+                    Text(Date(timeIntervalSince1970: currentSession.updatedAt), style: .relative)
                 }
             }
 
@@ -74,13 +80,19 @@ public struct SessionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if viewModel.isDeleting(sessionID: session.id) {
+                if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
                     ProgressView()
                 } else {
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
+                    Menu {
+                        Button("Rename", systemImage: "pencil") {
+                            renameDraft = currentSession.displayName ?? ""
+                            showRenameSheet = true
+                        }
+                        Button("Delete", systemImage: "trash", role: .destructive) {
+                            showDeleteConfirmation = true
+                        }
                     } label: {
-                        Image(systemName: "trash")
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
@@ -102,6 +114,44 @@ public struct SessionDetailView: View {
         .onDisappear {
             viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
         }
+        .sheet(isPresented: $showRenameSheet) {
+            NavigationStack {
+                Form {
+                    Section("Session Title") {
+                        TextField("Session title", text: $renameDraft)
+                            .textInputAutocapitalization(.never)
+                        Text("Leave empty to clear the custom title.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .navigationTitle("Rename Session")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancel") {
+                            showRenameSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Save") {
+                            let nextTitle = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            showRenameSheet = false
+                            Task {
+                                await viewModel.setSessionTitle(
+                                    sessionID: currentSession.id,
+                                    title: nextTitle.isEmpty ? nil : nextTitle,
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                            }
+                        }
+                        .disabled(viewModel.isRenaming(sessionID: session.id))
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
         .alert(
             "Delete session?",
             isPresented: $showDeleteConfirmation,
@@ -110,11 +160,11 @@ public struct SessionDetailView: View {
                 Button("Delete", role: .destructive) {
                     Task {
                         await viewModel.deleteSession(
-                            sessionID: session.id,
+                            sessionID: currentSession.id,
                             serverURLString: serverURLString,
                             token: token
                         )
-                        if !viewModel.sessions.contains(where: { $0.id == session.id }) {
+                        if !viewModel.sessions.contains(where: { $0.id == currentSession.id }) {
                             dismiss()
                         }
                     }
@@ -124,6 +174,10 @@ public struct SessionDetailView: View {
                 Text("This removes the session permanently from the server.")
             }
         )
+    }
+
+    private var currentSession: APISession {
+        viewModel.sessions.first(where: { $0.id == session.id }) ?? session
     }
 }
 

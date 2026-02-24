@@ -18,12 +18,14 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var isLoadingSessionMessages = false
     @Published public private(set) var selectedSessionErrorMessage: String?
     @Published public private(set) var deletingSessionIDs: Set<String> = []
+    @Published public private(set) var renamingSessionIDs: Set<String> = []
 
     private let loader: any SessionsLoading
     private let pageLoader: any SessionsPageLoading
     private let poller: any SessionsPolling
     private let messageLoader: any SessionsMessagesLoading
     private let deleteUseCase: any SessionDeletingAction
+    private let titleUseCase: any SessionTitleUpdatingAction
     private var messagesBySessionID: [String: [APISessionMessage]] = [:]
     private var messageCacheLRU: [String] = []
     private var nextCursor: String?
@@ -33,17 +35,19 @@ public final class SessionsViewModel: ObservableObject {
         pageLoader: any SessionsPageLoading,
         poller: any SessionsPolling,
         messageLoader: any SessionsMessagesLoading,
-        deleteUseCase: any SessionDeletingAction
+        deleteUseCase: any SessionDeletingAction,
+        titleUseCase: any SessionTitleUpdatingAction
     ) {
         self.loader = loader
         self.pageLoader = pageLoader
         self.poller = poller
         self.messageLoader = messageLoader
         self.deleteUseCase = deleteUseCase
+        self.titleUseCase = titleUseCase
     }
 
     public convenience init(
-        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting
+        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating
     ) {
         let loader = SessionsLoadUseCase(service: service)
         self.init(
@@ -51,7 +55,8 @@ public final class SessionsViewModel: ObservableObject {
             pageLoader: SessionsPageLoadUseCase(service: service),
             poller: SessionsPollingUseCase(loader: loader),
             messageLoader: SessionMessagesLoadUseCase(service: service),
-            deleteUseCase: SessionDeleteUseCase(service: service)
+            deleteUseCase: SessionDeleteUseCase(service: service),
+            titleUseCase: SessionTitleUpdateUseCase(service: service)
         )
     }
 
@@ -72,6 +77,10 @@ public final class SessionsViewModel: ObservableObject {
 
     public func isDeleting(sessionID: String) -> Bool {
         deletingSessionIDs.contains(sessionID)
+    }
+
+    public func isRenaming(sessionID: String) -> Bool {
+        renamingSessionIDs.contains(sessionID)
     }
 
     public func load(serverURLString: String, token: String) async {
@@ -218,6 +227,49 @@ public final class SessionsViewModel: ObservableObject {
         selectedSessionID = nil
         selectedSessionMessages = []
         selectedSessionErrorMessage = nil
+    }
+
+    public func setSessionTitle(
+        sessionID: String,
+        title: String?,
+        serverURLString: String,
+        token: String
+    ) async {
+        renamingSessionIDs.insert(sessionID)
+        defer { renamingSessionIDs.remove(sessionID) }
+
+        do {
+            let normalizedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let persistedTitle: String? = normalizedTitle?.isEmpty == true ? nil : normalizedTitle
+            try await titleUseCase.setSessionTitle(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                title: persistedTitle
+            )
+
+            if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
+                let session = sessions[index]
+                sessions[index] = APISession(
+                    id: session.id,
+                    displayName: persistedTitle,
+                    seq: session.seq,
+                    active: session.active,
+                    activeAt: session.activeAt,
+                    createdAt: session.createdAt,
+                    updatedAt: session.updatedAt,
+                    metadataVersion: session.metadataVersion,
+                    metadata: session.metadata,
+                    agentState: session.agentState,
+                    agentStateVersion: session.agentStateVersion,
+                    dataEncryptionKey: session.dataEncryptionKey,
+                    lastMessage: session.lastMessage
+                )
+            }
+            errorMessage = nil
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     private func cacheMessages(_ messages: [APISessionMessage], for sessionID: String) {
