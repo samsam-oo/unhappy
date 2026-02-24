@@ -30,11 +30,44 @@ let project = Project(
                 "Modules/FeatureHome/Sources",
             ],
             dependencies: [
-                .target(name: "CoreKit"),
+                .target(name: "FeatureSessions"),
+                .target(name: "FeatureSettings"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:home",
+                "tag:layer:feature",
+            ])
+        ),
+        .target(
+            name: "FeatureSessions",
+            destinations: .iOS,
+            product: .staticFramework,
+            bundleId: "im.unhappy.app.feature.sessions",
+            buildableFolders: [
+                "Modules/FeatureSessions/Sources",
+            ],
+            dependencies: [
+                .target(name: "CoreKit"),
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:sessions",
+                "tag:layer:feature",
+            ])
+        ),
+        .target(
+            name: "FeatureSettings",
+            destinations: .iOS,
+            product: .staticFramework,
+            bundleId: "im.unhappy.app.feature.settings",
+            buildableFolders: [
+                "Modules/FeatureSettings/Sources",
+            ],
+            dependencies: [],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:settings",
                 "tag:layer:feature",
             ])
         ),
@@ -68,6 +101,24 @@ let project = Project(
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:home",
+                "tag:layer:test",
+            ])
+        ),
+        .target(
+            name: "FeatureSessionsTests",
+            destinations: .iOS,
+            product: .unitTests,
+            bundleId: "im.unhappy.app.feature.sessions.tests",
+            infoPlist: .default,
+            buildableFolders: [
+                "Modules/FeatureSessions/Tests",
+            ],
+            dependencies: [
+                .target(name: "FeatureSessions"),
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:sessions",
                 "tag:layer:test",
             ])
         ),
