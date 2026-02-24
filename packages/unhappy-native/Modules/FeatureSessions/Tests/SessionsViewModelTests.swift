@@ -3,6 +3,7 @@ import Testing
 @testable import FeatureSessions
 import CoreKit
 
+@MainActor
 struct SessionsViewModelTests {
     @Test
     func loadSuccessPublishesSessions() async throws {
@@ -29,6 +30,7 @@ struct SessionsViewModelTests {
 
         #expect(model.sessions.count == 1)
         #expect(model.errorMessage == nil)
+        #expect(model.multiAgentInProgress == true)
     }
 
     @Test
@@ -40,6 +42,34 @@ struct SessionsViewModelTests {
 
         #expect(model.sessions.isEmpty)
         #expect(model.errorMessage == "API token is required")
+        #expect(model.multiAgentInProgress == false)
+    }
+
+    @Test
+    func loadWithInactiveSessionsMarksMultiAgentCompleted() async throws {
+        let expected = [
+            APISession(
+                id: "s2",
+                active: false,
+                activeAt: 10,
+                createdAt: 1,
+                updatedAt: 11,
+                metadataVersion: 2,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let service = MockSessionsService(result: .success(expected))
+        let model = SessionsViewModel(service: service)
+
+        await model.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.errorMessage == nil)
+        #expect(model.multiAgentInProgress == false)
     }
 }
 
