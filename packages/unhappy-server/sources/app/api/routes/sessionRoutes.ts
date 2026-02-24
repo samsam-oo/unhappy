@@ -23,6 +23,7 @@ export function sessionRoutes(app: Fastify) {
             select: {
                 id: true,
                 seq: true,
+                displayName: true,
                 createdAt: true,
                 updatedAt: true,
                 metadata: true,
@@ -55,6 +56,7 @@ export function sessionRoutes(app: Fastify) {
                 return {
                     id: v.id,
                     seq: v.seq,
+                    displayName: v.displayName,
                     createdAt: v.createdAt.getTime(),
                     updatedAt: sessionUpdatedAt,
                     active: v.active,
@@ -93,6 +95,7 @@ export function sessionRoutes(app: Fastify) {
             select: {
                 id: true,
                 seq: true,
+                displayName: true,
                 createdAt: true,
                 updatedAt: true,
                 metadata: true,
@@ -109,6 +112,7 @@ export function sessionRoutes(app: Fastify) {
             sessions: sessions.map((v) => ({
                 id: v.id,
                 seq: v.seq,
+                displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime(),
                 active: v.active,
@@ -173,6 +177,7 @@ export function sessionRoutes(app: Fastify) {
             select: {
                 id: true,
                 seq: true,
+                displayName: true,
                 createdAt: true,
                 updatedAt: true,
                 metadata: true,
@@ -200,6 +205,7 @@ export function sessionRoutes(app: Fastify) {
             sessions: resultSessions.map((v) => ({
                 id: v.id,
                 seq: v.seq,
+                displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime(),
                 active: v.active,
@@ -242,6 +248,7 @@ export function sessionRoutes(app: Fastify) {
                 session: {
                     id: session.id,
                     seq: session.seq,
+                    displayName: session.displayName,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -290,6 +297,7 @@ export function sessionRoutes(app: Fastify) {
                 session: {
                     id: session.id,
                     seq: session.seq,
+                    displayName: session.displayName,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -373,5 +381,40 @@ export function sessionRoutes(app: Fastify) {
         }
 
         return reply.send({ success: true });
+    });
+
+    app.patch('/v1/sessions/:sessionId/title', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                title: z.string().max(120).nullish()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const normalizedTitle = request.body.title?.trim() || null;
+
+        const updated = await db.session.updateMany({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            data: {
+                displayName: normalizedTitle
+            }
+        });
+
+        if (updated.count === 0) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        return reply.send({
+            success: true,
+            title: normalizedTitle
+        });
     });
 }
