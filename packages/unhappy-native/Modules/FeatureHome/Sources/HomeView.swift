@@ -43,7 +43,11 @@ public struct HomeView: View {
 
 #Preview {
     HomeView(
-        makeHomeViewModel: { HomeViewModel(store: UserDefaultsAppSettingsStore()) },
+        makeHomeViewModel: {
+            HomeViewModel(
+                settingsManager: SettingsUseCase(store: UserDefaultsAppSettingsStore())
+            )
+        },
         makeSessionsViewModel: { SessionsViewModel(service: URLSessionSessionsService()) }
     )
 }

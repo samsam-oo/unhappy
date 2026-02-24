@@ -1,67 +1,59 @@
 import Foundation
-import CoreKit
+import FeatureSettings
 
 @MainActor
 public final class HomeViewModel: ObservableObject {
     @Published public var serverURLString: String {
         didSet {
             guard hasLoadedInitialSettings else { return }
-            scheduleServerURLPersistence(value: serverURLString)
+            scheduleSettingsPersistence()
         }
     }
 
     @Published public var apiToken: String {
         didSet {
             guard hasLoadedInitialSettings else { return }
-            scheduleAPITokenPersistence(value: apiToken)
+            scheduleSettingsPersistence()
         }
     }
 
-    private let store: any AppSettingsStore
+    private let settingsManager: any SettingsManaging
     private var hasLoadedInitialSettings = false
-    private var serverURLPersistenceTask: Task<Void, Never>?
-    private var apiTokenPersistenceTask: Task<Void, Never>?
+    private var settingsPersistenceTask: Task<Void, Never>?
 
-    public init(store: any AppSettingsStore) {
-        self.store = store
+    public init(settingsManager: any SettingsManaging) {
+        self.settingsManager = settingsManager
         self.serverURLString = "https://api.unhappy.im"
         self.apiToken = ""
     }
 
     deinit {
-        serverURLPersistenceTask?.cancel()
-        apiTokenPersistenceTask?.cancel()
+        settingsPersistenceTask?.cancel()
     }
 
     public func loadFromStore() async {
         hasLoadedInitialSettings = false
-        let loadedServerURLString = await store.serverURLString()
-        let loadedAPIToken = await store.apiToken()
-        serverURLString = loadedServerURLString
-        apiToken = loadedAPIToken
+        let settings = await settingsManager.loadSettings()
+        serverURLString = settings.serverURLString
+        apiToken = settings.apiToken
         hasLoadedInitialSettings = true
     }
 
     func waitForPendingPersistence() async {
-        await serverURLPersistenceTask?.value
-        await apiTokenPersistenceTask?.value
+        await settingsPersistenceTask?.value
     }
 
-    private func scheduleServerURLPersistence(value: String) {
-        let store = self.store
-        serverURLPersistenceTask?.cancel()
-        serverURLPersistenceTask = Task {
+    private func scheduleSettingsPersistence() {
+        let manager = settingsManager
+        let serverURLString = self.serverURLString
+        let apiToken = self.apiToken
+        settingsPersistenceTask?.cancel()
+        settingsPersistenceTask = Task {
             guard !Task.isCancelled else { return }
-            await store.setServerURLString(value)
-        }
-    }
-
-    private func scheduleAPITokenPersistence(value: String) {
-        let store = self.store
-        apiTokenPersistenceTask?.cancel()
-        apiTokenPersistenceTask = Task {
-            guard !Task.isCancelled else { return }
-            await store.setAPIToken(value)
+            await manager.persistSettings(
+                serverURLString: serverURLString,
+                apiToken: apiToken
+            )
         }
     }
 }

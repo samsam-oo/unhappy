@@ -2,6 +2,7 @@ import SwiftUI
 import CoreKit
 import FeatureHome
 import FeatureSessions
+import FeatureSettings
 
 @main
 struct UnhappyNativeApp: App {
@@ -10,8 +11,9 @@ struct UnhappyNativeApp: App {
 
     init() {
         let settingsStore = UserDefaultsAppSettingsStore()
+        let settingsUseCase = SettingsUseCase(store: settingsStore)
         let sessionsService = URLSessionSessionsService()
-        self.makeHomeViewModel = { HomeViewModel(store: settingsStore) }
+        self.makeHomeViewModel = { HomeViewModel(settingsManager: settingsUseCase) }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
     }
 

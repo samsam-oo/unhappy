@@ -65,7 +65,9 @@ let project = Project(
             buildableFolders: [
                 "Modules/FeatureSettings/Sources",
             ],
-            dependencies: [],
+            dependencies: [
+                .target(name: "CoreKit"),
+            ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:settings",
@@ -120,6 +122,24 @@ let project = Project(
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:sessions",
+                "tag:layer:test",
+            ])
+        ),
+        .target(
+            name: "FeatureSettingsTests",
+            destinations: .iOS,
+            product: .unitTests,
+            bundleId: "im.unhappy.app.feature.settings.tests",
+            infoPlist: .default,
+            buildableFolders: [
+                "Modules/FeatureSettings/Tests",
+            ],
+            dependencies: [
+                .target(name: "FeatureSettings"),
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:settings",
                 "tag:layer:test",
             ])
         ),
