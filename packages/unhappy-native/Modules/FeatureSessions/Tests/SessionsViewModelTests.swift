@@ -20,8 +20,8 @@ struct SessionsViewModelTests {
                 lastMessage: nil
             )
         ]
-        let service = MockSessionsService(result: .success(expected))
-        let model = SessionsViewModel(service: service)
+        let loader = MockSessionsLoader(result: .success(expected))
+        let model = SessionsViewModel(loader: loader)
 
         await model.load(
             serverURLString: "https://api.unhappy.im",
@@ -35,8 +35,9 @@ struct SessionsViewModelTests {
 
     @Test
     func loadWithoutTokenSetsValidationError() async throws {
-        let service = MockSessionsService(result: .success([]))
-        let model = SessionsViewModel(service: service)
+        let model = SessionsViewModel(
+            service: MockSessionsServiceForValidation()
+        )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "")
 
@@ -60,8 +61,8 @@ struct SessionsViewModelTests {
                 lastMessage: nil
             )
         ]
-        let service = MockSessionsService(result: .success(expected))
-        let model = SessionsViewModel(service: service)
+        let loader = MockSessionsLoader(result: .success(expected))
+        let model = SessionsViewModel(loader: loader)
 
         await model.load(
             serverURLString: "https://api.unhappy.im",
@@ -73,15 +74,25 @@ struct SessionsViewModelTests {
     }
 }
 
-private struct MockSessionsService: SessionsFetching {
-    let result: Result<[APISession], Error>
+private enum MockSessionsLoaderError: Error, Sendable {
+    case failed
+}
 
-    func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
+private struct MockSessionsLoader: SessionsLoading {
+    let result: Result<[APISession], MockSessionsLoaderError>
+
+    func loadSessions(serverURLString: String, token: String) async throws -> [APISession] {
         switch result {
         case .success(let sessions):
             return sessions
         case .failure(let error):
             throw error
         }
+    }
+}
+
+private struct MockSessionsServiceForValidation: SessionsFetching {
+    func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
+        []
     }
 }
