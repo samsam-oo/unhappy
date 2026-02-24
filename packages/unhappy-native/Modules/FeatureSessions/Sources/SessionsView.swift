@@ -81,7 +81,10 @@ public struct SessionsView: View {
             }
             .navigationTitle("Sessions")
             .task(id: "\(serverURLString)|\(token)") {
-                await viewModel.load(serverURLString: serverURLString, token: token)
+                await viewModel.startPolling(
+                    serverURLString: serverURLString,
+                    token: token
+                )
             }
             .refreshable {
                 await viewModel.load(serverURLString: serverURLString, token: token)
