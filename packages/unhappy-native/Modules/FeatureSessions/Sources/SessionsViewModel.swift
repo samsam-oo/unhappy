@@ -7,10 +7,14 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
 
-    private let service: any SessionsFetching
+    private let loader: any SessionsLoading
 
-    public init(service: any SessionsFetching) {
-        self.service = service
+    public init(loader: any SessionsLoading) {
+        self.loader = loader
+    }
+
+    public convenience init(service: any SessionsFetching) {
+        self.init(loader: SessionsLoadUseCase(service: service))
     }
 
     public var multiAgentInProgress: Bool {
@@ -21,27 +25,12 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     public func load(serverURLString: String, token: String) async {
-        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedToken.isEmpty else {
-            sessions = []
-            errorMessage = "API token is required"
-            return
-        }
-
-        let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let serverURL = URL(string: normalizedURL), !normalizedURL.isEmpty else {
-            sessions = []
-            errorMessage = "Invalid server URL"
-            return
-        }
-
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
         do {
-            let rows = try await service.fetchSessions(serverURL: serverURL, token: normalizedToken)
-            sessions = rows.sorted { $0.updatedAt > $1.updatedAt }
+            sessions = try await loader.loadSessions(serverURLString: serverURLString, token: token)
             errorMessage = nil
         } catch {
             sessions = []
