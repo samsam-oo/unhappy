@@ -48,6 +48,31 @@ public struct APIMessage: Decodable, Equatable, Sendable {
     }
 }
 
+public struct APISessionMessage: Decodable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let seq: Int
+    public let localId: String?
+    public let content: APIEncryptedMessageContent?
+    public let createdAt: TimeInterval
+    public let updatedAt: TimeInterval
+
+    public init(
+        id: String,
+        seq: Int,
+        localId: String?,
+        content: APIEncryptedMessageContent?,
+        createdAt: TimeInterval,
+        updatedAt: TimeInterval
+    ) {
+        self.id = id
+        self.seq = seq
+        self.localId = localId
+        self.content = content
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     public let t: String
     public let c: String
