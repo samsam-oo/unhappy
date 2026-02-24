@@ -67,6 +67,30 @@ public enum SessionsAPI {
         )
     }
 
+    public static func makeSetTitleRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        title: String?
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+
+        let titleURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/title")
+        var request = try makeRequest(
+            url: titleURL,
+            method: "PATCH",
+            token: token
+        )
+
+        let normalizedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payload = SessionTitlePayload(title: normalizedTitle?.isEmpty == true ? nil : normalizedTitle)
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
     public static func decodeListResponse(_ data: Data) throws -> [APISession] {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsListResponse.self, from: data)
@@ -134,6 +158,10 @@ private struct SessionsPagedListResponse: Decodable {
     let hasNext: Bool
 }
 
+private struct SessionTitlePayload: Encodable {
+    let title: String?
+}
+
 public protocol SessionsFetching: Sendable {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession]
 }
@@ -155,7 +183,11 @@ public protocol SessionDeleting: Sendable {
     func deleteSession(serverURL: URL, token: String, sessionID: String) async throws
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting {
+public protocol SessionTitleUpdating: Sendable {
+    func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws
+}
+
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -223,6 +255,23 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
         if http.statusCode == 404 {
             return
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+    }
+
+    public func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws {
+        let request = try SessionsAPI.makeSetTitleRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            title: title
+        )
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
         }
         guard (200..<300).contains(http.statusCode) else {
             throw SessionsAPIError.invalidHTTPStatus(http.statusCode)

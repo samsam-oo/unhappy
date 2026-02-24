@@ -2,6 +2,7 @@ import Foundation
 
 public struct APISession: Decodable, Equatable, Identifiable, Sendable {
     public let id: String
+    public let displayName: String?
     public let seq: Int?
     public let active: Bool
     public let activeAt: TimeInterval
@@ -16,6 +17,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
 
     public init(
         id: String,
+        displayName: String? = nil,
         seq: Int? = nil,
         active: Bool,
         activeAt: TimeInterval,
@@ -29,6 +31,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         lastMessage: APIMessage?
     ) {
         self.id = id
+        self.displayName = displayName
         self.seq = seq
         self.active = active
         self.activeAt = activeAt

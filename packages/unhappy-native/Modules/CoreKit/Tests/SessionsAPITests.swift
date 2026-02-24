@@ -149,6 +149,25 @@ struct SessionsAPITests {
     }
 
     @Test
+    func setTitleRequestUsesPatchMethodAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSetTitleRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            title: "My Session"
+        )
+
+        #expect(request.httpMethod == "PATCH")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/title")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["title"] as? String == "My Session")
+    }
+
+    @Test
     func requestWithoutSessionIDThrowsValidationError() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
 
