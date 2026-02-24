@@ -125,8 +125,11 @@ function formatBadgeCount(count: number): string {
     return String(count);
 }
 
-function buildCodexThreadListForModal(threads: CodexThreadSummary[]): string {
-    return threads
+function buildCodexThreadResumePromptMessage(
+    threads: CodexThreadSummary[],
+): string {
+    const lines = threads
+        .slice(0, 12)
         .map((thread, index) => {
             const title =
                 typeof thread.name === 'string' && thread.name.trim().length > 0
@@ -138,8 +141,39 @@ function buildCodexThreadListForModal(threads: CodexThreadSummary[]): string {
             if (when) parts.push(when);
             parts.push(thread.id);
             return parts.join(' • ');
-        })
-        .join('\n');
+        });
+
+    const suffix =
+        threads.length > lines.length
+            ? `\n...and ${threads.length - lines.length} more`
+            : '';
+
+    return (
+        'Enter a number (1-based) or paste a thread id to resume:\n\n' +
+        lines.join('\n') +
+        suffix
+    );
+}
+
+function resolveCodexThreadSelection(
+    raw: string,
+    threads: CodexThreadSummary[],
+): CodexThreadSummary | null {
+    const normalized = raw.trim();
+    if (!normalized) return null;
+
+    const asNumber = Number.parseInt(normalized, 10);
+    if (Number.isFinite(asNumber) && `${asNumber}` === normalized) {
+        const idx = asNumber - 1;
+        if (idx >= 0 && idx < threads.length) return threads[idx];
+    }
+
+    return (
+        threads.find(
+            (thread) =>
+                typeof thread.id === 'string' && thread.id.trim() === normalized,
+        ) || null
+    );
 }
 
 function getProjectStableId(project: Project): string {
@@ -694,6 +728,71 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
     const sessions = React.useMemo(() => allSessions.filter((s) => s.active), [allSessions]);
 
     const selectedSessionId = React.useMemo(() => getSelectedSessionIdFromPathname(pathname), [pathname]);
+    const handleResumeCodexSession = React.useCallback(
+        async (machineId: string, cwd: string) => {
+            const result = await machineCodexListThreads(machineId, {
+                cwd,
+                limit: 20,
+            });
+            if (!result.success) {
+                Modal.alert(
+                    t('common.error'),
+                    result.error || 'Failed to load Codex sessions',
+                );
+                return;
+            }
+
+            const threads = result.threads || [];
+            if (threads.length === 0) {
+                Modal.alert(
+                    'Codex Sessions',
+                    'No existing Codex sessions found for this workspace.',
+                );
+                return;
+            }
+
+            const rawSelection = await Modal.prompt(
+                'Resume Codex Session',
+                buildCodexThreadResumePromptMessage(threads),
+                {
+                    placeholder: '1',
+                    confirmText: t('common.ok'),
+                    cancelText: t('common.cancel'),
+                },
+            );
+            if (rawSelection === null) return;
+
+            const selectedThread = resolveCodexThreadSelection(
+                rawSelection,
+                threads,
+            );
+            if (!selectedThread) {
+                Modal.alert(
+                    t('common.error'),
+                    'Invalid selection. Enter a number shown in the list or a thread id.',
+                );
+                return;
+            }
+
+            const normalizedThreadName =
+                typeof selectedThread.name === 'string'
+                    ? selectedThread.name.trim()
+                    : '';
+            router.push({
+                pathname: '/new',
+                params: {
+                    machineId,
+                    path: cwd,
+                    agentType: 'codex',
+                    codexResumeThreadId: selectedThread.id,
+                    ...(normalizedThreadName
+                        ? { codexResumeThreadName: normalizedThreadName }
+                        : {}),
+                },
+            });
+        },
+        [router],
+    );
 
     const sessionById = React.useMemo(() => {
         const map = new Map<string, Session>();
@@ -1639,34 +1738,12 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                                 });
                                                 actions.push({
                                                     key: 'codex-thread-list',
-                                                    label: 'List Codex Sessions',
-                                                    icon: 'list-outline',
+                                                    label: 'Resume Codex Session',
+                                                    icon: 'time-outline',
                                                     onPress: async () => {
-                                                        const result = await machineCodexListThreads(
+                                                        await handleResumeCodexSession(
                                                             row.project.key.machineId,
-                                                            {
-                                                                cwd: row.project.key.path,
-                                                                limit: 20,
-                                                            },
-                                                        );
-                                                        if (!result.success) {
-                                                            Modal.alert(
-                                                                t('common.error'),
-                                                                result.error || 'Failed to load Codex sessions',
-                                                            );
-                                                            return;
-                                                        }
-                                                        const threads = result.threads || [];
-                                                        if (threads.length === 0) {
-                                                            Modal.alert(
-                                                                'Codex Sessions',
-                                                                'No existing Codex sessions found for this workspace.',
-                                                            );
-                                                            return;
-                                                        }
-                                                        Modal.alert(
-                                                            'Codex Sessions',
-                                                            buildCodexThreadListForModal(threads),
+                                                            row.project.key.path,
                                                         );
                                                     },
                                                 });
@@ -1822,34 +1899,12 @@ export function WorkspaceExplorerSidebar(props?: { bottomPaddingExtra?: number }
                                             });
                                             actions.push({
                                                 key: 'codex-thread-list',
-                                                label: 'List Codex Sessions',
-                                                icon: 'list-outline',
+                                                label: 'Resume Codex Session',
+                                                icon: 'time-outline',
                                                 onPress: async () => {
-                                                    const result = await machineCodexListThreads(
+                                                    await handleResumeCodexSession(
                                                         row.project.key.machineId,
-                                                        {
-                                                            cwd: row.project.key.path,
-                                                            limit: 20,
-                                                        },
-                                                    );
-                                                    if (!result.success) {
-                                                        Modal.alert(
-                                                            t('common.error'),
-                                                            result.error || 'Failed to load Codex sessions',
-                                                        );
-                                                        return;
-                                                    }
-                                                    const threads = result.threads || [];
-                                                    if (threads.length === 0) {
-                                                        Modal.alert(
-                                                            'Codex Sessions',
-                                                            'No existing Codex sessions found for this workspace.',
-                                                        );
-                                                        return;
-                                                    }
-                                                    Modal.alert(
-                                                        'Codex Sessions',
-                                                        buildCodexThreadListForModal(threads),
+                                                        row.project.key.path,
                                                     );
                                                 },
                                             });

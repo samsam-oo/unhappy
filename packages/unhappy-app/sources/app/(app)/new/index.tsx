@@ -11,7 +11,11 @@ import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { extractEnvVarReferences, resolveEnvVarSubstitution, useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
 import { Ionicons } from '@/icons/vector-icons';
 import { Modal } from '@/modal';
-import { machineSpawnNewSession } from '@/sync/ops';
+import {
+    machineCodexListThreads,
+    machineSpawnNewSession,
+    type CodexThreadSummary,
+} from '@/sync/ops';
 import { normalizePermissionPolicy } from '@/sync/permissionPolicy';
 import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 import { DEFAULT_PROFILES, getBuiltInProfile } from '@/sync/profileUtils';
@@ -102,6 +106,54 @@ const sanitizeWorktreeNameInput = (value: string): string => {
     const collapsed = replaced.replace(/-+/g, '-');
     return collapsed.slice(0, 64);
 };
+
+function formatCodexThreadLabel(thread: CodexThreadSummary): string {
+    return typeof thread.name === 'string' && thread.name.trim().length > 0
+        ? thread.name.trim()
+        : '(untitled)';
+}
+
+function buildCodexThreadPromptMessage(threads: CodexThreadSummary[]): string {
+    const preview = threads.slice(0, 12).map((thread, idx) => {
+        const title = formatCodexThreadLabel(thread);
+        const dateRaw = thread.updatedAt || thread.createdAt;
+        const when = dateRaw ? new Date(dateRaw).toLocaleString() : null;
+        const parts = [`${idx + 1}. ${title}`];
+        if (when) parts.push(when);
+        parts.push(thread.id);
+        return parts.join(' • ');
+    });
+    const suffix =
+        threads.length > preview.length
+            ? `\n...and ${threads.length - preview.length} more`
+            : '';
+    return (
+        'Enter a number (1-based) or paste a thread id to resume:\n\n' +
+        preview.join('\n') +
+        suffix
+    );
+}
+
+function resolveCodexThreadSelection(
+    raw: string,
+    threads: CodexThreadSummary[],
+): CodexThreadSummary | null {
+    const normalized = raw.trim();
+    if (!normalized) return null;
+
+    const asNumber = Number.parseInt(normalized, 10);
+    if (Number.isFinite(asNumber) && `${asNumber}` === normalized) {
+        const idx = asNumber - 1;
+        if (idx >= 0 && idx < threads.length) return threads[idx];
+    }
+
+    return (
+        threads.find(
+            (thread) =>
+                typeof thread.id === 'string' && thread.id.trim() === normalized,
+        ) || null
+    );
+}
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
@@ -451,11 +503,20 @@ function NewSessionWizard() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
-    const { prompt, dataId, machineId: machineIdParam, path: pathParam } = useLocalSearchParams<{
+    const {
+        prompt,
+        dataId,
+        machineId: machineIdParam,
+        path: pathParam,
+        codexResumeThreadId: codexResumeThreadIdParam,
+        codexResumeThreadName: codexResumeThreadNameParam,
+    } = useLocalSearchParams<{
         prompt?: string;
         dataId?: string;
         machineId?: string;
         path?: string;
+        codexResumeThreadId?: string;
+        codexResumeThreadName?: string;
     }>();
 
     // Try to get data from temporary store first
@@ -537,6 +598,27 @@ function NewSessionWizard() {
         if (persistedDraft?.sessionType === 'worktree') return 'worktree';
         return 'simple';
     });
+    const [selectedCodexResumeThreadId, setSelectedCodexResumeThreadId] = React.useState<string | null>(() => {
+        const fromTemp = typeof tempSessionData?.codexResumeThreadId === 'string'
+            ? tempSessionData.codexResumeThreadId.trim()
+            : '';
+        if (fromTemp) return fromTemp;
+        const fromDraft = typeof persistedDraft?.codexResumeThreadId === 'string'
+            ? persistedDraft.codexResumeThreadId.trim()
+            : '';
+        return fromDraft || null;
+    });
+    const [selectedCodexResumeThreadName, setSelectedCodexResumeThreadName] = React.useState<string>(() => {
+        const fromTemp = typeof tempSessionData?.codexResumeThreadName === 'string'
+            ? tempSessionData.codexResumeThreadName.trim()
+            : '';
+        if (fromTemp) return fromTemp;
+        const fromDraft = typeof persistedDraft?.codexResumeThreadName === 'string'
+            ? persistedDraft.codexResumeThreadName.trim()
+            : '';
+        return fromDraft;
+    });
+    const [loadingCodexThreadPicker, setLoadingCodexThreadPicker] = React.useState(false);
     const [worktreeName, setWorktreeName] = React.useState<string>(() => {
         return sanitizeWorktreeNameInput(persistedDraft?.worktreeName || '');
     });
@@ -674,6 +756,24 @@ function NewSessionWizard() {
             setSelectedPath(trimmedPath);
         }
     }, [pathParam, selectedPath]);
+
+    // Allow deep-linking into "resume this Codex thread" flows from workspace actions.
+    React.useEffect(() => {
+        if (typeof codexResumeThreadIdParam !== 'string') {
+            return;
+        }
+        const normalizedThreadId = codexResumeThreadIdParam.trim();
+        if (!normalizedThreadId) {
+            return;
+        }
+        setAgentType('codex');
+        setSelectedCodexResumeThreadId(normalizedThreadId);
+        if (typeof codexResumeThreadNameParam === 'string') {
+            setSelectedCodexResumeThreadName(codexResumeThreadNameParam.trim());
+        } else {
+            setSelectedCodexResumeThreadName('');
+        }
+    }, [codexResumeThreadIdParam, codexResumeThreadNameParam]);
 
     // Path selection state - initialize with formatted selected path
 
@@ -1236,6 +1336,77 @@ function NewSessionWizard() {
         }
     }, [selectedMachineId, selectedPath, router]);
 
+    const clearSelectedCodexResumeThread = React.useCallback(() => {
+        setSelectedCodexResumeThreadId(null);
+        setSelectedCodexResumeThreadName('');
+    }, []);
+
+    const handlePickCodexResumeThread = React.useCallback(async () => {
+        if (!selectedMachineId) {
+            Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
+            return;
+        }
+        if (!selectedPath) {
+            Modal.alert(t('common.error'), t('newSession.noPathSelected'));
+            return;
+        }
+
+        setLoadingCodexThreadPicker(true);
+        try {
+            const result = await machineCodexListThreads(selectedMachineId, {
+                cwd: selectedPath,
+                limit: 20,
+            });
+            if (!result.success) {
+                Modal.alert(
+                    t('common.error'),
+                    result.error || 'Failed to load Codex sessions',
+                );
+                return;
+            }
+
+            const threads = result.threads || [];
+            if (threads.length === 0) {
+                Modal.alert(
+                    'Codex Sessions',
+                    'No existing Codex sessions found for this workspace.',
+                );
+                return;
+            }
+
+            const rawSelection = await Modal.prompt(
+                'Resume Codex Session',
+                buildCodexThreadPromptMessage(threads),
+                {
+                    placeholder: '1',
+                    confirmText: t('common.ok'),
+                    cancelText: t('common.cancel'),
+                },
+            );
+            if (rawSelection === null) return;
+
+            const selectedThread = resolveCodexThreadSelection(
+                rawSelection,
+                threads,
+            );
+            if (!selectedThread) {
+                Modal.alert(
+                    t('common.error'),
+                    'Invalid selection. Enter a number shown in the list or a thread id.',
+                );
+                return;
+            }
+
+            setAgentType('codex');
+            setSelectedCodexResumeThreadId(selectedThread.id);
+            setSelectedCodexResumeThreadName(
+                formatCodexThreadLabel(selectedThread),
+            );
+        } finally {
+            setLoadingCodexThreadPicker(false);
+        }
+    }, [selectedMachineId, selectedPath]);
+
     // Session creation
     const handleCreateSession = React.useCallback(async () => {
         if (!selectedMachineId) {
@@ -1308,6 +1479,12 @@ function NewSessionWizard() {
                 directory: actualPath,
                 approvedNewDirectoryCreation: true,
                 agent: agentType,
+                codexResumeThreadId:
+                    agentType === 'codex' &&
+                    sessionType === 'simple' &&
+                    selectedCodexResumeThreadId
+                        ? selectedCodexResumeThreadId
+                        : undefined,
                 environmentVariables
             });
 
@@ -1428,7 +1605,7 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, planOnly, modelMode, effortMode, recentMachinePaths, profileMap, router, selectedMachine]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, selectedCodexResumeThreadId, permissionMode, planOnly, modelMode, effortMode, recentMachinePaths, profileMap, router, selectedMachine]);
 
     const screenWidth = useWindowDimensions().width;
     const isWebLayout = Platform.OS === 'web';
@@ -1492,6 +1669,8 @@ function NewSessionWizard() {
                 selectedMachineId,
                 selectedPath,
                 agentType,
+                codexResumeThreadId: selectedCodexResumeThreadId,
+                codexResumeThreadName: selectedCodexResumeThreadName || null,
                 permissionMode,
                 sessionType,
                 worktreeName,
@@ -1503,7 +1682,18 @@ function NewSessionWizard() {
                 clearTimeout(draftSaveTimerRef.current);
             }
         };
-    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, permissionMode, sessionType, worktreeName]);
+    }, [sessionPrompt, selectedMachineId, selectedPath, agentType, selectedCodexResumeThreadId, selectedCodexResumeThreadName, permissionMode, sessionType, worktreeName]);
+
+    const showCodexResumeControls =
+        agentType === 'codex' && sessionType === 'simple';
+    const codexResumeSelectionSubtitle = React.useMemo(() => {
+        if (!selectedCodexResumeThreadId) {
+            return 'Pick an existing Codex session for this workspace';
+        }
+        const title =
+            selectedCodexResumeThreadName?.trim() || '(untitled)';
+        return `${title} • ${selectedCodexResumeThreadId}`;
+    }, [selectedCodexResumeThreadId, selectedCodexResumeThreadName]);
 
     // ========================================================================
     // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
@@ -1518,6 +1708,58 @@ function NewSessionWizard() {
             >
                 <View style={[styles.simpleLayout, isWebLayout && styles.webStage]}>
                     {webHeroHeading}
+                    {showCodexResumeControls && (
+                        <View
+                            style={{
+                                paddingHorizontal: horizontalPadding,
+                                paddingBottom: 8,
+                            }}
+                        >
+                            <View
+                                style={{
+                                    maxWidth: layout.maxWidth,
+                                    width: '100%',
+                                    alignSelf: 'center',
+                                }}
+                            >
+                                <ItemGroup title="Codex 세션 이어서 시작">
+                                    <Item
+                                        title="Resume Existing Codex Session"
+                                        subtitle={
+                                            loadingCodexThreadPicker
+                                                ? t('common.loading')
+                                                : codexResumeSelectionSubtitle
+                                        }
+                                        icon={
+                                            <Ionicons
+                                                name="time-outline"
+                                                size={29}
+                                                color="#5856D6"
+                                            />
+                                        }
+                                        onPress={() => {
+                                            if (loadingCodexThreadPicker) return;
+                                            void handlePickCodexResumeThread();
+                                        }}
+                                    />
+                                    {selectedCodexResumeThreadId && (
+                                        <Item
+                                            title="Clear Selected Session"
+                                            subtitle="Start a fresh Codex thread instead"
+                                            icon={
+                                                <Ionicons
+                                                    name="close-circle-outline"
+                                                    size={29}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                            }
+                                            onPress={clearSelectedCodexResumeThread}
+                                        />
+                                    )}
+                                </ItemGroup>
+                            </View>
+                        </View>
+                    )}
                     {/* AgentInput with inline chips - sticky at bottom */}
                     <View style={[
                         { paddingHorizontal: horizontalPadding, paddingBottom: isWebLayout ? Math.max(16, safeArea.bottom) : mobileInputBottomPadding },
@@ -2350,9 +2592,56 @@ function NewSessionWizard() {
                                 </ItemGroup>
                             </View>
 
+                            {showCodexResumeControls && (
+                                <View style={{ marginBottom: 24 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+                                        <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>4.</Text>
+                                        <Ionicons name="time-outline" size={18} color={theme.colors.text} />
+                                        <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Codex 세션 이어서 시작</Text>
+                                    </View>
+                                    <ItemGroup title="">
+                                        <Item
+                                            title="Resume Existing Codex Session"
+                                            subtitle={
+                                                loadingCodexThreadPicker
+                                                    ? t('common.loading')
+                                                    : codexResumeSelectionSubtitle
+                                            }
+                                            leftElement={
+                                                <Ionicons
+                                                    name="time-outline"
+                                                    size={24}
+                                                    color={theme.colors.textSecondary}
+                                                />
+                                            }
+                                            onPress={() => {
+                                                if (loadingCodexThreadPicker) return;
+                                                void handlePickCodexResumeThread();
+                                            }}
+                                        />
+                                        {selectedCodexResumeThreadId && (
+                                            <Item
+                                                title="Clear Selected Session"
+                                                subtitle="Start a fresh Codex thread instead"
+                                                leftElement={
+                                                    <Ionicons
+                                                        name="close-circle-outline"
+                                                        size={24}
+                                                        color={theme.colors.textSecondary}
+                                                    />
+                                                }
+                                                onPress={clearSelectedCodexResumeThread}
+                                            />
+                                        )}
+                                    </ItemGroup>
+                                </View>
+                            )}
+
                             {/* Section 4: Permission Mode */}
                             <View ref={permissionSectionRef}>
-                                <Text style={styles.sectionHeader}>4. 권한 모드</Text>
+                                <Text style={styles.sectionHeader}>
+                                    {showCodexResumeControls ? '5. 권한 모드' : '4. 권한 모드'}
+                                </Text>
                             </View>
                             <ItemGroup title="">
                                 {([

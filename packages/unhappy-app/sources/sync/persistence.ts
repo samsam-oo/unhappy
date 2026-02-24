@@ -17,6 +17,8 @@ export interface NewSessionDraft {
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: NewSessionAgentType;
+    codexResumeThreadId?: string | null;
+    codexResumeThreadName?: string | null;
     permissionMode: PermissionMode;
     sessionType: NewSessionSessionType;
     worktreeName: string;
@@ -144,6 +146,14 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
             ? parsed.agentType
             : 'claude';
+        const codexResumeThreadId =
+            typeof parsed.codexResumeThreadId === 'string' && parsed.codexResumeThreadId.trim()
+                ? parsed.codexResumeThreadId.trim()
+                : null;
+        const codexResumeThreadName =
+            typeof parsed.codexResumeThreadName === 'string' && parsed.codexResumeThreadName.trim()
+                ? parsed.codexResumeThreadName.trim()
+                : null;
         const permissionMode: PermissionMode = typeof parsed.permissionMode === 'string'
             ? (parsed.permissionMode as PermissionMode)
             : 'default';
@@ -156,6 +166,8 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             selectedMachineId,
             selectedPath,
             agentType,
+            codexResumeThreadId,
+            codexResumeThreadName,
             permissionMode,
             sessionType,
             worktreeName,

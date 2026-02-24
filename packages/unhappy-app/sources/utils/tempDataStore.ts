@@ -10,6 +10,8 @@ export interface NewSessionData {
     machineId?: string;
     path?: string;
     agentType?: 'claude' | 'codex' | 'gemini';
+    codexResumeThreadId?: string;
+    codexResumeThreadName?: string;
     sessionType?: 'simple' | 'worktree';
     taskId?: string;
     taskTitle?: string;
