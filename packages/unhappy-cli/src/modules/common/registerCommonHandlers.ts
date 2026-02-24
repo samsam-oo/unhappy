@@ -8,6 +8,8 @@ import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 import { validatePath } from './pathSecurity';
+import { getProjectPath } from '@/claude/utils/path';
+import { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
 
 const execAsync = promisify(exec);
 
@@ -112,6 +114,24 @@ interface DifftasticResponse {
     exitCode?: number;
     stdout?: string;
     stderr?: string;
+    error?: string;
+}
+
+interface ClaudeListSessionsRequest {
+    cwd?: string;
+    limit?: number;
+}
+
+interface ClaudeSessionSummary {
+    id: string;
+    cwd: string;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+interface ClaudeListSessionsResponse {
+    success: boolean;
+    sessions?: ClaudeSessionSummary[];
     error?: string;
 }
 
@@ -237,6 +257,83 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
             return result;
         }
     });
+
+    rpcHandlerManager.registerHandler<ClaudeListSessionsRequest, ClaudeListSessionsResponse>(
+        'claude-list-sessions',
+        async (data) => {
+            const cwdRaw = typeof data?.cwd === 'string' ? data.cwd.trim() : '';
+            const cwd = cwdRaw || workingDirectory;
+            const validation = validatePath(cwd, workingDirectory);
+            if (!validation.valid) {
+                return { success: false, error: validation.error };
+            }
+
+            const limitRaw =
+                typeof data?.limit === 'number' && Number.isFinite(data.limit)
+                    ? Math.floor(data.limit)
+                    : 20;
+            const limit = Math.max(1, Math.min(100, limitRaw));
+
+            try {
+                const projectDir = getProjectPath(cwd);
+                let files: string[] = [];
+                try {
+                    files = await readdir(projectDir);
+                } catch (error) {
+                    const code = (error as NodeJS.ErrnoException).code;
+                    if (code === 'ENOENT') {
+                        return { success: true, sessions: [] };
+                    }
+                    throw error;
+                }
+
+                const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const rows = await Promise.all(
+                    files
+                        .filter((name) => name.endsWith('.jsonl'))
+                        .map(async (name) => {
+                            const id = name.slice(0, -'.jsonl'.length);
+                            if (!uuidPattern.test(id)) {
+                                return null;
+                            }
+                            if (!claudeCheckSession(id, cwd)) {
+                                return null;
+                            }
+                            const fileStats = await stat(join(projectDir, name));
+                            return {
+                                id,
+                                cwd,
+                                createdAt: fileStats.birthtime?.toISOString(),
+                                updatedAt: fileStats.mtime?.toISOString(),
+                                updatedAtMs: fileStats.mtime?.getTime() ?? 0
+                            };
+                        })
+                );
+
+                const sessions = rows
+                    .filter((row): row is NonNullable<typeof row> => row !== null)
+                    .sort((lhs, rhs) => rhs.updatedAtMs - lhs.updatedAtMs)
+                    .slice(0, limit)
+                    .map((row) => ({
+                        id: row.id,
+                        cwd: row.cwd,
+                        createdAt: row.createdAt,
+                        updatedAt: row.updatedAt
+                    }));
+
+                return {
+                    success: true,
+                    sessions
+                };
+            } catch (error) {
+                logger.debug('Failed to list Claude sessions:', error);
+                return {
+                    success: false,
+                    error: error instanceof Error ? error.message : 'Failed to list Claude sessions'
+                };
+            }
+        }
+    );
 
     // Read file handler - returns base64 encoded content
     rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {

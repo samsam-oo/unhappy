@@ -606,7 +606,7 @@ export class ApiMachineClient {
           callback({ success: false, error: 'Command is required' });
           return;
         }
-        if (command !== 'codex-list-threads') {
+        if (command !== 'codex-list-threads' && command !== 'claude-list-sessions') {
           callback({ success: false, error: 'Unsupported command' });
           return;
         }

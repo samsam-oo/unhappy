@@ -229,4 +229,56 @@ export function machinesRoutes(app: Fastify) {
 
         return reply.send(result);
     });
+
+    app.get('/v1/machines/:id/claude/sessions', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            querystring: z.object({
+                cwd: z.string().optional(),
+                limit: z.coerce.number().int().min(1).max(100).default(20)
+            }).optional()
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const cwd = request.query?.cwd?.trim();
+        const limit = request.query?.limit ?? 20;
+
+        const machine = await db.machine.findFirst({
+            where: {
+                accountId: userId,
+                id
+            },
+            select: { id: true }
+        });
+
+        if (!machine) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const target = findConnectedMachine(userId, id);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'claude-list-sessions',
+            params: {
+                cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                limit
+            }
+        });
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to list Claude sessions'
+            });
+        }
+
+        return reply.send(result);
+    });
 }

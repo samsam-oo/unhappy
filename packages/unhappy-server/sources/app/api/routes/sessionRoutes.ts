@@ -469,6 +469,53 @@ export function sessionRoutes(app: Fastify) {
         return reply.send(result);
     });
 
+    app.get('/v1/sessions/:sessionId/claude/sessions', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            querystring: z.object({
+                limit: z.coerce.number().int().min(1).max(100).default(20)
+            }).optional()
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const limit = request.query?.limit ?? 20;
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const target = findConnectedSession(userId, sessionId);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'claude-list-sessions',
+            params: { limit }
+        });
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to list Claude sessions'
+            });
+        }
+
+        return reply.send(result);
+    });
+
     app.patch('/v1/sessions/:sessionId/codex/title', {
         schema: {
             params: z.object({

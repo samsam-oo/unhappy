@@ -123,7 +123,11 @@ export class ApiSessionClient extends EventEmitter {
                     callback({ success: false, error: 'Command is required' });
                     return;
                 }
-                if (command !== 'codex-list-threads' && command !== 'codex-set-thread-name') {
+                if (
+                    command !== 'codex-list-threads' &&
+                    command !== 'codex-set-thread-name' &&
+                    command !== 'claude-list-sessions'
+                ) {
                     callback({ success: false, error: 'Unsupported command' });
                     return;
                 }
