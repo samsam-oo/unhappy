@@ -224,6 +224,7 @@ export async function runCodex(opts: {
   startedBy?: 'daemon' | 'terminal';
   resume?: boolean;
   clearResume?: boolean;
+  resumeThreadId?: string;
 }): Promise<void> {
   // Use shared PermissionMode type for cross-agent compatibility
   type PermissionMode = import('@/api/types').PermissionMode;
@@ -549,8 +550,12 @@ export async function runCodex(opts: {
   let storedSessionIdForResume: string | null = null;
   let storedCodexHomeDirForResume: string | null = null;
   let storedResumeFileForResume: string | null = null;
+  const explicitResumeThreadId =
+    typeof opts.resumeThreadId === 'string' && opts.resumeThreadId.trim()
+      ? opts.resumeThreadId.trim()
+      : null;
   const cwd = process.cwd();
-  const resumeEnabled = opts.resume !== false;
+  const resumeEnabled = explicitResumeThreadId ? true : opts.resume !== false;
   const getEffectiveCodexHomeDir = (): string => {
     const fromEnv =
       typeof process.env.CODEX_HOME === 'string' ? process.env.CODEX_HOME.trim() : '';
@@ -790,7 +795,13 @@ export async function runCodex(opts: {
     }
   }
 
-  if (resumeEnabled && !opts.clearResume) {
+  if (explicitResumeThreadId) {
+    storedSessionIdForResume = explicitResumeThreadId;
+    client.setPreferredResumeThreadId(explicitResumeThreadId);
+    messageBuffer.addMessage('Resuming selected Codex session...', 'status');
+  }
+
+  if (resumeEnabled && !opts.clearResume && !explicitResumeThreadId) {
     try {
       const entry = await readCodexResumeEntry(cwd);
       if (entry?.codexSessionId) {
@@ -812,7 +823,7 @@ export async function runCodex(opts: {
       logger.debug('[Codex] Failed to read persisted codex resume entry', e);
     }
   }
-  if (storedSessionIdForResume) {
+  if (storedSessionIdForResume && !explicitResumeThreadId) {
     client.setPreferredResumeThreadId(storedSessionIdForResume);
   }
 
@@ -1574,7 +1585,7 @@ export async function runCodex(opts: {
           let resumeFile: string | null = null;
 
           // Resume from stored abort session
-          if (storedSessionIdForResume) {
+          if (storedSessionIdForResume && !explicitResumeThreadId) {
             const abortResumeFile =
               storedResumeFileForResume && fs.existsSync(storedResumeFileForResume)
                 ? storedResumeFileForResume

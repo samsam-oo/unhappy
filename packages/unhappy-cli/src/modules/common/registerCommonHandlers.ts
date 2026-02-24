@@ -124,6 +124,8 @@ export interface SpawnSessionOptions {
     machineId?: string;
     directory: string;
     sessionId?: string;
+    // Optional explicit Codex thread id to resume on first turn.
+    codexResumeThreadId?: string;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;
