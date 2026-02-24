@@ -8,9 +8,35 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
 import {
+    findConnectedMachine,
     findConnectedSession,
     invokePublicCommand
 } from "./codexPublicCommands";
+
+async function findConnectedMachineForSession(userId: string, sessionId: string): Promise<string | null> {
+    const accessKeys = await db.accessKey.findMany({
+        where: {
+            accountId: userId,
+            sessionId
+        },
+        orderBy: {
+            updatedAt: 'desc'
+        },
+        take: 10,
+        select: {
+            machineId: true
+        }
+    });
+
+    for (const key of accessKeys) {
+        const target = findConnectedMachine(userId, key.machineId);
+        if (target) {
+            return key.machineId;
+        }
+    }
+
+    return null;
+}
 
 export function sessionRoutes(app: Fastify) {
 
@@ -428,6 +454,7 @@ export function sessionRoutes(app: Fastify) {
                 sessionId: z.string()
             }),
             querystring: z.object({
+                cwd: z.string().optional(),
                 limit: z.coerce.number().int().min(1).max(100).default(20)
             }).optional()
         },
@@ -435,6 +462,7 @@ export function sessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
+        const cwd = request.query?.cwd?.trim();
         const limit = request.query?.limit ?? 20;
 
         const session = await db.session.findFirst({
@@ -449,15 +477,33 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        const target = findConnectedSession(userId, sessionId);
-        if (!target) {
-            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+        let result: any = null;
+        const sessionTarget = findConnectedSession(userId, sessionId);
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'codex-list-threads',
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
+            });
+        } else {
+            const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!fallbackMachineId) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            const machineTarget = findConnectedMachine(userId, fallbackMachineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'codex-list-threads',
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
+            });
         }
-
-        const result = await invokePublicCommand(target, {
-            command: 'codex-list-threads',
-            params: { limit }
-        });
 
         if (!result?.success) {
             return reply.code(502).send({
@@ -496,15 +542,27 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        const target = findConnectedSession(userId, sessionId);
-        if (!target) {
-            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+        let result: any = null;
+        const sessionTarget = findConnectedSession(userId, sessionId);
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'claude-list-sessions',
+                params: { limit }
+            });
+        } else {
+            const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!fallbackMachineId) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            const machineTarget = findConnectedMachine(userId, fallbackMachineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'claude-list-sessions',
+                params: { limit }
+            });
         }
-
-        const result = await invokePublicCommand(target, {
-            command: 'claude-list-sessions',
-            params: { limit }
-        });
 
         if (!result?.success) {
             return reply.code(502).send({

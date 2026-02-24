@@ -46,8 +46,8 @@ Auth flows:
 - `GET /v1/sessions/:sessionId/messages`
 - `DELETE /v1/sessions/:sessionId`
 - `PATCH /v1/sessions/:sessionId/title`
-- `GET /v1/sessions/:sessionId/codex/threads?limit=...` (requires active session-scoped daemon)
-- `GET /v1/sessions/:sessionId/claude/sessions?limit=...` (requires active session-scoped daemon)
+- `GET /v1/sessions/:sessionId/codex/threads?cwd=...&limit=...` (uses session-scoped daemon, falls back to linked machine daemon)
+- `GET /v1/sessions/:sessionId/claude/sessions?limit=...` (uses session-scoped daemon, falls back to linked machine daemon)
 - `PATCH /v1/sessions/:sessionId/codex/title` (rename active Codex thread + mirror display name)
 
 ### Machines
