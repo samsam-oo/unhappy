@@ -149,6 +149,7 @@ export class CodexAppServerClient {
   private connected = false;
   private sessionId: string | null = null;
   private conversationId: string | null = null;
+  private activeTurnId: string | null = null;
   private handler: ((event: unknown) => void) | null = null;
   private permissionHandler: CodexPermissionHandlerLike | null = null;
   private toolCallIds = new ToolCallIdCanonicalizer();
@@ -269,6 +270,35 @@ export class CodexAppServerClient {
     return this.startTurn(prompt, options);
   }
 
+  async steerActiveTurn(
+    prompt: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void> {
+    if (!this.connected) await this.connect();
+    if (!this.sessionId) {
+      throw new Error('No active session. Call startSession first.');
+    }
+    if (!this.activeTurnId) {
+      throw new Error('No active turn to steer.');
+    }
+    if (!prompt.trim()) {
+      throw new Error('Steer message cannot be empty.');
+    }
+
+    await this.callRpc(
+      'turn/steer',
+      {
+        threadId: this.sessionId,
+        expectedTurnId: this.activeTurnId,
+        input: [{ type: 'text', text: prompt }],
+      },
+      {
+        signal: options?.signal,
+        timeout: 30000,
+      },
+    );
+  }
+
   private async ensureThread(config: CodexSessionConfig, signal?: AbortSignal): Promise<void> {
     if (this.sessionId) {
       return;
@@ -386,7 +416,18 @@ export class CodexAppServerClient {
       };
     }
 
-    const completedTurn = await this.waitForTurnCompletion(turnStart, options?.signal);
+    const startedTurnId = turnStart.id;
+    this.activeTurnId = startedTurnId;
+
+    let completedTurn: TurnState;
+    try {
+      completedTurn = await this.waitForTurnCompletion(turnStart, options?.signal);
+    } finally {
+      if (this.activeTurnId === startedTurnId) {
+        this.activeTurnId = null;
+      }
+    }
+
     if (completedTurn.status === 'failed') {
       const message =
         completedTurn.error && typeof completedTurn.error.message === 'string'
@@ -631,6 +672,74 @@ export class CodexAppServerClient {
         return;
       }
 
+      // Newer app-server method: request_user_input over JSON-RPC request channel.
+      // We currently auto-select the first option when available and send empty answers otherwise.
+      if (method === 'item/tool/requestUserInput') {
+        const questions = Array.isArray(params.questions)
+          ? params.questions.filter(isRecord)
+          : [];
+        const answers: Record<string, { answers: string[] }> = {};
+
+        for (const question of questions) {
+          const questionId =
+            typeof question.id === 'string' && question.id.trim()
+              ? question.id
+              : null;
+          if (!questionId) continue;
+
+          const options = Array.isArray(question.options)
+            ? question.options.filter(isRecord)
+            : [];
+          const firstOption = options.find(
+            (option) =>
+              typeof option.label === 'string' && option.label.trim().length > 0,
+          );
+          const value =
+            firstOption && typeof firstOption.label === 'string'
+              ? [firstOption.label]
+              : [];
+          answers[questionId] = { answers: value };
+        }
+
+        this.handler?.({
+          type: 'request_user_input',
+          item_id: params.itemId,
+          turn_id: params.turnId,
+          thread_id: params.threadId,
+          questions: params.questions,
+        });
+
+        this.sendResponse(request.id, { answers });
+        return;
+      }
+
+      // Newer app-server method: dynamic tool calls. This transport does not expose
+      // custom tool execution yet, so return a structured "not supported" response.
+      if (method === 'item/tool/call') {
+        const toolName =
+          typeof params.tool === 'string' && params.tool.trim()
+            ? params.tool
+            : 'unknown-tool';
+        this.handler?.({
+          type: 'dynamic_tool_call_request',
+          call_id: params.callId,
+          turn_id: params.turnId,
+          thread_id: params.threadId,
+          tool: params.tool,
+          arguments: params.arguments,
+        });
+        this.sendResponse(request.id, {
+          success: false,
+          contentItems: [
+            {
+              type: 'inputText',
+              text: `Dynamic tool call "${toolName}" is not supported by this Codex client.`,
+            },
+          ],
+        });
+        return;
+      }
+
       this.sendError(request.id, -32601, `Unsupported server request method: ${method}`);
     } catch (error) {
       logger.debug('[CodexAppServer] Failed handling server request', error);
@@ -685,6 +794,11 @@ export class CodexAppServerClient {
       return;
     }
 
+    // Fallback mapping for collaboration/sub-agent events in newer app-server streams.
+    if (!this.sawLegacyCodexEvents && this.mapCollabFromNewApi(method, params)) {
+      return;
+    }
+
     if (method === 'thread/started') {
       const thread = isRecord(params.thread) ? params.thread : null;
       const threadId = thread && typeof thread.id === 'string' ? thread.id : null;
@@ -698,6 +812,9 @@ export class CodexAppServerClient {
     if (method === 'turn/completed') {
       const turn = isRecord(params.turn) ? (params.turn as TurnState) : null;
       if (turn && typeof turn.id === 'string') {
+        if (this.activeTurnId === turn.id) {
+          this.activeTurnId = null;
+        }
         const waiter = this.pendingTurnCompletions.get(turn.id);
         if (waiter) {
           waiter.resolve(turn);
@@ -742,6 +859,82 @@ export class CodexAppServerClient {
         }
       }
     }
+  }
+
+  private mapCollabFromNewApi(
+    method: string,
+    params: Record<string, unknown>,
+  ): boolean {
+    const methodLower = method.toLowerCase();
+
+    // v2 stream: item_started/item_completed with `item.type = collabAgentToolCall`
+    const item = isRecord(params.item) ? params.item : null;
+    if (item && item.type === 'collabAgentToolCall') {
+      const statusRaw =
+        typeof item.status === 'string' ? item.status.toLowerCase() : '';
+      const looksInProgress =
+        statusRaw === 'inprogress' ||
+        statusRaw === 'in_progress' ||
+        statusRaw === 'running' ||
+        methodLower === 'item/started' ||
+        methodLower === 'item_started' ||
+        methodLower.endsWith('/started');
+
+      const receiverThreadIds = Array.isArray(item.receiverThreadIds)
+        ? item.receiverThreadIds.filter(
+            (value): value is string =>
+              typeof value === 'string' && value.trim().length > 0,
+          )
+        : undefined;
+
+      const syntheticEvent = {
+        type: looksInProgress ? 'collab_waiting_begin' : 'collab_waiting_end',
+        call_id:
+          typeof item.id === 'string' && item.id.trim()
+            ? item.id
+            : undefined,
+        sender_thread_id:
+          typeof item.senderThreadId === 'string' && item.senderThreadId.trim()
+            ? item.senderThreadId
+            : undefined,
+        receiver_thread_ids: receiverThreadIds,
+        tool: item.tool,
+        status: item.status,
+      };
+
+      this.updateIdentifiersFromEvent(syntheticEvent);
+      this.handler?.(syntheticEvent);
+      return true;
+    }
+
+    const candidates: unknown[] = [
+      params.msg,
+      params.event,
+      params.item,
+      params,
+    ];
+
+    for (const candidate of candidates) {
+      if (!isRecord(candidate)) continue;
+      const type = candidate.type;
+      if (typeof type !== 'string' || !type.startsWith('collab_')) continue;
+      this.updateIdentifiersFromEvent(candidate);
+      this.handler?.(candidate);
+      return true;
+    }
+
+    const collabIdx = methodLower.indexOf('collab_');
+    if (collabIdx >= 0) {
+      const type = methodLower.slice(collabIdx).replace(/\//g, '_');
+      if (type.startsWith('collab_')) {
+        const syntheticEvent = { ...params, type };
+        this.updateIdentifiersFromEvent(syntheticEvent);
+        this.handler?.(syntheticEvent);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private mapReasoningFromNewApi(
@@ -1076,6 +1269,14 @@ export class CodexAppServerClient {
     return this.conversationId;
   }
 
+  getActiveTurnId(): string | null {
+    return this.activeTurnId;
+  }
+
+  hasActiveTurn(): boolean {
+    return this.activeTurnId !== null;
+  }
+
   hasActiveSession(): boolean {
     return this.sessionId !== null;
   }
@@ -1084,6 +1285,7 @@ export class CodexAppServerClient {
     const previousSessionId = this.sessionId;
     this.sessionId = null;
     this.conversationId = null;
+    this.activeTurnId = null;
     this.completedTurns.clear();
     this.pendingTurnCompletions.clear();
     this.sawLegacyCodexEvents = false;

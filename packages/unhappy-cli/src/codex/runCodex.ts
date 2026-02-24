@@ -33,6 +33,9 @@ import React from 'react';
 import { CodexAppServerClient } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
 import { DiffProcessor } from './utils/diffProcessor';
+import {
+  extractCollabStatusEvent,
+} from './utils/collabStatus';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 import { ReasoningProcessor } from './utils/reasoningProcessor';
 
@@ -318,6 +321,8 @@ export async function runCodex(opts: {
       effortResetToDefault: mode.effortResetToDefault,
     }),
   );
+  let thinking = false;
+  const client = new CodexAppServerClient();
 
   // Track current overrides to apply per message
   // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -418,9 +423,31 @@ export async function runCodex(opts: {
       effort: messageEffort,
       effortResetToDefault: messageEffortResetToDefault,
     };
-    messageQueue.push(message.content.text, enhancedMode);
+
+    const userText = message.content.text;
+    const steerMode =
+      message.meta?.steerMode === 'immediate' ? 'immediate' : 'queue';
+    const shouldTrySteer =
+      steerMode === 'immediate' &&
+      typeof userText === 'string' &&
+      userText.trim().length > 0 &&
+      thinking &&
+      client.hasActiveSession() &&
+      client.hasActiveTurn();
+
+    if (shouldTrySteer) {
+      void client.steerActiveTurn(userText).catch((error) => {
+        logger.debug(
+          '[Codex] turn/steer failed, falling back to queued user turn',
+          error,
+        );
+        messageQueue.push(userText, enhancedMode);
+      });
+      return;
+    }
+
+    messageQueue.push(userText, enhancedMode);
   });
-  let thinking = false;
   session.keepAlive(thinking, 'remote');
   // Periodic keep-alive; store handle so we can clear on exit
   const keepAliveInterval = setInterval(() => {
@@ -672,7 +699,6 @@ export async function runCodex(opts: {
   // Start Context
   //
 
-  const client = new CodexAppServerClient();
   let lastPersistedCodexSessionId: string | null = null;
   let lastReportedAgentSessionId: string | null = null;
   let lastReportedAgentConversationId: string | null = null;
@@ -912,6 +938,29 @@ export async function runCodex(opts: {
   });
   client.setPermissionHandler(permissionHandler);
   const activeExecCallIds: string[] = [];
+  const activeCollabKeys = new Set<string>();
+  const COLLAB_REMINDER_INTERVAL_MS = 15000;
+  let collabStatusVisible = false;
+  let lastCollabIndicatorSentAt = 0;
+  const emitCollabIndicator = (message: string) => {
+    messageBuffer.addMessage(message, 'status');
+    session.sendCodexMessage({
+      type: 'message',
+      message,
+      id: randomUUID(),
+    });
+    lastCollabIndicatorSentAt = Date.now();
+  };
+  const syncCollabStatusIndicator = () => {
+    const hasInProgressCollab = activeCollabKeys.size > 0;
+    if (hasInProgressCollab === collabStatusVisible) {
+      return;
+    }
+    collabStatusVisible = hasInProgressCollab;
+    emitCollabIndicator(
+      hasInProgressCollab ? 'Sub-agent in progress' : 'Sub-agent completed',
+    );
+  };
   const rememberExecCallId = (callId: string) => {
     if (!callId) return;
     const idx = activeExecCallIds.indexOf(callId);
@@ -932,6 +981,12 @@ export async function runCodex(opts: {
       ? activeExecCallIds[activeExecCallIds.length - 1]
       : null;
   };
+  const collabReminderInterval = setInterval(() => {
+    if (!collabStatusVisible) return;
+    const now = Date.now();
+    if (now - lastCollabIndicatorSentAt < COLLAB_REMINDER_INTERVAL_MS) return;
+    emitCollabIndicator('Sub-agent in progress');
+  }, COLLAB_REMINDER_INTERVAL_MS);
 
   client.setHandler((msg: any) => {
     // Avoid logging the full raw Codex event payloads (can be huge and include prompt contents).
@@ -960,6 +1015,21 @@ export async function runCodex(opts: {
     // Best-effort: persist session id as soon as we learn it (handles abrupt process death).
     // Avoid awaiting in the hot path; fire and forget.
     void persistAndReportCodexIdentifiersIfNeeded('mcp-event');
+
+    const collabEvent = extractCollabStatusEvent(msg);
+    if (collabEvent) {
+      if (collabEvent.stage === 'in_progress') {
+        activeCollabKeys.add(collabEvent.key);
+      } else {
+        activeCollabKeys.delete(collabEvent.key);
+      }
+      syncCollabStatusIndicator();
+    } else if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
+      if (activeCollabKeys.size > 0) {
+        activeCollabKeys.clear();
+      }
+      syncCollabStatusIndicator();
+    }
 
     // Add messages to the ink UI buffer based on message type
     if (msg.type === 'agent_message') {
@@ -1586,6 +1656,8 @@ export async function runCodex(opts: {
     // Clear periodic keep-alive to avoid keeping event loop alive
     logger.debug('[codex]: clearInterval(keepAlive)');
     clearInterval(keepAliveInterval);
+    logger.debug('[codex]: clearInterval(collabReminder)');
+    clearInterval(collabReminderInterval);
     if (inkInstance) {
       logger.debug('[codex]: inkInstance.unmount()');
       inkInstance.unmount();
