@@ -2,6 +2,13 @@
 
 iOS native app bootstrap for modular development with Tuist.
 
+## Implementation Rule
+
+All native migration steps in this project must follow:
+
+- `Pure DI` only: dependency creation is allowed only in the app composition root.
+- `Tuist modularization` only: features/core are implemented as independent Tuist targets/modules.
+
 ## Module Layout
 
 - `App/`:
