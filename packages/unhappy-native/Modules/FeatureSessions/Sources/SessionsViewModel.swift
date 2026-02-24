@@ -11,6 +11,8 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var sessions: [APISession] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var hasMoreSessions = false
+    @Published public private(set) var isLoadingMoreSessions = false
     @Published public private(set) var selectedSessionID: String?
     @Published public private(set) var selectedSessionMessages: [APISessionMessage] = []
     @Published public private(set) var isLoadingSessionMessages = false
@@ -18,30 +20,35 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var deletingSessionIDs: Set<String> = []
 
     private let loader: any SessionsLoading
+    private let pageLoader: any SessionsPageLoading
     private let poller: any SessionsPolling
     private let messageLoader: any SessionsMessagesLoading
     private let deleteUseCase: any SessionDeletingAction
     private var messagesBySessionID: [String: [APISessionMessage]] = [:]
     private var messageCacheLRU: [String] = []
+    private var nextCursor: String?
 
     public init(
         loader: any SessionsLoading,
+        pageLoader: any SessionsPageLoading,
         poller: any SessionsPolling,
         messageLoader: any SessionsMessagesLoading,
         deleteUseCase: any SessionDeletingAction
     ) {
         self.loader = loader
+        self.pageLoader = pageLoader
         self.poller = poller
         self.messageLoader = messageLoader
         self.deleteUseCase = deleteUseCase
     }
 
     public convenience init(
-        service: any SessionsFetching & SessionMessagesFetching & SessionDeleting
+        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting
     ) {
         let loader = SessionsLoadUseCase(service: service)
         self.init(
             loader: loader,
+            pageLoader: SessionsPageLoadUseCase(service: service),
             poller: SessionsPollingUseCase(loader: loader),
             messageLoader: SessionMessagesLoadUseCase(service: service),
             deleteUseCase: SessionDeleteUseCase(service: service)
@@ -73,10 +80,20 @@ public final class SessionsViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            sessions = try await loader.loadSessions(serverURLString: serverURLString, token: token)
+            let firstPage = try await pageLoader.loadPage(
+                serverURLString: serverURLString,
+                token: token,
+                cursor: nil,
+                limit: 50
+            )
+            sessions = firstPage.sessions
+            nextCursor = firstPage.nextCursor
+            hasMoreSessions = firstPage.hasNext
             errorMessage = nil
         } catch {
             sessions = []
+            nextCursor = nil
+            hasMoreSessions = false
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -96,7 +113,7 @@ public final class SessionsViewModel: ObservableObject {
                 interval: interval
             )
             for try await rows in stream {
-                sessions = rows
+                sessions = mergeLatestRows(rows, into: sessions)
                 errorMessage = nil
                 isLoading = false
             }
@@ -104,8 +121,37 @@ public final class SessionsViewModel: ObservableObject {
             // Stream cancellation is expected when the view task is torn down.
         } catch {
             sessions = []
+            nextCursor = nil
+            hasMoreSessions = false
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             isLoading = false
+        }
+    }
+
+    public func loadMoreSessions(serverURLString: String, token: String) async {
+        guard hasMoreSessions else { return }
+        guard !isLoadingMoreSessions else { return }
+        guard let nextCursor else {
+            hasMoreSessions = false
+            return
+        }
+
+        isLoadingMoreSessions = true
+        defer { isLoadingMoreSessions = false }
+
+        do {
+            let page = try await pageLoader.loadPage(
+                serverURLString: serverURLString,
+                token: token,
+                cursor: nextCursor,
+                limit: 50
+            )
+            sessions = mergeLatestRows(page.sessions, into: sessions)
+            self.nextCursor = page.nextCursor
+            hasMoreSessions = page.hasNext
+            errorMessage = nil
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -203,6 +249,25 @@ public final class SessionsViewModel: ObservableObject {
 
             messageCacheLRU.removeFirst()
             messagesBySessionID[oldestSessionID] = nil
+        }
+    }
+
+    private func mergeLatestRows(_ latestRows: [APISession], into existingRows: [APISession]) -> [APISession] {
+        var byID: [String: APISession] = [:]
+        byID.reserveCapacity(existingRows.count + latestRows.count)
+
+        for row in existingRows {
+            byID[row.id] = row
+        }
+        for row in latestRows {
+            byID[row.id] = row
+        }
+
+        return byID.values.sorted { lhs, rhs in
+            if lhs.updatedAt == rhs.updatedAt {
+                return lhs.id > rhs.id
+            }
+            return lhs.updatedAt > rhs.updatedAt
         }
     }
 }

@@ -47,27 +47,52 @@ public struct SessionsView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 } else {
-                    List(viewModel.sessions) { session in
-                        NavigationLink {
-                            SessionDetailView(
-                                session: session,
-                                viewModel: viewModel,
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        } label: {
-                            SessionsRow(
-                                session: session,
-                                isDeleting: viewModel.isDeleting(sessionID: session.id)
-                            )
-                        }
-                        .disabled(viewModel.isDeleting(sessionID: session.id))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingDeleteSession = session
+                    List {
+                        ForEach(viewModel.sessions) { session in
+                            NavigationLink {
+                                SessionDetailView(
+                                    session: session,
+                                    viewModel: viewModel,
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                SessionsRow(
+                                    session: session,
+                                    isDeleting: viewModel.isDeleting(sessionID: session.id)
+                                )
                             }
+                            .disabled(viewModel.isDeleting(sessionID: session.id))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    pendingDeleteSession = session
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+
+                        if viewModel.hasMoreSessions {
+                            HStack {
+                                Spacer()
+                                if viewModel.isLoadingMoreSessions {
+                                    ProgressView("Loading more…")
+                                        .font(.footnote)
+                                } else {
+                                    Button("Load more") {
+                                        Task {
+                                            await viewModel.loadMoreSessions(
+                                                serverURLString: serverURLString,
+                                                token: token
+                                            )
+                                        }
+                                    }
+                                    .font(.footnote.weight(.semibold))
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 6)
+                            .listRowSeparator(.hidden)
                         }
                     }
                     .listStyle(.plain)
@@ -75,6 +100,10 @@ public struct SessionsView: View {
             }
             .navigationTitle("Sessions")
             .task(id: "\(serverURLString)|\(token)") {
+                await viewModel.load(
+                    serverURLString: serverURLString,
+                    token: token
+                )
                 await viewModel.startPolling(
                     serverURLString: serverURLString,
                     token: token
