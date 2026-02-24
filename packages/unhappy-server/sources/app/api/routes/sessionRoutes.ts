@@ -475,14 +475,15 @@ export function sessionRoutes(app: Fastify) {
                 sessionId: z.string()
             }),
             body: z.object({
-                name: z.string().max(120)
+                name: z.string().max(120).optional(),
+                title: z.string().max(120).optional()
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
-        const normalizedName = request.body.name.trim();
+        const normalizedName = (request.body.name ?? request.body.title ?? "").trim();
 
         if (!normalizedName) {
             return reply.code(400).send({ error: 'Session title cannot be empty' });
