@@ -18,6 +18,7 @@ export { determineCodexMcpSubcommand } from './utils/codexMcpCommand';
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days
 const SHUTDOWN_TIMEOUT_MS = 3000;
 const AGENT_MESSAGE_DEDUPE_WINDOW_MS = 15000;
+const THREAD_META_TIMEOUT_MS = 30000;
 
 type RequestId = number | string;
 
@@ -97,7 +98,10 @@ function mapSandboxPolicy(
   cwd: string,
 ): unknown {
   if (sandbox === 'read-only') {
-    return { type: 'readOnly' };
+    return {
+      type: 'readOnly',
+      access: { type: 'fullAccess' },
+    };
   }
   if (sandbox === 'danger-full-access') {
     return { type: 'dangerFullAccess' };
@@ -105,7 +109,10 @@ function mapSandboxPolicy(
   return {
     type: 'workspaceWrite',
     writableRoots: [cwd],
+    readOnlyAccess: { type: 'fullAccess' },
     networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
   };
 }
 
@@ -162,6 +169,7 @@ export class CodexAppServerClient {
   >();
   private completedTurns = new Map<string, TurnState>();
   private preferredResumeThreadId: string | null = null;
+  private pendingThreadName: string | null = null;
   private sawLegacyCodexEvents = false;
   private recentAgentMessageKeys = new Map<string, number>();
 
@@ -299,6 +307,42 @@ export class CodexAppServerClient {
     );
   }
 
+  async setThreadName(
+    name: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void> {
+    const normalized = name.trim();
+    if (!normalized) {
+      throw new Error('Thread name cannot be empty.');
+    }
+    this.pendingThreadName = normalized;
+    await this.flushPendingThreadName(options?.signal);
+  }
+
+  async findMostRecentThreadIdByCwd(cwd: string): Promise<string | null> {
+    if (!this.connected) await this.connect();
+    const normalizedCwd = cwd.trim();
+    if (!normalizedCwd) return null;
+    try {
+      const response = await this.callRpc(
+        'thread/list',
+        {
+          cwd: normalizedCwd,
+          limit: 20,
+          sortKey: 'updated_at',
+          archived: false,
+        },
+        { timeout: THREAD_META_TIMEOUT_MS },
+      );
+
+      const threadIds = this.extractThreadIdsFromListResponse(response);
+      return threadIds.length > 0 ? threadIds[0] : null;
+    } catch (error) {
+      logger.debug('[CodexAppServer] thread/list lookup failed', error);
+      return null;
+    }
+  }
+
   private async ensureThread(config: CodexSessionConfig, signal?: AbortSignal): Promise<void> {
     if (this.sessionId) {
       return;
@@ -338,24 +382,61 @@ export class CodexAppServerClient {
         const resumeResp = await this.callRpc('thread/resume', {
           ...baseParams,
           threadId: resumeThreadId,
+          persistExtendedHistory: true,
           ...(resumePath ? { path: resumePath } : {}),
         }, {
           signal,
           timeout: DEFAULT_TIMEOUT,
         });
         this.extractIdentifiers(resumeResp);
+        await this.flushPendingThreadName(signal);
         this.preferredResumeThreadId = null;
         return;
       } catch (error) {
         logger.debug('[CodexAppServer] thread/resume failed, falling back to thread/start', error);
+        const candidateThreadId = await this.findMostRecentThreadIdByCwd(baseParams.cwd);
+        if (candidateThreadId && candidateThreadId !== resumeThreadId) {
+          try {
+            logger.debug(
+              '[CodexAppServer] Attempting fallback thread/resume from thread/list:',
+              candidateThreadId,
+            );
+            const fallbackResumeResp = await this.callRpc(
+              'thread/resume',
+              {
+                ...baseParams,
+                threadId: candidateThreadId,
+                persistExtendedHistory: true,
+              },
+              {
+                signal,
+                timeout: DEFAULT_TIMEOUT,
+              },
+            );
+            this.extractIdentifiers(fallbackResumeResp);
+            await this.flushPendingThreadName(signal);
+            this.preferredResumeThreadId = null;
+            return;
+          } catch (fallbackError) {
+            logger.debug(
+              '[CodexAppServer] fallback thread/resume from thread/list failed',
+              fallbackError,
+            );
+          }
+        }
       }
     }
 
-    const startResp = await this.callRpc('thread/start', baseParams, {
+    const startResp = await this.callRpc('thread/start', {
+      ...baseParams,
+      experimentalRawEvents: false,
+      persistExtendedHistory: true,
+    }, {
       signal,
       timeout: DEFAULT_TIMEOUT,
     });
     this.extractIdentifiers(startResp);
+    await this.flushPendingThreadName(signal);
   }
 
   private async startTurn(
@@ -805,6 +886,31 @@ export class CodexAppServerClient {
       if (threadId) {
         this.sessionId = threadId;
         this.conversationId = threadId;
+        void this.flushPendingThreadName().catch((error) => {
+          logger.debug('[CodexAppServer] Failed to flush pending thread name', error);
+        });
+      }
+      return;
+    }
+
+    if (method === 'thread/name/updated') {
+      const threadId =
+        typeof params.threadId === 'string' && params.threadId.trim()
+          ? params.threadId
+          : null;
+      const threadName =
+        typeof params.threadName === 'string' && params.threadName.trim()
+          ? params.threadName
+          : undefined;
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ threadId });
+      }
+      if (threadName) {
+        this.handler?.({
+          type: 'thread_name_updated',
+          thread_id: threadId ?? this.sessionId ?? undefined,
+          thread_name: threadName,
+        });
       }
       return;
     }
@@ -1129,6 +1235,58 @@ export class CodexAppServerClient {
       method,
       ...(params !== undefined ? { params } : {}),
     });
+  }
+
+  private async flushPendingThreadName(signal?: AbortSignal): Promise<void> {
+    if (!this.pendingThreadName) return;
+    if (!this.sessionId) return;
+    if (!this.connected) return;
+
+    const targetName = this.pendingThreadName;
+    await this.callRpc(
+      'thread/name/set',
+      {
+        threadId: this.sessionId,
+        name: targetName,
+      },
+      {
+        signal,
+        timeout: THREAD_META_TIMEOUT_MS,
+      },
+    );
+    if (this.pendingThreadName === targetName) {
+      this.pendingThreadName = null;
+    }
+  }
+
+  private extractThreadIdsFromListResponse(response: unknown): string[] {
+    const rows = isRecord(response)
+      ? Array.isArray(response.data)
+        ? response.data
+        : Array.isArray(response.items)
+          ? response.items
+          : []
+      : [];
+
+    const ids: string[] = [];
+    for (const row of rows) {
+      if (!isRecord(row)) continue;
+      const directId = typeof row.id === 'string' ? row.id.trim() : '';
+      if (directId) {
+        ids.push(directId);
+        continue;
+      }
+      const nestedThread = isRecord(row.thread) ? row.thread : null;
+      const nestedId =
+        nestedThread && typeof nestedThread.id === 'string'
+          ? nestedThread.id.trim()
+          : '';
+      if (nestedId) {
+        ids.push(nestedId);
+      }
+    }
+
+    return ids.filter((id, index) => ids.indexOf(id) === index);
   }
 
   private sendResponse(id: RequestId, result: unknown): void {

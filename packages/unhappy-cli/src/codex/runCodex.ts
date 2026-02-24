@@ -1273,10 +1273,42 @@ export async function runCodex(opts: {
         diffProcessor.processDiff(msg.unified_diff);
       }
     }
+    if (msg.type === 'thread_name_updated') {
+      const threadName =
+        typeof msg.thread_name === 'string' ? msg.thread_name.trim() : '';
+      if (threadName) {
+        const now = Date.now();
+        session.updateMetadata((currentMetadata) => ({
+          ...currentMetadata,
+          name: threadName,
+          summary: {
+            text: threadName,
+            updatedAt: now,
+          },
+        }));
+      }
+    }
   });
 
   // Start Unhappy MCP server (HTTP) and prepare STDIO bridge config for Codex
-  const happyServer = await startHappyServer(session);
+  const happyServer = await startHappyServer(session, {
+    skipSummaryMessage: true,
+    onChangeTitle: async (title) => {
+      const normalized = title.trim();
+      if (!normalized) return;
+
+      const now = Date.now();
+      session.updateMetadata((currentMetadata) => ({
+        ...currentMetadata,
+        name: normalized,
+        summary: {
+          text: normalized,
+          updatedAt: now,
+        },
+      }));
+      await client.setThreadName(normalized);
+    },
+  });
   const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');
   const mcpServers = {
     unhappy: {
@@ -1290,6 +1322,29 @@ export async function runCodex(opts: {
     logger.debug('[codex]: client.connect begin');
     await client.connect();
     logger.debug('[codex]: client.connect done');
+
+    if (resumeEnabled && !opts.clearResume && !storedSessionIdForResume) {
+      const discoveredThreadId = await client.findMostRecentThreadIdByCwd(cwd);
+      if (discoveredThreadId) {
+        storedSessionIdForResume = discoveredThreadId;
+        client.setPreferredResumeThreadId(discoveredThreadId);
+        messageBuffer.addMessage(
+          'Found existing Codex session for this project. Resuming...',
+          'status',
+        );
+        void upsertCodexResumeEntry(cwd, {
+          codexSessionId: discoveredThreadId,
+          codexHomeDir: getEffectiveCodexHomeDir(),
+          updatedAt: Date.now(),
+        }).catch((error) => {
+          logger.debug(
+            '[Codex] Failed to persist discovered resume session',
+            error,
+          );
+        });
+      }
+    }
+
     let wasCreated = false;
     let pending: QueuedMessage | null = null;
 

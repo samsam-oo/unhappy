@@ -26,22 +26,44 @@ function formatUnknownError(error: unknown): string {
   }
 }
 
-export async function startHappyServer(client: ApiSessionClient) {
+type HappyServerOptions = {
+  onChangeTitle?: (title: string) => Promise<void> | void;
+  skipSummaryMessage?: boolean;
+};
+
+export async function startHappyServer(
+  client: ApiSessionClient,
+  options?: HappyServerOptions,
+) {
   // Handler that sends title updates via the client
   const handler = async (title: string) => {
     logger.debug('[happyMCP] Changing title to:', title);
+    const errors: string[] = [];
     try {
-      // Send title as a summary message, similar to title generator
-      client.sendClaudeSessionMessage({
-        type: 'summary',
-        summary: title,
-        leafUuid: randomUUID(),
-      });
-
-      return { success: true };
+      if (!options?.skipSummaryMessage) {
+        // Send title as a summary message, similar to title generator
+        client.sendClaudeSessionMessage({
+          type: 'summary',
+          summary: title,
+          leafUuid: randomUUID(),
+        });
+      }
     } catch (error) {
-      return { success: false, error: String(error) };
+      errors.push(String(error));
     }
+
+    if (options?.onChangeTitle) {
+      try {
+        await options.onChangeTitle(title);
+      } catch (error) {
+        errors.push(String(error));
+      }
+    }
+
+    if (errors.length > 0) {
+      return { success: false, error: errors.join(' | ') };
+    }
+    return { success: true };
   };
 
   //
