@@ -253,4 +253,42 @@ struct SessionsAPITests {
         #expect(threads.first?.name == "Feature Work")
         #expect(threads.first?.cwd == "/tmp/work")
     }
+
+    @Test
+    func claudeSessionsRequestUsesExpectedPathAndQuery() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeClaudeSessionsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 12
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/claude/sessions?limit=12")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
+    func decodeClaudeSessionsResponseParsesRows() throws {
+        let json = """
+        {
+          "success": true,
+          "sessions": [
+            {
+              "id": "a1b2c3d4-1111-2222-3333-444444444444",
+              "cwd": "/tmp/repo",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let sessions = try SessionsAPI.decodeClaudeSessionsResponse(json)
+
+        #expect(sessions.count == 1)
+        #expect(sessions.first?.id == "a1b2c3d4-1111-2222-3333-444444444444")
+        #expect(sessions.first?.cwd == "/tmp/repo")
+    }
 }

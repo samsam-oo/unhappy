@@ -148,6 +148,35 @@ public enum SessionsAPI {
         )
     }
 
+    public static func makeClaudeSessionsRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        limit: Int = 20
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+
+        let boundedLimit = min(max(limit, 1), 100)
+        let sessionsURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/claude/sessions")
+        guard var components = URLComponents(url: sessionsURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: "\(boundedLimit)")
+        ]
+        guard let requestURL = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(
+            url: requestURL,
+            method: "GET",
+            token: token
+        )
+    }
+
     public static func decodeListResponse(_ data: Data) throws -> [APISession] {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsListResponse.self, from: data)
@@ -174,6 +203,12 @@ public enum SessionsAPI {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsCodexThreadsResponse.self, from: data)
         return response.threads
+    }
+
+    public static func decodeClaudeSessionsResponse(_ data: Data) throws -> [APIClaudeSessionSummary] {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(SessionsClaudeListResponse.self, from: data)
+        return response.sessions
     }
 
     private static func makeRequest(url: URL, method: String, token: String) throws -> URLRequest {
@@ -237,6 +272,11 @@ private struct SessionsCodexThreadsResponse: Decodable {
     let threads: [APICodexThreadSummary]
 }
 
+private struct SessionsClaudeListResponse: Decodable {
+    let success: Bool
+    let sessions: [APIClaudeSessionSummary]
+}
+
 public protocol SessionsFetching: Sendable {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession]
 }
@@ -271,7 +311,16 @@ public protocol SessionCodexThreadsFetching: Sendable {
     ) async throws -> [APICodexThreadSummary]
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching {
+public protocol SessionClaudeSessionsFetching: Sendable {
+    func fetchClaudeSessions(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        limit: Int
+    ) async throws -> [APIClaudeSessionSummary]
+}
+
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -409,5 +458,29 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
 
         return try SessionsAPI.decodeCodexThreadsResponse(data)
+    }
+
+    public func fetchClaudeSessions(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        limit: Int
+    ) async throws -> [APIClaudeSessionSummary] {
+        let request = try SessionsAPI.makeClaudeSessionsRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            limit: limit
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeClaudeSessionsResponse(data)
     }
 }

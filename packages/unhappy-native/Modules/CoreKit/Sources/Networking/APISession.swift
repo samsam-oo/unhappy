@@ -131,3 +131,22 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         self.archived = archived
     }
 }
+
+public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let cwd: String?
+    public let updatedAt: String?
+    public let createdAt: String?
+
+    public init(
+        id: String,
+        cwd: String?,
+        updatedAt: String?,
+        createdAt: String?
+    ) {
+        self.id = id
+        self.cwd = cwd
+        self.updatedAt = updatedAt
+        self.createdAt = createdAt
+    }
+}
