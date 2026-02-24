@@ -2,6 +2,7 @@ import Testing
 @testable import FeatureHome
 import FeatureSessions
 import CoreKit
+import FeatureSettings
 
 @MainActor
 struct FeatureHomeTests {
@@ -9,7 +10,7 @@ struct FeatureHomeTests {
     func homeViewCanInitialize() {
         _ = HomeView(
             makeHomeViewModel: {
-                HomeViewModel(store: MockAppSettingsStore())
+                HomeViewModel(settingsManager: MockSettingsManager())
             },
             makeSessionsViewModel: {
                 SessionsViewModel(service: URLSessionSessionsService())
@@ -18,9 +19,10 @@ struct FeatureHomeTests {
     }
 }
 
-private actor MockAppSettingsStore: AppSettingsStore {
-    func serverURLString() async -> String { "https://api.unhappy.im" }
-    func apiToken() async -> String { "" }
-    func setServerURLString(_ value: String) async {}
-    func setAPIToken(_ value: String) async {}
+private actor MockSettingsManager: SettingsManaging {
+    func loadSettings() async -> AppSettingsSnapshot {
+        AppSettingsSnapshot(serverURLString: "https://api.unhappy.im", apiToken: "")
+    }
+
+    func persistSettings(serverURLString: String, apiToken: String) async {}
 }
