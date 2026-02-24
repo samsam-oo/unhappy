@@ -570,17 +570,33 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     }, [sessionStatus.state]);
 
     const isCodexSession = session.metadata?.flavor === 'codex';
-    const collabInProgress = React.useMemo(() => {
-        if (!isCodexSession) return false;
+    const collabStatus = React.useMemo<{
+        state: 'in_progress' | 'completed';
+        activeCount?: number;
+    } | null>(() => {
+        if (!isCodexSession) return null;
+        const fromState = session.agentState?.collab;
+        if (fromState && (fromState.state === 'in_progress' || fromState.state === 'completed')) {
+            return {
+                state: fromState.state,
+                activeCount: typeof fromState.activeCount === 'number' ? fromState.activeCount : undefined,
+            };
+        }
+
+        // Backward-compat: infer status from older textual markers if agentState.collab is unavailable.
         for (let i = messages.length - 1; i >= 0; i -= 1) {
             const item = messages[i];
             if (item.kind !== 'agent-text') continue;
             const normalized = item.text.trim().toLowerCase();
-            if (normalized === 'sub-agent completed') return false;
-            if (normalized === 'sub-agent in progress') return true;
+            if (normalized === 'sub-agent completed' || normalized === 'multi-agent completed') {
+                return { state: 'completed' };
+            }
+            if (normalized === 'sub-agent in progress' || normalized === 'multi-agent running') {
+                return { state: 'in_progress' };
+            }
         }
-        return false;
-    }, [isCodexSession, messages]);
+        return null;
+    }, [isCodexSession, messages, session.agentState?.collab]);
 
     // Handle dismissing CLI version warning
     const handleDismissCliWarning = React.useCallback(() => {
@@ -718,7 +734,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             showSteerModeControl={isCodexSession && sessionStatus.state === 'thinking'}
             steerMode={codexSteerMode}
             onSteerModeChange={setCodexSteerMode}
-            collabInProgress={collabInProgress && sessionStatus.state === 'thinking'}
+            collabStatus={collabStatus}
             onFileViewerPress={() => router.push({ pathname: '/session/[id]/review', params: { id: sessionId } })}
             // Autocomplete configuration
             autocompletePrefixes={['@', '/']}

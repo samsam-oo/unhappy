@@ -84,7 +84,10 @@ interface AgentInputProps {
     showSteerModeControl?: boolean;
     steerMode?: 'queue' | 'immediate';
     onSteerModeChange?: (mode: 'queue' | 'immediate') => void;
-    collabInProgress?: boolean;
+    collabStatus?: {
+        state: 'in_progress' | 'completed';
+        activeCount?: number;
+    } | null;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -421,8 +424,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const isGemini = agentFlavor === 'gemini';
     const steerMode: 'queue' | 'immediate' =
         props.steerMode === 'immediate' ? 'immediate' : 'queue';
-    const steerModeLabel = steerMode === 'immediate' ? 'Steer now' : 'Queue';
+    const steerModeLabel = steerMode === 'immediate' ? 'Steer' : 'Queue';
     const steerModeIcon = steerMode === 'immediate' ? 'navigate-outline' : 'time-outline';
+    const collabState = props.collabStatus?.state;
+    const collabActiveCount =
+        typeof props.collabStatus?.activeCount === 'number'
+            ? Math.max(0, props.collabStatus.activeCount)
+            : 0;
+    const collabLabel =
+        collabState === 'in_progress'
+            ? (collabActiveCount > 1 ? `Multi-agent running (${collabActiveCount})` : 'Multi-agent running')
+            : collabState === 'completed'
+                ? 'Multi-agent completed'
+                : null;
 
     // Calculate context warning (always shown when contextSize is known)
     const contextSize = props.usageData?.contextSize;
@@ -1409,7 +1423,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
                         <View style={styles.actionButtonsLeft}>
-                            {props.collabInProgress && (
+                            {collabState && collabLabel && (
                                 <View style={styles.actionButtonItem}>
                                     <View
                                         style={{
@@ -1420,22 +1434,35 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             paddingVertical: 6,
                                             height: 32,
                                             gap: 6,
-                                            backgroundColor: theme.colors.button.primary.background + '14',
+                                            backgroundColor:
+                                                collabState === 'in_progress'
+                                                    ? theme.colors.button.primary.background + '14'
+                                                    : theme.colors.success + '14',
                                             borderWidth: 1,
-                                            borderColor: theme.colors.button.primary.background + '42',
+                                            borderColor:
+                                                collabState === 'in_progress'
+                                                    ? theme.colors.button.primary.background + '42'
+                                                    : theme.colors.success + '42',
                                         }}
                                     >
-                                        <ActivityIndicator size="small" color={theme.colors.button.primary.background} />
+                                        {collabState === 'in_progress' ? (
+                                            <ActivityIndicator size="small" color={theme.colors.button.primary.background} />
+                                        ) : (
+                                            <Ionicons name="checkmark-circle" size={14} color={theme.colors.success} />
+                                        )}
                                         <Text
                                             style={{
                                                 fontSize: 12,
-                                                color: theme.colors.button.primary.background,
+                                                color:
+                                                    collabState === 'in_progress'
+                                                        ? theme.colors.button.primary.background
+                                                        : theme.colors.success,
                                                 fontWeight: '700',
                                                 ...Typography.default('semiBold'),
                                             }}
                                             numberOfLines={1}
                                         >
-                                            Multi-agent running
+                                            {collabLabel}
                                         </Text>
                                     </View>
                                 </View>
