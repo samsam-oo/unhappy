@@ -229,6 +229,25 @@ struct SessionsAPITests {
     }
 
     @Test
+    func codexThreadsRequestIncludesCWDWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeCodexThreadsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 20,
+            cwd: "/tmp/workspace"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/sessions/session-1/codex/threads?limit=20&cwd=/tmp/workspace"
+        )
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
     func decodeCodexThreadsResponseParsesRows() throws {
         let json = """
         {
@@ -266,6 +285,25 @@ struct SessionsAPITests {
 
         #expect(request.httpMethod == "GET")
         #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/claude/sessions?limit=12")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
+    func claudeSessionsRequestIncludesCWDWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeClaudeSessionsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 12,
+            cwd: "/tmp/workspace"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/sessions/session-1/claude/sessions?limit=12&cwd=/tmp/workspace"
+        )
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
     }
 

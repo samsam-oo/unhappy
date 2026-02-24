@@ -22,7 +22,8 @@ struct SessionClaudeSessionsLoadUseCaseTests {
             serverURLString: "https://api.unhappy.im",
             token: "token",
             sessionID: "session-1",
-            limit: 20
+            limit: 20,
+            cwd: "/tmp/repo"
         )
 
         #expect(rows == expected)
@@ -39,7 +40,8 @@ struct SessionClaudeSessionsLoadUseCaseTests {
                 serverURLString: "https://api.unhappy.im",
                 token: "   ",
                 sessionID: "session-1",
-                limit: 20
+                limit: 20,
+                cwd: nil
             )
         }
     }
@@ -52,7 +54,7 @@ private enum MockClaudeSessionsServiceError: Error, Sendable {
 private struct MockClaudeSessionsService: SessionClaudeSessionsFetching {
     let result: Result<[APIClaudeSessionSummary], MockClaudeSessionsServiceError>
 
-    func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int) async throws -> [APIClaudeSessionSummary] {
+    func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
         switch result {
         case .success(let rows):
             return rows

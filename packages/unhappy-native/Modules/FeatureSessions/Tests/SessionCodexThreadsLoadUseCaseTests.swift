@@ -24,7 +24,8 @@ struct SessionCodexThreadsLoadUseCaseTests {
             serverURLString: "https://api.unhappy.im",
             token: "token",
             sessionID: "session-1",
-            limit: 20
+            limit: 20,
+            cwd: "/tmp/repo"
         )
 
         #expect(rows == expected)
@@ -41,7 +42,8 @@ struct SessionCodexThreadsLoadUseCaseTests {
                 serverURLString: "https://api.unhappy.im",
                 token: "   ",
                 sessionID: "session-1",
-                limit: 20
+                limit: 20,
+                cwd: nil
             )
         }
     }
@@ -54,7 +56,7 @@ private enum MockCodexThreadsServiceError: Error, Sendable {
 private struct MockCodexThreadsService: SessionCodexThreadsFetching {
     let result: Result<[APICodexThreadSummary], MockCodexThreadsServiceError>
 
-    func fetchCodexThreads(serverURL: URL, token: String, sessionID: String, limit: Int) async throws -> [APICodexThreadSummary] {
+    func fetchCodexThreads(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APICodexThreadSummary] {
         switch result {
         case .success(let rows):
             return rows

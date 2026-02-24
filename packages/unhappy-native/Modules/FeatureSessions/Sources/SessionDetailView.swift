@@ -14,6 +14,8 @@ public struct SessionDetailView: View {
     @State private var showCodexThreadsSheet = false
     @State private var showClaudeSessionsSheet = false
     @State private var renameDraft = ""
+    @State private var codexCwdFilterDraft = ""
+    @State private var claudeCwdFilterDraft = ""
 
     public init(
         session: APISession,
@@ -107,7 +109,8 @@ public struct SessionDetailView: View {
                                 await viewModel.loadCodexThreads(
                                     for: session.id,
                                     serverURLString: serverURLString,
-                                    token: token
+                                    token: token,
+                                    cwd: normalizedCWD(from: codexCwdFilterDraft)
                                 )
                             }
                         }
@@ -117,7 +120,8 @@ public struct SessionDetailView: View {
                                 await viewModel.loadClaudeSessions(
                                     for: session.id,
                                     serverURLString: serverURLString,
-                                    token: token
+                                    token: token,
+                                    cwd: normalizedCWD(from: claudeCwdFilterDraft)
                                 )
                             }
                         }
@@ -192,6 +196,23 @@ public struct SessionDetailView: View {
         .sheet(isPresented: $showCodexThreadsSheet) {
             NavigationStack {
                 List {
+                    Section("Path Filter") {
+                        TextField("Optional cwd path", text: $codexCwdFilterDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Button("Apply Filter") {
+                            Task {
+                                await viewModel.loadCodexThreads(
+                                    for: session.id,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    cwd: normalizedCWD(from: codexCwdFilterDraft)
+                                )
+                            }
+                        }
+                        .disabled(viewModel.isLoadingCodexThreads)
+                    }
+
                     if viewModel.isLoadingCodexThreads {
                         ProgressView("Loading Codex sessions…")
                     } else if let error = viewModel.selectedCodexThreadsErrorMessage {
@@ -206,7 +227,8 @@ public struct SessionDetailView: View {
                                     await viewModel.loadCodexThreads(
                                         for: session.id,
                                         serverURLString: serverURLString,
-                                        token: token
+                                        token: token,
+                                        cwd: normalizedCWD(from: codexCwdFilterDraft)
                                     )
                                 }
                             }
@@ -236,6 +258,23 @@ public struct SessionDetailView: View {
         .sheet(isPresented: $showClaudeSessionsSheet) {
             NavigationStack {
                 List {
+                    Section("Path Filter") {
+                        TextField("Optional cwd path", text: $claudeCwdFilterDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Button("Apply Filter") {
+                            Task {
+                                await viewModel.loadClaudeSessions(
+                                    for: session.id,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    cwd: normalizedCWD(from: claudeCwdFilterDraft)
+                                )
+                            }
+                        }
+                        .disabled(viewModel.isLoadingClaudeSessions)
+                    }
+
                     if viewModel.isLoadingClaudeSessions {
                         ProgressView("Loading Claude sessions…")
                     } else if let error = viewModel.selectedClaudeSessionsErrorMessage {
@@ -250,7 +289,8 @@ public struct SessionDetailView: View {
                                     await viewModel.loadClaudeSessions(
                                         for: session.id,
                                         serverURLString: serverURLString,
-                                        token: token
+                                        token: token,
+                                        cwd: normalizedCWD(from: claudeCwdFilterDraft)
                                     )
                                 }
                             }
@@ -303,6 +343,11 @@ public struct SessionDetailView: View {
 
     private var currentSession: APISession {
         viewModel.sessions.first(where: { $0.id == session.id }) ?? session
+    }
+
+    private func normalizedCWD(from value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

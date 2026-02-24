@@ -6,7 +6,8 @@ public protocol SessionClaudeSessionsLoading: Sendable {
         serverURLString: String,
         token: String,
         sessionID: String,
-        limit: Int
+        limit: Int,
+        cwd: String?
     ) async throws -> [APIClaudeSessionSummary]
 }
 
@@ -33,6 +34,7 @@ public actor SessionClaudeSessionsLoadUseCase: SessionClaudeSessionsLoading {
         let token: String
         let sessionID: String
         let limit: Int
+        let cwd: String?
     }
 
     private let service: any SessionClaudeSessionsFetching
@@ -46,7 +48,8 @@ public actor SessionClaudeSessionsLoadUseCase: SessionClaudeSessionsLoading {
         serverURLString: String,
         token: String,
         sessionID: String,
-        limit: Int
+        limit: Int,
+        cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -67,13 +70,21 @@ public actor SessionClaudeSessionsLoadUseCase: SessionClaudeSessionsLoading {
         guard !normalizedSessionID.isEmpty else {
             throw SessionClaudeSessionsLoadingError.missingSessionID
         }
+        let normalizedCWD: String? = {
+            let trimmed = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let trimmed, !trimmed.isEmpty {
+                return trimmed
+            }
+            return nil
+        }()
 
         let boundedLimit = min(max(limit, 1), 100)
         let key = RequestKey(
             serverURLString: normalizedURL,
             token: normalizedToken,
             sessionID: normalizedSessionID,
-            limit: boundedLimit
+            limit: boundedLimit,
+            cwd: normalizedCWD
         )
 
         if let inFlightTask = inFlightTasks[key] {
@@ -86,7 +97,8 @@ public actor SessionClaudeSessionsLoadUseCase: SessionClaudeSessionsLoading {
                 serverURL: serverURL,
                 token: normalizedToken,
                 sessionID: normalizedSessionID,
-                limit: boundedLimit
+                limit: boundedLimit,
+                cwd: normalizedCWD
             )
         }
 

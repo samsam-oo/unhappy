@@ -521,6 +521,7 @@ export function sessionRoutes(app: Fastify) {
                 sessionId: z.string()
             }),
             querystring: z.object({
+                cwd: z.string().optional(),
                 limit: z.coerce.number().int().min(1).max(100).default(20)
             }).optional()
         },
@@ -528,6 +529,7 @@ export function sessionRoutes(app: Fastify) {
     }, async (request, reply) => {
         const userId = request.userId;
         const { sessionId } = request.params;
+        const cwd = request.query?.cwd?.trim();
         const limit = request.query?.limit ?? 20;
 
         const session = await db.session.findFirst({
@@ -547,7 +549,10 @@ export function sessionRoutes(app: Fastify) {
         if (sessionTarget) {
             result = await invokePublicCommand(sessionTarget, {
                 command: 'claude-list-sessions',
-                params: { limit }
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
             });
         } else {
             const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
@@ -560,7 +565,10 @@ export function sessionRoutes(app: Fastify) {
             }
             result = await invokePublicCommand(machineTarget, {
                 command: 'claude-list-sessions',
-                params: { limit }
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
             });
         }
 

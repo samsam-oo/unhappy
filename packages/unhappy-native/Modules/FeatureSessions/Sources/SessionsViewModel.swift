@@ -214,7 +214,13 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
-    public func loadCodexThreads(for sessionID: String, serverURLString: String, token: String, limit: Int = 20) async {
+    public func loadCodexThreads(
+        for sessionID: String,
+        serverURLString: String,
+        token: String,
+        limit: Int = 20,
+        cwd: String? = nil
+    ) async {
         selectedCodexThreadsSessionID = sessionID
         selectedCodexThreadsErrorMessage = nil
         selectedCodexThreads = []
@@ -231,7 +237,8 @@ public final class SessionsViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 sessionID: sessionID,
-                limit: limit
+                limit: limit,
+                cwd: cwd
             )
             if selectedCodexThreadsSessionID == sessionID {
                 selectedCodexThreads = threads
@@ -245,7 +252,13 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
-    public func loadClaudeSessions(for sessionID: String, serverURLString: String, token: String, limit: Int = 20) async {
+    public func loadClaudeSessions(
+        for sessionID: String,
+        serverURLString: String,
+        token: String,
+        limit: Int = 20,
+        cwd: String? = nil
+    ) async {
         selectedClaudeSessionsSessionID = sessionID
         selectedClaudeSessionsErrorMessage = nil
         selectedClaudeSessions = []
@@ -262,7 +275,8 @@ public final class SessionsViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 sessionID: sessionID,
-                limit: limit
+                limit: limit,
+                cwd: cwd
             )
             if selectedClaudeSessionsSessionID == sessionID {
                 selectedClaudeSessions = rows

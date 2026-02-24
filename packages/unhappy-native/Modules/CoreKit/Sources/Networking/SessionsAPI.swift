@@ -123,7 +123,8 @@ public enum SessionsAPI {
         serverURL: URL,
         token: String,
         sessionID: String,
-        limit: Int = 20
+        limit: Int = 20,
+        cwd: String? = nil
     ) throws -> URLRequest {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else {
@@ -135,9 +136,14 @@ public enum SessionsAPI {
         guard var components = URLComponents(url: threadsURL, resolvingAgainstBaseURL: false) else {
             throw URLError(.badURL)
         }
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "limit", value: "\(boundedLimit)")
         ]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            queryItems.append(URLQueryItem(name: "cwd", value: normalizedCWD))
+        }
+        components.queryItems = queryItems
         guard let requestURL = components.url else {
             throw URLError(.badURL)
         }
@@ -152,7 +158,8 @@ public enum SessionsAPI {
         serverURL: URL,
         token: String,
         sessionID: String,
-        limit: Int = 20
+        limit: Int = 20,
+        cwd: String? = nil
     ) throws -> URLRequest {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else {
@@ -164,9 +171,14 @@ public enum SessionsAPI {
         guard var components = URLComponents(url: sessionsURL, resolvingAgainstBaseURL: false) else {
             throw URLError(.badURL)
         }
-        components.queryItems = [
+        var queryItems = [
             URLQueryItem(name: "limit", value: "\(boundedLimit)")
         ]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            queryItems.append(URLQueryItem(name: "cwd", value: normalizedCWD))
+        }
+        components.queryItems = queryItems
         guard let requestURL = components.url else {
             throw URLError(.badURL)
         }
@@ -307,7 +319,8 @@ public protocol SessionCodexThreadsFetching: Sendable {
         serverURL: URL,
         token: String,
         sessionID: String,
-        limit: Int
+        limit: Int,
+        cwd: String?
     ) async throws -> [APICodexThreadSummary]
 }
 
@@ -316,7 +329,8 @@ public protocol SessionClaudeSessionsFetching: Sendable {
         serverURL: URL,
         token: String,
         sessionID: String,
-        limit: Int
+        limit: Int,
+        cwd: String?
     ) async throws -> [APIClaudeSessionSummary]
 }
 
@@ -440,13 +454,15 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         serverURL: URL,
         token: String,
         sessionID: String,
-        limit: Int
+        limit: Int,
+        cwd: String?
     ) async throws -> [APICodexThreadSummary] {
         let request = try SessionsAPI.makeCodexThreadsRequest(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            limit: limit
+            limit: limit,
+            cwd: cwd
         )
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -464,13 +480,15 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         serverURL: URL,
         token: String,
         sessionID: String,
-        limit: Int
+        limit: Int,
+        cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
         let request = try SessionsAPI.makeClaudeSessionsRequest(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            limit: limit
+            limit: limit,
+            cwd: cwd
         )
         let (data, response) = try await URLSession.shared.data(for: request)
 

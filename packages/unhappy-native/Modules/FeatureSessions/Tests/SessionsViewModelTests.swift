@@ -430,11 +430,11 @@ private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagin
 
     func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws {}
 
-    func fetchCodexThreads(serverURL: URL, token: String, sessionID: String, limit: Int) async throws -> [APICodexThreadSummary] {
+    func fetchCodexThreads(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APICodexThreadSummary] {
         []
     }
 
-    func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int) async throws -> [APIClaudeSessionSummary] {
+    func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
         []
     }
 }
@@ -559,7 +559,7 @@ private enum MockSessionCodexThreadsLoaderError: Error, Sendable {
 private struct MockSessionCodexThreadsLoader: SessionCodexThreadsLoading {
     let result: Result<[APICodexThreadSummary], MockSessionCodexThreadsLoaderError>
 
-    func loadCodexThreads(serverURLString: String, token: String, sessionID: String, limit: Int) async throws -> [APICodexThreadSummary] {
+    func loadCodexThreads(serverURLString: String, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APICodexThreadSummary] {
         switch result {
         case .success(let rows):
             return rows
@@ -576,7 +576,7 @@ private enum MockSessionClaudeSessionsLoaderError: Error, Sendable {
 private struct MockSessionClaudeSessionsLoader: SessionClaudeSessionsLoading {
     let result: Result<[APIClaudeSessionSummary], MockSessionClaudeSessionsLoaderError>
 
-    func loadClaudeSessions(serverURLString: String, token: String, sessionID: String, limit: Int) async throws -> [APIClaudeSessionSummary] {
+    func loadClaudeSessions(serverURLString: String, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
         switch result {
         case .success(let rows):
             return rows
