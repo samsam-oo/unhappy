@@ -106,3 +106,28 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
         self.c = c
     }
 }
+
+public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let name: String?
+    public let cwd: String?
+    public let updatedAt: String?
+    public let createdAt: String?
+    public let archived: Bool?
+
+    public init(
+        id: String,
+        name: String?,
+        cwd: String?,
+        updatedAt: String?,
+        createdAt: String?,
+        archived: Bool?
+    ) {
+        self.id = id
+        self.name = name
+        self.cwd = cwd
+        self.updatedAt = updatedAt
+        self.createdAt = createdAt
+        self.archived = archived
+    }
+}

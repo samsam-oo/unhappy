@@ -179,4 +179,45 @@ struct SessionsAPITests {
             )
         }
     }
+
+    @Test
+    func codexThreadsRequestUsesExpectedPathAndQuery() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeCodexThreadsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 33
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/codex/threads?limit=33")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
+    func decodeCodexThreadsResponseParsesRows() throws {
+        let json = """
+        {
+          "success": true,
+          "threads": [
+            {
+              "id": "thread_1",
+              "name": "Feature Work",
+              "cwd": "/tmp/work",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z",
+              "archived": false
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let threads = try SessionsAPI.decodeCodexThreadsResponse(json)
+
+        #expect(threads.count == 1)
+        #expect(threads.first?.id == "thread_1")
+        #expect(threads.first?.name == "Feature Work")
+        #expect(threads.first?.cwd == "/tmp/work")
+    }
 }

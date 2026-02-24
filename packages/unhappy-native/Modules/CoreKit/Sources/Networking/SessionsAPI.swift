@@ -91,6 +91,35 @@ public enum SessionsAPI {
         return request
     }
 
+    public static func makeCodexThreadsRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        limit: Int = 20
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+
+        let boundedLimit = min(max(limit, 1), 100)
+        let threadsURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/codex/threads")
+        guard var components = URLComponents(url: threadsURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        components.queryItems = [
+            URLQueryItem(name: "limit", value: "\(boundedLimit)")
+        ]
+        guard let requestURL = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(
+            url: requestURL,
+            method: "GET",
+            token: token
+        )
+    }
+
     public static func decodeListResponse(_ data: Data) throws -> [APISession] {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsListResponse.self, from: data)
@@ -111,6 +140,12 @@ public enum SessionsAPI {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsMessagesResponse.self, from: data)
         return response.messages
+    }
+
+    public static func decodeCodexThreadsResponse(_ data: Data) throws -> [APICodexThreadSummary] {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(SessionsCodexThreadsResponse.self, from: data)
+        return response.threads
     }
 
     private static func makeRequest(url: URL, method: String, token: String) throws -> URLRequest {
@@ -162,6 +197,11 @@ private struct SessionTitlePayload: Encodable {
     let title: String?
 }
 
+private struct SessionsCodexThreadsResponse: Decodable {
+    let success: Bool
+    let threads: [APICodexThreadSummary]
+}
+
 public protocol SessionsFetching: Sendable {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession]
 }
@@ -187,7 +227,16 @@ public protocol SessionTitleUpdating: Sendable {
     func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating {
+public protocol SessionCodexThreadsFetching: Sendable {
+    func fetchCodexThreads(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        limit: Int
+    ) async throws -> [APICodexThreadSummary]
+}
+
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -276,5 +325,29 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         guard (200..<300).contains(http.statusCode) else {
             throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
         }
+    }
+
+    public func fetchCodexThreads(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        limit: Int
+    ) async throws -> [APICodexThreadSummary] {
+        let request = try SessionsAPI.makeCodexThreadsRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            limit: limit
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeCodexThreadsResponse(data)
     }
 }
