@@ -13,6 +13,7 @@ import {
   SpawnSessionOptions,
   SpawnSessionResult,
 } from '../modules/common/registerCommonHandlers';
+import { CodexAppServerClient } from '@/codex/codexAppServerClient';
 import { listClaudeModels, listCodexModels } from '@/modules/common/listModels';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -322,6 +323,50 @@ export class ApiMachineClient {
       });
       return resp;
     });
+
+    // Best-effort Codex thread listing from daemon scope.
+    // This enables web/mobile to show "existing Codex sessions" per workspace even
+    // when no active Codex session socket is currently connected.
+    this.rpcHandlerManager.registerHandler(
+      'codex-list-threads',
+      async (params: any) => {
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const cwd = cwdRaw || this.machine?.metadata?.homeDir || process.cwd();
+        const limitRaw =
+          typeof params?.limit === 'number' && Number.isFinite(params.limit)
+            ? Math.floor(params.limit)
+            : 20;
+        const limit = Math.max(1, Math.min(100, limitRaw));
+
+        const codexClient = new CodexAppServerClient();
+        try {
+          await codexClient.connect();
+          const threads = await codexClient.listRecentThreadsByCwd(cwd, {
+            limit,
+          });
+          return { success: true, threads };
+        } catch (error) {
+          logger.debug('[API MACHINE] codex-list-threads failed', error);
+          return {
+            success: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to list Codex threads',
+          };
+        } finally {
+          try {
+            await codexClient.forceCloseSession();
+          } catch (error) {
+            logger.debug(
+              '[API MACHINE] codex-list-threads cleanup failed',
+              error,
+            );
+          }
+        }
+      },
+    );
   }
 
   /**

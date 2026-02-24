@@ -163,6 +163,7 @@ function getFirstNonEmptyString(values: unknown[]): string | null {
 export class CodexAppServerClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private connected = false;
+  private connectInFlight: Promise<void> | null = null;
   private sessionId: string | null = null;
   private conversationId: string | null = null;
   private activeTurnId: string | null = null;
@@ -179,6 +180,8 @@ export class CodexAppServerClient {
   private completedTurns = new Map<string, TurnState>();
   private preferredResumeThreadId: string | null = null;
   private pendingThreadName: string | null = null;
+  private lastThreadResumeParams: Record<string, unknown> | null = null;
+  private needsThreadReattach = false;
   private sawLegacyCodexEvents = false;
   private recentAgentMessageKeys = new Map<string, number>();
 
@@ -203,53 +206,69 @@ export class CodexAppServerClient {
 
   async connect(): Promise<void> {
     if (this.connected) return;
+    if (this.connectInFlight) {
+      await this.connectInFlight;
+      return;
+    }
 
-    logger.debug('[CodexAppServer] Connecting to codex app-server');
-    this.child = spawn('codex', ['app-server'], {
-      env: Object.keys(process.env).reduce((acc, key) => {
-        const value = process.env[key];
-        if (typeof value === 'string') acc[key] = value;
-        return acc;
-      }, {} as Record<string, string>),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    this.connectInFlight = (async () => {
+      logger.debug('[CodexAppServer] Connecting to codex app-server');
+      this.buffer = '';
+      this.child = spawn('codex', ['app-server'], {
+        env: Object.keys(process.env).reduce((acc, key) => {
+          const value = process.env[key];
+          if (typeof value === 'string') acc[key] = value;
+          return acc;
+        }, {} as Record<string, string>),
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
 
-    this.child.stdout.on('data', (chunk: Buffer | string) => {
-      this.handleStdout(chunk.toString());
-    });
+      this.child.stdout.on('data', (chunk: Buffer | string) => {
+        this.handleStdout(chunk.toString());
+      });
 
-    this.child.stderr.on('data', (chunk: Buffer | string) => {
-      const text = chunk.toString().trim();
-      if (!text) return;
-      logger.debug(`[CodexAppServer][stderr] ${text}`);
-    });
+      this.child.stderr.on('data', (chunk: Buffer | string) => {
+        const text = chunk.toString().trim();
+        if (!text) return;
+        logger.debug(`[CodexAppServer][stderr] ${text}`);
+      });
 
-    this.child.on('exit', (code, signal) => {
-      const reason = `codex app-server exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`;
-      this.failAllPending(new Error(reason));
-      this.connected = false;
-      this.child = null;
-    });
+      this.child.on('exit', (code, signal) => {
+        const reason = `codex app-server exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})`;
+        this.failAllPending(new Error(reason));
+        this.connected = false;
+        this.connectInFlight = null;
+        this.activeTurnId = null;
+        this.needsThreadReattach = this.sessionId !== null;
+        this.child = null;
+      });
 
-    this.child.on('error', (error) => {
-      this.failAllPending(normalizeError(error));
-    });
+      this.child.on('error', (error) => {
+        this.failAllPending(normalizeError(error));
+      });
+
+      try {
+        await this.callRpc(
+          'initialize',
+          {
+            clientInfo: { name: 'unhappy-codex-client', version: '1.0.0' },
+            capabilities: { experimentalApi: true },
+          },
+          { timeout: 30000, skipReconnect: true },
+        );
+        this.notify('initialized', undefined);
+        this.connected = true;
+        logger.debug('[CodexAppServer] Connected');
+      } catch (error) {
+        await this.disconnect();
+        throw normalizeError(error);
+      }
+    })();
 
     try {
-      await this.callRpc(
-        'initialize',
-        {
-          clientInfo: { name: 'unhappy-codex-client', version: '1.0.0' },
-          capabilities: { experimentalApi: true },
-        },
-        { timeout: 30000 },
-      );
-      this.notify('initialized', undefined);
-      this.connected = true;
-      logger.debug('[CodexAppServer] Connected');
-    } catch (error) {
-      await this.disconnect();
-      throw normalizeError(error);
+      await this.connectInFlight;
+    } finally {
+      this.connectInFlight = null;
     }
   }
 
@@ -395,6 +414,7 @@ export class CodexAppServerClient {
       developerInstructions: config['developer-instructions'] ?? undefined,
       config: cfg && Object.keys(cfg).length > 0 ? cfg : undefined,
     };
+    this.lastThreadResumeParams = { ...baseParams };
 
     if (resumeThreadId) {
       try {
@@ -411,6 +431,7 @@ export class CodexAppServerClient {
         this.extractIdentifiers(resumeResp);
         await this.flushPendingThreadName(signal);
         this.preferredResumeThreadId = null;
+        this.needsThreadReattach = false;
         return;
       } catch (error) {
         logger.debug('[CodexAppServer] thread/resume failed, falling back to thread/start', error);
@@ -436,6 +457,7 @@ export class CodexAppServerClient {
             this.extractIdentifiers(fallbackResumeResp);
             await this.flushPendingThreadName(signal);
             this.preferredResumeThreadId = null;
+            this.needsThreadReattach = false;
             return;
           } catch (fallbackError) {
             logger.debug(
@@ -457,6 +479,44 @@ export class CodexAppServerClient {
     });
     this.extractIdentifiers(startResp);
     await this.flushPendingThreadName(signal);
+    this.needsThreadReattach = false;
+  }
+
+  private async ensureThreadAttachedAfterReconnect(
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (!this.needsThreadReattach) return;
+    if (!this.sessionId) {
+      this.needsThreadReattach = false;
+      return;
+    }
+    if (!this.lastThreadResumeParams) {
+      logger.debug(
+        '[CodexAppServer] Missing thread resume params after reconnect; skipping explicit reattach',
+      );
+      this.needsThreadReattach = false;
+      return;
+    }
+
+    logger.debug(
+      '[CodexAppServer] Reattaching thread after app-server restart:',
+      this.sessionId,
+    );
+    const response = await this.callRpc(
+      'thread/resume',
+      {
+        ...this.lastThreadResumeParams,
+        threadId: this.sessionId,
+        persistExtendedHistory: true,
+      },
+      {
+        signal,
+        timeout: DEFAULT_TIMEOUT,
+      },
+    );
+    this.extractIdentifiers(response);
+    this.needsThreadReattach = false;
+    await this.flushPendingThreadName(signal);
   }
 
   private async startTurn(
@@ -466,6 +526,7 @@ export class CodexAppServerClient {
     if (!this.sessionId) {
       throw new Error('No active session. Call startSession first.');
     }
+    await this.ensureThreadAttachedAfterReconnect(options?.signal);
 
     const cwd = options?.overrides?.cwd ?? process.cwd();
     const turnParams: Record<string, unknown> = {
@@ -1229,14 +1290,19 @@ export class CodexAppServerClient {
     return result.decision;
   }
 
-  private callRpc(
+  private async callRpc(
     method: string,
     params: unknown,
-    options?: { signal?: AbortSignal; timeout?: number },
+    options?: { signal?: AbortSignal; timeout?: number; skipReconnect?: boolean },
   ): Promise<unknown> {
-    const child = this.child;
+    let child = this.child;
+    if ((!child || child.killed) && method !== 'initialize' && !options?.skipReconnect) {
+      logger.debug('[CodexAppServer] App-server unavailable, reconnecting before RPC:', method);
+      await this.connect();
+      child = this.child;
+    }
     if (!child || child.killed) {
-      return Promise.reject(new Error('Codex app-server process is not running'));
+      throw new Error('Codex app-server process is not running');
     }
 
     const id: RequestId = this.nextRequestId++;
@@ -1548,6 +1614,8 @@ export class CodexAppServerClient {
     this.sessionId = null;
     this.conversationId = null;
     this.activeTurnId = null;
+    this.needsThreadReattach = false;
+    this.lastThreadResumeParams = null;
     this.completedTurns.clear();
     this.pendingTurnCompletions.clear();
     this.sawLegacyCodexEvents = false;
@@ -1574,10 +1642,12 @@ export class CodexAppServerClient {
     const child = this.child;
     if (!child) {
       this.connected = false;
+      this.connectInFlight = null;
       return;
     }
 
     this.connected = false;
+    this.connectInFlight = null;
     this.child = null;
 
     try {

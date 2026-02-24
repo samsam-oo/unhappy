@@ -370,6 +370,77 @@ describe('Codex turn/steer and collab forwarding', () => {
     );
   });
 
+  it('reconnects app-server automatically when callRpc is invoked while child is missing', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+
+    const fakeChild = {
+      killed: false,
+      stdin: {
+        write: vi.fn((line: string) => {
+          const payload = JSON.parse(line);
+          setTimeout(() => {
+            anyClient.handleClientResponse({
+              id: payload.id,
+              result: { ok: true },
+            });
+          }, 0);
+          return true;
+        }),
+      },
+    };
+
+    const connect = vi.fn(async () => {
+      anyClient.child = fakeChild;
+      anyClient.connected = true;
+    });
+    anyClient.connect = connect;
+    anyClient.child = null;
+    anyClient.connected = false;
+
+    const result = await anyClient.callRpc(
+      'thread/list',
+      { cwd: '/repo', limit: 1 },
+      { timeout: 1000 },
+    );
+
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('reattaches thread after reconnect before starting a new turn', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const calls: Array<{ method: string; params: any }> = [];
+
+    anyClient.connected = true;
+    anyClient.sessionId = 'thread-reattach-1';
+    anyClient.needsThreadReattach = true;
+    anyClient.lastThreadResumeParams = { cwd: '/repo', sandbox: 'workspace-write' };
+    anyClient.flushPendingThreadName = vi.fn().mockResolvedValue(undefined);
+    anyClient.callRpc = vi.fn(async (method: string, params: any) => {
+      calls.push({ method, params });
+      if (method === 'thread/resume') {
+        return { thread: { id: 'thread-reattach-1' } };
+      }
+      if (method === 'turn/start') {
+        return { turn: { id: 'turn-1', status: 'completed' } };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    await client.continueSession('hello');
+
+    expect(calls[0]?.method).toBe('thread/resume');
+    expect(calls[0]?.params).toMatchObject({
+      threadId: 'thread-reattach-1',
+      cwd: '/repo',
+      sandbox: 'workspace-write',
+    });
+    expect(calls[1]?.method).toBe('turn/start');
+    expect(anyClient.needsThreadReattach).toBe(false);
+  });
+
   it('forwards thread/name/updated notifications as thread_name_updated events', () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;
