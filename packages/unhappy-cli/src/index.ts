@@ -99,6 +99,7 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
       let resume: boolean | undefined = undefined;
       let clearResume = false;
+      let resumeThreadId: string | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
@@ -108,11 +109,22 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
           resume = false;
         } else if (args[i] === '--clear-resume') {
           clearResume = true;
+        } else if (args[i] === '--resume-thread-id') {
+          const value = args[++i];
+          if (typeof value === 'string' && value.trim()) {
+            resumeThreadId = value.trim();
+          }
         }
       }
 
       const { credentials } = await authAndSetupMachineIfNeeded();
-      await runCodex({ credentials, startedBy, resume, clearResume });
+      await runCodex({
+        credentials,
+        startedBy,
+        resume,
+        clearResume,
+        resumeThreadId,
+      });
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(

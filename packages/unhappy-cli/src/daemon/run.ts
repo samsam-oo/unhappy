@@ -379,9 +379,15 @@ export async function startDaemon(): Promise<void> {
       const {
         directory,
         sessionId,
+        codexResumeThreadId,
         machineId,
         approvedNewDirectoryCreation = true,
       } = options;
+      const normalizedCodexResumeThreadId =
+        typeof codexResumeThreadId === 'string' &&
+        codexResumeThreadId.trim().length > 0
+          ? codexResumeThreadId.trim()
+          : null;
       let directoryCreated = false;
 
       try {
@@ -633,7 +639,10 @@ export async function startDaemon(): Promise<void> {
               : options.agent === 'codex'
                 ? 'codex'
                 : 'claude';
-          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --unhappy-starting-mode remote --started-by daemon`;
+          let fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --unhappy-starting-mode remote --started-by daemon`;
+          if (agent === 'codex' && normalizedCodexResumeThreadId) {
+            fullCommand += ` --resume-thread-id ${JSON.stringify(normalizedCodexResumeThreadId)}`;
+          }
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -756,8 +765,15 @@ export async function startDaemon(): Promise<void> {
             'daemon',
           ];
 
-          // TODO: In future, sessionId could be used with --resume to continue existing sessions
-          // For now, we ignore it - each spawn creates a new session
+          if (
+            agentCommand === 'codex' &&
+            normalizedCodexResumeThreadId
+          ) {
+            args.push('--resume-thread-id', normalizedCodexResumeThreadId);
+          }
+
+          // TODO: sessionId is still reserved for future generic resume semantics.
+          // Codex resume currently uses explicit --resume-thread-id above.
           const happyProcess = spawnUnhappyCLI(args, {
             cwd: directory,
             detached: true, // Sessions stay alive when daemon stops

@@ -144,6 +144,7 @@ export class ApiMachineClient {
         const {
           directory,
           sessionId,
+          codexResumeThreadId,
           machineId,
           approvedNewDirectoryCreation,
           agent,
@@ -161,6 +162,7 @@ export class ApiMachineClient {
         const result = await spawnSession({
           directory,
           sessionId,
+          codexResumeThreadId,
           machineId,
           approvedNewDirectoryCreation,
           agent,
