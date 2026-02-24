@@ -1,25 +1,24 @@
 import Foundation
-import FeatureSettings
 
 @MainActor
-public final class HomeViewModel: ObservableObject {
+public final class SettingsViewModel: ObservableObject {
     @Published public var serverURLString: String {
         didSet {
             guard hasLoadedInitialSettings else { return }
-            scheduleSettingsPersistence()
+            schedulePersistence()
         }
     }
 
     @Published public var apiToken: String {
         didSet {
             guard hasLoadedInitialSettings else { return }
-            scheduleSettingsPersistence()
+            schedulePersistence()
         }
     }
 
     private let settingsManager: any SettingsManaging
     private var hasLoadedInitialSettings = false
-    private var settingsPersistenceTask: Task<Void, Never>?
+    private var persistenceTask: Task<Void, Never>?
 
     public init(settingsManager: any SettingsManaging) {
         self.settingsManager = settingsManager
@@ -28,7 +27,7 @@ public final class HomeViewModel: ObservableObject {
     }
 
     deinit {
-        settingsPersistenceTask?.cancel()
+        persistenceTask?.cancel()
     }
 
     public func loadFromStore() async {
@@ -40,15 +39,15 @@ public final class HomeViewModel: ObservableObject {
     }
 
     func waitForPendingPersistence() async {
-        await settingsPersistenceTask?.value
+        await persistenceTask?.value
     }
 
-    private func scheduleSettingsPersistence() {
+    private func schedulePersistence() {
         let manager = settingsManager
         let serverURLString = self.serverURLString
         let apiToken = self.apiToken
-        settingsPersistenceTask?.cancel()
-        settingsPersistenceTask = Task {
+        persistenceTask?.cancel()
+        persistenceTask = Task {
             guard !Task.isCancelled else { return }
             await manager.persistSettings(
                 serverURLString: serverURLString,

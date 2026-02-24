@@ -5,46 +5,43 @@ import FeatureSettings
 
 @MainActor
 public struct HomeView: View {
-    @StateObject private var viewModel: HomeViewModel
+    @StateObject private var settingsViewModel: SettingsViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
 
     public init(
-        makeHomeViewModel: @escaping @MainActor () -> HomeViewModel,
+        makeSettingsViewModel: @escaping @MainActor () -> SettingsViewModel,
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel
     ) {
-        _viewModel = StateObject(wrappedValue: makeHomeViewModel())
+        _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
         self.makeSessionsViewModel = makeSessionsViewModel
     }
 
     public var body: some View {
         TabView {
             SessionsView(
-                serverURLString: viewModel.serverURLString,
-                token: viewModel.apiToken,
+                serverURLString: settingsViewModel.serverURLString,
+                token: settingsViewModel.apiToken,
                 makeViewModel: makeSessionsViewModel
             )
                 .tabItem {
                     Label("Sessions", systemImage: "bubble.left.and.bubble.right")
                 }
 
-            SettingsView(
-                serverURLString: $viewModel.serverURLString,
-                apiToken: $viewModel.apiToken
-            )
+            SettingsView(viewModel: settingsViewModel)
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
                 }
         }
         .task {
-            await viewModel.loadFromStore()
+            await settingsViewModel.loadFromStore()
         }
     }
 }
 
 #Preview {
     HomeView(
-        makeHomeViewModel: {
-            HomeViewModel(
+        makeSettingsViewModel: {
+            SettingsViewModel(
                 settingsManager: SettingsUseCase(store: UserDefaultsAppSettingsStore())
             )
         },

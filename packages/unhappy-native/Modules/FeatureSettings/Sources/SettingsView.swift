@@ -1,24 +1,23 @@
 import SwiftUI
 
+@MainActor
 public struct SettingsView: View {
-    @Binding private var serverURLString: String
-    @Binding private var apiToken: String
+    @ObservedObject private var viewModel: SettingsViewModel
 
-    public init(serverURLString: Binding<String>, apiToken: Binding<String>) {
-        _serverURLString = serverURLString
-        _apiToken = apiToken
+    public init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
     }
 
     public var body: some View {
         NavigationStack {
             Form {
                 Section("API") {
-                    TextField("Server URL", text: $serverURLString)
+                    TextField("Server URL", text: $viewModel.serverURLString)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
 
-                    SecureField("API Token", text: $apiToken)
+                    SecureField("API Token", text: $viewModel.apiToken)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
@@ -34,5 +33,15 @@ public struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView(serverURLString: .constant("https://api.unhappy.im"), apiToken: .constant(""))
+    SettingsView(
+        viewModel: SettingsViewModel(settingsManager: PreviewSettingsManager())
+    )
+}
+
+private actor PreviewSettingsManager: SettingsManaging {
+    func loadSettings() async -> AppSettingsSnapshot {
+        AppSettingsSnapshot(serverURLString: "https://api.unhappy.im", apiToken: "")
+    }
+
+    func persistSettings(serverURLString: String, apiToken: String) async {}
 }
