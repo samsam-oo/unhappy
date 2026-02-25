@@ -1,6 +1,9 @@
 import Testing
 @testable import FeatureHome
 import FeatureSessions
+import FeatureSessionTools
+import FeatureMachine
+import FeatureNewSession
 import CoreKit
 import FeatureSettings
 
@@ -14,6 +17,30 @@ struct FeatureHomeTests {
             },
             makeSessionsViewModel: {
                 SessionsViewModel(service: URLSessionSessionsService())
+            },
+            makeNewSessionViewModel: {
+                let service = URLSessionMachinesService()
+                return NewSessionViewModel(
+                    machinesLoader: NewSessionMachinesLoadUseCase(service: service),
+                    directoryLister: NewSessionDirectoryListUseCase(service: service),
+                    spawner: NewSessionSpawnUseCase(service: service)
+                )
+            },
+            makeSessionToolsViewModel: {
+                let service = URLSessionSessionsService()
+                return SessionToolsViewModel(
+                    fileLoader: SessionFileLoadUseCase(service: service),
+                    killer: SessionKillUseCase(service: service)
+                )
+            },
+            makeMachinesViewModel: {
+                let service = URLSessionMachinesService()
+                return MachinesViewModel(
+                    loader: MachinesLoadUseCase(service: service),
+                    spawner: MachineSpawnUseCase(service: service),
+                    updater: MachineDaemonUpdateUseCase(service: service),
+                    stopper: MachineDaemonStopUseCase(service: service)
+                )
             }
         )
     }

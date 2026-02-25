@@ -1,21 +1,30 @@
 import SwiftUI
 import CoreKit
+import FeatureNewSession
+import FeatureSessionTools
 
 @MainActor
 public struct SessionsView: View {
     @StateObject private var viewModel: SessionsViewModel
     private let serverURLString: String
     private let token: String
+    private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
+    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     @State private var pendingDeleteSession: APISession?
+    @State private var isPresentingNewSession = false
 
     public init(
         serverURLString: String,
         token: String,
-        makeViewModel: @escaping @MainActor () -> SessionsViewModel
+        makeViewModel: @escaping @MainActor () -> SessionsViewModel,
+        makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.serverURLString = serverURLString
         self.token = token
         _viewModel = StateObject(wrappedValue: makeViewModel())
+        self.makeNewSessionViewModel = makeNewSessionViewModel
+        self.makeSessionToolsViewModel = makeSessionToolsViewModel
     }
 
     public var body: some View {
@@ -54,7 +63,8 @@ public struct SessionsView: View {
                                     session: session,
                                     viewModel: viewModel,
                                     serverURLString: serverURLString,
-                                    token: token
+                                    token: token,
+                                    makeSessionToolsViewModel: makeSessionToolsViewModel
                                 )
                             } label: {
                                 SessionsRow(
@@ -99,6 +109,16 @@ public struct SessionsView: View {
                 }
             }
             .navigationTitle("Sessions")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isPresentingNewSession = true
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                    }
+                    .accessibilityLabel("New Session")
+                }
+            }
             .task(id: "\(serverURLString)|\(token)") {
                 await viewModel.load(
                     serverURLString: serverURLString,
@@ -142,6 +162,21 @@ public struct SessionsView: View {
                     Text("This removes the session permanently from the server.")
                 }
             )
+            .sheet(isPresented: $isPresentingNewSession) {
+                NewSessionView(
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeViewModel: makeNewSessionViewModel,
+                    onSessionSpawned: { _ in
+                        Task {
+                            await viewModel.load(
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 }
@@ -216,6 +251,21 @@ private struct SessionsRow: View {
     SessionsView(
         serverURLString: "https://api.unhappy.im",
         token: "",
-        makeViewModel: { SessionsViewModel(service: URLSessionSessionsService()) }
+        makeViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
+        makeNewSessionViewModel: {
+            let service = URLSessionMachinesService()
+            return NewSessionViewModel(
+                machinesLoader: NewSessionMachinesLoadUseCase(service: service),
+                directoryLister: NewSessionDirectoryListUseCase(service: service),
+                spawner: NewSessionSpawnUseCase(service: service)
+            )
+        },
+        makeSessionToolsViewModel: {
+            let service = URLSessionSessionsService()
+            return SessionToolsViewModel(
+                fileLoader: SessionFileLoadUseCase(service: service),
+                killer: SessionKillUseCase(service: service)
+            )
+        }
     )
 }

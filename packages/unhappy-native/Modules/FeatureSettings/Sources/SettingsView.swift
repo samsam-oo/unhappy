@@ -1,11 +1,18 @@
 import SwiftUI
+import CoreKit
+import FeatureMachine
 
 @MainActor
 public struct SettingsView: View {
     @ObservedObject private var viewModel: SettingsViewModel
+    private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
 
-    public init(viewModel: SettingsViewModel) {
+    public init(
+        viewModel: SettingsViewModel,
+        makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel
+    ) {
         self.viewModel = viewModel
+        self.makeMachinesViewModel = makeMachinesViewModel
     }
 
     public var body: some View {
@@ -26,6 +33,18 @@ public struct SettingsView: View {
                     Text("This app uses direct native API calls.")
                         .foregroundStyle(.secondary)
                 }
+
+                Section("Machine") {
+                    NavigationLink {
+                        MachinesView(
+                            serverURLString: viewModel.serverURLString,
+                            token: viewModel.apiToken,
+                            makeViewModel: makeMachinesViewModel
+                        )
+                    } label: {
+                        Label("Manage Machines", systemImage: "desktopcomputer")
+                    }
+                }
             }
             .navigationTitle("Settings")
         }
@@ -34,7 +53,16 @@ public struct SettingsView: View {
 
 #Preview {
     SettingsView(
-        viewModel: SettingsViewModel(settingsManager: PreviewSettingsManager())
+        viewModel: SettingsViewModel(settingsManager: PreviewSettingsManager()),
+        makeMachinesViewModel: {
+            let service = URLSessionMachinesService()
+            return MachinesViewModel(
+                loader: MachinesLoadUseCase(service: service),
+                spawner: MachineSpawnUseCase(service: service),
+                updater: MachineDaemonUpdateUseCase(service: service),
+                stopper: MachineDaemonStopUseCase(service: service)
+            )
+        }
     )
 }
 
