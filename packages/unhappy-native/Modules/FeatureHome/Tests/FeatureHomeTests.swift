@@ -30,7 +30,10 @@ struct FeatureHomeTests {
                 let service = URLSessionSessionsService()
                 return SessionToolsViewModel(
                     fileLoader: SessionFileLoadUseCase(service: service),
-                    killer: SessionKillUseCase(service: service)
+                    killer: SessionKillUseCase(service: service),
+                    aborter: SessionTaskAbortUseCase(service: service),
+                    permissionResponder: SessionPermissionUseCase(service: service),
+                    modeSwitcher: SessionModeSwitchUseCase(service: service)
                 )
             },
             makeMachinesViewModel: {

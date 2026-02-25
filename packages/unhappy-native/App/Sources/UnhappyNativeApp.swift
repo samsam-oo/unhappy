@@ -22,6 +22,9 @@ struct UnhappyNativeApp: App {
         let machinesService = URLSessionMachinesService()
         let sessionFileLoader = SessionFileLoadUseCase(service: sessionsService)
         let sessionKiller = SessionKillUseCase(service: sessionsService)
+        let sessionAborter = SessionTaskAbortUseCase(service: sessionsService)
+        let sessionPermissionResponder = SessionPermissionUseCase(service: sessionsService)
+        let sessionModeSwitcher = SessionModeSwitchUseCase(service: sessionsService)
         let machinesLoader = MachinesLoadUseCase(service: machinesService)
         let machineSpawner = MachineSpawnUseCase(service: machinesService)
         let machineUpdater = MachineDaemonUpdateUseCase(service: machinesService)
@@ -41,7 +44,10 @@ struct UnhappyNativeApp: App {
         self.makeSessionToolsViewModel = {
             SessionToolsViewModel(
                 fileLoader: sessionFileLoader,
-                killer: sessionKiller
+                killer: sessionKiller,
+                aborter: sessionAborter,
+                permissionResponder: sessionPermissionResponder,
+                modeSwitcher: sessionModeSwitcher
             )
         }
         self.makeMachinesViewModel = {
