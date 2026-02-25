@@ -266,6 +266,56 @@ public struct SessionInfoView: View {
                     }
                 }
             }
+
+            Section("Difftastic") {
+                TextField("Args (e.g. --display inline HEAD~1 HEAD)", text: $viewModel.difftasticArgs)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("Working directory (optional)", text: $viewModel.difftasticWorkingDirectory)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(viewModel.isRunningDifftastic ? "Running…" : "Run Difftastic") {
+                    Task {
+                        await viewModel.runDifftastic(
+                            sessionID: session.id,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .disabled(
+                    viewModel.isRunningDifftastic ||
+                    viewModel.difftasticArgs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+
+                if let exitCode = viewModel.difftasticExitCode {
+                    Text("Exit code: \(exitCode)")
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(exitCode == 0 ? .green : .secondary)
+                }
+                if let error = viewModel.difftasticErrorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+                if !viewModel.difftasticStdout.isEmpty {
+                    LabeledContent("stdout") {
+                        Text(viewModel.difftasticStdout)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                    }
+                }
+                if !viewModel.difftasticStderr.isEmpty {
+                    LabeledContent("stderr") {
+                        Text(viewModel.difftasticStderr)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         .navigationTitle("Session Info")
         .navigationBarTitleDisplayMode(.inline)

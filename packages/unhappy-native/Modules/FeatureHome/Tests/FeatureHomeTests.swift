@@ -37,7 +37,8 @@ struct FeatureHomeTests {
                     permissionResponder: SessionPermissionUseCase(service: service),
                     modeSwitcher: SessionModeSwitchUseCase(service: service),
                     basher: SessionBashUseCase(service: service),
-                    ripgrepRunner: SessionRipgrepUseCase(service: service)
+                    ripgrepRunner: SessionRipgrepUseCase(service: service),
+                    difftasticRunner: SessionDifftasticUseCase(service: service)
                 )
             },
             makeMachinesViewModel: {

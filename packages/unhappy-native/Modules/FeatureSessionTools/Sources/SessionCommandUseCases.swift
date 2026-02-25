@@ -53,6 +53,16 @@ public protocol SessionRipgrepRunAction: Sendable {
     ) async throws -> APISessionBashResult
 }
 
+public protocol SessionDifftasticRunAction: Sendable {
+    func runDifftastic(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult
+}
+
 public enum SessionCommandError: LocalizedError, Equatable {
     case missingToken
     case invalidServerURL
@@ -419,6 +429,77 @@ public actor SessionRipgrepUseCase: SessionRipgrepRunAction {
             let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
             throw SessionCommandError.failed(
                 message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to run ripgrep"
+            )
+        }
+
+        inFlightTasks[key] = task
+        defer { inFlightTasks[key] = nil }
+        return try await task.value
+    }
+}
+
+public actor SessionDifftasticUseCase: SessionDifftasticRunAction {
+    private struct RequestKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let sessionID: String
+        let args: [String]
+        let cwd: String?
+    }
+
+    private let service: any SessionDifftasticRunning
+    private var inFlightTasks: [RequestKey: Task<APISessionBashResult, Error>] = [:]
+
+    public init(service: any SessionDifftasticRunning) {
+        self.service = service
+    }
+
+    public func runDifftastic(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult {
+        let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
+            serverURLString: serverURLString,
+            token: token,
+            sessionID: sessionID
+        )
+        let normalizedArgs = args.compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard !normalizedArgs.isEmpty else {
+            throw SessionCommandError.missingArguments
+        }
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = RequestKey(
+            serverURLString: serverURL.absoluteString,
+            token: normalizedToken,
+            sessionID: normalizedSessionID,
+            args: normalizedArgs,
+            cwd: normalizedCWD
+        )
+        if let inFlightTask = inFlightTasks[key] {
+            return try await inFlightTask.value
+        }
+
+        let service = self.service
+        let task = Task<APISessionBashResult, Error> {
+            let result = try await service.runDifftastic(
+                serverURL: serverURL,
+                token: normalizedToken,
+                sessionID: normalizedSessionID,
+                args: normalizedArgs,
+                cwd: normalizedCWD
+            )
+            if result.success {
+                return result
+            }
+            let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw SessionCommandError.failed(
+                message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to run difftastic"
             )
         }
 

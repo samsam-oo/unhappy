@@ -55,6 +55,14 @@ public final class SessionToolsViewModel: ObservableObject {
     @Published public private(set) var ripgrepExitCode: Int?
     @Published public private(set) var ripgrepErrorMessage: String?
 
+    @Published public var difftasticArgs: String = ""
+    @Published public var difftasticWorkingDirectory: String = ""
+    @Published public private(set) var isRunningDifftastic = false
+    @Published public private(set) var difftasticStdout: String = ""
+    @Published public private(set) var difftasticStderr: String = ""
+    @Published public private(set) var difftasticExitCode: Int?
+    @Published public private(set) var difftasticErrorMessage: String?
+
     private let fileLoader: any SessionFileLoadingAction
     private let directoryLister: any SessionDirectoryListAction
     private let fileWriter: any SessionFileWriteAction
@@ -64,6 +72,7 @@ public final class SessionToolsViewModel: ObservableObject {
     private let modeSwitcher: any SessionModeSwitchAction
     private let basher: any SessionBashRunAction
     private let ripgrepRunner: any SessionRipgrepRunAction
+    private let difftasticRunner: any SessionDifftasticRunAction
 
     public init(
         fileLoader: any SessionFileLoadingAction,
@@ -74,7 +83,8 @@ public final class SessionToolsViewModel: ObservableObject {
         permissionResponder: any SessionPermissionResponseAction,
         modeSwitcher: any SessionModeSwitchAction,
         basher: any SessionBashRunAction,
-        ripgrepRunner: any SessionRipgrepRunAction
+        ripgrepRunner: any SessionRipgrepRunAction,
+        difftasticRunner: any SessionDifftasticRunAction
     ) {
         self.fileLoader = fileLoader
         self.directoryLister = directoryLister
@@ -85,6 +95,7 @@ public final class SessionToolsViewModel: ObservableObject {
         self.modeSwitcher = modeSwitcher
         self.basher = basher
         self.ripgrepRunner = ripgrepRunner
+        self.difftasticRunner = difftasticRunner
     }
 
     public func loadFile(
@@ -358,6 +369,36 @@ public final class SessionToolsViewModel: ObservableObject {
             ripgrepErrorMessage = nil
         } catch {
             ripgrepErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func runDifftastic(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        isRunningDifftastic = true
+        difftasticErrorMessage = nil
+        difftasticStdout = ""
+        difftasticStderr = ""
+        difftasticExitCode = nil
+        defer { isRunningDifftastic = false }
+
+        do {
+            let args = parsedCommandArguments(difftasticArgs)
+            let result = try await difftasticRunner.runDifftastic(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                args: args,
+                cwd: normalizedOptional(difftasticWorkingDirectory)
+            )
+            difftasticStdout = truncatedOutput(result.stdout)
+            difftasticStderr = truncatedOutput(result.stderr)
+            difftasticExitCode = result.exitCode
+            difftasticErrorMessage = nil
+        } catch {
+            difftasticErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 }

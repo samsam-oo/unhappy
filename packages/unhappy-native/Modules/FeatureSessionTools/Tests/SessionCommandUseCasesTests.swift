@@ -109,6 +109,25 @@ struct SessionCommandUseCasesTests {
         #expect(result.stdout.contains("TODO"))
         #expect(result.exitCode == 0)
     }
+
+    @Test
+    func runDifftasticReturnsOutputWhenSuccessful() async throws {
+        let useCase = SessionDifftasticUseCase(
+            service: DifftasticService(result: .init(success: true, stdout: "diff --git a/a.txt b/a.txt", stderr: "", exitCode: 0, error: nil))
+        )
+
+        let result = try await useCase.runDifftastic(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            sessionID: "session-1",
+            args: ["--display", "inline", "HEAD~1", "HEAD"],
+            cwd: "/tmp/work"
+        )
+
+        #expect(result.success == true)
+        #expect(result.stdout.contains("diff --git"))
+        #expect(result.exitCode == 0)
+    }
 }
 
 private struct AbortService: SessionAborting {
@@ -173,6 +192,20 @@ private struct RipgrepService: SessionRipgrepRunning {
     let result: APISessionBashResult
 
     func runRipgrep(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult {
+        result
+    }
+}
+
+private struct DifftasticService: SessionDifftasticRunning {
+    let result: APISessionBashResult
+
+    func runDifftastic(
         serverURL: URL,
         token: String,
         sessionID: String,

@@ -29,6 +29,7 @@ struct UnhappyNativeApp: App {
         let sessionModeSwitcher = SessionModeSwitchUseCase(service: sessionsService)
         let sessionBasher = SessionBashUseCase(service: sessionsService)
         let sessionRipgrepRunner = SessionRipgrepUseCase(service: sessionsService)
+        let sessionDifftasticRunner = SessionDifftasticUseCase(service: sessionsService)
         let machinesLoader = MachinesLoadUseCase(service: machinesService)
         let machineSpawner = MachineSpawnUseCase(service: machinesService)
         let machineUpdater = MachineDaemonUpdateUseCase(service: machinesService)
@@ -55,7 +56,8 @@ struct UnhappyNativeApp: App {
                 permissionResponder: sessionPermissionResponder,
                 modeSwitcher: sessionModeSwitcher,
                 basher: sessionBasher,
-                ripgrepRunner: sessionRipgrepRunner
+                ripgrepRunner: sessionRipgrepRunner,
+                difftasticRunner: sessionDifftasticRunner
             )
         }
         self.makeMachinesViewModel = {
