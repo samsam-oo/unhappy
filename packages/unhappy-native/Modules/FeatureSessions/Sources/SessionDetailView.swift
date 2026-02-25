@@ -16,6 +16,7 @@ public struct SessionDetailView: View {
     @State private var renameDraft = ""
     @State private var codexCwdFilterDraft = ""
     @State private var claudeCwdFilterDraft = ""
+    @State private var claudeResumeDirectoryDraft = ""
 
     public init(
         session: APISession,
@@ -116,6 +117,9 @@ public struct SessionDetailView: View {
                         }
                         Button("List Claude Sessions", systemImage: "list.bullet.rectangle") {
                             showClaudeSessionsSheet = true
+                            if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                claudeResumeDirectoryDraft = claudeCwdFilterDraft
+                            }
                             Task {
                                 await viewModel.loadClaudeSessions(
                                     for: session.id,
@@ -274,6 +278,24 @@ public struct SessionDetailView: View {
                         }
                         .disabled(viewModel.isLoadingClaudeSessions)
                     }
+                    Section("Resume") {
+                        TextField("Directory for resumed session", text: $claudeResumeDirectoryDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Text("If empty, selected row cwd is used.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if let status = viewModel.claudeResumeStatusMessage {
+                            Text(status)
+                                .font(.footnote)
+                                .foregroundStyle(.green)
+                        }
+                        if let error = viewModel.claudeResumeErrorMessage {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
+                    }
 
                     if viewModel.isLoadingClaudeSessions {
                         ProgressView("Loading Claude sessions…")
@@ -300,8 +322,33 @@ public struct SessionDetailView: View {
                         Text("No existing Claude sessions")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(viewModel.selectedClaudeSessions) { session in
-                            ClaudeSessionRow(session: session)
+                        ForEach(viewModel.selectedClaudeSessions) { row in
+                            Button {
+                                let resumeDirectory =
+                                    normalizedCWD(from: claudeResumeDirectoryDraft)
+                                    ?? normalizedCWD(from: row.cwd ?? "")
+                                    ?? normalizedCWD(from: claudeCwdFilterDraft)
+                                    ?? ""
+                                Task {
+                                    await viewModel.resumeClaudeSession(
+                                        from: session.id,
+                                        claudeResumeSessionID: row.id,
+                                        serverURLString: serverURLString,
+                                        token: token,
+                                        directory: resumeDirectory
+                                    )
+                                }
+                            } label: {
+                                ClaudeSessionRow(
+                                    session: row,
+                                    isResuming: viewModel.claudeResumeInProgressSessionID == row.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(
+                                viewModel.isResumingClaudeSession &&
+                                    viewModel.claudeResumeInProgressSessionID != row.id
+                            )
                         }
                     }
                 }
@@ -414,12 +461,24 @@ private struct ClaudeSessionRow: View {
     }()
 
     let session: APIClaudeSessionSummary
+    let isResuming: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(session.id)
-                .font(.caption.monospaced())
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                Text(session.id)
+                    .font(.caption.monospaced())
+                    .lineLimit(1)
+                Spacer()
+                if isResuming {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Resume")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
             if let cwd = session.cwd, !cwd.isEmpty {
                 Text(cwd)
                     .font(.footnote)

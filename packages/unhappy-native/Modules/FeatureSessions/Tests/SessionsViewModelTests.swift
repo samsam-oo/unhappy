@@ -394,6 +394,81 @@ struct SessionsViewModelTests {
         #expect(model.selectedClaudeSessions == expected)
         #expect(model.selectedClaudeSessionsErrorMessage == nil)
     }
+
+    @Test
+    func resumeClaudeSessionPublishesSuccessStatus() async throws {
+        let reloadedSessions = [
+            APISession(
+                id: "session-reloaded",
+                active: true,
+                activeAt: 100,
+                createdAt: 90,
+                updatedAt: 110,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: reloadedSessions, nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            spawnUseCase: MockSessionSpawnUseCase(
+                result: .success(
+                    APISessionSpawnResult(
+                        success: true,
+                        sessionID: "spawned-session-1",
+                        requiresUserApproval: nil,
+                        actionRequired: nil,
+                        directory: nil,
+                        error: nil
+                    )
+                )
+            ),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.resumeClaudeSession(
+            from: "session-1",
+            claudeResumeSessionID: "claude-resume-id",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            directory: "/tmp/work"
+        )
+
+        #expect(model.claudeResumeErrorMessage == nil)
+        #expect(model.claudeResumeStatusMessage == "Resumed into new session spawned-session-1")
+        #expect(model.sessions == reloadedSessions)
+        #expect(model.claudeResumeInProgressSessionID == nil)
+    }
+
+    @Test
+    func resumeClaudeSessionPublishesErrorOnFailure() async throws {
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            spawnUseCase: MockSessionSpawnUseCase(result: .failure(.failed)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.resumeClaudeSession(
+            from: "session-1",
+            claudeResumeSessionID: "claude-resume-id",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            directory: "/tmp/work"
+        )
+
+        #expect(model.claudeResumeStatusMessage == nil)
+        #expect(model.claudeResumeErrorMessage?.contains("MockSessionSpawnUseCaseError") == true)
+        #expect(model.claudeResumeInProgressSessionID == nil)
+    }
 }
 
 private enum MockSessionsLoaderError: Error, Sendable {
@@ -413,7 +488,7 @@ private struct MockSessionsLoader: SessionsLoading {
     }
 }
 
-private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching {
+private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         []
     }
@@ -436,6 +511,26 @@ private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagin
 
     func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
         []
+    }
+
+    func spawnSession(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        directory: String,
+        agent: APISessionSpawnAgent?,
+        codexResumeThreadID: String?,
+        claudeResumeSessionID: String?,
+        approvedNewDirectoryCreation: Bool?
+    ) async throws -> APISessionSpawnResult {
+        APISessionSpawnResult(
+            success: true,
+            sessionID: "session-new",
+            requiresUserApproval: nil,
+            actionRequired: nil,
+            directory: nil,
+            error: nil
+        )
     }
 }
 
@@ -580,6 +675,32 @@ private struct MockSessionClaudeSessionsLoader: SessionClaudeSessionsLoading {
         switch result {
         case .success(let rows):
             return rows
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private enum MockSessionSpawnUseCaseError: Error, Sendable {
+    case failed
+}
+
+private struct MockSessionSpawnUseCase: SessionSpawningAction {
+    let result: Result<APISessionSpawnResult, MockSessionSpawnUseCaseError>
+
+    func spawnSession(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        directory: String,
+        agent: APISessionSpawnAgent?,
+        codexResumeThreadID: String?,
+        claudeResumeSessionID: String?,
+        approvedNewDirectoryCreation: Bool?
+    ) async throws -> APISessionSpawnResult {
+        switch result {
+        case .success(let response):
+            return response
         case .failure(let error):
             throw error
         }
