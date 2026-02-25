@@ -9,19 +9,22 @@ public struct SettingsView: View {
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
     private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
+    private let makeAccountLinkViewModel: @MainActor () -> AccountLinkSettingsViewModel
 
     public init(
         viewModel: SettingsViewModel,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
         makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
-        makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel
+        makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel,
+        makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel
     ) {
         self.viewModel = viewModel
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
         self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
         self.makeTerminalConnectViewModel = makeTerminalConnectViewModel
+        self.makeAccountLinkViewModel = makeAccountLinkViewModel
     }
 
     public var body: some View {
@@ -29,7 +32,10 @@ public struct SettingsView: View {
             Form {
                 Section("Connection") {
                     NavigationLink {
-                        AccountSettingsView(viewModel: viewModel)
+                        AccountSettingsView(
+                            viewModel: viewModel,
+                            makeAccountLinkViewModel: makeAccountLinkViewModel
+                        )
                     } label: {
                         Label("Account", systemImage: "person.crop.circle")
                     }
@@ -141,6 +147,15 @@ public struct SettingsView: View {
                     dataKeyStore: UserDefaultsTerminalDataKeyStore(),
                     encryptor: TweetNaclTerminalAuthEncryptor()
                 )
+            )
+        },
+        makeAccountLinkViewModel: {
+            AccountLinkSettingsViewModel(
+                linker: AccountLinkUseCase(
+                    service: URLSessionAccountAuthService(),
+                    encryptor: TweetNaclTerminalAuthEncryptor()
+                ),
+                secretStore: UserDefaultsAccountSecretStore()
             )
         }
     )

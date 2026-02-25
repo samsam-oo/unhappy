@@ -15,6 +15,18 @@ struct TerminalAuthURLParserTests {
     }
 
     @Test
+    func parsePublicKeyQueryItemTerminalURL() {
+        let request = TerminalAuthURLParser.parse("unhappy://terminal?publicKey=abc123")
+        #expect(request?.publicKey == "abc123")
+    }
+
+    @Test
+    func parsePathNormalizedTerminalURL() {
+        let request = TerminalAuthURLParser.parse("unhappy:/terminal?k=abc123")
+        #expect(request?.publicKey == "abc123")
+    }
+
+    @Test
     func parseRejectsNonTerminalURL() {
         #expect(TerminalAuthURLParser.parse("https://example.com") == nil)
         #expect(TerminalAuthURLParser.parse("unhappy://account?abc123") == nil)

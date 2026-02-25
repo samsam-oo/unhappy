@@ -16,6 +16,7 @@ public struct HomeView: View {
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
     private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
+    private let makeAccountLinkViewModel: @MainActor () -> AccountLinkSettingsViewModel
 
     public init(
         makeSettingsViewModel: @escaping @MainActor () -> SettingsViewModel,
@@ -25,7 +26,8 @@ public struct HomeView: View {
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
         makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
-        makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel
+        makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel,
+        makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel
     ) {
         _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
         self.makeSessionsViewModel = makeSessionsViewModel
@@ -35,6 +37,7 @@ public struct HomeView: View {
         self.makeUsageViewModel = makeUsageViewModel
         self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
         self.makeTerminalConnectViewModel = makeTerminalConnectViewModel
+        self.makeAccountLinkViewModel = makeAccountLinkViewModel
     }
 
     public var body: some View {
@@ -57,7 +60,8 @@ public struct HomeView: View {
                 makeMachinesViewModel: makeMachinesViewModel,
                 makeUsageViewModel: makeUsageViewModel,
                 makeDaemonStatusViewModel: makeDaemonStatusViewModel,
-                makeTerminalConnectViewModel: makeTerminalConnectViewModel
+                makeTerminalConnectViewModel: makeTerminalConnectViewModel,
+                makeAccountLinkViewModel: makeAccountLinkViewModel
             )
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
@@ -130,6 +134,15 @@ public struct HomeView: View {
                     dataKeyStore: UserDefaultsTerminalDataKeyStore(),
                     encryptor: TweetNaclTerminalAuthEncryptor()
                 )
+            )
+        },
+        makeAccountLinkViewModel: {
+            AccountLinkSettingsViewModel(
+                linker: AccountLinkUseCase(
+                    service: URLSessionAccountAuthService(),
+                    encryptor: TweetNaclTerminalAuthEncryptor()
+                ),
+                secretStore: UserDefaultsAccountSecretStore()
             )
         }
     )

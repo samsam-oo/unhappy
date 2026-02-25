@@ -72,6 +72,15 @@ struct FeatureHomeTests {
                         encryptor: TweetNaclTerminalAuthEncryptor()
                     )
                 )
+            },
+            makeAccountLinkViewModel: {
+                AccountLinkSettingsViewModel(
+                    linker: AccountLinkUseCase(
+                        service: URLSessionAccountAuthService(),
+                        encryptor: TweetNaclTerminalAuthEncryptor()
+                    ),
+                    secretStore: UserDefaultsAccountSecretStore()
+                )
             }
         )
     }

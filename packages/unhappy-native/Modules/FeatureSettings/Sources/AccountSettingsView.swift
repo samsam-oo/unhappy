@@ -6,7 +6,22 @@ import UIKit
 @MainActor
 struct AccountSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
+    @StateObject private var accountLinkViewModel: AccountLinkSettingsViewModel
+    @State private var accountAuthURLString = ""
+    @State private var showingScanner = false
     @State private var statusMessage: String?
+
+    init(
+        viewModel: SettingsViewModel,
+        makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel
+    ) {
+        self.viewModel = viewModel
+        _accountLinkViewModel = StateObject(wrappedValue: makeAccountLinkViewModel())
+    }
+
+    private var parsedAccountRequest: AccountAuthRequest? {
+        AccountAuthURLParser.parse(accountAuthURLString)
+    }
 
     var body: some View {
         Form {
@@ -26,7 +41,73 @@ struct AccountSettingsView: View {
                 }
             }
 
+            Section("Link New Device") {
+                TextField("unhappy://account?...", text: $accountAuthURLString, axis: .vertical)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.footnote.monospaced())
+                    .onChange(of: accountAuthURLString, initial: false) { _, _ in
+                        statusMessage = nil
+                        accountLinkViewModel.clearMessages()
+                    }
+                SecureField("Account Secret (base64url)", text: $accountLinkViewModel.accountSecretBase64URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.footnote.monospaced())
+                if let parsedAccountRequest {
+                    LabeledContent("Public Key") {
+                        Text(keyPreview(for: parsedAccountRequest.publicKey))
+                            .font(.footnote.monospaced())
+                    }
+                } else if !accountAuthURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Invalid account auth URL.")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+                if accountLinkViewModel.isLinking {
+                    ProgressView("Linking device...")
+                }
+                if let statusMessage = accountLinkViewModel.statusMessage {
+                    Text(statusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                }
+                if let errorMessage = accountLinkViewModel.errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+
             Section("Actions") {
+                Button("Scan Account QR") {
+                    showingScanner = true
+                }
+                .disabled(accountLinkViewModel.isLinking)
+
+                Button("Paste Account URL") {
+                    pasteFromClipboard()
+                }
+                .disabled(accountLinkViewModel.isLinking)
+
+                Button("Link Device") {
+                    Task {
+                        await accountLinkViewModel.linkDevice(
+                            serverURLString: viewModel.serverURLString,
+                            token: viewModel.apiToken,
+                            accountAuthURLString: accountAuthURLString
+                        )
+                    }
+                }
+                .disabled(
+                    parsedAccountRequest == nil
+                        || !hasToken
+                        || accountLinkViewModel.accountSecretBase64URL
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .isEmpty
+                        || accountLinkViewModel.isLinking
+                )
+
                 Button("Copy API Token") {
                     copyToClipboard(viewModel.apiToken)
                     statusMessage = "Copied API token"
@@ -50,10 +131,21 @@ struct AccountSettingsView: View {
                 Text("Completion status is daemon-based. Check Settings > Connectors for daemon running state.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                Text("Account QR link uses API token + account secret key to approve device pairing.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingScanner) {
+            TerminalQRScannerSheet { scannedValue in
+                applyScannedAccountURL(scannedValue)
+            }
+        }
+        .task {
+            await accountLinkViewModel.loadFromStore()
+        }
     }
 
     private var hasToken: Bool {
@@ -67,6 +159,30 @@ struct AccountSettingsView: View {
             return "••••••••"
         }
         return "\(token.prefix(4))…\(token.suffix(4))"
+    }
+
+    private func keyPreview(for key: String) -> String {
+        if key.count <= 20 {
+            return key
+        }
+        return "\(key.prefix(12))...\(key.suffix(8))"
+    }
+
+    private func pasteFromClipboard() {
+#if canImport(UIKit)
+        let rawValue = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !rawValue.isEmpty else {
+            statusMessage = "Clipboard is empty"
+            return
+        }
+        applyScannedAccountURL(rawValue)
+#endif
+    }
+
+    private func applyScannedAccountURL(_ rawValue: String) {
+        accountAuthURLString = rawValue
+        statusMessage = "Loaded account URL"
+        accountLinkViewModel.clearMessages()
     }
 }
 

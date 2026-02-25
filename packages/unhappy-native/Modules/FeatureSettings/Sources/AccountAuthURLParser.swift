@@ -1,11 +1,11 @@
 import Foundation
 
-struct TerminalAuthRequest: Equatable, Sendable {
+struct AccountAuthRequest: Equatable, Sendable {
     let publicKey: String
 }
 
-enum TerminalAuthURLParser {
-    static func parse(_ raw: String) -> TerminalAuthRequest? {
+enum AccountAuthURLParser {
+    static func parse(_ raw: String) -> AccountAuthRequest? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             !trimmed.isEmpty,
@@ -17,7 +17,7 @@ enum TerminalAuthURLParser {
 
         let host = components.host?.lowercased()
         let path = components.path.lowercased()
-        guard host == "terminal" || path == "/terminal" else {
+        guard host == "account" || path == "/account" else {
             return nil
         }
 
@@ -26,7 +26,7 @@ enum TerminalAuthURLParser {
                 if let item = queryItems.first(where: { $0.name == key }),
                    let value = item.value?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !value.isEmpty {
-                    return TerminalAuthRequest(publicKey: value)
+                    return AccountAuthRequest(publicKey: value)
                 }
             }
         }
@@ -41,6 +41,6 @@ enum TerminalAuthURLParser {
         let decodedQuery = encodedQuery.removingPercentEncoding ?? encodedQuery
         let value = decodedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return nil }
-        return TerminalAuthRequest(publicKey: value)
+        return AccountAuthRequest(publicKey: value)
     }
 }
