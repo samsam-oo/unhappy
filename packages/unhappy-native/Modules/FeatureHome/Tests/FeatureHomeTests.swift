@@ -12,6 +12,7 @@ struct FeatureHomeTests {
     @Test
     func homeViewCanInitialize() {
         _ = HomeView(
+            onboarding: MockHomeAccountOnboarding(),
             makeSettingsViewModel: {
                 SettingsViewModel(settingsManager: MockSettingsManager())
             },
@@ -109,4 +110,10 @@ private actor MockSettingsManager: SettingsManaging {
         voiceLanguage: AppVoiceLanguageOption,
         defaultNewSessionAgent: APISessionSpawnAgent
     ) async {}
+}
+
+private actor MockHomeAccountOnboarding: HomeAccountOnboardingAction {
+    func createAccount(serverURLString: String) async throws -> String {
+        "token"
+    }
 }

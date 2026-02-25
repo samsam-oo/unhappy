@@ -31,7 +31,7 @@ Last updated: 2026-02-25
 | Web Route | Native Status | Notes |
 | --- | --- | --- |
 | `_layout.tsx` | Partial | Native `TabView` exists but tabs/headers/status parity is incomplete (`Inbox`, richer header actions missing). |
-| `index.tsx` | Partial | Native home exists, but auth onboarding/create/restore flow parity is missing. |
+| `index.tsx` | Partial | Native Home에 비인증 온보딩(서버 URL 입력, Create Account `/v1/auth`, Restore sheet 진입) 추가됨. web의 header/landscape 세부 레이아웃 parity는 미구현. |
 | `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) + 상단 고정 multi-agent 상태 배너 구현. message-level tool detail/review/finish flow은 미구현. |
 | `session/recent.tsx` | Done | Sessions 화면에서 `Recent` 진입 제공, 날짜별(오늘/어제/N일 전) 그룹핑 리스트 구현. |
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission/mode switch + bash/ripgrep/difftastic 실행 기본 액션 + metadata/agentState parsed fields + quick actions(copy/review/finish) 구현. web full parity는 미구현. |
@@ -85,7 +85,7 @@ Last updated: 2026-02-25
 | `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 브릿지 + native 수동 action UI(allow/deny/abort/switch) 구현. `session/[id]` composer에서 queue/immediate steer 전송 가능. |
 | `ops` file/dir/ripgrep/bash session tools | Partial | 서버 `commands/*` + 네이티브 file viewer/kill/bash/ripgrep/difftastic 실행 기본 UI 구현. review/finish 전용 UI는 미이관. |
 | `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`(resume IDs/session token/env vars 포함), `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
-| `auth` account link (`/v1/auth/account/response`) | Partial | account QR URL 파싱 + TweetNacl box 암호화 응답 + native approve API 호출 + secret 기반 `/v1/auth` token restore + `/v1/auth/account/request` QR restore polling/복호화 구현. restore route-level UX parity는 미구현. |
+| `auth` account link (`/v1/auth/account/response`) | Partial | account QR URL 파싱 + TweetNacl box 암호화 응답 + native approve API 호출 + secret 기반 `/v1/auth` token restore + `/v1/auth/account/request` QR restore polling/복호화 + Home 비인증 화면의 `/v1/auth` account create 진입 구현. restore route-level UX parity는 미구현. |
 | `apiArtifacts` | Not started | artifact CRUD 전부 미이관. |
 | `apiFriends`, `apiFeed`, `apiGithub`, `apiServices` | Not started | social/account integrations 미이관. |
 | `apiUsage`, `apiPush`, `apiKv`, `apiVoice` | Not started | usage/push/kv/voice 전부 미이관. |
