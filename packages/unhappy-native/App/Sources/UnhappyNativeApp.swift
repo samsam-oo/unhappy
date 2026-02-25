@@ -19,6 +19,7 @@ struct UnhappyNativeApp: App {
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
     private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
     private let makeAccountLinkViewModel: @MainActor () -> AccountLinkSettingsViewModel
+    private let makeServerStatusViewModel: @MainActor () -> HomeServerConnectionStatusViewModel
 
     init() {
         let settingsStore = UserDefaultsAppSettingsStore()
@@ -47,6 +48,7 @@ struct UnhappyNativeApp: App {
         let newSessionProfiles = NewSessionProfilesUseCase(store: UserDefaultsNewSessionProfilesStore())
         let usageLoader = SettingsUsageLoadUseCase(service: sessionsService)
         let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
+        let homeServerStatusLoader = HomeServerConnectionStatusLoadUseCase()
         let terminalAuthService = URLSessionTerminalAuthService()
         let accountAuthService = URLSessionAccountAuthService()
         let accountRestoreRequestService = URLSessionAccountRestoreRequestService()
@@ -122,6 +124,9 @@ struct UnhappyNativeApp: App {
                 secretStore: accountSecretStore
             )
         }
+        self.makeServerStatusViewModel = {
+            HomeServerConnectionStatusViewModel(loader: homeServerStatusLoader)
+        }
     }
 
     var body: some Scene {
@@ -136,7 +141,8 @@ struct UnhappyNativeApp: App {
                 makeUsageViewModel: makeUsageViewModel,
                 makeDaemonStatusViewModel: makeDaemonStatusViewModel,
                 makeTerminalConnectViewModel: makeTerminalConnectViewModel,
-                makeAccountLinkViewModel: makeAccountLinkViewModel
+                makeAccountLinkViewModel: makeAccountLinkViewModel,
+                makeServerStatusViewModel: makeServerStatusViewModel
             )
         }
     }

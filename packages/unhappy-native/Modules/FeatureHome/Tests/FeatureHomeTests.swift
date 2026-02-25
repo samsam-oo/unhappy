@@ -88,6 +88,11 @@ struct FeatureHomeTests {
                     ),
                     secretStore: UserDefaultsAccountSecretStore()
                 )
+            },
+            makeServerStatusViewModel: {
+                HomeServerConnectionStatusViewModel(
+                    loader: MockHomeServerStatusLoader(status: .connected)
+                )
             }
         )
     }
@@ -115,5 +120,13 @@ private actor MockSettingsManager: SettingsManaging {
 private actor MockHomeAccountOnboarding: HomeAccountOnboardingAction {
     func createAccount(serverURLString: String) async throws -> String {
         "token"
+    }
+}
+
+private struct MockHomeServerStatusLoader: HomeServerConnectionStatusLoadingAction {
+    let status: HomeServerConnectionStatus
+
+    func loadStatus(serverURLString: String) async -> HomeServerConnectionStatus {
+        status
     }
 }

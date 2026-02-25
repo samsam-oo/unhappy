@@ -10,6 +10,7 @@ import FeatureSettings
 public struct HomeView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var settingsViewModel: SettingsViewModel
+    @StateObject private var serverStatusViewModel: HomeServerConnectionStatusViewModel
     @State private var isCreatingAccount = false
     @State private var onboardingErrorMessage: String?
     @State private var onboardingStatusMessage: String?
@@ -35,10 +36,12 @@ public struct HomeView: View {
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
         makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
         makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel,
-        makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel
+        makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel,
+        makeServerStatusViewModel: @escaping @MainActor () -> HomeServerConnectionStatusViewModel
     ) {
         self.onboarding = onboarding
         _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
+        _serverStatusViewModel = StateObject(wrappedValue: makeServerStatusViewModel())
         self.makeSessionsViewModel = makeSessionsViewModel
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
@@ -142,9 +145,7 @@ public struct HomeView: View {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         } else {
-                            Text("Not connected")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                            connectionStatusView
                         }
                     }
                 }
@@ -165,6 +166,9 @@ public struct HomeView: View {
             }
             .navigationDestination(isPresented: $isServerSettingsPresented) {
                 ServerSettingsView(viewModel: settingsViewModel)
+            }
+            .task(id: statusPollingTaskKey) {
+                await pollServerStatus()
             }
         }
     }
@@ -389,6 +393,69 @@ public struct HomeView: View {
         }
         return host
     }
+
+    private var statusPollingTaskKey: String {
+        settingsViewModel.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @ViewBuilder
+    private var connectionStatusView: some View {
+        HStack(spacing: 4) {
+            if connectionStatus == .connecting {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Circle()
+                    .fill(connectionStatusColor)
+                    .frame(width: 6, height: 6)
+            }
+            Text(connectionStatusText)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(connectionStatusColor)
+        }
+        .accessibilityLabel("Server status \(connectionStatusText)")
+    }
+
+    private var connectionStatus: HomeServerConnectionStatus {
+        if serverStatusViewModel.isLoading {
+            return .connecting
+        }
+        return serverStatusViewModel.status
+    }
+
+    private var connectionStatusText: String {
+        switch connectionStatus {
+        case .connecting:
+            return "Connecting"
+        case .connected:
+            return "Connected"
+        case .disconnected:
+            return "Disconnected"
+        }
+    }
+
+    private var connectionStatusColor: Color {
+        switch connectionStatus {
+        case .connecting:
+            return .orange
+        case .connected:
+            return .green
+        case .disconnected:
+            return .secondary
+        }
+    }
+
+    private func pollServerStatus() async {
+        while !Task.isCancelled {
+            await serverStatusViewModel.refresh(serverURLString: settingsViewModel.serverURLString)
+
+            do {
+                try await Task.sleep(for: .seconds(8))
+            } catch {
+                return
+            }
+        }
+    }
 }
 
 #Preview {
@@ -468,6 +535,11 @@ public struct HomeView: View {
                     requestService: URLSessionAccountRestoreRequestService()
                 ),
                 secretStore: UserDefaultsAccountSecretStore()
+            )
+        },
+        makeServerStatusViewModel: {
+            HomeServerConnectionStatusViewModel(
+                loader: HomeServerConnectionStatusLoadUseCase()
             )
         }
     )
