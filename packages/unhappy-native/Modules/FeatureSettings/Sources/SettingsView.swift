@@ -23,6 +23,11 @@ public struct SettingsView: View {
             Form {
                 Section("Connection") {
                     NavigationLink {
+                        AccountSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Account", systemImage: "person.crop.circle")
+                    }
+                    NavigationLink {
                         ServerSettingsView(viewModel: viewModel)
                     } label: {
                         Label("Server", systemImage: "server.rack")
