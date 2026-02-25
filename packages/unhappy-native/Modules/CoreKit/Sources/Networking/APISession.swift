@@ -190,3 +190,47 @@ public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
         case error
     }
 }
+
+public struct APISessionBashResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let stdout: String
+    public let stderr: String
+    public let exitCode: Int
+    public let error: String?
+
+    public init(
+        success: Bool,
+        stdout: String,
+        stderr: String,
+        exitCode: Int,
+        error: String?
+    ) {
+        self.success = success
+        self.stdout = stdout
+        self.stderr = stderr
+        self.exitCode = exitCode
+        self.error = error
+    }
+}
+
+public struct APISessionReadFileResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let content: String?
+    public let error: String?
+
+    public init(success: Bool, content: String?, error: String?) {
+        self.success = success
+        self.content = content
+        self.error = error
+    }
+}
+
+public struct APISessionKillResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let message: String
+
+    public init(success: Bool, message: String) {
+        self.success = success
+        self.message = message
+    }
+}

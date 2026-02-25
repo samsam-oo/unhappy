@@ -227,6 +227,82 @@ public enum SessionsAPI {
         return request
     }
 
+    public static func makeSessionBashRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        command: String,
+        cwd: String? = nil,
+        timeout: Int? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw SessionsAPIError.missingCommand
+        }
+
+        let bashURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/bash")
+        var request = try makeRequest(
+            url: bashURL,
+            method: "POST",
+            token: token
+        )
+        let payload = SessionBashPayload(
+            command: normalizedCommand,
+            cwd: cwd?.trimmingCharacters(in: .whitespacesAndNewlines),
+            timeout: timeout
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
+    public static func makeSessionReadFileRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw SessionsAPIError.missingPath
+        }
+
+        let readFileURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/read-file")
+        var request = try makeRequest(
+            url: readFileURL,
+            method: "POST",
+            token: token
+        )
+        let payload = SessionReadFilePayload(path: normalizedPath)
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
+    public static func makeSessionKillRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+
+        let killURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/kill")
+        return try makeRequest(
+            url: killURL,
+            method: "POST",
+            token: token
+        )
+    }
+
     public static func decodeListResponse(_ data: Data) throws -> [APISession] {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsListResponse.self, from: data)
@@ -266,6 +342,21 @@ public enum SessionsAPI {
         return try decoder.decode(APISessionSpawnResult.self, from: data)
     }
 
+    public static func decodeSessionBashResponse(_ data: Data) throws -> APISessionBashResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionBashResult.self, from: data)
+    }
+
+    public static func decodeSessionReadFileResponse(_ data: Data) throws -> APISessionReadFileResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionReadFileResult.self, from: data)
+    }
+
+    public static func decodeSessionKillResponse(_ data: Data) throws -> APISessionKillResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionKillResult.self, from: data)
+    }
+
     private static func makeRequest(url: URL, method: String, token: String) throws -> URLRequest {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -284,6 +375,8 @@ public enum SessionsAPIError: LocalizedError, Equatable {
     case missingToken
     case missingSessionID
     case missingDirectory
+    case missingPath
+    case missingCommand
     case missingSessionTitle
     case invalidHTTPStatus(Int)
 
@@ -295,6 +388,10 @@ public enum SessionsAPIError: LocalizedError, Equatable {
             return "Session ID is required"
         case .missingDirectory:
             return "Directory is required"
+        case .missingPath:
+            return "Path is required"
+        case .missingCommand:
+            return "Command is required"
         case .missingSessionTitle:
             return "Session title is required"
         case .invalidHTTPStatus(let code):
@@ -331,6 +428,16 @@ private struct SessionSpawnPayload: Encodable {
     let codexResumeThreadId: String?
     let claudeResumeSessionId: String?
     let approvedNewDirectoryCreation: Bool?
+}
+
+private struct SessionBashPayload: Encodable {
+    let command: String
+    let cwd: String?
+    let timeout: Int?
+}
+
+private struct SessionReadFilePayload: Encodable {
+    let path: String
 }
 
 private struct SessionsCodexThreadsResponse: Decodable {
@@ -401,7 +508,35 @@ public protocol SessionSpawning: Sendable {
     ) async throws -> APISessionSpawnResult
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning {
+public protocol SessionBashRunning: Sendable {
+    func runBash(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        command: String,
+        cwd: String?,
+        timeout: Int?
+    ) async throws -> APISessionBashResult
+}
+
+public protocol SessionFileReading: Sendable {
+    func readFile(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String
+    ) async throws -> APISessionReadFileResult
+}
+
+public protocol SessionKilling: Sendable {
+    func killSession(
+        serverURL: URL,
+        token: String,
+        sessionID: String
+    ) async throws -> APISessionKillResult
+}
+
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionBashRunning, SessionFileReading, SessionKilling {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -602,5 +737,79 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
 
         return try SessionsAPI.decodeSpawnSessionResponse(data)
+    }
+
+    public func runBash(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        command: String,
+        cwd: String?,
+        timeout: Int?
+    ) async throws -> APISessionBashResult {
+        let request = try SessionsAPI.makeSessionBashRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            command: command,
+            cwd: cwd,
+            timeout: timeout
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionBashResponse(data)
+    }
+
+    public func readFile(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String
+    ) async throws -> APISessionReadFileResult {
+        let request = try SessionsAPI.makeSessionReadFileRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            path: path
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionReadFileResponse(data)
+    }
+
+    public func killSession(
+        serverURL: URL,
+        token: String,
+        sessionID: String
+    ) async throws -> APISessionKillResult {
+        let request = try SessionsAPI.makeSessionKillRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionKillResponse(data)
     }
 }

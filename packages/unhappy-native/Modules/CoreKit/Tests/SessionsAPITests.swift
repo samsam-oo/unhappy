@@ -401,4 +401,71 @@ struct SessionsAPITests {
         #expect(response.actionRequired == "CREATE_DIRECTORY")
         #expect(response.directory == "/tmp/new-project")
     }
+
+    @Test
+    func sessionBashRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionBashRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            command: "ls -la",
+            cwd: "/tmp/work",
+            timeout: 20_000
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/bash")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["command"] as? String == "ls -la")
+        #expect(payload?["cwd"] as? String == "/tmp/work")
+        #expect(payload?["timeout"] as? Int == 20_000)
+    }
+
+    @Test
+    func sessionReadFileRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionReadFileRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            path: "/tmp/work/file.txt"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/read-file")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["path"] as? String == "/tmp/work/file.txt")
+    }
+
+    @Test
+    func sessionKillRequestUsesExpectedPathAndMethod() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionKillRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/kill")
+    }
+
+    @Test
+    func decodeSessionReadFileResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "content": "aGVsbG8="
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionReadFileResponse(json)
+        #expect(response.success == true)
+        #expect(response.content == "aGVsbG8=")
+    }
 }
