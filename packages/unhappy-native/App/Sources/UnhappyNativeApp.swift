@@ -9,6 +9,7 @@ import FeatureSettings
 
 @main
 struct UnhappyNativeApp: App {
+    private let onboarding: any HomeAccountOnboardingAction
     private let makeSettingsViewModel: @MainActor () -> SettingsViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
@@ -65,6 +66,11 @@ struct UnhappyNativeApp: App {
         let accountRestoreQRUseCase = AccountRestoreQRUseCase(
             requestService: accountRestoreRequestService
         )
+        let onboardingUseCase = HomeAccountOnboardingUseCase(
+            authTokenService: authTokenService,
+            secretStore: accountSecretStore
+        )
+        self.onboarding = onboardingUseCase
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
         self.makeNewSessionViewModel = {
@@ -121,6 +127,7 @@ struct UnhappyNativeApp: App {
     var body: some Scene {
         WindowGroup {
             HomeView(
+                onboarding: onboarding,
                 makeSettingsViewModel: makeSettingsViewModel,
                 makeSessionsViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,

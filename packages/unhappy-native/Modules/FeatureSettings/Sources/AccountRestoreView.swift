@@ -4,13 +4,13 @@ import UIKit
 #endif
 
 @MainActor
-struct AccountRestoreView: View {
+public struct AccountRestoreView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @StateObject private var accountLinkViewModel: AccountLinkSettingsViewModel
     @State private var localStatusMessage: String?
     @State private var qrRestoreTask: Task<Void, Never>?
 
-    init(
+    public init(
         viewModel: SettingsViewModel,
         makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel
     ) {
@@ -18,7 +18,7 @@ struct AccountRestoreView: View {
         _accountLinkViewModel = StateObject(wrappedValue: makeAccountLinkViewModel())
     }
 
-    var body: some View {
+    public var body: some View {
         Form {
             Section("Restore") {
                 LabeledContent("Server") {
