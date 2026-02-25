@@ -49,7 +49,7 @@ Last updated: 2026-02-25
 | `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 구현. 실제 terminal approval handshake는 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
 | `settings/index.tsx` | Partial | Account/Server/Connectors/Terminal/Language/Appearance/Features/Profiles/Usage/Voice/Machine 진입 제공. |
-| `settings/account.tsx` | Partial | token 기반 account 상태/복사/토큰 제거 UI 구현. OAuth/social connect/disconnect/github/profile sync는 미구현. |
+| `settings/account.tsx` | Partial | token 기반 app access 상태/복사/토큰 제거 UI 구현. 완료 기준은 token이 아니라 daemon running 상태(Connectors)로 안내. OAuth/social connect/disconnect/github/profile sync는 미구현. |
 | `settings/features.tsx` | Done | experiments/hideInactiveSessions/useEnhancedSessionWizard 토글 + 로컬 저장 구현. |
 | `settings/language.tsx` | Done | 앱 언어(System/English/Korean) 선택 및 로컬 저장 구현. |
 | `settings/appearance.tsx` | Done | 테마(System/Light/Dark) 선택 및 로컬 저장 구현. |
@@ -57,7 +57,7 @@ Last updated: 2026-02-25
 | `settings/profiles.tsx` | Partial | 기본 New Session 에이전트(Claude/Codex/Gemini) 선택/저장 구현. web의 full profile CRUD/advanced config는 미구현. |
 | `settings/voice.tsx` | Done | voice enable 토글 + voice language 화면 진입 구현. |
 | `settings/voice/language.tsx` | Done | voice language(System/English/Korean) picker + 로컬 저장 구현. |
-| `settings/connect/claude.tsx` | Partial | 독립 Claude connect route 대신 Settings `Connectors`에서 daemon-managed connector 정책 안내 제공. OAuth connect flow는 미구현. |
+| `settings/connect/claude.tsx` | Partial | 독립 Claude connect route 대신 Settings `Connectors`에서 daemon status(online machines) 기반 완료 상태를 표시. OAuth connect flow는 미구현. |
 | `artifacts/index.tsx` | Not started | artifact list 미구현. |
 | `artifacts/new.tsx` | Not started | artifact create 미구현. |
 | `artifacts/[id].tsx` | Not started | artifact detail 미구현. |
