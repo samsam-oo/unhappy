@@ -582,6 +582,102 @@ export function sessionRoutes(app: Fastify) {
         return reply.send(result);
     });
 
+    app.post('/v1/sessions/:sessionId/spawn', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                directory: z.string(),
+                agent: z.enum(['claude', 'codex', 'gemini']).optional(),
+                codexResumeThreadId: z.string().optional(),
+                claudeResumeSessionId: z.string().optional(),
+                approvedNewDirectoryCreation: z.boolean().optional()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const {
+            directory,
+            agent,
+            codexResumeThreadId,
+            claudeResumeSessionId,
+            approvedNewDirectoryCreation
+        } = request.body;
+
+        const normalizedDirectory = directory.trim();
+        if (!normalizedDirectory) {
+            return reply.code(400).send({ success: false, error: 'Directory is required' });
+        }
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const machineId = await findConnectedMachineForSession(userId, sessionId);
+        if (!machineId) {
+            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
+        }
+
+        const target = findConnectedMachine(userId, machineId);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'spawn-unhappy-session',
+            params: {
+                directory: normalizedDirectory,
+                sessionId,
+                agent,
+                codexResumeThreadId:
+                    typeof codexResumeThreadId === 'string' && codexResumeThreadId.trim().length > 0
+                        ? codexResumeThreadId.trim()
+                        : undefined,
+                claudeResumeSessionId:
+                    typeof claudeResumeSessionId === 'string' && claudeResumeSessionId.trim().length > 0
+                        ? claudeResumeSessionId.trim()
+                        : undefined,
+                approvedNewDirectoryCreation
+            }
+        });
+
+        if (result?.type === 'requestToApproveDirectoryCreation') {
+            return reply.code(409).send({
+                success: false,
+                requiresUserApproval: true,
+                actionRequired: 'CREATE_DIRECTORY',
+                directory: result.directory
+            });
+        }
+
+        if (result?.type === 'success' && typeof result?.sessionId === 'string') {
+            return reply.send({
+                success: true,
+                sessionId: result.sessionId
+            });
+        }
+
+        return reply.code(502).send({
+            success: false,
+            error: typeof result?.error === 'string'
+                ? result.error
+                : typeof result?.errorMessage === 'string'
+                    ? result.errorMessage
+                    : 'Failed to spawn session'
+        });
+    });
+
     app.patch('/v1/sessions/:sessionId/codex/title', {
         schema: {
             params: z.object({
