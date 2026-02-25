@@ -146,6 +146,8 @@ export interface SpawnSessionOptions {
     sessionId?: string;
     // Optional explicit Codex thread id to resume on first turn.
     codexResumeThreadId?: string;
+    // Optional explicit Claude session id to resume on first turn.
+    claudeResumeSessionId?: string;
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex' | 'gemini';
     token?: string;

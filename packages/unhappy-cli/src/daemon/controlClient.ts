@@ -110,11 +110,17 @@ export async function spawnDaemonSession(
   directory: string,
   sessionId?: string,
   codexResumeThreadId?: string,
+  options?: {
+    claudeResumeSessionId?: string;
+    agent?: 'claude' | 'codex' | 'gemini';
+  },
 ): Promise<any> {
   const result = await daemonPost('/spawn-session', {
     directory,
     sessionId,
     codexResumeThreadId,
+    claudeResumeSessionId: options?.claudeResumeSessionId,
+    agent: options?.agent,
   });
   return result;
 }
