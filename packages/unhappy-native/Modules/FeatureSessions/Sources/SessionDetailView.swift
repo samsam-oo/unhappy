@@ -90,6 +90,17 @@ public struct SessionDetailView: View {
                 } label: {
                     Label("Review Diff", systemImage: "doc.text.magnifyingglass")
                 }
+
+                NavigationLink {
+                    SessionFinishView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("Finish Worktree", systemImage: "checkmark.circle")
+                }
             }
 
             Section("Messages") {
