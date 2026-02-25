@@ -13,6 +13,8 @@ public struct SessionReviewView: View {
     @State private var statusMessage: String?
     @State private var errorMessage: String?
     @State private var diffOutput: String = ""
+    @State private var diffFiles: [SessionReviewDiffFilePresentation] = []
+    @State private var selectedDiffFileID: String?
 
     public init(
         session: APISession,
@@ -64,6 +66,39 @@ public struct SessionReviewView: View {
                 }
             }
 
+            Section("Changed Files") {
+                if isLoading {
+                    ProgressView("Parsing diff files…")
+                } else if diffFiles.isEmpty {
+                    Text("No file summaries")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(diffFiles) { file in
+                        Button {
+                            selectedDiffFileID = file.id
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(file.path)
+                                        .font(.footnote.monospaced())
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(file.hunkCount == 1 ? "1 hunk" : "\(file.hunkCount) hunks")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(file.preview)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
             Section("Diff") {
                 if isLoading {
                     ProgressView("Loading diff…")
@@ -71,6 +106,15 @@ public struct SessionReviewView: View {
                     Text("No changes")
                         .foregroundStyle(.secondary)
                 } else {
+                    Text(selectedDiffFile?.patch ?? diffOutput)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                        .lineLimit(nil)
+                }
+            }
+
+            if !diffOutput.isEmpty {
+                Section("Raw Diff") {
                     Text(diffOutput)
                         .font(.footnote.monospaced())
                         .textSelection(.enabled)
@@ -92,6 +136,8 @@ public struct SessionReviewView: View {
         statusMessage = nil
         errorMessage = nil
         diffOutput = ""
+        diffFiles = []
+        selectedDiffFileID = nil
         defer { isLoading = false }
 
         let normalizedRepoPath = normalizedOptional(repoPath)
@@ -134,6 +180,8 @@ public struct SessionReviewView: View {
             statusMessage = "No changes"
             diffOutput = ""
         } else {
+            diffFiles = SessionReviewDiffPresentationBuilder.parseFiles(from: normalizedDiff)
+            selectedDiffFileID = diffFiles.first?.id
             statusMessage = "Loaded diff (\(normalizedDiff.split(separator: "\n").count) lines)"
             diffOutput = normalizedDiff
         }
@@ -194,6 +242,11 @@ public struct SessionReviewView: View {
             .split(separator: "\n")
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+    }
+
+    private var selectedDiffFile: SessionReviewDiffFilePresentation? {
+        guard let selectedDiffFileID else { return nil }
+        return diffFiles.first(where: { $0.id == selectedDiffFileID })
     }
 }
 
