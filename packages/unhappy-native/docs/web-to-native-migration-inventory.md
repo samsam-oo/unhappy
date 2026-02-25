@@ -34,7 +34,7 @@ Last updated: 2026-02-25
 | `index.tsx` | Partial | Native home exists, but auth onboarding/create/restore flow parity is missing. |
 | `session/[id].tsx` | Partial | Native detail/messages view exists, but chat composer/tool flow parity is not complete. |
 | `session/recent.tsx` | Partial | Session list exists; dedicated recent-only UX is not separated. |
-| `session/[id]/info.tsx` | Partial | 일부(제목 변경/삭제/코덱스·클로드 목록)만 있음. kill, CLI diagnostics, full metadata UI 미구현. |
+| `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission response/mode switch 기본 액션 구현. CLI diagnostics, full metadata UI 미구현. |
 | `session/[id]/file.tsx` | Partial | 기본 file read/viewer 구현 완료. syntax highlight/diff view 미구현. |
 | `session/[id]/review.tsx` | Not started | Diff review/editor flow 미구현. |
 | `session/[id]/finish.tsx` | Not started | worktree finish/merge/commit UI 미구현. |
@@ -82,7 +82,7 @@ Last updated: 2026-02-25
 | --- | --- | --- |
 | `sync` sessions list/messages/delete/title | Partial | list/messages/delete/title 일부 구현 완료. |
 | codex/claude history list + resume (`/codex/threads`, `/claude/sessions`, spawn resume params) | Partial | 구현됨. UI polish 및 error/empty handling 보강 필요. |
-| `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 `commands/permission|abort|switch` 브릿지 추가. 네이티브 steer UI 미구현. |
+| `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 브릿지 + native 수동 action UI(allow/deny/abort/switch) 구현. steer(queue/immediate) 입력 UI는 미구현. |
 | `ops` file/dir/ripgrep/bash session tools | Partial | 서버 `commands/*` + 네이티브 file viewer/kill 구현. review/finish UI는 미이관. |
 | `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`, `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
 | `apiArtifacts` | Not started | artifact CRUD 전부 미이관. |
@@ -116,7 +116,7 @@ Last updated: 2026-02-25
 ## Immediate Next Migration Tasks
 
 - [x] `CoreKit`에 Session Tool API protocol 세트 추가 (`allow/deny/abort`, file/dir/ripgrep/bash/kill).
-- [x] `FeatureSessionTools` 모듈 생성 + 최소 화면 `SessionInfo`, `SessionFile`.
+- [x] `FeatureSessionTools` 모듈 생성 + `SessionInfo`, `SessionFile`, kill/abort/permission/switch 기본 액션 구현.
 - [x] `FeatureMachine` 모듈 생성 + `machine/[id]` 핵심 액션(`spawn`, `update-daemon`) 구현.
 - [x] `FeatureNewSession` 모듈 생성 + `new/index` 기본 플로우(machine/path/agent 선택 + spawn) 구현.
 - [ ] 위 4개를 TDD로 붙이고, 각 모듈 test target에서 use-case 단위 테스트 추가.
