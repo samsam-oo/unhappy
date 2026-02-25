@@ -15,6 +15,18 @@ public final class SettingsViewModel: ObservableObject {
             schedulePersistence()
         }
     }
+    @Published public var selectedLanguage: AppLanguageOption {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
+    @Published public var selectedAppearance: AppAppearanceOption {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
 
     private let settingsManager: any SettingsManaging
     private var hasLoadedInitialSettings = false
@@ -24,6 +36,8 @@ public final class SettingsViewModel: ObservableObject {
         self.settingsManager = settingsManager
         self.serverURLString = "https://api.unhappy.im"
         self.apiToken = ""
+        self.selectedLanguage = .system
+        self.selectedAppearance = .system
     }
 
     deinit {
@@ -35,6 +49,8 @@ public final class SettingsViewModel: ObservableObject {
         let settings = await settingsManager.loadSettings()
         serverURLString = settings.serverURLString
         apiToken = settings.apiToken
+        selectedLanguage = settings.appLanguage
+        selectedAppearance = settings.appearance
         hasLoadedInitialSettings = true
     }
 
@@ -46,12 +62,16 @@ public final class SettingsViewModel: ObservableObject {
         let manager = settingsManager
         let serverURLString = self.serverURLString
         let apiToken = self.apiToken
+        let selectedLanguage = self.selectedLanguage
+        let selectedAppearance = self.selectedAppearance
         persistenceTask?.cancel()
         persistenceTask = Task {
             guard !Task.isCancelled else { return }
             await manager.persistSettings(
                 serverURLString: serverURLString,
-                apiToken: apiToken
+                apiToken: apiToken,
+                appLanguage: selectedLanguage,
+                appearance: selectedAppearance
             )
         }
     }

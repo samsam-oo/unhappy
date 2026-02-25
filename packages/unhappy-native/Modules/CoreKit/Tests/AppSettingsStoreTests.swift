@@ -21,6 +21,8 @@ struct AppSettingsStoreTests {
 
         #expect(await store.serverURLString() == "https://default.example.com")
         #expect(await store.apiToken() == "")
+        #expect(await store.appLanguageCode() == "system")
+        #expect(await store.appearanceMode() == "system")
     }
 
     @Test
@@ -37,8 +39,12 @@ struct AppSettingsStoreTests {
         let store = UserDefaultsAppSettingsStore(defaults: defaults)
         await store.setServerURLString("https://api.example.com")
         await store.setAPIToken("secret")
+        await store.setAppLanguageCode("korean")
+        await store.setAppearanceMode("dark")
 
         #expect(await store.serverURLString() == "https://api.example.com")
         #expect(await store.apiToken() == "secret")
+        #expect(await store.appLanguageCode() == "korean")
+        #expect(await store.appearanceMode() == "dark")
     }
 }

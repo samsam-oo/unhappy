@@ -26,6 +26,19 @@ public struct SettingsView: View {
                     }
                 }
 
+                Section("Preferences") {
+                    NavigationLink {
+                        LanguageSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Language", systemImage: "globe")
+                    }
+                    NavigationLink {
+                        AppearanceSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Appearance", systemImage: "circle.lefthalf.filled")
+                    }
+                }
+
                 Section("Machine") {
                     NavigationLink {
                         MachinesView(
@@ -60,8 +73,18 @@ public struct SettingsView: View {
 
 private actor PreviewSettingsManager: SettingsManaging {
     func loadSettings() async -> AppSettingsSnapshot {
-        AppSettingsSnapshot(serverURLString: "https://api.unhappy.im", apiToken: "")
+        AppSettingsSnapshot(
+            serverURLString: "https://api.unhappy.im",
+            apiToken: "",
+            appLanguage: .system,
+            appearance: .system
+        )
     }
 
-    func persistSettings(serverURLString: String, apiToken: String) async {}
+    func persistSettings(
+        serverURLString: String,
+        apiToken: String,
+        appLanguage: AppLanguageOption,
+        appearance: AppAppearanceOption
+    ) async {}
 }

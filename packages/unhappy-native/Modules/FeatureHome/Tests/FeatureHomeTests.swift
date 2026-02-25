@@ -59,5 +59,10 @@ private actor MockSettingsManager: SettingsManaging {
         AppSettingsSnapshot(serverURLString: "https://api.unhappy.im", apiToken: "")
     }
 
-    func persistSettings(serverURLString: String, apiToken: String) async {}
+    func persistSettings(
+        serverURLString: String,
+        apiToken: String,
+        appLanguage: AppLanguageOption,
+        appearance: AppAppearanceOption
+    ) async {}
 }
