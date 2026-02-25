@@ -21,6 +21,9 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var isLoadingCodexThreads = false
     @Published public private(set) var selectedCodexThreadsErrorMessage: String?
     @Published public private(set) var selectedCodexThreadsSessionID: String?
+    @Published public private(set) var codexResumeInProgressThreadID: String?
+    @Published public private(set) var codexResumeStatusMessage: String?
+    @Published public private(set) var codexResumeErrorMessage: String?
     @Published public private(set) var selectedClaudeSessions: [APIClaudeSessionSummary] = []
     @Published public private(set) var isLoadingClaudeSessions = false
     @Published public private(set) var selectedClaudeSessionsErrorMessage: String?
@@ -96,6 +99,10 @@ public final class SessionsViewModel: ObservableObject {
 
     public var isResumingClaudeSession: Bool {
         claudeResumeInProgressSessionID != nil
+    }
+
+    public var isResumingCodexSession: Bool {
+        codexResumeInProgressThreadID != nil
     }
 
     var cachedSessionMessagesCount: Int {
@@ -301,6 +308,53 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    public func resumeCodexThread(
+        from sourceSessionID: String,
+        codexResumeThreadID: String,
+        serverURLString: String,
+        token: String,
+        directory: String
+    ) async {
+        codexResumeInProgressThreadID = codexResumeThreadID
+        codexResumeStatusMessage = nil
+        codexResumeErrorMessage = nil
+        defer {
+            if codexResumeInProgressThreadID == codexResumeThreadID {
+                codexResumeInProgressThreadID = nil
+            }
+        }
+
+        guard let spawnUseCase else {
+            codexResumeErrorMessage = "Thread resume is unavailable in this build"
+            return
+        }
+
+        do {
+            let response = try await spawnUseCase.spawnSession(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sourceSessionID,
+                directory: directory,
+                agent: .codex,
+                codexResumeThreadID: codexResumeThreadID,
+                claudeResumeSessionID: nil,
+                approvedNewDirectoryCreation: true
+            )
+
+            if let sessionID = response.sessionID, !sessionID.isEmpty {
+                codexResumeStatusMessage = "Resumed into new session \(sessionID)"
+            } else {
+                codexResumeStatusMessage = "Resumed Codex thread"
+            }
+            codexResumeErrorMessage = nil
+
+            await load(serverURLString: serverURLString, token: token)
+        } catch {
+            codexResumeStatusMessage = nil
+            codexResumeErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     public func resumeClaudeSession(
         from sourceSessionID: String,
         claudeResumeSessionID: String,
@@ -387,6 +441,9 @@ public final class SessionsViewModel: ObservableObject {
             selectedClaudeSessions = []
             selectedClaudeSessionsErrorMessage = nil
         }
+        codexResumeInProgressThreadID = nil
+        codexResumeStatusMessage = nil
+        codexResumeErrorMessage = nil
         claudeResumeInProgressSessionID = nil
         claudeResumeStatusMessage = nil
         claudeResumeErrorMessage = nil

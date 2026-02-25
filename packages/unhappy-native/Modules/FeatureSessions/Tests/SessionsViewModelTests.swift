@@ -396,6 +396,81 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func resumeCodexThreadPublishesSuccessStatus() async throws {
+        let reloadedSessions = [
+            APISession(
+                id: "session-reloaded",
+                active: true,
+                activeAt: 100,
+                createdAt: 90,
+                updatedAt: 110,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: reloadedSessions, nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            spawnUseCase: MockSessionSpawnUseCase(
+                result: .success(
+                    APISessionSpawnResult(
+                        success: true,
+                        sessionID: "spawned-session-2",
+                        requiresUserApproval: nil,
+                        actionRequired: nil,
+                        directory: nil,
+                        error: nil
+                    )
+                )
+            ),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.resumeCodexThread(
+            from: "session-1",
+            codexResumeThreadID: "thread-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            directory: "/tmp/work"
+        )
+
+        #expect(model.codexResumeErrorMessage == nil)
+        #expect(model.codexResumeStatusMessage == "Resumed into new session spawned-session-2")
+        #expect(model.sessions == reloadedSessions)
+        #expect(model.codexResumeInProgressThreadID == nil)
+    }
+
+    @Test
+    func resumeCodexThreadPublishesErrorOnFailure() async throws {
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            spawnUseCase: MockSessionSpawnUseCase(result: .failure(.failed)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.resumeCodexThread(
+            from: "session-1",
+            codexResumeThreadID: "thread-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            directory: "/tmp/work"
+        )
+
+        #expect(model.codexResumeStatusMessage == nil)
+        #expect(model.codexResumeErrorMessage?.contains("MockSessionSpawnUseCaseError") == true)
+        #expect(model.codexResumeInProgressThreadID == nil)
+    }
+
+    @Test
     func resumeClaudeSessionPublishesSuccessStatus() async throws {
         let reloadedSessions = [
             APISession(

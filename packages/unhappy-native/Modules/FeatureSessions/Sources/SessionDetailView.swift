@@ -15,6 +15,7 @@ public struct SessionDetailView: View {
     @State private var showClaudeSessionsSheet = false
     @State private var renameDraft = ""
     @State private var codexCwdFilterDraft = ""
+    @State private var codexResumeDirectoryDraft = ""
     @State private var claudeCwdFilterDraft = ""
     @State private var claudeResumeDirectoryDraft = ""
 
@@ -106,6 +107,9 @@ public struct SessionDetailView: View {
                     Menu {
                         Button("List Codex Sessions", systemImage: "list.bullet") {
                             showCodexThreadsSheet = true
+                            if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                codexResumeDirectoryDraft = codexCwdFilterDraft
+                            }
                             Task {
                                 await viewModel.loadCodexThreads(
                                     for: session.id,
@@ -216,6 +220,24 @@ public struct SessionDetailView: View {
                         }
                         .disabled(viewModel.isLoadingCodexThreads)
                     }
+                    Section("Resume") {
+                        TextField("Directory for resumed session", text: $codexResumeDirectoryDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Text("If empty, selected row cwd is used.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if let status = viewModel.codexResumeStatusMessage {
+                            Text(status)
+                                .font(.footnote)
+                                .foregroundStyle(.green)
+                        }
+                        if let error = viewModel.codexResumeErrorMessage {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
+                    }
 
                     if viewModel.isLoadingCodexThreads {
                         ProgressView("Loading Codex sessions…")
@@ -243,7 +265,32 @@ public struct SessionDetailView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(viewModel.selectedCodexThreads) { thread in
-                            CodexThreadRow(thread: thread)
+                            Button {
+                                let resumeDirectory =
+                                    normalizedCWD(from: codexResumeDirectoryDraft)
+                                    ?? normalizedCWD(from: thread.cwd ?? "")
+                                    ?? normalizedCWD(from: codexCwdFilterDraft)
+                                    ?? ""
+                                Task {
+                                    await viewModel.resumeCodexThread(
+                                        from: session.id,
+                                        codexResumeThreadID: thread.id,
+                                        serverURLString: serverURLString,
+                                        token: token,
+                                        directory: resumeDirectory
+                                    )
+                                }
+                            } label: {
+                                CodexThreadRow(
+                                    thread: thread,
+                                    isResuming: viewModel.codexResumeInProgressThreadID == thread.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(
+                                viewModel.isResumingCodexSession &&
+                                    viewModel.codexResumeInProgressThreadID != thread.id
+                            )
                         }
                     }
                 }
@@ -411,12 +458,24 @@ private struct CodexThreadRow: View {
     }()
 
     let thread: APICodexThreadSummary
+    let isResuming: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(threadName)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                Text(threadName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                if isResuming {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Resume")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
             Text(thread.id)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
