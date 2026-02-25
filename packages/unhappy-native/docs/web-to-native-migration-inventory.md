@@ -45,8 +45,8 @@ Last updated: 2026-02-25
 | `new/pick/profile-edit.tsx` | Partial | New Session에서 local profile 저장/적용/삭제(기본) 구현. web의 full profile edit form/compatibility options는 미구현. |
 | `new/pick/project.tsx` | Partial | 최근 프로젝트 경로 quick pick(로컬 저장/재선택) 구현. 원본의 full project discovery/search UX는 미구현. |
 | `machine/[id].tsx` | Partial | machine detail + daemon control + spawn + daemonState/metadata 진단 프리뷰(파싱 필드/원문 프리뷰) 구현. metadata 편집은 미구현. |
-| `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력/요청 미리보기 진입 구현. QR 승인 플로우는 미구현. |
-| `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 구현. 실제 terminal approval handshake는 미구현. |
+| `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력 + 요청 상태 조회(`pending/authorized/not_found`) + approve 액션 구현. QR 승인 플로우는 미구현. |
+| `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 + encrypted approve(`v1/v2`) 구현. scanner/web deep-link parity는 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
 | `settings/index.tsx` | Partial | Account/Server/Connectors/Terminal/Language/Appearance/Features/Profiles/Usage/Voice/Machine 진입 제공. |
 | `settings/account.tsx` | Partial | token 기반 app access 상태/복사/토큰 제거 UI 구현. 완료 기준은 token이 아니라 daemon running 상태(Connectors)로 안내. OAuth/social connect/disconnect/github/profile sync는 미구현. |
@@ -89,7 +89,7 @@ Last updated: 2026-02-25
 | `apiFriends`, `apiFeed`, `apiGithub`, `apiServices` | Not started | social/account integrations 미이관. |
 | `apiUsage`, `apiPush`, `apiKv`, `apiVoice` | Not started | usage/push/kv/voice 전부 미이관. |
 | `apiSocket` + realtime reducer pipeline | Not started | 현재 native는 polling 중심, socket/reducer parity 없음. |
-| Encryption (`encryption/*`) | Not started | machine/session/artifact encryption stack 미이관. |
+| Encryption (`encryption/*`) | Partial | machine/session/artifact encryption stack은 미이관. terminal connect 승인용 `tweetnacl box` 암호화(v1/v2 payload)만 최소 이관. |
 | Git/worktree (`gitStatusSync`, `projectManager`, `worktreeDiscovery`) | Not started | review/finish/new-session 고급 흐름에 필요. |
 | Local settings / profiles / purchases | Partial | server/language/appearance/features/voice 로컬 설정 저장 구현. profiles/purchases parity는 미구현. |
 
