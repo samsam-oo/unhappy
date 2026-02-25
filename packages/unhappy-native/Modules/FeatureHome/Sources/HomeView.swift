@@ -142,6 +142,9 @@ public struct HomeView: View {
                     service: URLSessionAccountAuthService(),
                     encryptor: TweetNaclTerminalAuthEncryptor()
                 ),
+                restorer: AccountRestoreUseCase(
+                    authTokenService: URLSessionAuthTokenService()
+                ),
                 secretStore: UserDefaultsAccountSecretStore()
             )
         }

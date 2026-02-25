@@ -69,7 +69,7 @@ public actor AccountLinkUseCase: AccountLinkingAction {
         guard !normalizedSecret.isEmpty else {
             throw AccountLinkError.missingAccountSecret
         }
-        guard let secretData = Base64URLCodec.decode(normalizedSecret), !secretData.isEmpty else {
+        guard let secretData = AccountSecretCodec.decode(normalizedSecret), !secretData.isEmpty else {
             throw AccountLinkError.invalidAccountSecret
         }
 

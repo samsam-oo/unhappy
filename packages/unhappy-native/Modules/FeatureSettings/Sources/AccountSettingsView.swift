@@ -66,6 +66,8 @@ struct AccountSettingsView: View {
                 }
                 if accountLinkViewModel.isLinking {
                     ProgressView("Linking device...")
+                } else if accountLinkViewModel.isRestoring {
+                    ProgressView("Restoring token from secret...")
                 }
                 if let statusMessage = accountLinkViewModel.statusMessage {
                     Text(statusMessage)
@@ -83,12 +85,12 @@ struct AccountSettingsView: View {
                 Button("Scan Account QR") {
                     showingScanner = true
                 }
-                .disabled(accountLinkViewModel.isLinking)
+                .disabled(accountLinkViewModel.isLinking || accountLinkViewModel.isRestoring)
 
                 Button("Paste Account URL") {
                     pasteFromClipboard()
                 }
-                .disabled(accountLinkViewModel.isLinking)
+                .disabled(accountLinkViewModel.isLinking || accountLinkViewModel.isRestoring)
 
                 Button("Link Device") {
                     Task {
@@ -106,6 +108,25 @@ struct AccountSettingsView: View {
                             .trimmingCharacters(in: .whitespacesAndNewlines)
                             .isEmpty
                         || accountLinkViewModel.isLinking
+                        || accountLinkViewModel.isRestoring
+                )
+
+                Button("Restore Token From Secret") {
+                    Task {
+                        if let restoredToken = await accountLinkViewModel.restoreToken(
+                            serverURLString: viewModel.serverURLString
+                        ) {
+                            viewModel.apiToken = restoredToken
+                            statusMessage = "Restored API token"
+                        }
+                    }
+                }
+                .disabled(
+                    accountLinkViewModel.accountSecretBase64URL
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+                        || accountLinkViewModel.isLinking
+                        || accountLinkViewModel.isRestoring
                 )
 
                 Button("Copy API Token") {

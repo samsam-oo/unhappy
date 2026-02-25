@@ -9,6 +9,7 @@ struct AccountLinkSettingsViewModelTests {
         let secretStore = MemoryAccountSecretStore(initialSecret: "secret-base64url")
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
+            restorer: MockAccountRestorer(),
             secretStore: secretStore
         )
 
@@ -22,6 +23,7 @@ struct AccountLinkSettingsViewModelTests {
         let secretStore = MemoryAccountSecretStore(initialSecret: "")
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
+            restorer: MockAccountRestorer(),
             secretStore: secretStore
         )
 
@@ -37,6 +39,7 @@ struct AccountLinkSettingsViewModelTests {
         let linker = MockAccountLinker()
         let model = AccountLinkSettingsViewModel(
             linker: linker,
+            restorer: MockAccountRestorer(),
             secretStore: MemoryAccountSecretStore(initialSecret: "secret")
         )
 
@@ -58,6 +61,7 @@ struct AccountLinkSettingsViewModelTests {
         let linker = MockAccountLinker(error: AccountLinkError.invalidAccountAuthURL)
         let model = AccountLinkSettingsViewModel(
             linker: linker,
+            restorer: MockAccountRestorer(),
             secretStore: MemoryAccountSecretStore(initialSecret: "secret")
         )
 
@@ -71,6 +75,43 @@ struct AccountLinkSettingsViewModelTests {
         #expect(model.statusMessage == nil)
         #expect(model.errorMessage == "Invalid account QR URL")
         #expect(model.isLinking == false)
+    }
+
+    @Test
+    func restoreTokenSetsSuccessMessageAndReturnsToken() async {
+        let restorer = MockAccountRestorer(token: "restored-token")
+        let model = AccountLinkSettingsViewModel(
+            linker: MockAccountLinker(),
+            restorer: restorer,
+            secretStore: MemoryAccountSecretStore(initialSecret: "secret")
+        )
+
+        await model.loadFromStore()
+        let token = await model.restoreToken(serverURLString: "https://api.unhappy.im")
+
+        #expect(token == "restored-token")
+        #expect(model.statusMessage == "Recovered API token from secret key")
+        #expect(model.errorMessage == nil)
+        #expect(model.isRestoring == false)
+        #expect(await restorer.lastCall?.serverURLString == "https://api.unhappy.im")
+    }
+
+    @Test
+    func restoreTokenSetsErrorMessage() async {
+        let restorer = MockAccountRestorer(error: AccountRestoreError.invalidAccountSecret)
+        let model = AccountLinkSettingsViewModel(
+            linker: MockAccountLinker(),
+            restorer: restorer,
+            secretStore: MemoryAccountSecretStore(initialSecret: "secret")
+        )
+
+        await model.loadFromStore()
+        let token = await model.restoreToken(serverURLString: "https://api.unhappy.im")
+
+        #expect(token == nil)
+        #expect(model.statusMessage == nil)
+        #expect(model.errorMessage == "Invalid account secret key")
+        #expect(model.isRestoring == false)
     }
 }
 
@@ -120,5 +161,32 @@ private actor MockAccountLinker: AccountLinkingAction {
             accountSecretBase64URL: accountSecretBase64URL,
             accountAuthURLString: accountAuthURLString
         )
+    }
+}
+
+private actor MockAccountRestorer: AccountTokenRestoringAction {
+    struct RestoreCall: Equatable {
+        let serverURLString: String
+        let accountSecretRaw: String
+    }
+
+    private(set) var lastCall: RestoreCall?
+    private let token: String
+    private let error: Error?
+
+    init(token: String = "token", error: Error? = nil) {
+        self.token = token
+        self.error = error
+    }
+
+    func restoreToken(serverURLString: String, accountSecretRaw: String) async throws -> String {
+        if let error {
+            throw error
+        }
+        lastCall = RestoreCall(
+            serverURLString: serverURLString,
+            accountSecretRaw: accountSecretRaw
+        )
+        return token
     }
 }

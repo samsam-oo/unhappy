@@ -48,6 +48,7 @@ struct UnhappyNativeApp: App {
         let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
         let terminalAuthService = URLSessionTerminalAuthService()
         let accountAuthService = URLSessionAccountAuthService()
+        let authTokenService = URLSessionAuthTokenService()
         let terminalDataKeyStore = UserDefaultsTerminalDataKeyStore()
         let accountSecretStore = UserDefaultsAccountSecretStore()
         let terminalConnectUseCase = TerminalConnectUseCase(
@@ -59,6 +60,7 @@ struct UnhappyNativeApp: App {
             service: accountAuthService,
             encryptor: TweetNaclTerminalAuthEncryptor()
         )
+        let accountRestoreUseCase = AccountRestoreUseCase(authTokenService: authTokenService)
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
         self.makeNewSessionViewModel = {
@@ -105,6 +107,7 @@ struct UnhappyNativeApp: App {
         self.makeAccountLinkViewModel = {
             AccountLinkSettingsViewModel(
                 linker: accountLinkUseCase,
+                restorer: accountRestoreUseCase,
                 secretStore: accountSecretStore
             )
         }

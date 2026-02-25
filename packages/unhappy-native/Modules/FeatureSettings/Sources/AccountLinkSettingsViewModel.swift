@@ -9,19 +9,23 @@ public final class AccountLinkSettingsViewModel: ObservableObject {
         }
     }
     @Published public private(set) var isLinking = false
+    @Published public private(set) var isRestoring = false
     @Published public private(set) var statusMessage: String?
     @Published public private(set) var errorMessage: String?
 
     private let linker: any AccountLinkingAction
+    private let restorer: any AccountTokenRestoringAction
     private let secretStore: any AccountSecretStoring
     private var hasLoadedSecret = false
     private var persistenceTask: Task<Void, Never>?
 
     public init(
         linker: any AccountLinkingAction,
+        restorer: any AccountTokenRestoringAction,
         secretStore: any AccountSecretStoring
     ) {
         self.linker = linker
+        self.restorer = restorer
         self.secretStore = secretStore
         self.accountSecretBase64URL = ""
     }
@@ -42,7 +46,7 @@ public final class AccountLinkSettingsViewModel: ObservableObject {
         token: String,
         accountAuthURLString: String
     ) async {
-        guard !isLinking else { return }
+        guard !isLinking, !isRestoring else { return }
         isLinking = true
         statusMessage = nil
         errorMessage = nil
@@ -59,6 +63,29 @@ public final class AccountLinkSettingsViewModel: ObservableObject {
             errorMessage = localized ?? "Failed to link device"
         }
         isLinking = false
+    }
+
+    public func restoreToken(serverURLString: String) async -> String? {
+        guard !isRestoring, !isLinking else { return nil }
+        isRestoring = true
+        statusMessage = nil
+        errorMessage = nil
+        defer {
+            isRestoring = false
+        }
+
+        do {
+            let token = try await restorer.restoreToken(
+                serverURLString: serverURLString,
+                accountSecretRaw: accountSecretBase64URL
+            )
+            statusMessage = "Recovered API token from secret key"
+            return token
+        } catch {
+            let localized = (error as? LocalizedError)?.errorDescription
+            errorMessage = localized ?? "Failed to restore API token"
+            return nil
+        }
     }
 
     public func clearMessages() {

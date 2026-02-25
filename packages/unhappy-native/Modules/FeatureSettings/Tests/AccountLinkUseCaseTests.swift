@@ -11,7 +11,7 @@ struct AccountLinkUseCaseTests {
         let useCase = AccountLinkUseCase(service: service, encryptor: encryptor)
 
         let publicKey = Data(repeating: 0x11, count: 32)
-        let secret = Data([0xAA, 0xBB, 0xCC])
+        let secret = Data(repeating: 0xAA, count: 32)
         let accountURL = "unhappy://account?\(asBase64URL(publicKey))"
 
         try await useCase.approveAccountLink(
@@ -60,7 +60,7 @@ struct AccountLinkUseCaseTests {
             try await useCase.approveAccountLink(
                 serverURLString: "https://api.unhappy.im",
                 token: "token",
-                accountSecretBase64URL: asBase64URL(Data([1, 2, 3])),
+                accountSecretBase64URL: asBase64URL(Data(repeating: 0x01, count: 32)),
                 accountAuthURLString: "unhappy://terminal?abc123"
             )
         }
@@ -79,7 +79,7 @@ struct AccountLinkUseCaseTests {
             try await useCase.approveAccountLink(
                 serverURLString: "https://api.unhappy.im",
                 token: "token",
-                accountSecretBase64URL: asBase64URL(Data([1, 2, 3])),
+                accountSecretBase64URL: asBase64URL(Data(repeating: 0x01, count: 32)),
                 accountAuthURLString: "unhappy://account?\(asBase64URL(publicKey))"
             )
         }

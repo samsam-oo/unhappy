@@ -79,6 +79,9 @@ struct FeatureHomeTests {
                         service: URLSessionAccountAuthService(),
                         encryptor: TweetNaclTerminalAuthEncryptor()
                     ),
+                    restorer: AccountRestoreUseCase(
+                        authTokenService: URLSessionAuthTokenService()
+                    ),
                     secretStore: UserDefaultsAccountSecretStore()
                 )
             }
