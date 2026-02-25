@@ -21,7 +21,11 @@ public protocol NewSessionSpawningAction: Sendable {
         machineID: String,
         directory: String,
         agent: APISessionSpawnAgent,
-        approvedNewDirectoryCreation: Bool
+        approvedNewDirectoryCreation: Bool,
+        codexResumeThreadID: String?,
+        claudeResumeSessionID: String?,
+        sessionToken: String?,
+        environmentVariables: [String: String]
     ) async throws -> APISessionSpawnResult
 }
 
@@ -30,6 +34,7 @@ public enum NewSessionError: LocalizedError, Equatable {
     case invalidServerURL
     case missingMachineID
     case missingDirectory
+    case invalidEnvironmentVariable(line: Int, value: String)
     case requiresUserApproval(directory: String?)
     case failed(message: String)
 
@@ -43,6 +48,8 @@ public enum NewSessionError: LocalizedError, Equatable {
             return "Machine ID is required"
         case .missingDirectory:
             return "Directory is required"
+        case .invalidEnvironmentVariable(let line, let value):
+            return "Invalid environment variable at line \(line): \(value)"
         case .requiresUserApproval(let directory):
             if let directory, !directory.isEmpty {
                 return "Directory creation approval is required: \(directory)"
@@ -135,7 +142,11 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         machineID: String,
         directory: String,
         agent: APISessionSpawnAgent,
-        approvedNewDirectoryCreation: Bool
+        approvedNewDirectoryCreation: Bool,
+        codexResumeThreadID: String?,
+        claudeResumeSessionID: String?,
+        sessionToken: String?,
+        environmentVariables: [String: String]
     ) async throws -> APISessionSpawnResult {
         let (serverURL, normalizedToken, normalizedMachineID, normalizedDirectory) = try normalizeInputs(
             serverURLString: serverURLString,
@@ -150,11 +161,11 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
             machineID: normalizedMachineID,
             directory: normalizedDirectory,
             agent: agent,
-            codexResumeThreadID: nil,
-            claudeResumeSessionID: nil,
+            codexResumeThreadID: normalizedOptional(codexResumeThreadID),
+            claudeResumeSessionID: normalizedOptional(claudeResumeSessionID),
             approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-            sessionToken: nil,
-            environmentVariables: nil
+            sessionToken: normalizedOptional(sessionToken),
+            environmentVariables: environmentVariables
         )
         if response.success {
             return response
@@ -167,6 +178,12 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
             message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to spawn session"
         )
     }
+}
+
+private func normalizedOptional(_ raw: String?) -> String? {
+    guard let raw else { return nil }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
 }
 
 private func normalizeInputs(

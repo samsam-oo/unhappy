@@ -11,6 +11,10 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public private(set) var selectedMachineID: String?
     @Published public var directoryPath: String = "~"
     @Published public var selectedAgent: APISessionSpawnAgent = .claude
+    @Published public var codexResumeThreadID: String = ""
+    @Published public var claudeResumeSessionID: String = ""
+    @Published public var sessionToken: String = ""
+    @Published public var environmentVariablesText: String = ""
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var infoMessage: String?
     @Published public private(set) var approvalDirectory: String?
@@ -131,6 +135,14 @@ public final class NewSessionViewModel: ObservableObject {
         directory: String,
         approvedNewDirectoryCreation: Bool
     ) async -> Bool {
+        let environmentVariables: [String: String]
+        do {
+            environmentVariables = try NewSessionEnvironmentVariablesParser.parse(environmentVariablesText)
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+
         guard let machineID = selectedMachineID else {
             errorMessage = NewSessionError.missingMachineID.errorDescription
             return false
@@ -152,7 +164,11 @@ public final class NewSessionViewModel: ObservableObject {
                 machineID: machineID,
                 directory: directory,
                 agent: selectedAgent,
-                approvedNewDirectoryCreation: approvedNewDirectoryCreation
+                approvedNewDirectoryCreation: approvedNewDirectoryCreation,
+                codexResumeThreadID: codexResumeThreadID,
+                claudeResumeSessionID: claudeResumeSessionID,
+                sessionToken: sessionToken,
+                environmentVariables: environmentVariables
             )
             let sessionID = result.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
             spawnedSessionID = (sessionID?.isEmpty == false) ? sessionID : nil

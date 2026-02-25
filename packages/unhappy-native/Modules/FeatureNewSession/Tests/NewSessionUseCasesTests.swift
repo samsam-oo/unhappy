@@ -84,9 +84,50 @@ struct NewSessionUseCasesTests {
                 machineID: "machine-1",
                 directory: "/tmp/new",
                 agent: .claude,
-                approvedNewDirectoryCreation: false
+                approvedNewDirectoryCreation: false,
+                codexResumeThreadID: nil,
+                claudeResumeSessionID: nil,
+                sessionToken: nil,
+                environmentVariables: [:]
             )
         }
+    }
+
+    @Test
+    func spawnForwardsResumeTokenAndEnvironment() async throws {
+        let service = SpawnService(
+            response: APISessionSpawnResult(
+                success: true,
+                sessionID: "s-1",
+                requiresUserApproval: nil,
+                actionRequired: nil,
+                directory: nil,
+                error: nil
+            )
+        )
+        let useCase = NewSessionSpawnUseCase(service: service)
+        _ = try await useCase.spawnSession(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1",
+            directory: "/repo",
+            agent: .codex,
+            approvedNewDirectoryCreation: true,
+            codexResumeThreadID: "thread-123",
+            claudeResumeSessionID: "claude-456",
+            sessionToken: "session-token",
+            environmentVariables: ["OPENAI_API_KEY": "test-key"]
+        )
+
+        let request = await service.lastRequest
+        #expect(request?.machineID == "machine-1")
+        #expect(request?.directory == "/repo")
+        #expect(request?.agent == .codex)
+        #expect(request?.approvedNewDirectoryCreation == true)
+        #expect(request?.codexResumeThreadID == "thread-123")
+        #expect(request?.claudeResumeSessionID == "claude-456")
+        #expect(request?.sessionToken == "session-token")
+        #expect(request?.environmentVariables == ["OPENAI_API_KEY": "test-key"])
     }
 }
 
@@ -111,8 +152,25 @@ private struct DirectoryService: MachineDirectoryListing {
     }
 }
 
-private struct SpawnService: MachineSessionSpawning {
+private struct SpawnRequest: Equatable {
+    let machineID: String
+    let directory: String
+    let agent: APISessionSpawnAgent?
+    let codexResumeThreadID: String?
+    let claudeResumeSessionID: String?
+    let approvedNewDirectoryCreation: Bool?
+    let sessionToken: String?
+    let environmentVariables: [String: String]?
+}
+
+private actor SpawnService: MachineSessionSpawning {
     let response: APISessionSpawnResult
+    var lastRequest: SpawnRequest?
+
+    init(response: APISessionSpawnResult) {
+        self.response = response
+        self.lastRequest = nil
+    }
 
     func spawnSession(
         serverURL: URL,
@@ -126,6 +184,16 @@ private struct SpawnService: MachineSessionSpawning {
         sessionToken: String?,
         environmentVariables: [String : String]?
     ) async throws -> APISessionSpawnResult {
-        response
+        lastRequest = SpawnRequest(
+            machineID: machineID,
+            directory: directory,
+            agent: agent,
+            codexResumeThreadID: codexResumeThreadID,
+            claudeResumeSessionID: claudeResumeSessionID,
+            approvedNewDirectoryCreation: approvedNewDirectoryCreation,
+            sessionToken: sessionToken,
+            environmentVariables: environmentVariables
+        )
+        return response
     }
 }

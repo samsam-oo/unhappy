@@ -109,6 +109,29 @@ public struct NewSessionView: View {
                     }
                 }
 
+                Section("Advanced") {
+                    TextField("Codex resume thread ID (optional)", text: $viewModel.codexResumeThreadID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Claude resume session ID (optional)", text: $viewModel.claudeResumeSessionID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Session token (optional)", text: $viewModel.sessionToken)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Environment Variables (KEY=VALUE)")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $viewModel.environmentVariablesText)
+                            .font(.footnote.monospaced())
+                            .frame(minHeight: 96)
+                        Text("One variable per line. Empty lines and # comments are ignored.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Action") {
                     Button(viewModel.isSpawning ? "Starting…" : "Start Session") {
                         Task {
