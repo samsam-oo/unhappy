@@ -38,6 +38,23 @@ public final class SessionToolsViewModel: ObservableObject {
     @Published public private(set) var switchStatusMessage: String?
     @Published public private(set) var switchErrorMessage: String?
 
+    @Published public var bashCommand: String = ""
+    @Published public var bashWorkingDirectory: String = ""
+    @Published public var bashTimeoutMilliseconds: String = "30000"
+    @Published public private(set) var isRunningBash = false
+    @Published public private(set) var bashStdout: String = ""
+    @Published public private(set) var bashStderr: String = ""
+    @Published public private(set) var bashExitCode: Int?
+    @Published public private(set) var bashErrorMessage: String?
+
+    @Published public var ripgrepArgs: String = ""
+    @Published public var ripgrepWorkingDirectory: String = ""
+    @Published public private(set) var isRunningRipgrep = false
+    @Published public private(set) var ripgrepStdout: String = ""
+    @Published public private(set) var ripgrepStderr: String = ""
+    @Published public private(set) var ripgrepExitCode: Int?
+    @Published public private(set) var ripgrepErrorMessage: String?
+
     private let fileLoader: any SessionFileLoadingAction
     private let directoryLister: any SessionDirectoryListAction
     private let fileWriter: any SessionFileWriteAction
@@ -45,6 +62,8 @@ public final class SessionToolsViewModel: ObservableObject {
     private let aborter: any SessionTaskAbortAction
     private let permissionResponder: any SessionPermissionResponseAction
     private let modeSwitcher: any SessionModeSwitchAction
+    private let basher: any SessionBashRunAction
+    private let ripgrepRunner: any SessionRipgrepRunAction
 
     public init(
         fileLoader: any SessionFileLoadingAction,
@@ -53,7 +72,9 @@ public final class SessionToolsViewModel: ObservableObject {
         killer: any SessionKillAction,
         aborter: any SessionTaskAbortAction,
         permissionResponder: any SessionPermissionResponseAction,
-        modeSwitcher: any SessionModeSwitchAction
+        modeSwitcher: any SessionModeSwitchAction,
+        basher: any SessionBashRunAction,
+        ripgrepRunner: any SessionRipgrepRunAction
     ) {
         self.fileLoader = fileLoader
         self.directoryLister = directoryLister
@@ -62,6 +83,8 @@ public final class SessionToolsViewModel: ObservableObject {
         self.aborter = aborter
         self.permissionResponder = permissionResponder
         self.modeSwitcher = modeSwitcher
+        self.basher = basher
+        self.ripgrepRunner = ripgrepRunner
     }
 
     public func loadFile(
@@ -276,6 +299,67 @@ public final class SessionToolsViewModel: ObservableObject {
             switchErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
+
+    public func runBash(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        isRunningBash = true
+        bashErrorMessage = nil
+        bashStdout = ""
+        bashStderr = ""
+        bashExitCode = nil
+        defer { isRunningBash = false }
+
+        do {
+            let timeoutValue = parsedTimeoutMilliseconds(bashTimeoutMilliseconds)
+            let result = try await basher.runBash(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                command: bashCommand,
+                cwd: normalizedOptional(bashWorkingDirectory),
+                timeout: timeoutValue
+            )
+            bashStdout = truncatedOutput(result.stdout)
+            bashStderr = truncatedOutput(result.stderr)
+            bashExitCode = result.exitCode
+            bashErrorMessage = nil
+        } catch {
+            bashErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func runRipgrep(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        isRunningRipgrep = true
+        ripgrepErrorMessage = nil
+        ripgrepStdout = ""
+        ripgrepStderr = ""
+        ripgrepExitCode = nil
+        defer { isRunningRipgrep = false }
+
+        do {
+            let args = parsedCommandArguments(ripgrepArgs)
+            let result = try await ripgrepRunner.runRipgrep(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                args: args,
+                cwd: normalizedOptional(ripgrepWorkingDirectory)
+            )
+            ripgrepStdout = truncatedOutput(result.stdout)
+            ripgrepStderr = truncatedOutput(result.stderr)
+            ripgrepExitCode = result.exitCode
+            ripgrepErrorMessage = nil
+        } catch {
+            ripgrepErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
 }
 
 private func normalizedOptional(_ value: String) -> String? {
@@ -289,6 +373,47 @@ private func parsedAllowTools(_ raw: String) -> [String]? {
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
     return items.isEmpty ? nil : items
+}
+
+private func parsedCommandArguments(_ raw: String) -> [String] {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+
+    var args: [String] = []
+    var current = ""
+    var inQuotes = false
+
+    for character in trimmed {
+        if character == "\"" {
+            inQuotes.toggle()
+            continue
+        }
+        if character.isWhitespace && !inQuotes {
+            if !current.isEmpty {
+                args.append(current)
+                current.removeAll(keepingCapacity: true)
+            }
+            continue
+        }
+        current.append(character)
+    }
+
+    if !current.isEmpty {
+        args.append(current)
+    }
+    return args
+}
+
+private func parsedTimeoutMilliseconds(_ raw: String) -> Int? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+    guard let parsed = Int(trimmed), parsed > 0 else { return nil }
+    return parsed
+}
+
+private func truncatedOutput(_ value: String, limit: Int = 8_000) -> String {
+    guard value.count > limit else { return value }
+    return String(value.prefix(limit)) + "\n…(truncated)"
 }
 
 private func normalizedPath(_ raw: String) -> String {

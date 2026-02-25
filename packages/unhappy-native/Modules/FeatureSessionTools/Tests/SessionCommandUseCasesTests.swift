@@ -72,6 +72,43 @@ struct SessionCommandUseCasesTests {
         #expect(result.success == true)
         #expect(result.switched == true)
     }
+
+    @Test
+    func runBashThrowsMissingCommand() async {
+        let useCase = SessionBashUseCase(
+            service: BashService(result: .init(success: true, stdout: "", stderr: "", exitCode: 0, error: nil))
+        )
+
+        await #expect(throws: SessionCommandError.missingCommand) {
+            _ = try await useCase.runBash(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                command: "   ",
+                cwd: nil,
+                timeout: nil
+            )
+        }
+    }
+
+    @Test
+    func runRipgrepReturnsOutputWhenSuccessful() async throws {
+        let useCase = SessionRipgrepUseCase(
+            service: RipgrepService(result: .init(success: true, stdout: "Sources/App.swift:12:TODO", stderr: "", exitCode: 0, error: nil))
+        )
+
+        let result = try await useCase.runRipgrep(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            sessionID: "session-1",
+            args: ["TODO", "Sources"],
+            cwd: "/tmp/work"
+        )
+
+        #expect(result.success == true)
+        #expect(result.stdout.contains("TODO"))
+        #expect(result.exitCode == 0)
+    }
 }
 
 private struct AbortService: SessionAborting {
@@ -113,6 +150,35 @@ private struct SwitchService: SessionModeSwitching {
         sessionID: String,
         to: APISessionSwitchTarget
     ) async throws -> APISessionSwitchResult {
+        result
+    }
+}
+
+private struct BashService: SessionBashRunning {
+    let result: APISessionBashResult
+
+    func runBash(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        command: String,
+        cwd: String?,
+        timeout: Int?
+    ) async throws -> APISessionBashResult {
+        result
+    }
+}
+
+private struct RipgrepService: SessionRipgrepRunning {
+    let result: APISessionBashResult
+
+    func runRipgrep(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult {
         result
     }
 }

@@ -163,6 +163,109 @@ public struct SessionInfoView: View {
                         .foregroundStyle(.red)
                 }
             }
+
+            Section("Bash") {
+                TextField("Command", text: $viewModel.bashCommand, axis: .vertical)
+                    .lineLimit(2...4)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("Working directory (optional)", text: $viewModel.bashWorkingDirectory)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("Timeout ms (optional)", text: $viewModel.bashTimeoutMilliseconds)
+                    .keyboardType(.numberPad)
+                Button(viewModel.isRunningBash ? "Running…" : "Run Bash") {
+                    Task {
+                        await viewModel.runBash(
+                            sessionID: session.id,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .disabled(
+                    viewModel.isRunningBash ||
+                    viewModel.bashCommand.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+
+                if let exitCode = viewModel.bashExitCode {
+                    Text("Exit code: \(exitCode)")
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(exitCode == 0 ? .green : .secondary)
+                }
+                if let error = viewModel.bashErrorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+                if !viewModel.bashStdout.isEmpty {
+                    LabeledContent("stdout") {
+                        Text(viewModel.bashStdout)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                    }
+                }
+                if !viewModel.bashStderr.isEmpty {
+                    LabeledContent("stderr") {
+                        Text(viewModel.bashStderr)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("Ripgrep") {
+                TextField("Args (e.g. TODO Sources)", text: $viewModel.ripgrepArgs)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("Working directory (optional)", text: $viewModel.ripgrepWorkingDirectory)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button(viewModel.isRunningRipgrep ? "Running…" : "Run Ripgrep") {
+                    Task {
+                        await viewModel.runRipgrep(
+                            sessionID: session.id,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .disabled(
+                    viewModel.isRunningRipgrep ||
+                    viewModel.ripgrepArgs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+
+                if let exitCode = viewModel.ripgrepExitCode {
+                    Text("Exit code: \(exitCode)")
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(exitCode == 0 ? .green : .secondary)
+                }
+                if let error = viewModel.ripgrepErrorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+                if !viewModel.ripgrepStdout.isEmpty {
+                    LabeledContent("stdout") {
+                        Text(viewModel.ripgrepStdout)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                    }
+                }
+                if !viewModel.ripgrepStderr.isEmpty {
+                    LabeledContent("stderr") {
+                        Text(viewModel.ripgrepStderr)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         .navigationTitle("Session Info")
         .navigationBarTitleDisplayMode(.inline)

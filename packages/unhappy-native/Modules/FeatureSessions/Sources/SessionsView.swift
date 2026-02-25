@@ -269,7 +269,9 @@ private struct SessionsRow: View {
                 killer: SessionKillUseCase(service: service),
                 aborter: SessionTaskAbortUseCase(service: service),
                 permissionResponder: SessionPermissionUseCase(service: service),
-                modeSwitcher: SessionModeSwitchUseCase(service: service)
+                modeSwitcher: SessionModeSwitchUseCase(service: service),
+                basher: SessionBashUseCase(service: service),
+                ripgrepRunner: SessionRipgrepUseCase(service: service)
             )
         }
     )

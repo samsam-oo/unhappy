@@ -32,11 +32,34 @@ public protocol SessionModeSwitchAction: Sendable {
     ) async throws -> APISessionSwitchResult
 }
 
+public protocol SessionBashRunAction: Sendable {
+    func runBash(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        command: String,
+        cwd: String?,
+        timeout: Int?
+    ) async throws -> APISessionBashResult
+}
+
+public protocol SessionRipgrepRunAction: Sendable {
+    func runRipgrep(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult
+}
+
 public enum SessionCommandError: LocalizedError, Equatable {
     case missingToken
     case invalidServerURL
     case missingSessionID
     case missingPermissionRequestID
+    case missingCommand
+    case missingArguments
     case failed(message: String)
 
     public var errorDescription: String? {
@@ -49,6 +72,10 @@ public enum SessionCommandError: LocalizedError, Equatable {
             return "Session ID is required"
         case .missingPermissionRequestID:
             return "Permission request ID is required"
+        case .missingCommand:
+            return "Command is required"
+        case .missingArguments:
+            return "At least one argument is required"
         case .failed(let message):
             return message
         }
@@ -249,6 +276,149 @@ public actor SessionModeSwitchUseCase: SessionModeSwitchAction {
             let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
             throw SessionCommandError.failed(
                 message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to switch session mode"
+            )
+        }
+
+        inFlightTasks[key] = task
+        defer { inFlightTasks[key] = nil }
+        return try await task.value
+    }
+}
+
+public actor SessionBashUseCase: SessionBashRunAction {
+    private struct RequestKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let sessionID: String
+        let command: String
+        let cwd: String?
+        let timeout: Int?
+    }
+
+    private let service: any SessionBashRunning
+    private var inFlightTasks: [RequestKey: Task<APISessionBashResult, Error>] = [:]
+
+    public init(service: any SessionBashRunning) {
+        self.service = service
+    }
+
+    public func runBash(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        command: String,
+        cwd: String?,
+        timeout: Int?
+    ) async throws -> APISessionBashResult {
+        let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
+            serverURLString: serverURLString,
+            token: token,
+            sessionID: sessionID
+        )
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw SessionCommandError.missingCommand
+        }
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = RequestKey(
+            serverURLString: serverURL.absoluteString,
+            token: normalizedToken,
+            sessionID: normalizedSessionID,
+            command: normalizedCommand,
+            cwd: normalizedCWD,
+            timeout: timeout
+        )
+        if let inFlightTask = inFlightTasks[key] {
+            return try await inFlightTask.value
+        }
+
+        let service = self.service
+        let task = Task<APISessionBashResult, Error> {
+            let result = try await service.runBash(
+                serverURL: serverURL,
+                token: normalizedToken,
+                sessionID: normalizedSessionID,
+                command: normalizedCommand,
+                cwd: normalizedCWD,
+                timeout: timeout
+            )
+            if result.success {
+                return result
+            }
+            let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw SessionCommandError.failed(
+                message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to run bash command"
+            )
+        }
+
+        inFlightTasks[key] = task
+        defer { inFlightTasks[key] = nil }
+        return try await task.value
+    }
+}
+
+public actor SessionRipgrepUseCase: SessionRipgrepRunAction {
+    private struct RequestKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let sessionID: String
+        let args: [String]
+        let cwd: String?
+    }
+
+    private let service: any SessionRipgrepRunning
+    private var inFlightTasks: [RequestKey: Task<APISessionBashResult, Error>] = [:]
+
+    public init(service: any SessionRipgrepRunning) {
+        self.service = service
+    }
+
+    public func runRipgrep(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult {
+        let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
+            serverURLString: serverURLString,
+            token: token,
+            sessionID: sessionID
+        )
+        let normalizedArgs = args.compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard !normalizedArgs.isEmpty else {
+            throw SessionCommandError.missingArguments
+        }
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = RequestKey(
+            serverURLString: serverURL.absoluteString,
+            token: normalizedToken,
+            sessionID: normalizedSessionID,
+            args: normalizedArgs,
+            cwd: normalizedCWD
+        )
+        if let inFlightTask = inFlightTasks[key] {
+            return try await inFlightTask.value
+        }
+
+        let service = self.service
+        let task = Task<APISessionBashResult, Error> {
+            let result = try await service.runRipgrep(
+                serverURL: serverURL,
+                token: normalizedToken,
+                sessionID: normalizedSessionID,
+                args: normalizedArgs,
+                cwd: normalizedCWD
+            )
+            if result.success {
+                return result
+            }
+            let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw SessionCommandError.failed(
+                message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to run ripgrep"
             )
         }
 
