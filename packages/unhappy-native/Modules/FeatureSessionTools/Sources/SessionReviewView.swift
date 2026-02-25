@@ -28,6 +28,13 @@ public struct SessionReviewView: View {
 
     public var body: some View {
         List {
+            Section("Auto Detect") {
+                Button(isLoading ? "Detecting…" : "Use Current Session Path") {
+                    Task { await detectCurrentRepositoryPath() }
+                }
+                .disabled(isLoading)
+            }
+
             Section("Repository") {
                 TextField("Repository path (optional)", text: $repoPath)
                     .textInputAutocapitalization(.never)
@@ -73,6 +80,11 @@ public struct SessionReviewView: View {
         }
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if normalizedOptional(repoPath) == nil {
+                await detectCurrentRepositoryPath()
+            }
+        }
     }
 
     private func loadReviewDiff() async {
@@ -127,9 +139,36 @@ public struct SessionReviewView: View {
         }
     }
 
-    private func runScript(_ command: String, timeout: Int) async -> ScriptExecutionResult {
+    private func detectCurrentRepositoryPath() async {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        let pwd = await runScript(
+            SessionFinishCommandBuilder.currentDirectoryCommand(),
+            timeout: 8_000,
+            cwd: "/"
+        )
+        guard pwd.success else {
+            errorMessage = pwd.errorMessage ?? "Failed to detect current directory"
+            return
+        }
+        guard let currentPath = firstNonEmptyLine(pwd.stdout) else {
+            errorMessage = "Current directory is unavailable"
+            return
+        }
+
+        repoPath = currentPath
+        statusMessage = "Detected repository path from session"
+    }
+
+    private func runScript(
+        _ command: String,
+        timeout: Int,
+        cwd: String? = "/"
+    ) async -> ScriptExecutionResult {
         viewModel.bashCommand = command
-        viewModel.bashWorkingDirectory = "/"
+        viewModel.bashWorkingDirectory = cwd ?? ""
         viewModel.bashTimeoutMilliseconds = String(timeout)
         await viewModel.runBash(
             sessionID: session.id,
@@ -148,6 +187,13 @@ public struct SessionReviewView: View {
             stdout: viewModel.bashStdout,
             errorMessage: nil
         )
+    }
+
+    private func firstNonEmptyLine(_ raw: String) -> String? {
+        raw
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 }
 

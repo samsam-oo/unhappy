@@ -35,6 +35,16 @@ public struct SessionFinishView: View {
 
     public var body: some View {
         List {
+            Section("Auto Detect") {
+                Button(isExecuting ? "Detecting…" : "Detect From Current Session") {
+                    Task { await detectFromCurrentSession() }
+                }
+                .disabled(isExecuting)
+                Text("Detects current worktree path, branch, and main branch automatically.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Repository Paths") {
                 TextField("Base repo path", text: $baseRepoPath)
                     .textInputAutocapitalization(.never)
@@ -152,6 +162,54 @@ public struct SessionFinishView: View {
                 Text("This operation removes the worktree and deletes the branch.")
             }
         )
+    }
+
+    private func detectFromCurrentSession() async {
+        await runOperation {
+            let pwd = await execute(
+                command: SessionFinishCommandBuilder.currentDirectoryCommand(),
+                timeout: 8_000,
+                cwd: "/"
+            )
+            guard pwd.success else { return false }
+            guard let currentPath = firstNonEmptyLine(pwd.stdout) else {
+                errorMessage = "Unable to detect current directory"
+                return false
+            }
+
+            worktreePath = currentPath
+            if let info = SessionWorktreeInfo.extract(from: currentPath) {
+                baseRepoPath = info.basePath
+                if normalizedOptional(worktreeBranch) == nil {
+                    worktreeBranch = info.worktreeName
+                }
+            } else if normalizedOptional(baseRepoPath) == nil {
+                baseRepoPath = currentPath
+            }
+
+            if let worktreePath = normalizedOptional(worktreePath) {
+                let branch = await execute(
+                    command: SessionFinishCommandBuilder.showCurrentBranchCommand(worktreePath: worktreePath),
+                    timeout: 10_000
+                )
+                if branch.success, let branchName = firstNonEmptyLine(branch.stdout) {
+                    worktreeBranch = branchName
+                }
+            }
+
+            if let basePath = normalizedOptional(baseRepoPath) {
+                let main = await execute(
+                    command: SessionFinishCommandBuilder.resolveMainBranchCommand(basePath: basePath),
+                    timeout: 10_000
+                )
+                if main.success, let parsed = SessionFinishCommandBuilder.parseMainBranch(from: main.stdout) {
+                    mainBranch = parsed
+                }
+            }
+
+            statusMessage = "Detected paths and branches from current session"
+            return true
+        }
     }
 
     private func checkWorktreeStatus() async {
@@ -292,9 +350,13 @@ public struct SessionFinishView: View {
         _ = await block()
     }
 
-    private func execute(command: String, timeout: Int) async -> CommandExecutionResult {
+    private func execute(
+        command: String,
+        timeout: Int,
+        cwd: String? = "/"
+    ) async -> CommandExecutionResult {
         viewModel.bashCommand = command
-        viewModel.bashWorkingDirectory = "/"
+        viewModel.bashWorkingDirectory = cwd ?? ""
         viewModel.bashTimeoutMilliseconds = String(timeout)
         await viewModel.runBash(
             sessionID: session.id,
@@ -313,6 +375,13 @@ public struct SessionFinishView: View {
             return CommandExecutionResult(success: false, stdout: viewModel.bashStdout)
         }
         return CommandExecutionResult(success: true, stdout: viewModel.bashStdout)
+    }
+
+    private func firstNonEmptyLine(_ raw: String) -> String? {
+        raw
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
     }
 }
 

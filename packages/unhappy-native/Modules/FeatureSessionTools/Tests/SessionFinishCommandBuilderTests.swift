@@ -34,4 +34,18 @@ struct SessionFinishCommandBuilderTests {
         #expect(command.contains("--base 'main'"))
         #expect(command.contains("--head 'feature'"))
     }
+
+    @Test
+    func parseMainBranchFromOriginRef() {
+        let parsed = SessionFinishCommandBuilder.parseMainBranch(from: "refs/remotes/origin/main\n")
+        #expect(parsed == "main")
+    }
+
+    @Test
+    func resolveMainBranchCommandContainsFallbackChecks() {
+        let command = SessionFinishCommandBuilder.resolveMainBranchCommand(basePath: "/tmp/base")
+        #expect(command.contains("symbolic-ref refs/remotes/origin/HEAD"))
+        #expect(command.contains("rev-parse --verify origin/main"))
+        #expect(command.contains("rev-parse --verify origin/master"))
+    }
 }

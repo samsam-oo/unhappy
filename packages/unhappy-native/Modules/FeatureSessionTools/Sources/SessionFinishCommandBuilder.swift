@@ -1,6 +1,42 @@
 import Foundation
 
 enum SessionFinishCommandBuilder {
+    static func currentDirectoryCommand() -> String {
+        "pwd"
+    }
+
+    static func resolveMainBranchCommand(basePath: String) -> String {
+        """
+        if ref=$(git -C \(bashQuote(basePath)) symbolic-ref refs/remotes/origin/HEAD 2>/dev/null); then \
+            echo "$ref"; \
+        elif git -C \(bashQuote(basePath)) rev-parse --verify origin/main >/dev/null 2>&1; then \
+            echo "refs/remotes/origin/main"; \
+        elif git -C \(bashQuote(basePath)) rev-parse --verify origin/master >/dev/null 2>&1; then \
+            echo "refs/remotes/origin/master"; \
+        else \
+            echo ""; \
+        fi
+        """
+    }
+
+    static func showCurrentBranchCommand(worktreePath: String) -> String {
+        "if ref=$(git -C \(bashQuote(worktreePath)) branch --show-current 2>/dev/null); then echo \"$ref\"; else echo \"\"; fi"
+    }
+
+    static func parseMainBranch(from output: String) -> String? {
+        let firstLine = output
+            .split(separator: "\n")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+
+        guard let firstLine, !firstLine.isEmpty else { return nil }
+        if let range = firstLine.range(of: "refs/remotes/origin/") {
+            let branch = String(firstLine[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            return branch.isEmpty ? nil : branch
+        }
+        return firstLine
+    }
+
     static func statusCommand(worktreePath: String) -> String {
         "git -C \(bashQuote(worktreePath)) status --porcelain"
     }
