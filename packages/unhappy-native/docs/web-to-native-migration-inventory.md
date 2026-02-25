@@ -22,7 +22,7 @@ Last updated: 2026-02-25
   - `CoreKit` (API models, sessions service, settings store)
 - Missing at module level:
   - New-session advanced wizard/worktree flow
-  - Session review/finish and rich tool-level detail flows
+  - Session review/finish의 web 고급 UX와 rich tool-level detail flows
   - Artifacts / Friends / Inbox / Zen / Restore / Scanner / Terminal connection
   - Full settings surfaces (account/features/language/profiles/usage/voice/connectors)
 
@@ -37,7 +37,7 @@ Last updated: 2026-02-25
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission/mode switch + bash/ripgrep/difftastic 실행 기본 액션 구현. full metadata UI 미구현. |
 | `session/[id]/file.tsx` | Partial | file read/viewer + directory browse + write-file 저장 구현. syntax highlight/diff view 미구현. |
 | `session/[id]/review.tsx` | Partial | Session Tools에서 git review diff 조회 화면 구현(plain diff viewer). web `ChangesEditor` 수준 렌더링/에디팅은 미구현. |
-| `session/[id]/finish.tsx` | Not started | worktree finish/merge/commit UI 미구현. |
+| `session/[id]/finish.tsx` | Partial | Session Tools에서 수동 입력 기반 finish 액션(commit/merge/PR/delete worktree) 구현. web 자동 worktree 추론/모달 UX는 미구현. |
 | `session/[id]/message/[messageId].tsx` | Partial | 메시지 row 탭 시 metadata + payload preview detail 화면 구현. tool expanded renderer parity는 미구현. |
 | `new/index.tsx` | Partial | 기본 machine/path/agent 기반 spawn 플로우 구현됨. profile/env/worktree 고급 옵션 미구현. |
 | `new/pick/machine.tsx` | Partial | machine picker 기본 구현됨. |
