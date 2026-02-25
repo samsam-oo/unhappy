@@ -129,6 +129,47 @@ struct NewSessionUseCasesTests {
         #expect(request?.sessionToken == "session-token")
         #expect(request?.environmentVariables == ["OPENAI_API_KEY": "test-key"])
     }
+
+    @Test
+    func recentProjectsUseCaseDeduplicatesAndCapsList() async {
+        let suiteName = "im.unhappy.newsession.tests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("failed to create UserDefaults test suite")
+            return
+        }
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let useCase = NewSessionRecentProjectsUseCase(store: store, maxProjects: 3)
+        _ = await useCase.recordRecentProject("/repo/a")
+        _ = await useCase.recordRecentProject("/repo/b")
+        _ = await useCase.recordRecentProject("/repo/c")
+        _ = await useCase.recordRecentProject("/repo/b")
+        _ = await useCase.recordRecentProject("/repo/d")
+
+        #expect(await useCase.loadRecentProjects() == ["/repo/d", "/repo/b", "/repo/c"])
+    }
+
+    @Test
+    func recentProjectsUseCaseIgnoresEmptyPath() async {
+        let suiteName = "im.unhappy.newsession.tests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("failed to create UserDefaults test suite")
+            return
+        }
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let useCase = NewSessionRecentProjectsUseCase(store: store, maxProjects: 3)
+        _ = await useCase.recordRecentProject("/repo/a")
+        let updated = await useCase.recordRecentProject("   ")
+
+        #expect(updated == ["/repo/a"])
+    }
 }
 
 private struct MachinesService: MachinesFetching {

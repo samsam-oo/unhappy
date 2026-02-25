@@ -29,6 +29,19 @@ public protocol NewSessionSpawningAction: Sendable {
     ) async throws -> APISessionSpawnResult
 }
 
+public protocol NewSessionRecentProjectsManaging: Sendable {
+    func loadRecentProjects() async -> [String]
+    func recordRecentProject(_ path: String) async -> [String]
+}
+
+public actor NewSessionNoopRecentProjectsManager: NewSessionRecentProjectsManaging {
+    public init() {}
+
+    public func loadRecentProjects() async -> [String] { [] }
+
+    public func recordRecentProject(_ path: String) async -> [String] { [] }
+}
+
 public enum NewSessionError: LocalizedError, Equatable {
     case missingToken
     case invalidServerURL
@@ -177,6 +190,39 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         throw NewSessionError.failed(
             message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to spawn session"
         )
+    }
+}
+
+public actor NewSessionRecentProjectsUseCase: NewSessionRecentProjectsManaging {
+    private let store: any AppSettingsStore
+    private let maxProjects: Int
+
+    public init(store: any AppSettingsStore, maxProjects: Int = 8) {
+        self.store = store
+        self.maxProjects = max(1, maxProjects)
+    }
+
+    public func loadRecentProjects() async -> [String] {
+        await store.recentProjectPaths()
+    }
+
+    public func recordRecentProject(_ path: String) async -> [String] {
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            return await store.recentProjectPaths()
+        }
+
+        let existing = await store.recentProjectPaths()
+        var updated = [normalizedPath]
+        for item in existing where item != normalizedPath {
+            updated.append(item)
+        }
+        if updated.count > maxProjects {
+            updated = Array(updated.prefix(maxProjects))
+        }
+
+        await store.setRecentProjectPaths(updated)
+        return updated
     }
 }
 

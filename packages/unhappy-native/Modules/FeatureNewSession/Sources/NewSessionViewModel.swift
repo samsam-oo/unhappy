@@ -8,6 +8,7 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public private(set) var isLoadingDirectory = false
     @Published public private(set) var isSpawning = false
     @Published public private(set) var directoryEntries: [APIMachineDirectoryEntry] = []
+    @Published public private(set) var recentProjects: [String] = []
     @Published public private(set) var selectedMachineID: String?
     @Published public var directoryPath: String = "~"
     @Published public var selectedAgent: APISessionSpawnAgent = .claude
@@ -23,21 +24,26 @@ public final class NewSessionViewModel: ObservableObject {
     private let machinesLoader: any NewSessionMachinesLoadingAction
     private let directoryLister: any NewSessionDirectoryListingAction
     private let spawner: any NewSessionSpawningAction
+    private let recentProjectsManager: any NewSessionRecentProjectsManaging
 
     public init(
         machinesLoader: any NewSessionMachinesLoadingAction,
         directoryLister: any NewSessionDirectoryListingAction,
-        spawner: any NewSessionSpawningAction
+        spawner: any NewSessionSpawningAction,
+        recentProjectsManager: any NewSessionRecentProjectsManaging
     ) {
         self.machinesLoader = machinesLoader
         self.directoryLister = directoryLister
         self.spawner = spawner
+        self.recentProjectsManager = recentProjectsManager
     }
 
     public func loadMachines(serverURLString: String, token: String) async {
         isLoadingMachines = true
         errorMessage = nil
         defer { isLoadingMachines = false }
+
+        recentProjects = await recentProjectsManager.loadRecentProjects()
 
         do {
             let loaded = try await machinesLoader.loadMachines(
@@ -110,6 +116,15 @@ public final class NewSessionViewModel: ObservableObject {
         await loadDirectory(serverURLString: serverURLString, token: token)
     }
 
+    public func selectRecentProject(
+        _ path: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        directoryPath = path
+        await loadDirectory(serverURLString: serverURLString, token: token)
+    }
+
     public func startSession(serverURLString: String, token: String) async -> Bool {
         await spawn(
             serverURLString: serverURLString,
@@ -177,6 +192,7 @@ public final class NewSessionViewModel: ObservableObject {
             } else {
                 infoMessage = "Spawned session"
             }
+            recentProjects = await recentProjectsManager.recordRecentProject(normalizedPath(directory))
             approvalDirectory = nil
             errorMessage = nil
             return true
@@ -199,6 +215,7 @@ public final class NewSessionViewModel: ObservableObject {
         }
     }
 }
+
 
 private func normalizedPath(_ raw: String) -> String {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

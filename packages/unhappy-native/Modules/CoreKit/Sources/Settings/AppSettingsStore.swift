@@ -11,6 +11,7 @@ public protocol AppSettingsStore: Sendable {
     func voiceEnabled() async -> Bool
     func voiceLanguageCode() async -> String
     func defaultNewSessionAgent() async -> String
+    func recentProjectPaths() async -> [String]
     func setServerURLString(_ value: String) async
     func setAPIToken(_ value: String) async
     func setAppLanguageCode(_ value: String) async
@@ -21,6 +22,7 @@ public protocol AppSettingsStore: Sendable {
     func setVoiceEnabled(_ value: Bool) async
     func setVoiceLanguageCode(_ value: String) async
     func setDefaultNewSessionAgent(_ value: String) async
+    func setRecentProjectPaths(_ value: [String]) async
 }
 
 public actor UserDefaultsAppSettingsStore: AppSettingsStore {
@@ -35,6 +37,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
     private let voiceEnabledKey: String
     private let voiceLanguageKey: String
     private let defaultNewSessionAgentKey: String
+    private let recentProjectPathsKey: String
     private let defaultServerURL: String
 
     public init(
@@ -49,6 +52,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         voiceEnabledKey: String = "unhappy.native.voiceEnabled",
         voiceLanguageKey: String = "unhappy.native.voiceLanguage",
         defaultNewSessionAgentKey: String = "unhappy.native.defaultNewSessionAgent",
+        recentProjectPathsKey: String = "unhappy.native.recentProjectPaths",
         defaultServerURL: String = "https://api.unhappy.im"
     ) {
         self.defaults = defaults
@@ -62,6 +66,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         self.voiceEnabledKey = voiceEnabledKey
         self.voiceLanguageKey = voiceLanguageKey
         self.defaultNewSessionAgentKey = defaultNewSessionAgentKey
+        self.recentProjectPathsKey = recentProjectPathsKey
         self.defaultServerURL = defaultServerURL
     }
 
@@ -110,6 +115,17 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         defaults.string(forKey: defaultNewSessionAgentKey) ?? "claude"
     }
 
+    public func recentProjectPaths() async -> [String] {
+        if let data = defaults.data(forKey: recentProjectPathsKey),
+           let decoded = try? JSONDecoder().decode([String].self, from: data) {
+            return normalizedProjectPaths(decoded)
+        }
+        if let fallback = defaults.array(forKey: recentProjectPathsKey) as? [String] {
+            return normalizedProjectPaths(fallback)
+        }
+        return []
+    }
+
     public func setServerURLString(_ value: String) async {
         defaults.set(value, forKey: serverURLKey)
     }
@@ -148,5 +164,21 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
 
     public func setDefaultNewSessionAgent(_ value: String) async {
         defaults.set(value, forKey: defaultNewSessionAgentKey)
+    }
+
+    public func setRecentProjectPaths(_ value: [String]) async {
+        let normalized = normalizedProjectPaths(value)
+        if let encoded = try? JSONEncoder().encode(normalized) {
+            defaults.set(encoded, forKey: recentProjectPathsKey)
+        } else {
+            defaults.removeObject(forKey: recentProjectPathsKey)
+        }
+    }
+}
+
+private func normalizedProjectPaths(_ value: [String]) -> [String] {
+    value.compactMap { raw in
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

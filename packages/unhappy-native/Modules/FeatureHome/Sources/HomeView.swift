@@ -74,7 +74,8 @@ public struct HomeView: View {
             return NewSessionViewModel(
                 machinesLoader: NewSessionMachinesLoadUseCase(service: service),
                 directoryLister: NewSessionDirectoryListUseCase(service: service),
-                spawner: NewSessionSpawnUseCase(service: service)
+                spawner: NewSessionSpawnUseCase(service: service),
+                recentProjectsManager: NewSessionNoopRecentProjectsManager()
             )
         },
         makeSessionToolsViewModel: {

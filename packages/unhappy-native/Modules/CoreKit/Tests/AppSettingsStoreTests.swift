@@ -29,6 +29,7 @@ struct AppSettingsStoreTests {
         #expect(await store.voiceEnabled() == false)
         #expect(await store.voiceLanguageCode() == "system")
         #expect(await store.defaultNewSessionAgent() == "claude")
+        #expect(await store.recentProjectPaths().isEmpty)
     }
 
     @Test
@@ -53,6 +54,11 @@ struct AppSettingsStoreTests {
         await store.setVoiceEnabled(true)
         await store.setVoiceLanguageCode("korean")
         await store.setDefaultNewSessionAgent("codex")
+        await store.setRecentProjectPaths([
+            " /repo/alpha ",
+            "",
+            "/repo/beta"
+        ])
 
         #expect(await store.serverURLString() == "https://api.example.com")
         #expect(await store.apiToken() == "secret")
@@ -64,5 +70,6 @@ struct AppSettingsStoreTests {
         #expect(await store.voiceEnabled() == true)
         #expect(await store.voiceLanguageCode() == "korean")
         #expect(await store.defaultNewSessionAgent() == "codex")
+        #expect(await store.recentProjectPaths() == ["/repo/alpha", "/repo/beta"])
     }
 }

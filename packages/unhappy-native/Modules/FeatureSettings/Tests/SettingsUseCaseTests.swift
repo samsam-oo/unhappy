@@ -76,6 +76,7 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     private var savedVoiceEnabled: Bool
     private var savedVoiceLanguage: String
     private var savedDefaultAgent: String
+    private var savedRecentProjects: [String]
 
     init(
         initialServerURLString: String = "https://api.unhappy.im",
@@ -87,7 +88,8 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
         initialUseEnhancedSessionWizard: Bool = false,
         initialVoiceEnabled: Bool = false,
         initialVoiceLanguage: String = "system",
-        initialDefaultAgent: String = "claude"
+        initialDefaultAgent: String = "claude",
+        initialRecentProjects: [String] = []
     ) {
         self.savedServerURLString = initialServerURLString
         self.savedAPIToken = initialAPIToken
@@ -99,6 +101,7 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
         self.savedVoiceEnabled = initialVoiceEnabled
         self.savedVoiceLanguage = initialVoiceLanguage
         self.savedDefaultAgent = initialDefaultAgent
+        self.savedRecentProjects = initialRecentProjects
     }
 
     func serverURLString() async -> String { savedServerURLString }
@@ -111,6 +114,7 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     func voiceEnabled() async -> Bool { savedVoiceEnabled }
     func voiceLanguageCode() async -> String { savedVoiceLanguage }
     func defaultNewSessionAgent() async -> String { savedDefaultAgent }
+    func recentProjectPaths() async -> [String] { savedRecentProjects }
     func setServerURLString(_ value: String) async { savedServerURLString = value }
     func setAPIToken(_ value: String) async { savedAPIToken = value }
     func setAppLanguageCode(_ value: String) async { savedLanguage = value }
@@ -121,4 +125,5 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     func setVoiceEnabled(_ value: Bool) async { savedVoiceEnabled = value }
     func setVoiceLanguageCode(_ value: String) async { savedVoiceLanguage = value }
     func setDefaultNewSessionAgent(_ value: String) async { savedDefaultAgent = value }
+    func setRecentProjectPaths(_ value: [String]) async { savedRecentProjects = value }
 }

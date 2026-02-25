@@ -53,6 +53,35 @@ public struct NewSessionView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
+                    if !viewModel.recentProjects.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Recent Projects")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(viewModel.recentProjects, id: \.self) { projectPath in
+                                Button {
+                                    Task {
+                                        await viewModel.selectRecentProject(
+                                            projectPath,
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: "folder")
+                                            .foregroundStyle(.secondary)
+                                        Text(projectPath)
+                                            .font(.footnote.monospaced())
+                                            .lineLimit(1)
+                                        Spacer()
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
                     Button("Browse Directory") {
                         Task {
                             await viewModel.loadDirectory(
@@ -230,7 +259,8 @@ public struct NewSessionView: View {
             return NewSessionViewModel(
                 machinesLoader: NewSessionMachinesLoadUseCase(service: service),
                 directoryLister: NewSessionDirectoryListUseCase(service: service),
-                spawner: NewSessionSpawnUseCase(service: service)
+                spawner: NewSessionSpawnUseCase(service: service),
+                recentProjectsManager: NewSessionNoopRecentProjectsManager()
             )
         }
     )
