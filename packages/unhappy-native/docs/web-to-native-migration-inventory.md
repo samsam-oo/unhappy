@@ -42,7 +42,7 @@ Last updated: 2026-02-25
 | `new/index.tsx` | Partial | machine/path/agent 기반 spawn + recent project quick pick + resume thread/session + session token + env vars 입력 구현. profile/worktree 고급 wizard는 미구현. |
 | `new/pick/machine.tsx` | Partial | machine picker 기본 구현됨. |
 | `new/pick/path.tsx` | Partial | directory browser 기본 구현됨. |
-| `new/pick/profile-edit.tsx` | Not started | profile edit 연결 미구현. |
+| `new/pick/profile-edit.tsx` | Partial | New Session에서 local profile 저장/적용/삭제(기본) 구현. web의 full profile edit form/compatibility options는 미구현. |
 | `new/pick/project.tsx` | Partial | 최근 프로젝트 경로 quick pick(로컬 저장/재선택) 구현. 원본의 full project discovery/search UX는 미구현. |
 | `machine/[id].tsx` | Partial | machine detail + daemon control + spawn + daemonState/metadata 진단 프리뷰(파싱 필드/원문 프리뷰) 구현. metadata 편집은 미구현. |
 | `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력/요청 미리보기 진입 구현. QR 승인 플로우는 미구현. |
