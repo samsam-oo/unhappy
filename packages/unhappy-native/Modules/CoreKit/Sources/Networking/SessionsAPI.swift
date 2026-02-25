@@ -405,6 +405,39 @@ public enum SessionsAPI {
         return request
     }
 
+    public static func makeSessionDifftasticRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedArgs = args.compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard !normalizedArgs.isEmpty else {
+            throw SessionsAPIError.missingCommand
+        }
+
+        let difftasticURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/difftastic")
+        var request = try makeRequest(
+            url: difftasticURL,
+            method: "POST",
+            token: token
+        )
+        let payload = SessionDifftasticPayload(
+            args: normalizedArgs,
+            cwd: cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
     public static func makeSessionReadFileRequest(
         serverURL: URL,
         token: String,
@@ -584,6 +617,11 @@ public enum SessionsAPI {
         return try decoder.decode(APISessionBashResult.self, from: data)
     }
 
+    public static func decodeSessionDifftasticResponse(_ data: Data) throws -> APISessionBashResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionBashResult.self, from: data)
+    }
+
     public static func decodeSessionReadFileResponse(_ data: Data) throws -> APISessionReadFileResult {
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionReadFileResult.self, from: data)
@@ -714,6 +752,11 @@ private struct SessionBashPayload: Encodable {
 }
 
 private struct SessionRipgrepPayload: Encodable {
+    let args: [String]
+    let cwd: String?
+}
+
+private struct SessionDifftasticPayload: Encodable {
     let args: [String]
     let cwd: String?
 }
@@ -866,6 +909,16 @@ public protocol SessionRipgrepRunning: Sendable {
     ) async throws -> APISessionBashResult
 }
 
+public protocol SessionDifftasticRunning: Sendable {
+    func runDifftastic(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult
+}
+
 public protocol SessionFileReading: Sendable {
     func readFile(
         serverURL: URL,
@@ -903,7 +956,7 @@ public protocol SessionKilling: Sendable {
     ) async throws -> APISessionKillResult
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionRipgrepRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling {
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionRipgrepRunning, SessionDifftasticRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -1264,6 +1317,32 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
 
         return try SessionsAPI.decodeSessionRipgrepResponse(data)
+    }
+
+    public func runDifftastic(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        args: [String],
+        cwd: String?
+    ) async throws -> APISessionBashResult {
+        let request = try SessionsAPI.makeSessionDifftasticRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            args: args,
+            cwd: cwd
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionDifftasticResponse(data)
     }
 
     public func readFile(

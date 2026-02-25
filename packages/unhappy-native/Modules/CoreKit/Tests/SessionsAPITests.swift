@@ -564,6 +564,26 @@ struct SessionsAPITests {
     }
 
     @Test
+    func sessionDifftasticRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionDifftasticRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            args: ["--display", "inline", "HEAD~1", "HEAD"],
+            cwd: "/tmp/work"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/difftastic")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect((payload?["args"] as? [String]) == ["--display", "inline", "HEAD~1", "HEAD"])
+        #expect(payload?["cwd"] as? String == "/tmp/work")
+    }
+
+    @Test
     func sessionReadFileRequestUsesExpectedPathAndBody() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try SessionsAPI.makeSessionReadFileRequest(
@@ -704,6 +724,23 @@ struct SessionsAPITests {
         let response = try SessionsAPI.decodeSessionRipgrepResponse(json)
         #expect(response.success == true)
         #expect(response.stdout.contains("TODO"))
+        #expect(response.exitCode == 0)
+    }
+
+    @Test
+    func decodeSessionDifftasticResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "stdout": "diff --git a/a.txt b/a.txt",
+          "stderr": "",
+          "exitCode": 0
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionDifftasticResponse(json)
+        #expect(response.success == true)
+        #expect(response.stdout.contains("diff --git"))
         #expect(response.exitCode == 0)
     }
 }
