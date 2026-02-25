@@ -127,6 +127,7 @@ export class ApiSessionClient extends EventEmitter {
                     'abort',
                     'permission',
                     'switch',
+                    'sendMessage',
                     'bash',
                     'readFile',
                     'writeFile',
@@ -140,6 +141,47 @@ export class ApiSessionClient extends EventEmitter {
                 ]);
                 if (!supportedCommands.has(command)) {
                     callback({ success: false, error: 'Unsupported command' });
+                    return;
+                }
+                if (command === 'sendMessage') {
+                    const textRaw = typeof data?.params?.text === 'string' ? data.params.text : '';
+                    const text = textRaw.trim();
+                    if (!text) {
+                        callback({ success: false, error: 'Message text is required' });
+                        return;
+                    }
+                    const steerModeRaw = data?.params?.steerMode;
+                    const steerMode =
+                        steerModeRaw === 'immediate'
+                            ? 'immediate'
+                            : steerModeRaw === 'queue'
+                                ? 'queue'
+                                : undefined;
+
+                    if (!this.socket.connected) {
+                        callback({ success: false, error: 'Session socket is not connected' });
+                        return;
+                    }
+
+                    const content: MessageContent = {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text
+                        },
+                        meta: {
+                            sentFrom: 'native',
+                            ...(steerMode ? { steerMode } : {})
+                        }
+                    };
+                    const encrypted = encodeBase64(
+                        encrypt(this.encryptionKey, this.encryptionVariant, content)
+                    );
+                    this.socket.emit('message', {
+                        sid: this.sessionId,
+                        message: encrypted
+                    });
+                    callback({ success: true });
                     return;
                 }
                 if (!this.rpcHandlerManager.hasHandler(command)) {

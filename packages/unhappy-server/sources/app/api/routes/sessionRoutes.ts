@@ -636,6 +636,56 @@ export function sessionRoutes(app: Fastify) {
         });
     });
 
+    app.post('/v1/sessions/:sessionId/commands/message', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                text: z.string(),
+                steerMode: z.enum(['queue', 'immediate']).optional()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const normalizedText = request.body.text.trim();
+
+        if (!normalizedText) {
+            return reply.code(400).send({ success: false, error: 'Message text is required' });
+        }
+
+        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
+        if (!sessionExists) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const invoked = await invokeSessionCommand(
+            userId,
+            sessionId,
+            'sendMessage',
+            {
+                text: normalizedText,
+                steerMode: request.body.steerMode
+            },
+            false
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        const result = invoked.result;
+        if (result?.success === false) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to send message'
+            });
+        }
+
+        return reply.send({ success: true });
+    });
+
     app.post('/v1/sessions/:sessionId/commands/bash', {
         schema: {
             params: z.object({
