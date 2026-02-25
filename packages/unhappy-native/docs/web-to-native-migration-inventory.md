@@ -44,7 +44,7 @@ Last updated: 2026-02-25
 | `new/pick/path.tsx` | Partial | directory browser 기본 구현됨. |
 | `new/pick/profile-edit.tsx` | Not started | profile edit 연결 미구현. |
 | `new/pick/project.tsx` | Partial | 최근 프로젝트 경로 quick pick(로컬 저장/재선택) 구현. 원본의 full project discovery/search UX는 미구현. |
-| `machine/[id].tsx` | Partial | machine detail + daemon control + spawn 구현됨. metadata 편집/고급 진단 미구현. |
+| `machine/[id].tsx` | Partial | machine detail + daemon control + spawn + daemonState/metadata 진단 프리뷰(파싱 필드/원문 프리뷰) 구현. metadata 편집은 미구현. |
 | `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력/요청 미리보기 진입 구현. QR 승인 플로우는 미구현. |
 | `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 구현. 실제 terminal approval handshake는 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
