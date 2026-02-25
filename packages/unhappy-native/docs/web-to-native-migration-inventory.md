@@ -39,7 +39,7 @@ Last updated: 2026-02-25
 | `session/[id]/review.tsx` | Partial | Session Tools에서 git review diff 조회 화면 구현(세션 cwd 자동 감지 + plain diff viewer). web `ChangesEditor` 수준 렌더링/에디팅은 미구현. |
 | `session/[id]/finish.tsx` | Partial | Session Tools에서 finish 액션(commit/merge/PR/delete worktree) 구현 + 세션 cwd 기반 path/branch 자동 감지. web 모달/상세 UX parity는 미구현. |
 | `session/[id]/message/[messageId].tsx` | Partial | 메시지 row 탭 시 metadata + payload preview detail 화면 구현. tool expanded renderer parity는 미구현. |
-| `new/index.tsx` | Partial | 기본 machine/path/agent 기반 spawn 플로우 구현됨. profile/env/worktree 고급 옵션 미구현. |
+| `new/index.tsx` | Partial | machine/path/agent 기반 spawn + resume thread/session + session token + env vars 입력 구현. profile/worktree 고급 wizard는 미구현. |
 | `new/pick/machine.tsx` | Partial | machine picker 기본 구현됨. |
 | `new/pick/path.tsx` | Partial | directory browser 기본 구현됨. |
 | `new/pick/profile-edit.tsx` | Not started | profile edit 연결 미구현. |
@@ -84,7 +84,7 @@ Last updated: 2026-02-25
 | codex/claude history list + resume (`/codex/threads`, `/claude/sessions`, spawn resume params) | Partial | 구현됨. UI polish 및 error/empty handling 보강 필요. |
 | `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 브릿지 + native 수동 action UI(allow/deny/abort/switch) 구현. `session/[id]` composer에서 queue/immediate steer 전송 가능. |
 | `ops` file/dir/ripgrep/bash session tools | Partial | 서버 `commands/*` + 네이티브 file viewer/kill/bash/ripgrep/difftastic 실행 기본 UI 구현. review/finish 전용 UI는 미이관. |
-| `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`, `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
+| `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`(resume IDs/session token/env vars 포함), `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
 | `apiArtifacts` | Not started | artifact CRUD 전부 미이관. |
 | `apiFriends`, `apiFeed`, `apiGithub`, `apiServices` | Not started | social/account integrations 미이관. |
 | `apiUsage`, `apiPush`, `apiKv`, `apiVoice` | Not started | usage/push/kv/voice 전부 미이관. |
