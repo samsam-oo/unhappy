@@ -608,7 +608,20 @@ export class ApiMachineClient {
           callback({ success: false, error: 'Command is required' });
           return;
         }
-        if (command !== 'codex-list-threads' && command !== 'claude-list-sessions') {
+        const supportedCommands = new Set([
+          'spawn-unhappy-session',
+          'stop-daemon',
+          'update-daemon',
+          'bash',
+          'readFile',
+          'writeFile',
+          'listDirectory',
+          'getDirectoryTree',
+          'ripgrep',
+          'codex-list-threads',
+          'claude-list-sessions',
+        ]);
+        if (!supportedCommands.has(command)) {
           callback({ success: false, error: 'Unsupported command' });
           return;
         }
@@ -621,6 +634,10 @@ export class ApiMachineClient {
             command,
             data?.params ?? {},
           );
+          if (typeof result === 'undefined') {
+            callback({ success: true });
+            return;
+          }
           callback(result);
         } catch (error) {
           callback({

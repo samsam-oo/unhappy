@@ -123,11 +123,22 @@ export class ApiSessionClient extends EventEmitter {
                     callback({ success: false, error: 'Command is required' });
                     return;
                 }
-                if (
-                    command !== 'codex-list-threads' &&
-                    command !== 'codex-set-thread-name' &&
-                    command !== 'claude-list-sessions'
-                ) {
+                const supportedCommands = new Set([
+                    'abort',
+                    'permission',
+                    'switch',
+                    'bash',
+                    'readFile',
+                    'writeFile',
+                    'listDirectory',
+                    'getDirectoryTree',
+                    'ripgrep',
+                    'killSession',
+                    'codex-list-threads',
+                    'codex-set-thread-name',
+                    'claude-list-sessions'
+                ]);
+                if (!supportedCommands.has(command)) {
                     callback({ success: false, error: 'Unsupported command' });
                     return;
                 }
@@ -140,6 +151,10 @@ export class ApiSessionClient extends EventEmitter {
                         command,
                         data?.params ?? {},
                     );
+                    if (typeof result === 'undefined') {
+                        callback({ success: true });
+                        return;
+                    }
                     callback(result);
                 } catch (error) {
                     callback({
