@@ -37,6 +37,11 @@ public struct SettingsView: View {
                     } label: {
                         Label("Appearance", systemImage: "circle.lefthalf.filled")
                     }
+                    NavigationLink {
+                        FeaturesSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Features", systemImage: "slider.horizontal.3")
+                    }
                 }
 
                 Section("Machine") {
@@ -85,6 +90,9 @@ private actor PreviewSettingsManager: SettingsManaging {
         serverURLString: String,
         apiToken: String,
         appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption
+        appearance: AppAppearanceOption,
+        experimentsEnabled: Bool,
+        hideInactiveSessions: Bool,
+        useEnhancedSessionWizard: Bool
     ) async {}
 }

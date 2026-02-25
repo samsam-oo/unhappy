@@ -40,17 +40,26 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
     public let apiToken: String
     public let appLanguage: AppLanguageOption
     public let appearance: AppAppearanceOption
+    public let experimentsEnabled: Bool
+    public let hideInactiveSessions: Bool
+    public let useEnhancedSessionWizard: Bool
 
     public init(
         serverURLString: String,
         apiToken: String,
         appLanguage: AppLanguageOption = .system,
-        appearance: AppAppearanceOption = .system
+        appearance: AppAppearanceOption = .system,
+        experimentsEnabled: Bool = false,
+        hideInactiveSessions: Bool = false,
+        useEnhancedSessionWizard: Bool = false
     ) {
         self.serverURLString = serverURLString
         self.apiToken = apiToken
         self.appLanguage = appLanguage
         self.appearance = appearance
+        self.experimentsEnabled = experimentsEnabled
+        self.hideInactiveSessions = hideInactiveSessions
+        self.useEnhancedSessionWizard = useEnhancedSessionWizard
     }
 }
 
@@ -60,7 +69,10 @@ public protocol SettingsManaging: Sendable {
         serverURLString: String,
         apiToken: String,
         appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption
+        appearance: AppAppearanceOption,
+        experimentsEnabled: Bool,
+        hideInactiveSessions: Bool,
+        useEnhancedSessionWizard: Bool
     ) async
 }
 
@@ -78,7 +90,10 @@ public actor SettingsUseCase: SettingsManaging {
             serverURLString: await store.serverURLString(),
             apiToken: await store.apiToken(),
             appLanguage: appLanguage,
-            appearance: appearance
+            appearance: appearance,
+            experimentsEnabled: await store.experimentsEnabled(),
+            hideInactiveSessions: await store.hideInactiveSessions(),
+            useEnhancedSessionWizard: await store.useEnhancedSessionWizard()
         )
     }
 
@@ -86,11 +101,17 @@ public actor SettingsUseCase: SettingsManaging {
         serverURLString: String,
         apiToken: String,
         appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption
+        appearance: AppAppearanceOption,
+        experimentsEnabled: Bool,
+        hideInactiveSessions: Bool,
+        useEnhancedSessionWizard: Bool
     ) async {
         await store.setServerURLString(serverURLString)
         await store.setAPIToken(apiToken)
         await store.setAppLanguageCode(appLanguage.rawValue)
         await store.setAppearanceMode(appearance.rawValue)
+        await store.setExperimentsEnabled(experimentsEnabled)
+        await store.setHideInactiveSessions(hideInactiveSessions)
+        await store.setUseEnhancedSessionWizard(useEnhancedSessionWizard)
     }
 }

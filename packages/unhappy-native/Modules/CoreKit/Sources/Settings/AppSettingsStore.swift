@@ -5,10 +5,16 @@ public protocol AppSettingsStore: Sendable {
     func apiToken() async -> String
     func appLanguageCode() async -> String
     func appearanceMode() async -> String
+    func experimentsEnabled() async -> Bool
+    func hideInactiveSessions() async -> Bool
+    func useEnhancedSessionWizard() async -> Bool
     func setServerURLString(_ value: String) async
     func setAPIToken(_ value: String) async
     func setAppLanguageCode(_ value: String) async
     func setAppearanceMode(_ value: String) async
+    func setExperimentsEnabled(_ value: Bool) async
+    func setHideInactiveSessions(_ value: Bool) async
+    func setUseEnhancedSessionWizard(_ value: Bool) async
 }
 
 public actor UserDefaultsAppSettingsStore: AppSettingsStore {
@@ -17,6 +23,9 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
     private let apiTokenKey: String
     private let appLanguageKey: String
     private let appearanceModeKey: String
+    private let experimentsEnabledKey: String
+    private let hideInactiveSessionsKey: String
+    private let useEnhancedSessionWizardKey: String
     private let defaultServerURL: String
 
     public init(
@@ -25,6 +34,9 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         apiTokenKey: String = "unhappy.native.apiToken",
         appLanguageKey: String = "unhappy.native.appLanguage",
         appearanceModeKey: String = "unhappy.native.appearanceMode",
+        experimentsEnabledKey: String = "unhappy.native.experimentsEnabled",
+        hideInactiveSessionsKey: String = "unhappy.native.hideInactiveSessions",
+        useEnhancedSessionWizardKey: String = "unhappy.native.useEnhancedSessionWizard",
         defaultServerURL: String = "https://api.unhappy.im"
     ) {
         self.defaults = defaults
@@ -32,6 +44,9 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         self.apiTokenKey = apiTokenKey
         self.appLanguageKey = appLanguageKey
         self.appearanceModeKey = appearanceModeKey
+        self.experimentsEnabledKey = experimentsEnabledKey
+        self.hideInactiveSessionsKey = hideInactiveSessionsKey
+        self.useEnhancedSessionWizardKey = useEnhancedSessionWizardKey
         self.defaultServerURL = defaultServerURL
     }
 
@@ -56,6 +71,18 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         defaults.string(forKey: appearanceModeKey) ?? "system"
     }
 
+    public func experimentsEnabled() async -> Bool {
+        defaults.bool(forKey: experimentsEnabledKey)
+    }
+
+    public func hideInactiveSessions() async -> Bool {
+        defaults.bool(forKey: hideInactiveSessionsKey)
+    }
+
+    public func useEnhancedSessionWizard() async -> Bool {
+        defaults.bool(forKey: useEnhancedSessionWizardKey)
+    }
+
     public func setServerURLString(_ value: String) async {
         defaults.set(value, forKey: serverURLKey)
     }
@@ -70,5 +97,17 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
 
     public func setAppearanceMode(_ value: String) async {
         defaults.set(value, forKey: appearanceModeKey)
+    }
+
+    public func setExperimentsEnabled(_ value: Bool) async {
+        defaults.set(value, forKey: experimentsEnabledKey)
+    }
+
+    public func setHideInactiveSessions(_ value: Bool) async {
+        defaults.set(value, forKey: hideInactiveSessionsKey)
+    }
+
+    public func setUseEnhancedSessionWizard(_ value: Bool) async {
+        defaults.set(value, forKey: useEnhancedSessionWizardKey)
     }
 }

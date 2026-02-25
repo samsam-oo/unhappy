@@ -65,6 +65,9 @@ private actor MockSettingsManager: SettingsManaging {
         serverURLString: String,
         apiToken: String,
         appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption
+        appearance: AppAppearanceOption,
+        experimentsEnabled: Bool,
+        hideInactiveSessions: Bool,
+        useEnhancedSessionWizard: Bool
     ) async {}
 }

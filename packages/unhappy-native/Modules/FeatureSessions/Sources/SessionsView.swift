@@ -8,6 +8,7 @@ public struct SessionsView: View {
     @StateObject private var viewModel: SessionsViewModel
     private let serverURLString: String
     private let token: String
+    private let hideInactiveSessions: Bool
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     @State private var pendingDeleteSession: APISession?
@@ -16,12 +17,14 @@ public struct SessionsView: View {
     public init(
         serverURLString: String,
         token: String,
+        hideInactiveSessions: Bool = false,
         makeViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.serverURLString = serverURLString
         self.token = token
+        self.hideInactiveSessions = hideInactiveSessions
         _viewModel = StateObject(wrappedValue: makeViewModel())
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
@@ -51,13 +54,13 @@ public struct SessionsView: View {
                     }
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else if viewModel.sessions.isEmpty {
+                } else if visibleSessions.isEmpty {
                     Text("No sessions")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 } else {
                     List {
-                        ForEach(viewModel.sessions) { session in
+                        ForEach(visibleSessions) { session in
                             NavigationLink {
                                 SessionDetailView(
                                     session: session,
@@ -191,6 +194,13 @@ public struct SessionsView: View {
                 )
             }
         }
+    }
+
+    private var visibleSessions: [APISession] {
+        if hideInactiveSessions {
+            return viewModel.sessions.filter(\.active)
+        }
+        return viewModel.sessions
     }
 }
 

@@ -23,6 +23,9 @@ struct AppSettingsStoreTests {
         #expect(await store.apiToken() == "")
         #expect(await store.appLanguageCode() == "system")
         #expect(await store.appearanceMode() == "system")
+        #expect(await store.experimentsEnabled() == false)
+        #expect(await store.hideInactiveSessions() == false)
+        #expect(await store.useEnhancedSessionWizard() == false)
     }
 
     @Test
@@ -41,10 +44,16 @@ struct AppSettingsStoreTests {
         await store.setAPIToken("secret")
         await store.setAppLanguageCode("korean")
         await store.setAppearanceMode("dark")
+        await store.setExperimentsEnabled(true)
+        await store.setHideInactiveSessions(true)
+        await store.setUseEnhancedSessionWizard(true)
 
         #expect(await store.serverURLString() == "https://api.example.com")
         #expect(await store.apiToken() == "secret")
         #expect(await store.appLanguageCode() == "korean")
         #expect(await store.appearanceMode() == "dark")
+        #expect(await store.experimentsEnabled() == true)
+        #expect(await store.hideInactiveSessions() == true)
+        #expect(await store.useEnhancedSessionWizard() == true)
     }
 }

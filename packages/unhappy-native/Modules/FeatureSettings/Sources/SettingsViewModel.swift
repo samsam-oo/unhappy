@@ -27,6 +27,24 @@ public final class SettingsViewModel: ObservableObject {
             schedulePersistence()
         }
     }
+    @Published public var experimentsEnabled: Bool {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
+    @Published public var hideInactiveSessions: Bool {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
+    @Published public var useEnhancedSessionWizard: Bool {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
 
     private let settingsManager: any SettingsManaging
     private var hasLoadedInitialSettings = false
@@ -38,6 +56,9 @@ public final class SettingsViewModel: ObservableObject {
         self.apiToken = ""
         self.selectedLanguage = .system
         self.selectedAppearance = .system
+        self.experimentsEnabled = false
+        self.hideInactiveSessions = false
+        self.useEnhancedSessionWizard = false
     }
 
     deinit {
@@ -51,6 +72,9 @@ public final class SettingsViewModel: ObservableObject {
         apiToken = settings.apiToken
         selectedLanguage = settings.appLanguage
         selectedAppearance = settings.appearance
+        experimentsEnabled = settings.experimentsEnabled
+        hideInactiveSessions = settings.hideInactiveSessions
+        useEnhancedSessionWizard = settings.useEnhancedSessionWizard
         hasLoadedInitialSettings = true
     }
 
@@ -64,6 +88,9 @@ public final class SettingsViewModel: ObservableObject {
         let apiToken = self.apiToken
         let selectedLanguage = self.selectedLanguage
         let selectedAppearance = self.selectedAppearance
+        let experimentsEnabled = self.experimentsEnabled
+        let hideInactiveSessions = self.hideInactiveSessions
+        let useEnhancedSessionWizard = self.useEnhancedSessionWizard
         persistenceTask?.cancel()
         persistenceTask = Task {
             guard !Task.isCancelled else { return }
@@ -71,7 +98,10 @@ public final class SettingsViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 apiToken: apiToken,
                 appLanguage: selectedLanguage,
-                appearance: selectedAppearance
+                appearance: selectedAppearance,
+                experimentsEnabled: experimentsEnabled,
+                hideInactiveSessions: hideInactiveSessions,
+                useEnhancedSessionWizard: useEnhancedSessionWizard
             )
         }
     }
