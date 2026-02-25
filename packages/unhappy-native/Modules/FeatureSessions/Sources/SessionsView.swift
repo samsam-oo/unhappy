@@ -110,6 +110,19 @@ public struct SessionsView: View {
             }
             .navigationTitle("Sessions")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        SessionRecentView(
+                            viewModel: viewModel,
+                            serverURLString: serverURLString,
+                            token: token,
+                            makeSessionToolsViewModel: makeSessionToolsViewModel
+                        )
+                    } label: {
+                        Label("Recent", systemImage: "clock")
+                    }
+                    .accessibilityLabel("Recent Sessions")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isPresentingNewSession = true
