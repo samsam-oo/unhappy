@@ -32,6 +32,11 @@ public struct SettingsView: View {
                     } label: {
                         Label("Server", systemImage: "server.rack")
                     }
+                    NavigationLink {
+                        ConnectorsSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Connectors", systemImage: "link")
+                    }
                 }
 
                 Section("Preferences") {
