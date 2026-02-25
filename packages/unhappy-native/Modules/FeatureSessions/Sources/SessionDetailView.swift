@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import FeatureSessionTools
 
 @MainActor
 public struct SessionDetailView: View {
@@ -7,6 +8,7 @@ public struct SessionDetailView: View {
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
+    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirmation = false
@@ -23,12 +25,14 @@ public struct SessionDetailView: View {
         session: APISession,
         viewModel: SessionsViewModel,
         serverURLString: String,
-        token: String
+        token: String,
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.session = session
         self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
+        self.makeSessionToolsViewModel = makeSessionToolsViewModel
     }
 
     public var body: some View {
@@ -63,6 +67,30 @@ public struct SessionDetailView: View {
                 }
                 LabeledContent("Updated") {
                     Text(Date(timeIntervalSince1970: currentSession.updatedAt), style: .relative)
+                }
+            }
+
+            Section("Tools") {
+                NavigationLink {
+                    SessionInfoView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("Session Info", systemImage: "info.circle")
+                }
+
+                NavigationLink {
+                    SessionFileView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("File Viewer", systemImage: "doc.text")
                 }
             }
 
