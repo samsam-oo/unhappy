@@ -8,6 +8,7 @@ public struct SessionFileView: View {
     let token: String
 
     @StateObject private var viewModel: SessionToolsViewModel
+    @State private var contentMode: SessionFileContentMode = .file
 
     public init(
         session: APISession,
@@ -80,54 +81,116 @@ public struct SessionFileView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
-                Button("Load File") {
-                    Task {
-                        await viewModel.loadFile(
-                            sessionID: session.id,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
-                .disabled(viewModel.isLoadingFile || viewModel.filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-
-            Section("Content") {
-                if viewModel.isLoadingFile {
-                    ProgressView("Loading file…")
-                } else if let error = viewModel.fileErrorMessage {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                } else if viewModel.fileContent.isEmpty {
-                    Text("No content loaded")
-                        .foregroundStyle(.secondary)
-                } else {
-                    TextEditor(text: $viewModel.fileContent)
-                        .font(.system(.footnote, design: .monospaced))
-                        .frame(minHeight: 260)
-                    Button(viewModel.isWritingFile ? "Saving…" : "Save File") {
+                HStack {
+                    Button("Load File") {
                         Task {
-                            await viewModel.writeCurrentFile(
+                            await viewModel.loadFile(
                                 sessionID: session.id,
                                 serverURLString: serverURLString,
                                 token: token
                             )
+                            contentMode = .file
                         }
                     }
                     .disabled(
-                        viewModel.isWritingFile ||
+                        viewModel.isLoadingFile ||
                         viewModel.filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
-                    if let status = viewModel.writeStatusMessage {
-                        Text(status)
-                            .font(.footnote)
-                            .foregroundStyle(.green)
+
+                    Button("Load Diff") {
+                        Task {
+                            await viewModel.loadFileDiff(
+                                sessionID: session.id,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                            contentMode = .diff
+                        }
                     }
-                    if let error = viewModel.writeErrorMessage {
+                    .disabled(
+                        viewModel.isLoadingFileDiff ||
+                        viewModel.filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                }
+            }
+
+            Section("Content") {
+                Picker("View", selection: $contentMode) {
+                    Text("File").tag(SessionFileContentMode.file)
+                    Text("Diff").tag(SessionFileContentMode.diff)
+                }
+                .pickerStyle(.segmented)
+
+                if contentMode == .file {
+                    if viewModel.isLoadingFile {
+                        ProgressView("Loading file…")
+                    } else if let error = viewModel.fileErrorMessage {
                         Text(error)
                             .font(.footnote)
                             .foregroundStyle(.red)
+                    } else if viewModel.fileContent.isEmpty {
+                        Text("No content loaded")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        TextEditor(text: $viewModel.fileContent)
+                            .font(.system(.footnote, design: .monospaced))
+                            .frame(minHeight: 260)
+                        Button(viewModel.isWritingFile ? "Saving…" : "Save File") {
+                            Task {
+                                await viewModel.writeCurrentFile(
+                                    sessionID: session.id,
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                            }
+                        }
+                        .disabled(
+                            viewModel.isWritingFile ||
+                            viewModel.filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+                        if let status = viewModel.writeStatusMessage {
+                            Text(status)
+                                .font(.footnote)
+                                .foregroundStyle(.green)
+                        }
+                        if let error = viewModel.writeErrorMessage {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
+                    }
+                } else {
+                    if viewModel.isLoadingFileDiff {
+                        ProgressView("Loading diff…")
+                    } else if let error = viewModel.fileDiffErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    } else if viewModel.fileDiffOutput.isEmpty && viewModel.fileDiffStderr.isEmpty {
+                        Text("No diff output loaded")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        if let exitCode = viewModel.fileDiffExitCode {
+                            Text("Exit code: \(exitCode)")
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(exitCode == 0 ? .green : .secondary)
+                        }
+                        if !viewModel.fileDiffOutput.isEmpty {
+                            ScrollView(.vertical) {
+                                Text(viewModel.fileDiffOutput)
+                                    .font(.footnote.monospaced())
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.vertical, 8)
+                            }
+                            .frame(minHeight: 260)
+                        }
+                        if !viewModel.fileDiffStderr.isEmpty {
+                            Text(viewModel.fileDiffStderr)
+                                .font(.footnote.monospaced())
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
                     }
                 }
             }
@@ -142,4 +205,9 @@ public struct SessionFileView: View {
             )
         }
     }
+}
+
+private enum SessionFileContentMode: String, CaseIterable {
+    case file
+    case diff
 }

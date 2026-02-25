@@ -28,6 +28,7 @@ struct UnhappyNativeApp: App {
         let sessionPermissionResponder = SessionPermissionUseCase(service: sessionsService)
         let sessionModeSwitcher = SessionModeSwitchUseCase(service: sessionsService)
         let sessionBasher = SessionBashUseCase(service: sessionsService)
+        let sessionFileDiffPreviewer = SessionFileDiffPreviewUseCase(basher: sessionBasher)
         let sessionRipgrepRunner = SessionRipgrepUseCase(service: sessionsService)
         let sessionDifftasticRunner = SessionDifftasticUseCase(service: sessionsService)
         let machinesLoader = MachinesLoadUseCase(service: machinesService)
@@ -51,6 +52,7 @@ struct UnhappyNativeApp: App {
                 fileLoader: sessionFileLoader,
                 directoryLister: sessionDirectoryLister,
                 fileWriter: sessionFileWriter,
+                fileDiffPreviewer: sessionFileDiffPreviewer,
                 killer: sessionKiller,
                 aborter: sessionAborter,
                 permissionResponder: sessionPermissionResponder,

@@ -21,6 +21,17 @@ public protocol SessionFileWriteAction: Sendable {
     ) async throws -> APISessionWriteFileResult
 }
 
+public protocol SessionFileDiffPreviewAction: Sendable {
+    func loadFileDiff(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        path: String,
+        workingDirectory: String?,
+        timeout: Int?
+    ) async throws -> APISessionBashResult
+}
+
 public enum SessionFileCommandError: LocalizedError, Equatable {
     case missingToken
     case invalidServerURL
@@ -188,6 +199,72 @@ public actor SessionFileWriteUseCase: SessionFileWriteAction {
     }
 }
 
+public actor SessionFileDiffPreviewUseCase: SessionFileDiffPreviewAction {
+    private struct RequestKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let sessionID: String
+        let path: String
+        let workingDirectory: String?
+        let timeout: Int?
+    }
+
+    private let basher: any SessionBashRunAction
+    private var inFlightTasks: [RequestKey: Task<APISessionBashResult, Error>] = [:]
+
+    public init(basher: any SessionBashRunAction) {
+        self.basher = basher
+    }
+
+    public func loadFileDiff(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        path: String,
+        workingDirectory: String?,
+        timeout: Int? = 30_000
+    ) async throws -> APISessionBashResult {
+        let (_, normalizedToken, normalizedSessionID, normalizedPath) = try normalizeInputs(
+            serverURLString: serverURLString,
+            token: token,
+            sessionID: sessionID,
+            path: path
+        )
+        let normalizedWorkingDirectory = normalizedOptional(workingDirectory)
+        let key = RequestKey(
+            serverURLString: serverURLString.trimmingCharacters(in: .whitespacesAndNewlines),
+            token: normalizedToken,
+            sessionID: normalizedSessionID,
+            path: normalizedPath,
+            workingDirectory: normalizedWorkingDirectory,
+            timeout: timeout
+        )
+        if let inFlightTask = inFlightTasks[key] {
+            return try await inFlightTask.value
+        }
+
+        let basher = self.basher
+        let task = Task<APISessionBashResult, Error> {
+            let command = SessionFileDiffCommandBuilder.diffCommand(
+                filePath: normalizedPath,
+                workingDirectory: normalizedWorkingDirectory
+            )
+            return try await basher.runBash(
+                serverURLString: serverURLString,
+                token: normalizedToken,
+                sessionID: normalizedSessionID,
+                command: command,
+                cwd: nil,
+                timeout: timeout
+            )
+        }
+
+        inFlightTasks[key] = task
+        defer { inFlightTasks[key] = nil }
+        return try await task.value
+    }
+}
+
 private func normalizeInputs(
     serverURLString: String,
     token: String,
@@ -220,4 +297,10 @@ private func normalizeInputs(
     }
 
     return (serverURL, normalizedToken, normalizedSessionID, normalizedPath)
+}
+
+private func normalizedOptional(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
 }

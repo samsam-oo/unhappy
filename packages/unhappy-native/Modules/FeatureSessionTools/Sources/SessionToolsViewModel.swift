@@ -10,6 +10,11 @@ public final class SessionToolsViewModel: ObservableObject {
     @Published public private(set) var isWritingFile = false
     @Published public private(set) var writeStatusMessage: String?
     @Published public private(set) var writeErrorMessage: String?
+    @Published public private(set) var isLoadingFileDiff = false
+    @Published public private(set) var fileDiffOutput: String = ""
+    @Published public private(set) var fileDiffStderr: String = ""
+    @Published public private(set) var fileDiffExitCode: Int?
+    @Published public private(set) var fileDiffErrorMessage: String?
 
     @Published public var directoryPath: String = "~"
     @Published public private(set) var directoryEntries: [APISessionDirectoryEntry] = []
@@ -66,6 +71,7 @@ public final class SessionToolsViewModel: ObservableObject {
     private let fileLoader: any SessionFileLoadingAction
     private let directoryLister: any SessionDirectoryListAction
     private let fileWriter: any SessionFileWriteAction
+    private let fileDiffPreviewer: any SessionFileDiffPreviewAction
     private let killer: any SessionKillAction
     private let aborter: any SessionTaskAbortAction
     private let permissionResponder: any SessionPermissionResponseAction
@@ -78,6 +84,7 @@ public final class SessionToolsViewModel: ObservableObject {
         fileLoader: any SessionFileLoadingAction,
         directoryLister: any SessionDirectoryListAction,
         fileWriter: any SessionFileWriteAction,
+        fileDiffPreviewer: any SessionFileDiffPreviewAction,
         killer: any SessionKillAction,
         aborter: any SessionTaskAbortAction,
         permissionResponder: any SessionPermissionResponseAction,
@@ -89,6 +96,7 @@ public final class SessionToolsViewModel: ObservableObject {
         self.fileLoader = fileLoader
         self.directoryLister = directoryLister
         self.fileWriter = fileWriter
+        self.fileDiffPreviewer = fileDiffPreviewer
         self.killer = killer
         self.aborter = aborter
         self.permissionResponder = permissionResponder
@@ -199,6 +207,36 @@ public final class SessionToolsViewModel: ObservableObject {
         } catch {
             writeStatusMessage = nil
             writeErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func loadFileDiff(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        isLoadingFileDiff = true
+        fileDiffErrorMessage = nil
+        fileDiffOutput = ""
+        fileDiffStderr = ""
+        fileDiffExitCode = nil
+        defer { isLoadingFileDiff = false }
+
+        do {
+            let result = try await fileDiffPreviewer.loadFileDiff(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                path: filePath,
+                workingDirectory: normalizedOptional(directoryPath),
+                timeout: 30_000
+            )
+            fileDiffOutput = truncatedOutput(result.stdout)
+            fileDiffStderr = truncatedOutput(result.stderr)
+            fileDiffExitCode = result.exitCode
+            fileDiffErrorMessage = nil
+        } catch {
+            fileDiffErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 

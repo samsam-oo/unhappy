@@ -59,6 +59,48 @@ struct SessionFileCommandUseCasesTests {
             )
         }
     }
+
+    @Test
+    func loadFileDiffBuildsGitDiffCommand() async throws {
+        let basher = RecordingBashAction(
+            result: .init(success: true, stdout: "diff", stderr: "", exitCode: 0, error: nil)
+        )
+        let useCase = SessionFileDiffPreviewUseCase(basher: basher)
+
+        _ = try await useCase.loadFileDiff(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            sessionID: "session-1",
+            path: "/repo/Sources/App.swift",
+            workingDirectory: nil,
+            timeout: 12_000
+        )
+
+        let request = await basher.lastRequest()
+        #expect(request?.sessionID == "session-1")
+        #expect(request?.command == "git -C '/repo/Sources' diff --no-ext-diff -- '/repo/Sources/App.swift'")
+        #expect(request?.timeout == 12_000)
+    }
+
+    @Test
+    func loadFileDiffThrowsWhenPathMissing() async {
+        let useCase = SessionFileDiffPreviewUseCase(
+            basher: RecordingBashAction(
+                result: .init(success: true, stdout: "", stderr: "", exitCode: 0, error: nil)
+            )
+        )
+
+        await #expect(throws: SessionFileCommandError.missingPath) {
+            _ = try await useCase.loadFileDiff(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                path: " ",
+                workingDirectory: nil,
+                timeout: nil
+            )
+        }
+    }
 }
 
 private struct DirectoryService: SessionDirectoryListing {
@@ -90,4 +132,43 @@ private actor RecordingWriteService: SessionFileWriting {
     }
 
     func lastContent() -> String? { recordedContent }
+}
+
+private struct BashRequest: Equatable {
+    let serverURLString: String
+    let token: String
+    let sessionID: String
+    let command: String
+    let cwd: String?
+    let timeout: Int?
+}
+
+private actor RecordingBashAction: SessionBashRunAction {
+    let result: APISessionBashResult
+    private var request: BashRequest?
+
+    init(result: APISessionBashResult) {
+        self.result = result
+    }
+
+    func runBash(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        command: String,
+        cwd: String?,
+        timeout: Int?
+    ) async throws -> APISessionBashResult {
+        request = BashRequest(
+            serverURLString: serverURLString,
+            token: token,
+            sessionID: sessionID,
+            command: command,
+            cwd: cwd,
+            timeout: timeout
+        )
+        return result
+    }
+
+    func lastRequest() -> BashRequest? { request }
 }
