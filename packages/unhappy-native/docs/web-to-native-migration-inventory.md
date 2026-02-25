@@ -35,7 +35,7 @@ Last updated: 2026-02-25
 | `session/[id].tsx` | Partial | Native detail/messages view exists, but chat composer/tool flow parity is not complete. |
 | `session/recent.tsx` | Partial | Session list exists; dedicated recent-only UX is not separated. |
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission response/mode switch 기본 액션 구현. CLI diagnostics, full metadata UI 미구현. |
-| `session/[id]/file.tsx` | Partial | 기본 file read/viewer 구현 완료. syntax highlight/diff view 미구현. |
+| `session/[id]/file.tsx` | Partial | file read/viewer + directory browse + write-file 저장 구현. syntax highlight/diff view 미구현. |
 | `session/[id]/review.tsx` | Not started | Diff review/editor flow 미구현. |
 | `session/[id]/finish.tsx` | Not started | worktree finish/merge/commit UI 미구현. |
 | `session/[id]/message/[messageId].tsx` | Not started | message-level detail/tool expanded view 미구현. |

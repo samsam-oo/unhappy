@@ -38,7 +38,7 @@ This repository is migrating all app features to native modules with the followi
   - `Sources` (session list/detail + chat baseline)
   - `Tests`
 - `Modules/FeatureSessionTools/`:
-  - `Sources` (session command surfaces: file/info/kill/abort/permission/switch)
+  - `Sources` (session command surfaces: file read/write + directory browse, info, kill/abort/permission/switch)
   - `Tests`
 - `Modules/FeatureMachine/`:
   - `Sources` (machine management: spawn/daemon control)
