@@ -530,6 +530,51 @@ struct SessionsAPITests {
     }
 
     @Test
+    func sessionWriteFileRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionWriteFileRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            path: "/tmp/work/file.txt",
+            content: "aGVsbG8gdXBkYXRlZA==",
+            expectedHash: "abc123"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/write-file")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["path"] as? String == "/tmp/work/file.txt")
+        #expect(payload?["content"] as? String == "aGVsbG8gdXBkYXRlZA==")
+        #expect(payload?["expectedHash"] as? String == "abc123")
+    }
+
+    @Test
+    func sessionListDirectoryRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionListDirectoryRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            path: "/tmp/work",
+            includeStats: true,
+            types: ["file", "directory"],
+            sort: true,
+            maxEntries: 200
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/list-directory")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["path"] as? String == "/tmp/work")
+        #expect(payload?["maxEntries"] as? Int == 200)
+    }
+
+    @Test
     func sessionKillRequestUsesExpectedPathAndMethod() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try SessionsAPI.makeSessionKillRequest(
@@ -554,5 +599,42 @@ struct SessionsAPITests {
         let response = try SessionsAPI.decodeSessionReadFileResponse(json)
         #expect(response.success == true)
         #expect(response.content == "aGVsbG8=")
+    }
+
+    @Test
+    func decodeSessionWriteFileResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "hash": "next-hash"
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionWriteFileResponse(json)
+        #expect(response.success == true)
+        #expect(response.hash == "next-hash")
+    }
+
+    @Test
+    func decodeSessionListDirectoryResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "entries": [
+            {
+              "name": "Sources",
+              "type": "directory",
+              "size": 4096,
+              "modified": 1700000000
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionListDirectoryResponse(json)
+        #expect(response.success == true)
+        #expect(response.entries?.count == 1)
+        #expect(response.entries?.first?.name == "Sources")
+        #expect(response.entries?.first?.type == "directory")
     }
 }

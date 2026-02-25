@@ -370,6 +370,77 @@ public enum SessionsAPI {
         return request
     }
 
+    public static func makeSessionWriteFileRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String,
+        content: String,
+        expectedHash: String? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw SessionsAPIError.missingPath
+        }
+        guard !content.isEmpty else {
+            throw SessionsAPIError.missingFileContent
+        }
+
+        let writeFileURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/write-file")
+        var request = try makeRequest(
+            url: writeFileURL,
+            method: "POST",
+            token: token
+        )
+        let payload = SessionWriteFilePayload(
+            path: normalizedPath,
+            content: content,
+            expectedHash: expectedHash?.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
+    public static func makeSessionListDirectoryRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String,
+        includeStats: Bool? = nil,
+        types: [String]? = nil,
+        sort: Bool? = nil,
+        maxEntries: Int? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw SessionsAPIError.missingPath
+        }
+
+        let listDirectoryURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/list-directory")
+        var request = try makeRequest(
+            url: listDirectoryURL,
+            method: "POST",
+            token: token
+        )
+        let payload = SessionListDirectoryPayload(
+            path: normalizedPath,
+            includeStats: includeStats,
+            types: types,
+            sort: sort,
+            maxEntries: maxEntries
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
     public static func makeSessionKillRequest(
         serverURL: URL,
         token: String,
@@ -447,6 +518,16 @@ public enum SessionsAPI {
         return try decoder.decode(APISessionReadFileResult.self, from: data)
     }
 
+    public static func decodeSessionWriteFileResponse(_ data: Data) throws -> APISessionWriteFileResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionWriteFileResult.self, from: data)
+    }
+
+    public static func decodeSessionListDirectoryResponse(_ data: Data) throws -> APISessionListDirectoryResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionListDirectoryResult.self, from: data)
+    }
+
     public static func decodeSessionKillResponse(_ data: Data) throws -> APISessionKillResult {
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionKillResult.self, from: data)
@@ -472,6 +553,7 @@ public enum SessionsAPIError: LocalizedError, Equatable {
     case missingPermissionRequestID
     case missingDirectory
     case missingPath
+    case missingFileContent
     case missingCommand
     case missingSessionTitle
     case invalidHTTPStatus(Int)
@@ -488,6 +570,8 @@ public enum SessionsAPIError: LocalizedError, Equatable {
             return "Directory is required"
         case .missingPath:
             return "Path is required"
+        case .missingFileContent:
+            return "File content is required"
         case .missingCommand:
             return "Command is required"
         case .missingSessionTitle:
@@ -552,6 +636,20 @@ private struct SessionBashPayload: Encodable {
 
 private struct SessionReadFilePayload: Encodable {
     let path: String
+}
+
+private struct SessionWriteFilePayload: Encodable {
+    let path: String
+    let content: String
+    let expectedHash: String?
+}
+
+private struct SessionListDirectoryPayload: Encodable {
+    let path: String
+    let includeStats: Bool?
+    let types: [String]?
+    let sort: Bool?
+    let maxEntries: Int?
 }
 
 private struct SessionsCodexThreadsResponse: Decodable {
@@ -673,6 +771,26 @@ public protocol SessionFileReading: Sendable {
     ) async throws -> APISessionReadFileResult
 }
 
+public protocol SessionFileWriting: Sendable {
+    func writeFile(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String,
+        content: String,
+        expectedHash: String?
+    ) async throws -> APISessionWriteFileResult
+}
+
+public protocol SessionDirectoryListing: Sendable {
+    func listDirectory(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String
+    ) async throws -> APISessionListDirectoryResult
+}
+
 public protocol SessionKilling: Sendable {
     func killSession(
         serverURL: URL,
@@ -681,7 +799,7 @@ public protocol SessionKilling: Sendable {
     ) async throws -> APISessionKillResult
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionBashRunning, SessionFileReading, SessionKilling {
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionBashRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -1014,6 +1132,62 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
 
         return try SessionsAPI.decodeSessionReadFileResponse(data)
+    }
+
+    public func writeFile(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String,
+        content: String,
+        expectedHash: String?
+    ) async throws -> APISessionWriteFileResult {
+        let request = try SessionsAPI.makeSessionWriteFileRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            path: path,
+            content: content,
+            expectedHash: expectedHash
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionWriteFileResponse(data)
+    }
+
+    public func listDirectory(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        path: String
+    ) async throws -> APISessionListDirectoryResult {
+        let request = try SessionsAPI.makeSessionListDirectoryRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            path: path,
+            includeStats: true,
+            types: ["file", "directory"],
+            sort: true,
+            maxEntries: 300
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionListDirectoryResponse(data)
     }
 
     public func killSession(

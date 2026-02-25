@@ -244,6 +244,45 @@ public struct APISessionReadFileResult: Decodable, Equatable, Sendable {
     }
 }
 
+public struct APISessionWriteFileResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let hash: String?
+    public let error: String?
+
+    public init(success: Bool, hash: String?, error: String?) {
+        self.success = success
+        self.hash = hash
+        self.error = error
+    }
+}
+
+public struct APISessionDirectoryEntry: Decodable, Equatable, Identifiable, Sendable {
+    public var id: String { name }
+    public let name: String
+    public let type: String
+    public let size: Int?
+    public let modified: TimeInterval?
+
+    public init(name: String, type: String, size: Int?, modified: TimeInterval?) {
+        self.name = name
+        self.type = type
+        self.size = size
+        self.modified = modified
+    }
+}
+
+public struct APISessionListDirectoryResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let entries: [APISessionDirectoryEntry]?
+    public let error: String?
+
+    public init(success: Bool, entries: [APISessionDirectoryEntry]?, error: String?) {
+        self.success = success
+        self.entries = entries
+        self.error = error
+    }
+}
+
 public struct APISessionKillResult: Decodable, Equatable, Sendable {
     public let success: Bool
     public let message: String
