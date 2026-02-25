@@ -8,6 +8,7 @@ import UIKit
 struct TerminalConnectSettingsView: View {
     @StateObject private var viewModel: TerminalConnectSettingsViewModel
     @State private var authURLString = ""
+    @State private var showingScanner = false
     @State private var localStatusMessage: String?
     private let serverURLString: String
     private let token: String
@@ -95,6 +96,16 @@ struct TerminalConnectSettingsView: View {
             }
 
             Section("Actions") {
+                Button("Scan QR Code") {
+                    showingScanner = true
+                }
+                .disabled(viewModel.isChecking || viewModel.isApproving)
+
+                Button("Paste from Clipboard") {
+                    pasteFromClipboard()
+                }
+                .disabled(viewModel.isChecking || viewModel.isApproving)
+
                 Button("Check Request") {
                     guard let publicKey = parsedRequest?.publicKey else { return }
                     Task {
@@ -148,13 +159,18 @@ struct TerminalConnectSettingsView: View {
             }
 
             Section("Notes") {
-                Text("Native terminal approval uses daemon request status and encrypted approval response. QR scanner flow is still pending migration.")
+                Text("Native terminal approval uses daemon request status and encrypted approval response. QR scanner is available on supported iOS devices.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
         .navigationTitle("Terminal Connect")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingScanner) {
+            TerminalQRScannerSheet { scannedValue in
+                applyScannedAuthURL(scannedValue)
+            }
+        }
     }
 
     private func keyPreview(for key: String) -> String {
@@ -162,6 +178,34 @@ struct TerminalConnectSettingsView: View {
             return key
         }
         return "\(key.prefix(12))...\(key.suffix(8))"
+    }
+
+    private func pasteFromClipboard() {
+#if canImport(UIKit)
+        let rawValue = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !rawValue.isEmpty else {
+            localStatusMessage = "Clipboard is empty"
+            return
+        }
+        applyScannedAuthURL(rawValue)
+#endif
+    }
+
+    private func applyScannedAuthURL(_ rawValue: String) {
+        authURLString = rawValue
+        localStatusMessage = "Loaded URL"
+
+        guard let publicKey = TerminalAuthURLParser.parse(rawValue)?.publicKey else {
+            localStatusMessage = "Scanned code is not a terminal auth URL"
+            return
+        }
+
+        Task {
+            await viewModel.checkRequest(
+                serverURLString: serverURLString,
+                publicKeyBase64URL: publicKey
+            )
+        }
     }
 }
 

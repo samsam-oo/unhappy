@@ -8,6 +8,9 @@ let project = Project(
             destinations: .iOS,
             product: .app,
             bundleId: "im.unhappy.app",
+            infoPlist: .extendingDefault(with: [
+                "NSCameraUsageDescription": .string("Scan terminal QR codes to approve secure device connections."),
+            ]),
             buildableFolders: [
                 "App/Sources",
                 "App/Resources",
