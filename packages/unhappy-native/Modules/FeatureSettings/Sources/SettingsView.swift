@@ -18,20 +18,12 @@ public struct SettingsView: View {
     public var body: some View {
         NavigationStack {
             Form {
-                Section("API") {
-                    TextField("Server URL", text: $viewModel.serverURLString)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-
-                    SecureField("API Token", text: $viewModel.apiToken)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
-
-                Section("Notes") {
-                    Text("This app uses direct native API calls.")
-                        .foregroundStyle(.secondary)
+                Section("Connection") {
+                    NavigationLink {
+                        ServerSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Server", systemImage: "server.rack")
+                    }
                 }
 
                 Section("Machine") {
