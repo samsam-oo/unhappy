@@ -285,7 +285,8 @@ private struct SessionsRow: View {
                 machinesLoader: NewSessionMachinesLoadUseCase(service: service),
                 directoryLister: NewSessionDirectoryListUseCase(service: service),
                 spawner: NewSessionSpawnUseCase(service: service),
-                recentProjectsManager: NewSessionNoopRecentProjectsManager()
+                recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+                profilesManager: NewSessionNoopProfilesManager()
             )
         },
         makeSessionToolsViewModel: {

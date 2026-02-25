@@ -8,6 +8,7 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public private(set) var isLoadingDirectory = false
     @Published public private(set) var isSpawning = false
     @Published public private(set) var directoryEntries: [APIMachineDirectoryEntry] = []
+    @Published public private(set) var profiles: [NewSessionProfile] = []
     @Published public private(set) var recentProjects: [String] = []
     @Published public private(set) var selectedMachineID: String?
     @Published public var directoryPath: String = "~"
@@ -25,17 +26,20 @@ public final class NewSessionViewModel: ObservableObject {
     private let directoryLister: any NewSessionDirectoryListingAction
     private let spawner: any NewSessionSpawningAction
     private let recentProjectsManager: any NewSessionRecentProjectsManaging
+    private let profilesManager: any NewSessionProfilesManaging
 
     public init(
         machinesLoader: any NewSessionMachinesLoadingAction,
         directoryLister: any NewSessionDirectoryListingAction,
         spawner: any NewSessionSpawningAction,
-        recentProjectsManager: any NewSessionRecentProjectsManaging
+        recentProjectsManager: any NewSessionRecentProjectsManaging,
+        profilesManager: any NewSessionProfilesManaging
     ) {
         self.machinesLoader = machinesLoader
         self.directoryLister = directoryLister
         self.spawner = spawner
         self.recentProjectsManager = recentProjectsManager
+        self.profilesManager = profilesManager
     }
 
     public func loadMachines(serverURLString: String, token: String) async {
@@ -44,6 +48,7 @@ public final class NewSessionViewModel: ObservableObject {
         defer { isLoadingMachines = false }
 
         recentProjects = await recentProjectsManager.loadRecentProjects()
+        profiles = await profilesManager.loadProfiles()
 
         do {
             let loaded = try await machinesLoader.loadMachines(
@@ -123,6 +128,47 @@ public final class NewSessionViewModel: ObservableObject {
     ) async {
         directoryPath = path
         await loadDirectory(serverURLString: serverURLString, token: token)
+    }
+
+    public func applyProfile(
+        id: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let profile = profiles.first(where: { $0.id == id }) else { return }
+
+        if let machineID = profile.machineID, machines.contains(where: { $0.id == machineID }) {
+            selectedMachineID = machineID
+        }
+        directoryPath = normalizedPath(profile.directoryPath)
+        selectedAgent = profile.agent
+        codexResumeThreadID = profile.codexResumeThreadID ?? ""
+        claudeResumeSessionID = profile.claudeResumeSessionID ?? ""
+        sessionToken = profile.sessionToken ?? ""
+        environmentVariablesText = profile.environmentVariablesText
+        await loadDirectory(serverURLString: serverURLString, token: token)
+    }
+
+    public func saveCurrentAsProfile(named name: String) async {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty else { return }
+
+        let profile = NewSessionProfile(
+            id: UUID().uuidString.lowercased(),
+            name: normalizedName,
+            machineID: selectedMachineID,
+            directoryPath: normalizedPath(directoryPath),
+            agent: selectedAgent,
+            codexResumeThreadID: normalizedOptionalPath(codexResumeThreadID),
+            claudeResumeSessionID: normalizedOptionalPath(claudeResumeSessionID),
+            sessionToken: normalizedOptionalPath(sessionToken),
+            environmentVariablesText: environmentVariablesText
+        )
+        profiles = await profilesManager.saveProfile(profile)
+    }
+
+    public func deleteProfile(id: String) async {
+        profiles = await profilesManager.deleteProfile(id: id)
     }
 
     public func startSession(serverURLString: String, token: String) async -> Bool {

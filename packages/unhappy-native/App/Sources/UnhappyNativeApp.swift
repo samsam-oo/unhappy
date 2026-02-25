@@ -41,6 +41,7 @@ struct UnhappyNativeApp: App {
         let newSessionDirectoryLister = NewSessionDirectoryListUseCase(service: machinesService)
         let newSessionSpawner = NewSessionSpawnUseCase(service: machinesService)
         let newSessionRecentProjects = NewSessionRecentProjectsUseCase(store: settingsStore)
+        let newSessionProfiles = NewSessionProfilesUseCase(store: UserDefaultsNewSessionProfilesStore())
         let usageLoader = SettingsUsageLoadUseCase(service: sessionsService)
         let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
@@ -50,7 +51,8 @@ struct UnhappyNativeApp: App {
                 machinesLoader: newSessionMachinesLoader,
                 directoryLister: newSessionDirectoryLister,
                 spawner: newSessionSpawner,
-                recentProjectsManager: newSessionRecentProjects
+                recentProjectsManager: newSessionRecentProjects,
+                profilesManager: newSessionProfiles
             )
         }
         self.makeSessionToolsViewModel = {

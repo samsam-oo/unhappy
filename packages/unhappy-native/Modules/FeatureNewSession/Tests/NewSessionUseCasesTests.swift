@@ -170,6 +170,89 @@ struct NewSessionUseCasesTests {
 
         #expect(updated == ["/repo/a"])
     }
+
+    @Test
+    func profilesUseCaseSavesLoadsAndDeletes() async {
+        let suiteName = "im.unhappy.newsession.profiles.tests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("failed to create UserDefaults test suite")
+            return
+        }
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = UserDefaultsNewSessionProfilesStore(defaults: defaults)
+        let useCase = NewSessionProfilesUseCase(store: store, maxProfiles: 5)
+
+        let profile = NewSessionProfile(
+            id: "profile-1",
+            name: "Main Repo",
+            machineID: "machine-1",
+            directoryPath: "/repo/main",
+            agent: .codex,
+            codexResumeThreadID: "thread-1",
+            claudeResumeSessionID: nil,
+            sessionToken: nil,
+            environmentVariablesText: "OPENAI_API_KEY=test"
+        )
+
+        let saved = await useCase.saveProfile(profile)
+        #expect(saved.count == 1)
+        #expect(saved.first?.name == "Main Repo")
+
+        let loaded = await useCase.loadProfiles()
+        #expect(loaded == saved)
+
+        let deleted = await useCase.deleteProfile(id: "profile-1")
+        #expect(deleted.isEmpty)
+    }
+
+    @Test
+    func profilesUseCaseReplacesExistingByID() async {
+        let suiteName = "im.unhappy.newsession.profiles.tests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("failed to create UserDefaults test suite")
+            return
+        }
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = UserDefaultsNewSessionProfilesStore(defaults: defaults)
+        let useCase = NewSessionProfilesUseCase(store: store, maxProfiles: 5)
+
+        _ = await useCase.saveProfile(
+            NewSessionProfile(
+                id: "profile-1",
+                name: "Main Repo",
+                machineID: "machine-1",
+                directoryPath: "/repo/main",
+                agent: .codex,
+                codexResumeThreadID: nil,
+                claudeResumeSessionID: nil,
+                sessionToken: nil,
+                environmentVariablesText: ""
+            )
+        )
+        let updated = await useCase.saveProfile(
+            NewSessionProfile(
+                id: "profile-1",
+                name: "Main Repo Updated",
+                machineID: "machine-2",
+                directoryPath: "/repo/updated",
+                agent: .claude,
+                codexResumeThreadID: nil,
+                claudeResumeSessionID: "claude-1",
+                sessionToken: nil,
+                environmentVariablesText: "FOO=BAR"
+            )
+        )
+
+        #expect(updated.count == 1)
+        #expect(updated.first?.name == "Main Repo Updated")
+        #expect(updated.first?.machineID == "machine-2")
+    }
 }
 
 private struct MachinesService: MachinesFetching {

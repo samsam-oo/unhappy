@@ -10,6 +10,8 @@ public struct NewSessionView: View {
 
     @StateObject private var viewModel: NewSessionViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var showSaveProfilePrompt = false
+    @State private var draftProfileName = ""
 
     public init(
         serverURLString: String,
@@ -133,6 +135,46 @@ public struct NewSessionView: View {
                     }
                 }
 
+                Section("Profiles") {
+                    if viewModel.profiles.isEmpty {
+                        Text("No saved profiles")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(viewModel.profiles) { profile in
+                            Button {
+                                Task {
+                                    await viewModel.applyProfile(
+                                        id: profile.id,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(profile.name)
+                                        .lineLimit(1)
+                                    Text("\(profile.agent.rawValue) • \(profile.directoryPath)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button("Delete", role: .destructive) {
+                                    Task {
+                                        await viewModel.deleteProfile(id: profile.id)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Button("Save Current As Profile") {
+                        draftProfileName = ""
+                        showSaveProfilePrompt = true
+                    }
+                }
+
                 Section("Agent") {
                     Picker("Agent", selection: $viewModel.selectedAgent) {
                         Text("Claude").tag(APISessionSpawnAgent.claude)
@@ -220,6 +262,17 @@ public struct NewSessionView: View {
             }
             .navigationTitle("New Session")
             .navigationBarTitleDisplayMode(.inline)
+            .alert("Save Profile", isPresented: $showSaveProfilePrompt) {
+                TextField("Profile Name", text: $draftProfileName)
+                Button("Save") {
+                    Task {
+                        await viewModel.saveCurrentAsProfile(named: draftProfileName)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Saves current machine/path/agent/advanced values.")
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
@@ -260,7 +313,8 @@ public struct NewSessionView: View {
                 machinesLoader: NewSessionMachinesLoadUseCase(service: service),
                 directoryLister: NewSessionDirectoryListUseCase(service: service),
                 spawner: NewSessionSpawnUseCase(service: service),
-                recentProjectsManager: NewSessionNoopRecentProjectsManager()
+                recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+                profilesManager: NewSessionNoopProfilesManager()
             )
         }
     )
