@@ -1,5 +1,8 @@
 import SwiftUI
 import CoreKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 public struct SessionInfoView: View {
@@ -9,6 +12,7 @@ public struct SessionInfoView: View {
 
     @StateObject private var viewModel: SessionToolsViewModel
     @State private var showKillConfirmation = false
+    @State private var quickActionStatusMessage: String?
 
     public init(
         session: APISession,
@@ -141,6 +145,50 @@ public struct SessionInfoView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+
+            Section("Quick Actions") {
+                NavigationLink {
+                    SessionReviewView(
+                        session: session,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: { viewModel }
+                    )
+                } label: {
+                    Label("Review Diff", systemImage: "doc.text.magnifyingglass")
+                }
+
+                NavigationLink {
+                    SessionFinishView(
+                        session: session,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: { viewModel }
+                    )
+                } label: {
+                    Label("Finish Worktree", systemImage: "checkmark.circle")
+                }
+
+                Button("Copy Session ID") {
+                    copyToClipboard(session.id)
+                    quickActionStatusMessage = "Copied session ID"
+                }
+                Button("Copy Metadata JSON") {
+                    copyToClipboard(session.metadata)
+                    quickActionStatusMessage = "Copied metadata"
+                }
+                if let agentState = session.agentState, !agentState.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("Copy Agent State JSON") {
+                        copyToClipboard(agentState)
+                        quickActionStatusMessage = "Copied agent state"
+                    }
+                }
+                if let quickActionStatusMessage {
+                    Text(quickActionStatusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.green)
                 }
             }
 
@@ -441,6 +489,12 @@ public struct SessionInfoView: View {
             }
         )
     }
+}
+
+private func copyToClipboard(_ value: String) {
+#if canImport(UIKit)
+    UIPasteboard.general.string = value
+#endif
 }
 
 private extension APISessionPermissionDecision {
