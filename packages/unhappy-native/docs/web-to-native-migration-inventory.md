@@ -46,7 +46,7 @@ Last updated: 2026-02-25
 | `new/pick/project.tsx` | Partial | 최근 프로젝트 경로 quick pick(로컬 저장/재선택) 구현. 원본의 full project discovery/search UX는 미구현. |
 | `machine/[id].tsx` | Partial | machine detail + daemon control + spawn + daemonState/metadata 진단 프리뷰(파싱 필드/원문 프리뷰) 구현. metadata 편집은 미구현. |
 | `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력 + 요청 상태 조회(`pending/authorized/not_found`) + approve 액션 구현. QR 승인 플로우는 미구현. |
-| `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 + encrypted approve(`v1/v2`) 구현. scanner/web deep-link parity는 미구현. |
+| `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 + encrypted approve(`v1/v2`) + iOS QR scanner sheet(DataScanner) 구현. web deep-link parity는 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
 | `settings/index.tsx` | Partial | Account/Server/Connectors/Terminal/Language/Appearance/Features/Profiles/Usage/Voice/Machine 진입 제공. |
 | `settings/account.tsx` | Partial | token 기반 app access 상태/복사/토큰 제거 UI 구현. 완료 기준은 token이 아니라 daemon running 상태(Connectors)로 안내. OAuth/social connect/disconnect/github/profile sync는 미구현. |
@@ -72,7 +72,7 @@ Last updated: 2026-02-25
 | `restore/index.tsx` | Not started | account restore QR flow 미구현. |
 | `restore/manual.tsx` | Not started | manual restore 미구현. |
 | `scanner/account.tsx` | Not started | account scanner 미구현. |
-| `scanner/terminal.tsx` | Not started | terminal scanner 미구현. |
+| `scanner/terminal.tsx` | Partial | Settings `Terminal`에서 QR scanner sheet(iOS supported device)로 URL 스캔 후 승인 플로우 연동. standalone scanner route parity는 미구현. |
 | `changelog.tsx` | Not started | changelog viewer 미구현. |
 | `text-selection.tsx` | Not started | temp text selection/restore UI 미구현. |
 
