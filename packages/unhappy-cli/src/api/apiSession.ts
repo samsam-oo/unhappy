@@ -134,6 +134,7 @@ export class ApiSessionClient extends EventEmitter {
                     'listDirectory',
                     'getDirectoryTree',
                     'ripgrep',
+                    'difftastic',
                     'killSession',
                     'codex-list-threads',
                     'codex-set-thread-name',

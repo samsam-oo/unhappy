@@ -894,6 +894,40 @@ export function sessionRoutes(app: Fastify) {
         return reply.send(invoked.result);
     });
 
+    app.post('/v1/sessions/:sessionId/commands/difftastic', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                args: z.array(z.string()),
+                cwd: z.string().optional()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+
+        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
+        if (!sessionExists) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const invoked = await invokeSessionCommand(
+            userId,
+            sessionId,
+            'difftastic',
+            request.body,
+            true
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        return reply.send(invoked.result);
+    });
+
     app.post('/v1/sessions/:sessionId/kill', {
         schema: {
             params: z.object({
