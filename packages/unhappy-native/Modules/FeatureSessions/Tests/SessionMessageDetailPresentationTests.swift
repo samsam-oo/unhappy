@@ -28,6 +28,7 @@ struct SessionMessageDetailPresentationTests {
         #expect(presentation.payloadPreview == "hello")
         #expect(presentation.payloadCharacterCount == 5)
         #expect(presentation.payloadTruncated == false)
+        #expect(presentation.payloadFields.isEmpty)
     }
 
     @Test
@@ -48,6 +49,7 @@ struct SessionMessageDetailPresentationTests {
         #expect(presentation.payloadTruncated == true)
         #expect(presentation.payloadPreview?.count == SessionMessageDetailPresentationBuilder.payloadPreviewLimit)
         #expect(presentation.payloadPreview == String(payload.prefix(SessionMessageDetailPresentationBuilder.payloadPreviewLimit)))
+        #expect(presentation.payloadFields.isEmpty)
     }
 
     @Test
@@ -67,5 +69,29 @@ struct SessionMessageDetailPresentationTests {
         #expect(presentation.payloadPreview == nil)
         #expect(presentation.payloadCharacterCount == 0)
         #expect(presentation.payloadTruncated == false)
+        #expect(presentation.payloadFields.isEmpty)
+    }
+
+    @Test
+    func makeParsesTopLevelJSONFields() {
+        let payload = #"{"tool":"bash","exitCode":0,"success":true,"meta":{"cwd":"/tmp"}}"#
+        let message = APISessionMessage(
+            id: "message-4",
+            seq: 4,
+            localId: nil,
+            content: APIEncryptedMessageContent(t: "tool", c: payload),
+            createdAt: 100,
+            updatedAt: 100
+        )
+
+        let presentation = SessionMessageDetailPresentationBuilder.make(from: message)
+
+        #expect(presentation.payloadFields.map(\.key) == ["exitCode", "meta", "success", "tool"])
+        #expect(presentation.payloadFields.first(where: { $0.key == "tool" })?.value == "bash")
+        #expect(presentation.payloadFields.first(where: { $0.key == "exitCode" })?.value == "0")
+        #expect(presentation.payloadFields.first(where: { $0.key == "success" })?.value == "true")
+        let metaValue = presentation.payloadFields.first(where: { $0.key == "meta" })?.value ?? ""
+        #expect(metaValue.contains(#""cwd""#))
+        #expect(metaValue.contains("tmp"))
     }
 }

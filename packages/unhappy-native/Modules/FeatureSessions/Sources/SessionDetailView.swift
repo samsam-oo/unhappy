@@ -750,6 +750,24 @@ private struct SessionMessageDetailView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    if !presentation.payloadFields.isEmpty {
+                        Divider()
+                        Text("Parsed Fields")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(presentation.payloadFields) { field in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(field.key)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(field.value)
+                                    .font(.footnote.monospaced())
+                                    .textSelection(.enabled)
+                                    .lineLimit(nil)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
                 } else {
                     Text("No content payload")
                         .foregroundStyle(.secondary)
