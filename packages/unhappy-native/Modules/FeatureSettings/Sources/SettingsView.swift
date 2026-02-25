@@ -37,6 +37,11 @@ public struct SettingsView: View {
                     } label: {
                         Label("Connectors", systemImage: "link")
                     }
+                    NavigationLink {
+                        TerminalConnectSettingsView()
+                    } label: {
+                        Label("Terminal", systemImage: "terminal")
+                    }
                 }
 
                 Section("Preferences") {
