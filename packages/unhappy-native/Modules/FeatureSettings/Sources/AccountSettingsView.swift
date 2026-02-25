@@ -10,6 +10,7 @@ struct AccountSettingsView: View {
     @State private var accountAuthURLString = ""
     @State private var showingScanner = false
     @State private var statusMessage: String?
+    @State private var qrRestoreTask: Task<Void, Never>?
 
     init(
         viewModel: SettingsViewModel,
@@ -68,6 +69,10 @@ struct AccountSettingsView: View {
                     ProgressView("Linking device...")
                 } else if accountLinkViewModel.isRestoring {
                     ProgressView("Restoring token from secret...")
+                } else if accountLinkViewModel.isRestoringByQR {
+                    ProgressView(
+                        "Waiting for QR approval\(String(repeating: ".", count: accountLinkViewModel.qrRestoreProgressDots))"
+                    )
                 }
                 if let statusMessage = accountLinkViewModel.statusMessage {
                     Text(statusMessage)
@@ -81,16 +86,38 @@ struct AccountSettingsView: View {
                 }
             }
 
+            Section("Restore With QR") {
+                Text("Open Unhappy on another device and approve the restore request by scanning this QR.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                if let qrCode = accountLinkViewModel.qrRestoreCode {
+                    HStack {
+                        Spacer()
+                        QRCodeImageView(content: qrCode, size: 220)
+                        Spacer()
+                    }
+                }
+            }
+
             Section("Actions") {
                 Button("Scan Account QR") {
                     showingScanner = true
                 }
-                .disabled(accountLinkViewModel.isLinking || accountLinkViewModel.isRestoring)
+                .disabled(
+                    accountLinkViewModel.isLinking
+                        || accountLinkViewModel.isRestoring
+                        || accountLinkViewModel.isRestoringByQR
+                )
 
                 Button("Paste Account URL") {
                     pasteFromClipboard()
                 }
-                .disabled(accountLinkViewModel.isLinking || accountLinkViewModel.isRestoring)
+                .disabled(
+                    accountLinkViewModel.isLinking
+                        || accountLinkViewModel.isRestoring
+                        || accountLinkViewModel.isRestoringByQR
+                )
 
                 Button("Link Device") {
                     Task {
@@ -109,6 +136,7 @@ struct AccountSettingsView: View {
                             .isEmpty
                         || accountLinkViewModel.isLinking
                         || accountLinkViewModel.isRestoring
+                        || accountLinkViewModel.isRestoringByQR
                 )
 
                 Button("Restore Token From Secret") {
@@ -127,7 +155,32 @@ struct AccountSettingsView: View {
                         .isEmpty
                         || accountLinkViewModel.isLinking
                         || accountLinkViewModel.isRestoring
+                        || accountLinkViewModel.isRestoringByQR
                 )
+
+                Button("Start QR Restore") {
+                    qrRestoreTask?.cancel()
+                    qrRestoreTask = Task {
+                        defer { qrRestoreTask = nil }
+                        if let restoredToken = await accountLinkViewModel.restoreTokenFromQRCode(
+                            serverURLString: viewModel.serverURLString
+                        ) {
+                            viewModel.apiToken = restoredToken
+                            statusMessage = "Restored API token from QR"
+                        }
+                    }
+                }
+                .disabled(
+                    accountLinkViewModel.isLinking
+                        || accountLinkViewModel.isRestoring
+                        || accountLinkViewModel.isRestoringByQR
+                )
+
+                Button("Cancel QR Restore", role: .cancel) {
+                    qrRestoreTask?.cancel()
+                    qrRestoreTask = nil
+                }
+                .disabled(!accountLinkViewModel.isRestoringByQR)
 
                 Button("Copy API Token") {
                     copyToClipboard(viewModel.apiToken)
@@ -166,6 +219,10 @@ struct AccountSettingsView: View {
         }
         .task {
             await accountLinkViewModel.loadFromStore()
+        }
+        .onDisappear {
+            qrRestoreTask?.cancel()
+            qrRestoreTask = nil
         }
     }
 

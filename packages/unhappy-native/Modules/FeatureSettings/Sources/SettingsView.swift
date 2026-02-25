@@ -158,6 +158,9 @@ public struct SettingsView: View {
                 restorer: AccountRestoreUseCase(
                     authTokenService: URLSessionAuthTokenService()
                 ),
+                qrRestorer: AccountRestoreQRUseCase(
+                    requestService: URLSessionAccountRestoreRequestService()
+                ),
                 secretStore: UserDefaultsAccountSecretStore()
             )
         }

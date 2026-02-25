@@ -82,6 +82,9 @@ struct FeatureHomeTests {
                     restorer: AccountRestoreUseCase(
                         authTokenService: URLSessionAuthTokenService()
                     ),
+                    qrRestorer: AccountRestoreQRUseCase(
+                        requestService: URLSessionAccountRestoreRequestService()
+                    ),
                     secretStore: UserDefaultsAccountSecretStore()
                 )
             }
