@@ -23,14 +23,14 @@ Last updated: 2026-02-25
 - Missing at module level:
   - New-session advanced wizard/worktree flow
   - Session review/finish의 web 고급 UX와 rich tool-level detail flows
-  - Artifacts / Friends / Inbox / Zen / Restore / Scanner / Terminal connection
+  - Artifacts / Friends / Zen / Restore / Scanner / Terminal connection
   - Full settings surfaces (account/features/language/profiles/usage/voice/connectors)
 
 ## Route Parity Matrix
 
 | Web Route | Native Status | Notes |
 | --- | --- | --- |
-| `_layout.tsx` | Partial | Native `TabView`에 `Inbox` 탭 기본 뼈대(빈 상태/에러 상태 포함) 이관됨. web 수준의 inbox data pipeline 및 richer header actions parity는 미구현. |
+| `_layout.tsx` | Partial | Native `TabView`에 `Inbox` 탭과 `/v1/feed` 기반 데이터 로딩 파이프라인 이관됨. friend/user/social actions parity 및 web header polish는 미구현. |
 | `index.tsx` | Partial | Native Home에 비인증 온보딩(서버 URL 입력, Create Account `/v1/auth`, Restore 진입) + portrait/landscape 반응형 레이아웃 + 플랫폼형 CTA 분기(모바일/대화면) + 상단 `Sessions` 헤더(커스텀 서버 subtitle/서버 설정 진입) + 기본 서버 대상 연결 상태 배지(`Connecting/Connected/Disconnected`, `/v1/sessions` health check) 추가됨. socket reducer 기반 실시간 parity는 미구현. |
 | `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) + 상단 고정 multi-agent 상태 배너 구현. message-level tool detail/review/finish flow은 미구현. |
 | `session/recent.tsx` | Done | Sessions 화면에서 `Recent` 진입 제공, 날짜별(오늘/어제/N일 전) 그룹핑 리스트 구현. |
@@ -65,7 +65,7 @@ Last updated: 2026-02-25
 | `friends/index.tsx` | Not started | friends list/requests 관리 미구현. |
 | `friends/search.tsx` | Not started | user search + add friend 미구현. |
 | `user/[id].tsx` | Not started | user profile/friend action 미구현. |
-| `inbox/index.tsx` | Not started | inbox view 미구현. |
+| `inbox/index.tsx` | Partial | Inbox tab + `/v1/feed` 조회 + friend/text feed item 기본 렌더링 구현. friends/search/user profile 연계 및 web update banner parity는 미구현. |
 | `zen/index.tsx` | Not started | zen home 미구현. |
 | `zen/new.tsx` | Not started | zen task creation 미구현. |
 | `zen/view.tsx` | Not started | zen detail 미구현. |
@@ -87,7 +87,8 @@ Last updated: 2026-02-25
 | `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`(resume IDs/session token/env vars 포함), `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
 | `auth` account link (`/v1/auth/account/response`) | Partial | account QR URL 파싱 + TweetNacl box 암호화 응답 + native approve API 호출 + secret 기반 `/v1/auth` token restore + `/v1/auth/account/request` QR restore polling/복호화 + Home 비인증 화면의 `/v1/auth` account create 진입 구현. restore route-level UX parity는 미구현. |
 | `apiArtifacts` | Not started | artifact CRUD 전부 미이관. |
-| `apiFriends`, `apiFeed`, `apiGithub`, `apiServices` | Not started | social/account integrations 미이관. |
+| `apiFeed` (`/v1/feed`) | Partial | feed list API 브릿지 + native inbox mapping 구현. friends/user profile lookup 연동은 미구현. |
+| `apiFriends`, `apiGithub`, `apiServices` | Not started | social/account integrations 미이관. |
 | `apiUsage`, `apiPush`, `apiKv`, `apiVoice` | Not started | usage/push/kv/voice 전부 미이관. |
 | `apiSocket` + realtime reducer pipeline | Not started | 현재 native는 polling 중심, socket/reducer parity 없음. |
 | Encryption (`encryption/*`) | Partial | machine/session/artifact encryption stack은 미이관. terminal connect 승인용 `tweetnacl box` 암호화(v1/v2 payload)만 최소 이관. |
