@@ -39,11 +39,11 @@ Last updated: 2026-02-25
 | `session/[id]/review.tsx` | Partial | Session Tools에서 git review diff 조회 + 파일별 요약(파일명/헝크 수/preview) + 선택 상세/Raw Diff 구현(세션 cwd 자동 감지 포함). web `ChangesEditor` 수준 에디팅은 미구현. |
 | `session/[id]/finish.tsx` | Partial | Session Tools에서 finish 액션(commit/merge/PR/delete worktree) 구현 + 세션 cwd 기반 path/branch 자동 감지. web 모달/상세 UX parity는 미구현. |
 | `session/[id]/message/[messageId].tsx` | Partial | 메시지 row 탭 시 metadata + payload preview + JSON top-level parsed fields 렌더링 구현. web tool-specific expanded renderer 완전 parity는 미구현. |
-| `new/index.tsx` | Partial | machine/path/agent 기반 spawn + resume thread/session + session token + env vars 입력 구현. profile/worktree 고급 wizard는 미구현. |
+| `new/index.tsx` | Partial | machine/path/agent 기반 spawn + recent project quick pick + resume thread/session + session token + env vars 입력 구현. profile/worktree 고급 wizard는 미구현. |
 | `new/pick/machine.tsx` | Partial | machine picker 기본 구현됨. |
 | `new/pick/path.tsx` | Partial | directory browser 기본 구현됨. |
 | `new/pick/profile-edit.tsx` | Not started | profile edit 연결 미구현. |
-| `new/pick/project.tsx` | Not started | project discovery picker 미구현. |
+| `new/pick/project.tsx` | Partial | 최근 프로젝트 경로 quick pick(로컬 저장/재선택) 구현. 원본의 full project discovery/search UX는 미구현. |
 | `machine/[id].tsx` | Partial | machine detail + daemon control + spawn 구현됨. metadata 편집/고급 진단 미구현. |
 | `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력/요청 미리보기 진입 구현. QR 승인 플로우는 미구현. |
 | `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 구현. 실제 terminal approval handshake는 미구현. |
