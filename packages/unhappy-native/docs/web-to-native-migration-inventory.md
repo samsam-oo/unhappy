@@ -47,7 +47,7 @@ Last updated: 2026-02-25
 | `machine/[id].tsx` | Partial | machine detail + daemon control + spawn 구현됨. metadata 편집/고급 진단 미구현. |
 | `terminal/index.tsx` | Not started | terminal connect 진입 플로우 미구현. |
 | `terminal/connect.tsx` | Not started | QR/URL terminal auth 연결 UI 미구현. |
-| `server.tsx` | Not started | custom server 설정 화면 미구현. |
+| `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
 | `settings/index.tsx` | Partial | 최소 설정만 존재. |
 | `settings/account.tsx` | Not started | account/profile/connect/disconnect/github UI 미구현. |
 | `settings/features.tsx` | Not started | feature flags/local settings 미구현. |
