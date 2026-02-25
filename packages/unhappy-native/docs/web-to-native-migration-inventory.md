@@ -22,7 +22,7 @@ Last updated: 2026-02-25
   - `CoreKit` (API models, sessions service, settings store)
 - Missing at module level:
   - New-session advanced wizard/worktree flow
-  - Session review/finish/message-level detail flows
+  - Session review/finish and rich tool-level detail flows
   - Artifacts / Friends / Inbox / Zen / Restore / Scanner / Terminal connection
   - Full settings surfaces (account/features/language/profiles/usage/voice/connectors)
 
@@ -38,7 +38,7 @@ Last updated: 2026-02-25
 | `session/[id]/file.tsx` | Partial | file read/viewer + directory browse + write-file 저장 구현. syntax highlight/diff view 미구현. |
 | `session/[id]/review.tsx` | Not started | Diff review/editor flow 미구현. |
 | `session/[id]/finish.tsx` | Not started | worktree finish/merge/commit UI 미구현. |
-| `session/[id]/message/[messageId].tsx` | Not started | message-level detail/tool expanded view 미구현. |
+| `session/[id]/message/[messageId].tsx` | Partial | 메시지 row 탭 시 metadata + payload preview detail 화면 구현. tool expanded renderer parity는 미구현. |
 | `new/index.tsx` | Partial | 기본 machine/path/agent 기반 spawn 플로우 구현됨. profile/env/worktree 고급 옵션 미구현. |
 | `new/pick/machine.tsx` | Partial | machine picker 기본 구현됨. |
 | `new/pick/path.tsx` | Partial | directory browser 기본 구현됨. |
