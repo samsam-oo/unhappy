@@ -48,15 +48,15 @@ Last updated: 2026-02-25
 | `terminal/index.tsx` | Not started | terminal connect 진입 플로우 미구현. |
 | `terminal/connect.tsx` | Not started | QR/URL terminal auth 연결 UI 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
-| `settings/index.tsx` | Partial | Account/Server/Language/Appearance/Features/Usage/Machine 진입 제공. profiles/voice/connectors는 미구현. |
+| `settings/index.tsx` | Partial | Account/Server/Language/Appearance/Features/Usage/Voice/Machine 진입 제공. profiles/connectors는 미구현. |
 | `settings/account.tsx` | Partial | token 기반 account 상태/복사/토큰 제거 UI 구현. OAuth/social connect/disconnect/github/profile sync는 미구현. |
 | `settings/features.tsx` | Done | experiments/hideInactiveSessions/useEnhancedSessionWizard 토글 + 로컬 저장 구현. |
 | `settings/language.tsx` | Done | 앱 언어(System/English/Korean) 선택 및 로컬 저장 구현. |
 | `settings/appearance.tsx` | Done | 테마(System/Light/Dark) 선택 및 로컬 저장 구현. |
 | `settings/usage.tsx` | Done | 세션 기반 usage 집계(total/active/inactive/last activity) 조회 구현. |
 | `settings/profiles.tsx` | Not started | AI backend profiles UI 미구현. |
-| `settings/voice.tsx` | Not started | voice 설정 미구현. |
-| `settings/voice/language.tsx` | Not started | voice language picker 미구현. |
+| `settings/voice.tsx` | Done | voice enable 토글 + voice language 화면 진입 구현. |
+| `settings/voice/language.tsx` | Done | voice language(System/English/Korean) picker + 로컬 저장 구현. |
 | `settings/connect/claude.tsx` | Not started | Claude OAuth connect flow 미구현. |
 | `artifacts/index.tsx` | Not started | artifact list 미구현. |
 | `artifacts/new.tsx` | Not started | artifact create 미구현. |
@@ -91,7 +91,7 @@ Last updated: 2026-02-25
 | `apiSocket` + realtime reducer pipeline | Not started | 현재 native는 polling 중심, socket/reducer parity 없음. |
 | Encryption (`encryption/*`) | Not started | machine/session/artifact encryption stack 미이관. |
 | Git/worktree (`gitStatusSync`, `projectManager`, `worktreeDiscovery`) | Not started | review/finish/new-session 고급 흐름에 필요. |
-| Local settings / profiles / purchases | Partial | server/language/appearance/features 로컬 설정 저장 구현. profiles/purchases parity는 미구현. |
+| Local settings / profiles / purchases | Partial | server/language/appearance/features/voice 로컬 설정 저장 구현. profiles/purchases parity는 미구현. |
 
 ## Recommended Migration Order (Execution Backlog)
 
