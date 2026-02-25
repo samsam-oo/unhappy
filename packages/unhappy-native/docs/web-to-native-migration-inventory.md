@@ -22,7 +22,7 @@ Last updated: 2026-02-25
   - `CoreKit` (API models, sessions service, settings store)
 - Missing at module level:
   - New-session advanced wizard/worktree flow
-  - Session tool actions (permission/steer/file/review/finish)
+  - Session review/finish/message-level detail flows
   - Artifacts / Friends / Inbox / Zen / Restore / Scanner / Terminal connection
   - Full settings surfaces (account/features/language/profiles/usage/voice/connectors)
 
@@ -32,7 +32,7 @@ Last updated: 2026-02-25
 | --- | --- | --- |
 | `_layout.tsx` | Partial | Native `TabView` exists but tabs/headers/status parity is incomplete (`Inbox`, richer header actions missing). |
 | `index.tsx` | Partial | Native home exists, but auth onboarding/create/restore flow parity is missing. |
-| `session/[id].tsx` | Partial | Native detail/messages view exists, but chat composer/tool flow parity is not complete. |
+| `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) 구현. message-level tool detail/review/finish flow은 미구현. |
 | `session/recent.tsx` | Partial | Session list exists; dedicated recent-only UX is not separated. |
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission response/mode switch 기본 액션 구현. CLI diagnostics, full metadata UI 미구현. |
 | `session/[id]/file.tsx` | Partial | file read/viewer + directory browse + write-file 저장 구현. syntax highlight/diff view 미구현. |
@@ -80,9 +80,9 @@ Last updated: 2026-02-25
 
 | Web Sync Area | Native Status | Notes |
 | --- | --- | --- |
-| `sync` sessions list/messages/delete/title | Partial | list/messages/delete/title 일부 구현 완료. |
+| `sync` sessions list/messages/delete/title | Partial | list/messages/delete/title + follow-up send(message command, queue/immediate) 구현. websocket reducer parity는 미구현. |
 | codex/claude history list + resume (`/codex/threads`, `/claude/sessions`, spawn resume params) | Partial | 구현됨. UI polish 및 error/empty handling 보강 필요. |
-| `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 브릿지 + native 수동 action UI(allow/deny/abort/switch) 구현. steer(queue/immediate) 입력 UI는 미구현. |
+| `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 브릿지 + native 수동 action UI(allow/deny/abort/switch) 구현. `session/[id]` composer에서 queue/immediate steer 전송 가능. |
 | `ops` file/dir/ripgrep/bash session tools | Partial | 서버 `commands/*` + 네이티브 file viewer/kill 구현. review/finish UI는 미이관. |
 | `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`, `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
 | `apiArtifacts` | Not started | artifact CRUD 전부 미이관. |

@@ -33,6 +33,9 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var claudeResumeErrorMessage: String?
     @Published public private(set) var deletingSessionIDs: Set<String> = []
     @Published public private(set) var renamingSessionIDs: Set<String> = []
+    @Published public private(set) var sendingMessageSessionID: String?
+    @Published public private(set) var sendMessageStatusMessage: String?
+    @Published public private(set) var sendMessageErrorMessage: String?
 
     private let loader: any SessionsLoading
     private let pageLoader: any SessionsPageLoading
@@ -41,6 +44,7 @@ public final class SessionsViewModel: ObservableObject {
     private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
     private let claudeSessionsLoader: (any SessionClaudeSessionsLoading)?
     private let spawnUseCase: (any SessionSpawningAction)?
+    private let messageSender: (any SessionMessageSendingAction)?
     private let deleteUseCase: any SessionDeletingAction
     private let titleUseCase: any SessionTitleUpdatingAction
     private var messagesBySessionID: [String: [APISessionMessage]] = [:]
@@ -55,6 +59,7 @@ public final class SessionsViewModel: ObservableObject {
         codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
         claudeSessionsLoader: (any SessionClaudeSessionsLoading)? = nil,
         spawnUseCase: (any SessionSpawningAction)? = nil,
+        messageSender: (any SessionMessageSendingAction)? = nil,
         deleteUseCase: any SessionDeletingAction,
         titleUseCase: any SessionTitleUpdatingAction
     ) {
@@ -65,6 +70,7 @@ public final class SessionsViewModel: ObservableObject {
         self.codexThreadsLoader = codexThreadsLoader
         self.claudeSessionsLoader = claudeSessionsLoader
         self.spawnUseCase = spawnUseCase
+        self.messageSender = messageSender
         self.deleteUseCase = deleteUseCase
         self.titleUseCase = titleUseCase
     }
@@ -73,6 +79,12 @@ public final class SessionsViewModel: ObservableObject {
         service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating & SessionCodexThreadsFetching & SessionClaudeSessionsFetching & SessionSpawning
     ) {
         let loader = SessionsLoadUseCase(service: service)
+        let messageSenderUseCase: (any SessionMessageSendingAction)?
+        if let messagingService = service as? any SessionMessaging {
+            messageSenderUseCase = SessionMessageSendUseCase(service: messagingService)
+        } else {
+            messageSenderUseCase = nil
+        }
         self.init(
             loader: loader,
             pageLoader: SessionsPageLoadUseCase(service: service),
@@ -81,6 +93,7 @@ public final class SessionsViewModel: ObservableObject {
             codexThreadsLoader: SessionCodexThreadsLoadUseCase(service: service),
             claudeSessionsLoader: SessionClaudeSessionsLoadUseCase(service: service),
             spawnUseCase: SessionSpawnUseCase(service: service),
+            messageSender: messageSenderUseCase,
             deleteUseCase: SessionDeleteUseCase(service: service),
             titleUseCase: SessionTitleUpdateUseCase(service: service)
         )
@@ -115,6 +128,10 @@ public final class SessionsViewModel: ObservableObject {
 
     public func isRenaming(sessionID: String) -> Bool {
         renamingSessionIDs.contains(sessionID)
+    }
+
+    public func isSendingMessage(sessionID: String) -> Bool {
+        sendingMessageSessionID == sessionID
     }
 
     public func load(serverURLString: String, token: String) async {
@@ -402,6 +419,44 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    public func sendMessage(
+        for sessionID: String,
+        text: String,
+        steerMode: APISessionSteerMode,
+        serverURLString: String,
+        token: String
+    ) async -> Bool {
+        guard sendingMessageSessionID == nil else { return false }
+        guard let messageSender else {
+            sendMessageStatusMessage = nil
+            sendMessageErrorMessage = "Message sender is unavailable"
+            return false
+        }
+
+        sendingMessageSessionID = sessionID
+        sendMessageStatusMessage = nil
+        sendMessageErrorMessage = nil
+        defer { sendingMessageSessionID = nil }
+
+        do {
+            _ = try await messageSender.sendMessage(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                text: text,
+                steerMode: steerMode
+            )
+            sendMessageStatusMessage = steerMode == .immediate ? "Steer sent" : "Queued message sent"
+            sendMessageErrorMessage = nil
+            await loadMessages(for: sessionID, serverURLString: serverURLString, token: token)
+            return true
+        } catch {
+            sendMessageStatusMessage = nil
+            sendMessageErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
     public func deleteSession(sessionID: String, serverURLString: String, token: String) async {
         deletingSessionIDs.insert(sessionID)
         defer { deletingSessionIDs.remove(sessionID) }
@@ -447,6 +502,9 @@ public final class SessionsViewModel: ObservableObject {
         claudeResumeInProgressSessionID = nil
         claudeResumeStatusMessage = nil
         claudeResumeErrorMessage = nil
+        sendingMessageSessionID = nil
+        sendMessageStatusMessage = nil
+        sendMessageErrorMessage = nil
     }
 
     public func setSessionTitle(

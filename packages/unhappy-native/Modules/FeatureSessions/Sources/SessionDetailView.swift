@@ -20,6 +20,8 @@ public struct SessionDetailView: View {
     @State private var codexResumeDirectoryDraft = ""
     @State private var claudeCwdFilterDraft = ""
     @State private var claudeResumeDirectoryDraft = ""
+    @State private var draftMessage = ""
+    @State private var steerMode: APISessionSteerMode = .queue
 
     public init(
         session: APISession,
@@ -122,6 +124,53 @@ public struct SessionDetailView: View {
                     ForEach(viewModel.selectedSessionMessages) { message in
                         SessionMessageRow(message: message)
                     }
+                }
+            }
+
+            Section("Composer") {
+                TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
+                    .lineLimit(2...6)
+                    .textInputAutocapitalization(.sentences)
+
+                Picker("Send Mode", selection: $steerMode) {
+                    Text("Queue").tag(APISessionSteerMode.queue)
+                    Text("Steer").tag(APISessionSteerMode.immediate)
+                }
+                .pickerStyle(.segmented)
+
+                Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send Message") {
+                    let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    Task {
+                        let sent = await viewModel.sendMessage(
+                            for: session.id,
+                            text: text,
+                            steerMode: steerMode,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        if sent {
+                            draftMessage = ""
+                            if steerMode == .immediate {
+                                steerMode = .queue
+                            }
+                        }
+                    }
+                }
+                .disabled(
+                    viewModel.isSendingMessage(sessionID: session.id) ||
+                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+
+                if let status = viewModel.sendMessageStatusMessage {
+                    Text(status)
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                }
+                if let error = viewModel.sendMessageErrorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
                 }
             }
         }
