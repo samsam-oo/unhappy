@@ -136,7 +136,7 @@ private struct MockHomeServerStatusLoader: HomeServerConnectionStatusLoadingActi
 }
 
 private actor MockInboxLoader: InboxLoadingAction {
-    func loadInboxItems() async throws -> [InboxItem] {
+    func loadInboxItems(serverURLString: String, token: String) async throws -> [InboxItem] {
         []
     }
 }

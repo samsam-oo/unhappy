@@ -113,7 +113,9 @@ let project = Project(
             buildableFolders: [
                 "Modules/FeatureInbox/Sources",
             ],
-            dependencies: [],
+            dependencies: [
+                .target(name: "CoreKit"),
+            ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:inbox",

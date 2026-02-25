@@ -77,7 +77,11 @@ public struct HomeView: View {
 
     private var authenticatedHome: some View {
         TabView {
-            InboxView(makeViewModel: makeInboxViewModel)
+            InboxView(
+                serverURLString: settingsViewModel.serverURLString,
+                token: settingsViewModel.apiToken,
+                makeViewModel: makeInboxViewModel
+            )
                 .tabItem {
                     Label("Inbox", systemImage: "tray.full")
                 }
@@ -476,7 +480,7 @@ public struct HomeView: View {
             )
         },
         makeInboxViewModel: {
-            InboxViewModel(loader: InboxLoadUseCase())
+            InboxViewModel(loader: InboxLoadUseCase(service: URLSessionFeedService()))
         },
         makeSessionsViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
         makeNewSessionViewModel: {

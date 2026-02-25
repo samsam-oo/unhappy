@@ -3,8 +3,16 @@ import SwiftUI
 @MainActor
 public struct InboxView: View {
     @StateObject private var viewModel: InboxViewModel
+    private let serverURLString: String
+    private let token: String
 
-    public init(makeViewModel: @escaping @MainActor () -> InboxViewModel) {
+    public init(
+        serverURLString: String,
+        token: String,
+        makeViewModel: @escaping @MainActor () -> InboxViewModel
+    ) {
+        self.serverURLString = serverURLString
+        self.token = token
         _viewModel = StateObject(wrappedValue: makeViewModel())
     }
 
@@ -43,7 +51,11 @@ public struct InboxView: View {
                 }
             }
             .navigationTitle("Inbox")
-            .task {
+            .task(id: "\(serverURLString)|\(token)") {
+                viewModel.updateConfiguration(
+                    serverURLString: serverURLString,
+                    token: token
+                )
                 await viewModel.load()
             }
         }
@@ -51,13 +63,16 @@ public struct InboxView: View {
 }
 
 #Preview {
-    InboxView {
+    InboxView(
+        serverURLString: "https://api.unhappy.im",
+        token: "preview-token"
+    ) {
         InboxViewModel(loader: PreviewInboxLoader())
     }
 }
 
 private actor PreviewInboxLoader: InboxLoadingAction {
-    func loadInboxItems() async throws -> [InboxItem] {
+    func loadInboxItems(serverURLString: String, token: String) async throws -> [InboxItem] {
         [
             InboxItem(
                 id: "1",

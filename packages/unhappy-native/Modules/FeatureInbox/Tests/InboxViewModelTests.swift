@@ -6,27 +6,36 @@ import Testing
 struct InboxViewModelTests {
     @Test
     func loadPublishesItems() async {
-        let item = InboxItem(
-            id: "inbox-1",
-            title: "Title",
-            subtitle: "Subtitle",
-            timestamp: Date()
-        )
-        let viewModel = InboxViewModel(
-            loader: MockInboxLoader(result: .success([item]))
+        let loader = MockInboxLoader(result: .success([
+            InboxItem(
+                id: "inbox-1",
+                title: "Title",
+                subtitle: "Subtitle",
+                timestamp: Date()
+            )
+        ]))
+        let viewModel = InboxViewModel(loader: loader)
+        viewModel.updateConfiguration(
+            serverURLString: "https://api.unhappy.im",
+            token: "token-1"
         )
 
         await viewModel.load()
 
-        #expect(viewModel.items == [item])
+        #expect(viewModel.items.count == 1)
         #expect(viewModel.errorMessage == nil)
         #expect(viewModel.isLoading == false)
+        let call = await loader.firstCall()
+        #expect(call?.serverURLString == "https://api.unhappy.im")
+        #expect(call?.token == "token-1")
     }
 
     @Test
     func loadPublishesError() async {
         let viewModel = InboxViewModel(
-            loader: MockInboxLoader(result: .failure(InboxTestError.failed))
+            loader: MockInboxLoader(result: .failure(InboxTestError.failed)),
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
         )
 
         await viewModel.load()
@@ -43,10 +52,20 @@ private enum InboxTestError: LocalizedError {
     var errorDescription: String? { "failed" }
 }
 
-private struct MockInboxLoader: InboxLoadingAction {
-    let result: Result<[InboxItem], Error>
+private actor MockInboxLoader: InboxLoadingAction {
+    private let result: Result<[InboxItem], Error>
+    private var calls: [(serverURLString: String, token: String)] = []
 
-    func loadInboxItems() async throws -> [InboxItem] {
-        try result.get()
+    init(result: Result<[InboxItem], Error>) {
+        self.result = result
+    }
+
+    func loadInboxItems(serverURLString: String, token: String) async throws -> [InboxItem] {
+        calls.append((serverURLString: serverURLString, token: token))
+        return try result.get()
+    }
+
+    func firstCall() -> (serverURLString: String, token: String)? {
+        calls.first
     }
 }

@@ -7,9 +7,22 @@ public final class InboxViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
 
     private let loader: any InboxLoadingAction
+    private var serverURLString: String
+    private var token: String
 
-    public init(loader: any InboxLoadingAction) {
+    public init(
+        loader: any InboxLoadingAction,
+        serverURLString: String = "",
+        token: String = ""
+    ) {
         self.loader = loader
+        self.serverURLString = serverURLString
+        self.token = token
+    }
+
+    public func updateConfiguration(serverURLString: String, token: String) {
+        self.serverURLString = serverURLString
+        self.token = token
     }
 
     public func load() async {
@@ -18,7 +31,10 @@ public final class InboxViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            items = try await loader.loadInboxItems()
+            items = try await loader.loadInboxItems(
+                serverURLString: serverURLString,
+                token: token
+            )
             errorMessage = nil
         } catch {
             items = []
