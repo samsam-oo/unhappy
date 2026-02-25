@@ -57,6 +57,11 @@ struct FeatureHomeTests {
                 UsageSettingsViewModel(
                     usageLoader: SettingsUsageLoadUseCase(service: URLSessionSessionsService())
                 )
+            },
+            makeDaemonStatusViewModel: {
+                ConnectorsDaemonStatusViewModel(
+                    loader: DaemonStatusLoadUseCase(service: URLSessionMachinesService())
+                )
             }
         )
     }

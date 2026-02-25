@@ -15,6 +15,7 @@ struct UnhappyNativeApp: App {
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
+    private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
 
     init() {
         let settingsStore = UserDefaultsAppSettingsStore()
@@ -41,6 +42,7 @@ struct UnhappyNativeApp: App {
         let newSessionSpawner = NewSessionSpawnUseCase(service: machinesService)
         let newSessionRecentProjects = NewSessionRecentProjectsUseCase(store: settingsStore)
         let usageLoader = SettingsUsageLoadUseCase(service: sessionsService)
+        let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
         self.makeNewSessionViewModel = {
@@ -77,6 +79,9 @@ struct UnhappyNativeApp: App {
         self.makeUsageViewModel = {
             UsageSettingsViewModel(usageLoader: usageLoader)
         }
+        self.makeDaemonStatusViewModel = {
+            ConnectorsDaemonStatusViewModel(loader: daemonStatusLoader)
+        }
     }
 
     var body: some Scene {
@@ -87,7 +92,8 @@ struct UnhappyNativeApp: App {
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel,
                 makeMachinesViewModel: makeMachinesViewModel,
-                makeUsageViewModel: makeUsageViewModel
+                makeUsageViewModel: makeUsageViewModel,
+                makeDaemonStatusViewModel: makeDaemonStatusViewModel
             )
         }
     }

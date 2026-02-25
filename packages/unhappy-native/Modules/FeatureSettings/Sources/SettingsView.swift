@@ -7,15 +7,18 @@ public struct SettingsView: View {
     @ObservedObject private var viewModel: SettingsViewModel
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
+    private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
 
     public init(
         viewModel: SettingsViewModel,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
-        makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel
+        makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
+        makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel
     ) {
         self.viewModel = viewModel
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
+        self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
     }
 
     public var body: some View {
@@ -33,7 +36,11 @@ public struct SettingsView: View {
                         Label("Server", systemImage: "server.rack")
                     }
                     NavigationLink {
-                        ConnectorsSettingsView(viewModel: viewModel)
+                        ConnectorsSettingsView(
+                            serverURLString: viewModel.serverURLString,
+                            token: viewModel.apiToken,
+                            makeDaemonStatusViewModel: makeDaemonStatusViewModel
+                        )
                     } label: {
                         Label("Connectors", systemImage: "link")
                     }
@@ -113,6 +120,11 @@ public struct SettingsView: View {
         makeUsageViewModel: {
             UsageSettingsViewModel(
                 usageLoader: SettingsUsageLoadUseCase(service: URLSessionSessionsService())
+            )
+        },
+        makeDaemonStatusViewModel: {
+            ConnectorsDaemonStatusViewModel(
+                loader: DaemonStatusLoadUseCase(service: URLSessionMachinesService())
             )
         }
     )

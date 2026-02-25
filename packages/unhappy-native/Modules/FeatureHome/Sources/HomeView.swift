@@ -14,6 +14,7 @@ public struct HomeView: View {
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
+    private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
 
     public init(
         makeSettingsViewModel: @escaping @MainActor () -> SettingsViewModel,
@@ -21,7 +22,8 @@ public struct HomeView: View {
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
-        makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel
+        makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
+        makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel
     ) {
         _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
         self.makeSessionsViewModel = makeSessionsViewModel
@@ -29,6 +31,7 @@ public struct HomeView: View {
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
+        self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
     }
 
     public var body: some View {
@@ -49,7 +52,8 @@ public struct HomeView: View {
             SettingsView(
                 viewModel: settingsViewModel,
                 makeMachinesViewModel: makeMachinesViewModel,
-                makeUsageViewModel: makeUsageViewModel
+                makeUsageViewModel: makeUsageViewModel,
+                makeDaemonStatusViewModel: makeDaemonStatusViewModel
             )
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
@@ -107,6 +111,11 @@ public struct HomeView: View {
         makeUsageViewModel: {
             UsageSettingsViewModel(
                 usageLoader: SettingsUsageLoadUseCase(service: URLSessionSessionsService())
+            )
+        },
+        makeDaemonStatusViewModel: {
+            ConnectorsDaemonStatusViewModel(
+                loader: DaemonStatusLoadUseCase(service: URLSessionMachinesService())
             )
         }
     )

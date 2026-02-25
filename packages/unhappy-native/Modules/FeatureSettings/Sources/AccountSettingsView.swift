@@ -11,8 +11,8 @@ struct AccountSettingsView: View {
     var body: some View {
         Form {
             Section("Account") {
-                LabeledContent("Authentication") {
-                    Text(hasToken ? "Configured" : "Not Configured")
+                LabeledContent("API Token") {
+                    Text(hasToken ? "Configured" : "Missing")
                         .foregroundStyle(hasToken ? .green : .secondary)
                 }
                 LabeledContent("Server") {
@@ -47,7 +47,7 @@ struct AccountSettingsView: View {
             }
 
             Section("Notes") {
-                Text("OAuth/social account linking is not migrated yet in native.")
+                Text("Completion status is daemon-based. Check Settings > Connectors for daemon running state.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
