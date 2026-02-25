@@ -30,7 +30,7 @@ Last updated: 2026-02-25
 
 | Web Route | Native Status | Notes |
 | --- | --- | --- |
-| `_layout.tsx` | Partial | Native `TabView` exists but tabs/headers/status parity is incomplete (`Inbox`, richer header actions missing). |
+| `_layout.tsx` | Partial | Native `TabView`에 `Inbox` 탭 기본 뼈대(빈 상태/에러 상태 포함) 이관됨. web 수준의 inbox data pipeline 및 richer header actions parity는 미구현. |
 | `index.tsx` | Partial | Native Home에 비인증 온보딩(서버 URL 입력, Create Account `/v1/auth`, Restore 진입) + portrait/landscape 반응형 레이아웃 + 플랫폼형 CTA 분기(모바일/대화면) + 상단 `Sessions` 헤더(커스텀 서버 subtitle/서버 설정 진입) + 기본 서버 대상 연결 상태 배지(`Connecting/Connected/Disconnected`, `/v1/sessions` health check) 추가됨. socket reducer 기반 실시간 parity는 미구현. |
 | `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) + 상단 고정 multi-agent 상태 배너 구현. message-level tool detail/review/finish flow은 미구현. |
 | `session/recent.tsx` | Done | Sessions 화면에서 `Recent` 진입 제공, 날짜별(오늘/어제/N일 전) 그룹핑 리스트 구현. |
