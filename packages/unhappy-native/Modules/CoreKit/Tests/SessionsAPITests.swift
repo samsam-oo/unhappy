@@ -329,4 +329,76 @@ struct SessionsAPITests {
         #expect(sessions.first?.id == "a1b2c3d4-1111-2222-3333-444444444444")
         #expect(sessions.first?.cwd == "/tmp/repo")
     }
+
+    @Test
+    func spawnSessionRequestUsesExpectedPathBodyAndMethod() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSpawnSessionRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            directory: "/tmp/work",
+            agent: .claude,
+            codexResumeThreadID: nil,
+            claudeResumeSessionID: "c7a2f5d1-1111-2222-3333-444444444444",
+            approvedNewDirectoryCreation: true
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/spawn")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["directory"] as? String == "/tmp/work")
+        #expect(payload?["agent"] as? String == "claude")
+        #expect(payload?["claudeResumeSessionId"] as? String == "c7a2f5d1-1111-2222-3333-444444444444")
+        #expect(payload?["approvedNewDirectoryCreation"] as? Bool == true)
+    }
+
+    @Test
+    func spawnSessionRequestWithoutDirectoryThrowsValidationError() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+
+        #expect(throws: SessionsAPIError.missingDirectory) {
+            _ = try SessionsAPI.makeSpawnSessionRequest(
+                serverURL: baseURL,
+                token: "abc123",
+                sessionID: "session-1",
+                directory: "   "
+            )
+        }
+    }
+
+    @Test
+    func decodeSpawnSessionResponseParsesSuccessPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "sessionId": "session-new"
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSpawnSessionResponse(json)
+        #expect(response.success == true)
+        #expect(response.sessionID == "session-new")
+    }
+
+    @Test
+    func decodeSpawnSessionResponseParsesApprovalPayload() throws {
+        let json = """
+        {
+          "success": false,
+          "requiresUserApproval": true,
+          "actionRequired": "CREATE_DIRECTORY",
+          "directory": "/tmp/new-project"
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSpawnSessionResponse(json)
+        #expect(response.success == false)
+        #expect(response.requiresUserApproval == true)
+        #expect(response.actionRequired == "CREATE_DIRECTORY")
+        #expect(response.directory == "/tmp/new-project")
+    }
 }

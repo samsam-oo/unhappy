@@ -150,3 +150,43 @@ public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Senda
         self.createdAt = createdAt
     }
 }
+
+public enum APISessionSpawnAgent: String, Encodable, Sendable {
+    case claude
+    case codex
+    case gemini
+}
+
+public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let sessionID: String?
+    public let requiresUserApproval: Bool?
+    public let actionRequired: String?
+    public let directory: String?
+    public let error: String?
+
+    public init(
+        success: Bool,
+        sessionID: String?,
+        requiresUserApproval: Bool?,
+        actionRequired: String?,
+        directory: String?,
+        error: String?
+    ) {
+        self.success = success
+        self.sessionID = sessionID
+        self.requiresUserApproval = requiresUserApproval
+        self.actionRequired = actionRequired
+        self.directory = directory
+        self.error = error
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case success
+        case sessionID = "sessionId"
+        case requiresUserApproval
+        case actionRequired
+        case directory
+        case error
+    }
+}

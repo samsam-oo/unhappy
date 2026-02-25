@@ -189,6 +189,44 @@ public enum SessionsAPI {
         )
     }
 
+    public static func makeSpawnSessionRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        directory: String,
+        agent: APISessionSpawnAgent? = nil,
+        codexResumeThreadID: String? = nil,
+        claudeResumeSessionID: String? = nil,
+        approvedNewDirectoryCreation: Bool? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedDirectory = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedDirectory.isEmpty else {
+            throw SessionsAPIError.missingDirectory
+        }
+        let normalizedCodexResumeThreadID = codexResumeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedClaudeResumeSessionID = claudeResumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let spawnURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/spawn")
+        var request = try makeRequest(
+            url: spawnURL,
+            method: "POST",
+            token: token
+        )
+        let payload = SessionSpawnPayload(
+            directory: normalizedDirectory,
+            agent: agent,
+            codexResumeThreadId: normalizedCodexResumeThreadID?.isEmpty == true ? nil : normalizedCodexResumeThreadID,
+            claudeResumeSessionId: normalizedClaudeResumeSessionID?.isEmpty == true ? nil : normalizedClaudeResumeSessionID,
+            approvedNewDirectoryCreation: approvedNewDirectoryCreation
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
     public static func decodeListResponse(_ data: Data) throws -> [APISession] {
         let decoder = JSONDecoder()
         let response = try decoder.decode(SessionsListResponse.self, from: data)
@@ -223,6 +261,11 @@ public enum SessionsAPI {
         return response.sessions
     }
 
+    public static func decodeSpawnSessionResponse(_ data: Data) throws -> APISessionSpawnResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionSpawnResult.self, from: data)
+    }
+
     private static func makeRequest(url: URL, method: String, token: String) throws -> URLRequest {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -240,6 +283,7 @@ public enum SessionsAPI {
 public enum SessionsAPIError: LocalizedError, Equatable {
     case missingToken
     case missingSessionID
+    case missingDirectory
     case missingSessionTitle
     case invalidHTTPStatus(Int)
 
@@ -249,6 +293,8 @@ public enum SessionsAPIError: LocalizedError, Equatable {
             return "API token is required"
         case .missingSessionID:
             return "Session ID is required"
+        case .missingDirectory:
+            return "Directory is required"
         case .missingSessionTitle:
             return "Session title is required"
         case .invalidHTTPStatus(let code):
@@ -277,6 +323,14 @@ private struct SessionTitlePayload: Encodable {
 
 private struct SessionCodexTitlePayload: Encodable {
     let name: String
+}
+
+private struct SessionSpawnPayload: Encodable {
+    let directory: String
+    let agent: APISessionSpawnAgent?
+    let codexResumeThreadId: String?
+    let claudeResumeSessionId: String?
+    let approvedNewDirectoryCreation: Bool?
 }
 
 private struct SessionsCodexThreadsResponse: Decodable {
@@ -334,7 +388,20 @@ public protocol SessionClaudeSessionsFetching: Sendable {
     ) async throws -> [APIClaudeSessionSummary]
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching {
+public protocol SessionSpawning: Sendable {
+    func spawnSession(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        directory: String,
+        agent: APISessionSpawnAgent?,
+        codexResumeThreadID: String?,
+        claudeResumeSessionID: String?,
+        approvedNewDirectoryCreation: Bool?
+    ) async throws -> APISessionSpawnResult
+}
+
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -500,5 +567,40 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
 
         return try SessionsAPI.decodeClaudeSessionsResponse(data)
+    }
+
+    public func spawnSession(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        directory: String,
+        agent: APISessionSpawnAgent?,
+        codexResumeThreadID: String?,
+        claudeResumeSessionID: String?,
+        approvedNewDirectoryCreation: Bool?
+    ) async throws -> APISessionSpawnResult {
+        let request = try SessionsAPI.makeSpawnSessionRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            directory: directory,
+            agent: agent,
+            codexResumeThreadID: codexResumeThreadID,
+            claudeResumeSessionID: claudeResumeSessionID,
+            approvedNewDirectoryCreation: approvedNewDirectoryCreation
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        if http.statusCode == 409 {
+            return try SessionsAPI.decodeSpawnSessionResponse(data)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSpawnSessionResponse(data)
     }
 }
