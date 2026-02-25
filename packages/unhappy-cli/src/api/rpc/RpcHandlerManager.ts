@@ -100,6 +100,18 @@ export class RpcHandlerManager {
         }
     }
 
+    async invokeLocal<TRequest = any, TResponse = any>(
+        method: string,
+        params: TRequest
+    ): Promise<TResponse> {
+        const prefixedMethod = this.getPrefixedMethod(method);
+        const handler = this.handlers.get(prefixedMethod);
+        if (!handler) {
+            throw new Error('Method not found');
+        }
+        return await handler(params) as TResponse;
+    }
+
     onSocketConnect(socket: Socket): void {
         this.socket = socket;
         for (const [prefixedMethod] of this.handlers) {

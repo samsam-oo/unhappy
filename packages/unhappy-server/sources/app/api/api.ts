@@ -38,7 +38,7 @@ export async function startApi() {
   app.register(import('@fastify/cors'), {
     origin: '*',
     allowedHeaders: '*',
-    methods: ['GET', 'POST', 'DELETE'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   });
   app.get('/', function (request, reply) {
     reply.send('Welcome to Unhappy Server!');

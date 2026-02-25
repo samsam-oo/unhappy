@@ -7,6 +7,36 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionDelete } from "@/app/session/sessionDelete";
+import {
+    findConnectedMachine,
+    findConnectedSession,
+    invokePublicCommand
+} from "./codexPublicCommands";
+
+async function findConnectedMachineForSession(userId: string, sessionId: string): Promise<string | null> {
+    const accessKeys = await db.accessKey.findMany({
+        where: {
+            accountId: userId,
+            sessionId
+        },
+        orderBy: {
+            updatedAt: 'desc'
+        },
+        take: 10,
+        select: {
+            machineId: true
+        }
+    });
+
+    for (const key of accessKeys) {
+        const target = findConnectedMachine(userId, key.machineId);
+        if (target) {
+            return key.machineId;
+        }
+    }
+
+    return null;
+}
 
 export function sessionRoutes(app: Fastify) {
 
@@ -23,6 +53,7 @@ export function sessionRoutes(app: Fastify) {
             select: {
                 id: true,
                 seq: true,
+                displayName: true,
                 createdAt: true,
                 updatedAt: true,
                 metadata: true,
@@ -55,6 +86,7 @@ export function sessionRoutes(app: Fastify) {
                 return {
                     id: v.id,
                     seq: v.seq,
+                    displayName: v.displayName,
                     createdAt: v.createdAt.getTime(),
                     updatedAt: sessionUpdatedAt,
                     active: v.active,
@@ -93,6 +125,7 @@ export function sessionRoutes(app: Fastify) {
             select: {
                 id: true,
                 seq: true,
+                displayName: true,
                 createdAt: true,
                 updatedAt: true,
                 metadata: true,
@@ -109,6 +142,7 @@ export function sessionRoutes(app: Fastify) {
             sessions: sessions.map((v) => ({
                 id: v.id,
                 seq: v.seq,
+                displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime(),
                 active: v.active,
@@ -173,6 +207,7 @@ export function sessionRoutes(app: Fastify) {
             select: {
                 id: true,
                 seq: true,
+                displayName: true,
                 createdAt: true,
                 updatedAt: true,
                 metadata: true,
@@ -200,6 +235,7 @@ export function sessionRoutes(app: Fastify) {
             sessions: resultSessions.map((v) => ({
                 id: v.id,
                 seq: v.seq,
+                displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime(),
                 active: v.active,
@@ -242,6 +278,7 @@ export function sessionRoutes(app: Fastify) {
                 session: {
                     id: session.id,
                     seq: session.seq,
+                    displayName: session.displayName,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -290,6 +327,7 @@ export function sessionRoutes(app: Fastify) {
                 session: {
                     id: session.id,
                     seq: session.seq,
+                    displayName: session.displayName,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -373,5 +411,335 @@ export function sessionRoutes(app: Fastify) {
         }
 
         return reply.send({ success: true });
+    });
+
+    app.patch('/v1/sessions/:sessionId/title', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                title: z.string().max(120).nullish()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const normalizedTitle = request.body.title?.trim() || null;
+
+        const updated = await db.session.updateMany({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            data: {
+                displayName: normalizedTitle
+            }
+        });
+
+        if (updated.count === 0) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        return reply.send({
+            success: true,
+            title: normalizedTitle
+        });
+    });
+
+    app.get('/v1/sessions/:sessionId/codex/threads', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            querystring: z.object({
+                cwd: z.string().optional(),
+                limit: z.coerce.number().int().min(1).max(100).default(20)
+            }).optional()
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const cwd = request.query?.cwd?.trim();
+        const limit = request.query?.limit ?? 20;
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        let result: any = null;
+        const sessionTarget = findConnectedSession(userId, sessionId);
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'codex-list-threads',
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
+            });
+        } else {
+            const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!fallbackMachineId) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            const machineTarget = findConnectedMachine(userId, fallbackMachineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'codex-list-threads',
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
+            });
+        }
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to list Codex threads'
+            });
+        }
+
+        return reply.send(result);
+    });
+
+    app.get('/v1/sessions/:sessionId/claude/sessions', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            querystring: z.object({
+                cwd: z.string().optional(),
+                limit: z.coerce.number().int().min(1).max(100).default(20)
+            }).optional()
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const cwd = request.query?.cwd?.trim();
+        const limit = request.query?.limit ?? 20;
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        let result: any = null;
+        const sessionTarget = findConnectedSession(userId, sessionId);
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'claude-list-sessions',
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
+            });
+        } else {
+            const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!fallbackMachineId) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            const machineTarget = findConnectedMachine(userId, fallbackMachineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'claude-list-sessions',
+                params: {
+                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                    limit
+                }
+            });
+        }
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to list Claude sessions'
+            });
+        }
+
+        return reply.send(result);
+    });
+
+    app.post('/v1/sessions/:sessionId/spawn', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                directory: z.string(),
+                agent: z.enum(['claude', 'codex', 'gemini']).optional(),
+                codexResumeThreadId: z.string().optional(),
+                claudeResumeSessionId: z.string().optional(),
+                approvedNewDirectoryCreation: z.boolean().optional()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const {
+            directory,
+            agent,
+            codexResumeThreadId,
+            claudeResumeSessionId,
+            approvedNewDirectoryCreation
+        } = request.body;
+
+        const normalizedDirectory = directory.trim();
+        if (!normalizedDirectory) {
+            return reply.code(400).send({ success: false, error: 'Directory is required' });
+        }
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const machineId = await findConnectedMachineForSession(userId, sessionId);
+        if (!machineId) {
+            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
+        }
+
+        const target = findConnectedMachine(userId, machineId);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'spawn-unhappy-session',
+            params: {
+                directory: normalizedDirectory,
+                sessionId,
+                agent,
+                codexResumeThreadId:
+                    typeof codexResumeThreadId === 'string' && codexResumeThreadId.trim().length > 0
+                        ? codexResumeThreadId.trim()
+                        : undefined,
+                claudeResumeSessionId:
+                    typeof claudeResumeSessionId === 'string' && claudeResumeSessionId.trim().length > 0
+                        ? claudeResumeSessionId.trim()
+                        : undefined,
+                approvedNewDirectoryCreation
+            }
+        });
+
+        if (result?.type === 'requestToApproveDirectoryCreation') {
+            return reply.code(409).send({
+                success: false,
+                requiresUserApproval: true,
+                actionRequired: 'CREATE_DIRECTORY',
+                directory: result.directory
+            });
+        }
+
+        if (result?.type === 'success' && typeof result?.sessionId === 'string') {
+            return reply.send({
+                success: true,
+                sessionId: result.sessionId
+            });
+        }
+
+        return reply.code(502).send({
+            success: false,
+            error: typeof result?.error === 'string'
+                ? result.error
+                : typeof result?.errorMessage === 'string'
+                    ? result.errorMessage
+                    : 'Failed to spawn session'
+        });
+    });
+
+    app.patch('/v1/sessions/:sessionId/codex/title', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            }),
+            body: z.object({
+                name: z.string().max(120).optional(),
+                title: z.string().max(120).optional()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+        const normalizedName = (request.body.name ?? request.body.title ?? "").trim();
+
+        if (!normalizedName) {
+            return reply.code(400).send({ error: 'Session title cannot be empty' });
+        }
+
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            select: { id: true }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const target = findConnectedSession(userId, sessionId);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'codex-set-thread-name',
+            params: { name: normalizedName }
+        });
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to rename Codex thread'
+            });
+        }
+
+        await db.session.updateMany({
+            where: {
+                id: sessionId,
+                accountId: userId
+            },
+            data: {
+                displayName: normalizedName
+            }
+        });
+
+        return reply.send({
+            success: true,
+            title: normalizedName
+        });
     });
 }

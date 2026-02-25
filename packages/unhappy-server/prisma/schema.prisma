@@ -95,6 +95,7 @@ model Session {
     tag               String
     accountId         String
     account           Account          @relation(fields: [accountId], references: [id])
+    displayName       String?
     metadata          String
     metadataVersion   Int              @default(0)
     agentState        String?

@@ -380,6 +380,7 @@ export async function startDaemon(): Promise<void> {
         directory,
         sessionId,
         codexResumeThreadId,
+        claudeResumeSessionId,
         machineId,
         approvedNewDirectoryCreation = true,
       } = options;
@@ -387,6 +388,11 @@ export async function startDaemon(): Promise<void> {
         typeof codexResumeThreadId === 'string' &&
         codexResumeThreadId.trim().length > 0
           ? codexResumeThreadId.trim()
+          : null;
+      const normalizedClaudeResumeSessionId =
+        typeof claudeResumeSessionId === 'string' &&
+        claudeResumeSessionId.trim().length > 0
+          ? claudeResumeSessionId.trim()
           : null;
       let directoryCreated = false;
 
@@ -643,6 +649,9 @@ export async function startDaemon(): Promise<void> {
           if (agent === 'codex' && normalizedCodexResumeThreadId) {
             fullCommand += ` --resume-thread-id ${JSON.stringify(normalizedCodexResumeThreadId)}`;
           }
+          if (agent === 'claude' && normalizedClaudeResumeSessionId) {
+            fullCommand += ` --resume ${JSON.stringify(normalizedClaudeResumeSessionId)}`;
+          }
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -770,6 +779,12 @@ export async function startDaemon(): Promise<void> {
             normalizedCodexResumeThreadId
           ) {
             args.push('--resume-thread-id', normalizedCodexResumeThreadId);
+          }
+          if (
+            agentCommand === 'claude' &&
+            normalizedClaudeResumeSessionId
+          ) {
+            args.push('--resume', normalizedClaudeResumeSessionId);
           }
 
           // TODO: sessionId is still reserved for future generic resume semantics.
