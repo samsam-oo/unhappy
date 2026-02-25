@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import FeatureInbox
 import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
@@ -17,6 +18,7 @@ public struct HomeView: View {
     @State private var isRestoreNavigationPresented = false
     @State private var isServerSettingsPresented = false
     private let onboarding: any HomeAccountOnboardingAction
+    private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
@@ -29,6 +31,7 @@ public struct HomeView: View {
     public init(
         onboarding: any HomeAccountOnboardingAction,
         makeSettingsViewModel: @escaping @MainActor () -> SettingsViewModel,
+        makeInboxViewModel: @escaping @MainActor () -> InboxViewModel,
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
@@ -42,6 +45,7 @@ public struct HomeView: View {
         self.onboarding = onboarding
         _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
         _serverStatusViewModel = StateObject(wrappedValue: makeServerStatusViewModel())
+        self.makeInboxViewModel = makeInboxViewModel
         self.makeSessionsViewModel = makeSessionsViewModel
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
@@ -73,6 +77,11 @@ public struct HomeView: View {
 
     private var authenticatedHome: some View {
         TabView {
+            InboxView(makeViewModel: makeInboxViewModel)
+                .tabItem {
+                    Label("Inbox", systemImage: "tray.full")
+                }
+
             SessionsView(
                 serverURLString: settingsViewModel.serverURLString,
                 token: settingsViewModel.apiToken,
@@ -465,6 +474,9 @@ public struct HomeView: View {
             SettingsViewModel(
                 settingsManager: SettingsUseCase(store: UserDefaultsAppSettingsStore())
             )
+        },
+        makeInboxViewModel: {
+            InboxViewModel(loader: InboxLoadUseCase())
         },
         makeSessionsViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
         makeNewSessionViewModel: {

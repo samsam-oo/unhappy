@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreKit
 import FeatureHome
+import FeatureInbox
 import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
@@ -11,6 +12,7 @@ import FeatureSettings
 struct UnhappyNativeApp: App {
     private let onboarding: any HomeAccountOnboardingAction
     private let makeSettingsViewModel: @MainActor () -> SettingsViewModel
+    private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
@@ -48,6 +50,7 @@ struct UnhappyNativeApp: App {
         let newSessionProfiles = NewSessionProfilesUseCase(store: UserDefaultsNewSessionProfilesStore())
         let usageLoader = SettingsUsageLoadUseCase(service: sessionsService)
         let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
+        let inboxLoader = InboxLoadUseCase()
         let homeServerStatusLoader = HomeServerConnectionStatusLoadUseCase()
         let terminalAuthService = URLSessionTerminalAuthService()
         let accountAuthService = URLSessionAccountAuthService()
@@ -74,6 +77,7 @@ struct UnhappyNativeApp: App {
         )
         self.onboarding = onboardingUseCase
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
+        self.makeInboxViewModel = { InboxViewModel(loader: inboxLoader) }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
         self.makeNewSessionViewModel = {
             NewSessionViewModel(
@@ -134,6 +138,7 @@ struct UnhappyNativeApp: App {
             HomeView(
                 onboarding: onboarding,
                 makeSettingsViewModel: makeSettingsViewModel,
+                makeInboxViewModel: makeInboxViewModel,
                 makeSessionsViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel,

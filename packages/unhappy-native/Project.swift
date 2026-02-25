@@ -17,6 +17,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "FeatureHome"),
+                .target(name: "FeatureInbox"),
                 .target(name: "FeatureMachine"),
                 .target(name: "FeatureNewSession"),
             ],
@@ -36,6 +37,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "FeatureInbox"),
                 .target(name: "FeatureMachine"),
                 .target(name: "FeatureNewSession"),
                 .target(name: "FeatureSessions"),
@@ -100,6 +102,21 @@ let project = Project(
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:settings",
+                "tag:layer:feature",
+            ])
+        ),
+        .target(
+            name: "FeatureInbox",
+            destinations: .iOS,
+            product: .staticFramework,
+            bundleId: "im.unhappy.app.feature.inbox",
+            buildableFolders: [
+                "Modules/FeatureInbox/Sources",
+            ],
+            dependencies: [],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:inbox",
                 "tag:layer:feature",
             ])
         ),
@@ -221,6 +238,24 @@ let project = Project(
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:settings",
+                "tag:layer:test",
+            ])
+        ),
+        .target(
+            name: "FeatureInboxTests",
+            destinations: .iOS,
+            product: .unitTests,
+            bundleId: "im.unhappy.app.feature.inbox.tests",
+            infoPlist: .default,
+            buildableFolders: [
+                "Modules/FeatureInbox/Tests",
+            ],
+            dependencies: [
+                .target(name: "FeatureInbox"),
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:inbox",
                 "tag:layer:test",
             ])
         ),

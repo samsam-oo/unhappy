@@ -1,5 +1,6 @@
 import Testing
 @testable import FeatureHome
+import FeatureInbox
 import FeatureSessions
 import FeatureSessionTools
 import FeatureMachine
@@ -15,6 +16,9 @@ struct FeatureHomeTests {
             onboarding: MockHomeAccountOnboarding(),
             makeSettingsViewModel: {
                 SettingsViewModel(settingsManager: MockSettingsManager())
+            },
+            makeInboxViewModel: {
+                InboxViewModel(loader: MockInboxLoader())
             },
             makeSessionsViewModel: {
                 SessionsViewModel(service: URLSessionSessionsService())
@@ -128,5 +132,11 @@ private struct MockHomeServerStatusLoader: HomeServerConnectionStatusLoadingActi
 
     func loadStatus(serverURLString: String) async -> HomeServerConnectionStatus {
         status
+    }
+}
+
+private actor MockInboxLoader: InboxLoadingAction {
+    func loadInboxItems() async throws -> [InboxItem] {
+        []
     }
 }
