@@ -6,13 +6,16 @@ import FeatureMachine
 public struct SettingsView: View {
     @ObservedObject private var viewModel: SettingsViewModel
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
+    private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
 
     public init(
         viewModel: SettingsViewModel,
-        makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel
+        makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
+        makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel
     ) {
         self.viewModel = viewModel
         self.makeMachinesViewModel = makeMachinesViewModel
+        self.makeUsageViewModel = makeUsageViewModel
     }
 
     public var body: some View {
@@ -41,6 +44,15 @@ public struct SettingsView: View {
                         FeaturesSettingsView(viewModel: viewModel)
                     } label: {
                         Label("Features", systemImage: "slider.horizontal.3")
+                    }
+                    NavigationLink {
+                        UsageSettingsView(
+                            serverURLString: viewModel.serverURLString,
+                            token: viewModel.apiToken,
+                            makeViewModel: makeUsageViewModel
+                        )
+                    } label: {
+                        Label("Usage", systemImage: "chart.bar.xaxis")
                     }
                 }
 
@@ -71,6 +83,11 @@ public struct SettingsView: View {
                 spawner: MachineSpawnUseCase(service: service),
                 updater: MachineDaemonUpdateUseCase(service: service),
                 stopper: MachineDaemonStopUseCase(service: service)
+            )
+        },
+        makeUsageViewModel: {
+            UsageSettingsViewModel(
+                usageLoader: SettingsUsageLoadUseCase(service: URLSessionSessionsService())
             )
         }
     )

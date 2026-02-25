@@ -13,19 +13,22 @@ public struct HomeView: View {
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
+    private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
 
     public init(
         makeSettingsViewModel: @escaping @MainActor () -> SettingsViewModel,
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
-        makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel
+        makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
+        makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel
     ) {
         _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
         self.makeSessionsViewModel = makeSessionsViewModel
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
         self.makeMachinesViewModel = makeMachinesViewModel
+        self.makeUsageViewModel = makeUsageViewModel
     }
 
     public var body: some View {
@@ -44,7 +47,8 @@ public struct HomeView: View {
 
             SettingsView(
                 viewModel: settingsViewModel,
-                makeMachinesViewModel: makeMachinesViewModel
+                makeMachinesViewModel: makeMachinesViewModel,
+                makeUsageViewModel: makeUsageViewModel
             )
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
@@ -96,6 +100,11 @@ public struct HomeView: View {
                 spawner: MachineSpawnUseCase(service: service),
                 updater: MachineDaemonUpdateUseCase(service: service),
                 stopper: MachineDaemonStopUseCase(service: service)
+            )
+        },
+        makeUsageViewModel: {
+            UsageSettingsViewModel(
+                usageLoader: SettingsUsageLoadUseCase(service: URLSessionSessionsService())
             )
         }
     )

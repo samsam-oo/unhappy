@@ -51,6 +51,11 @@ struct FeatureHomeTests {
                     updater: MachineDaemonUpdateUseCase(service: service),
                     stopper: MachineDaemonStopUseCase(service: service)
                 )
+            },
+            makeUsageViewModel: {
+                UsageSettingsViewModel(
+                    usageLoader: SettingsUsageLoadUseCase(service: URLSessionSessionsService())
+                )
             }
         )
     }
