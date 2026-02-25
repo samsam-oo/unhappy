@@ -39,21 +39,6 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         List {
-            Section("Multi-Agent") {
-                HStack {
-                    Text(viewModel.activeSessionsCount == 1 ? "1 active session" : "\(viewModel.activeSessionsCount) active sessions")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(viewModel.multiAgentInProgress ? "진행중" : "완료됨")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(viewModel.multiAgentInProgress ? Color.green.opacity(0.16) : Color.gray.opacity(0.14))
-                        .foregroundStyle(viewModel.multiAgentInProgress ? Color.green : Color.secondary)
-                        .clipShape(Capsule())
-                }
-            }
-
             Section("Session") {
                 LabeledContent("Title") {
                     Text(currentSession.displayName ?? "Untitled")
@@ -179,6 +164,17 @@ public struct SessionDetailView: View {
                         .foregroundStyle(.red)
                 }
             }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            MultiAgentStatusBanner(
+                presentation: MultiAgentStatusPresentationBuilder.make(
+                    activeSessionsCount: viewModel.activeSessionsCount,
+                    inProgress: viewModel.multiAgentInProgress
+                )
+            )
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .background(.clear)
         }
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
@@ -740,5 +736,36 @@ private struct SessionMessageDetailView: View {
         }
         .navigationTitle("Message")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct MultiAgentStatusBanner: View {
+    let presentation: MultiAgentStatusPresentation
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: presentation.symbolName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(presentation.badgeForeground)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Multi-Agent")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(presentation.summaryText)
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+            }
+            Spacer()
+            Text(presentation.statusText)
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(presentation.badgeBackground)
+                .foregroundStyle(presentation.badgeForeground)
+                .clipShape(Capsule())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
