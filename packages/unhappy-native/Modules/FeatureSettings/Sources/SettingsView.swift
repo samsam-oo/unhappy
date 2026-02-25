@@ -40,6 +40,14 @@ public struct SettingsView: View {
                         Label("Account", systemImage: "person.crop.circle")
                     }
                     NavigationLink {
+                        AccountRestoreView(
+                            viewModel: viewModel,
+                            makeAccountLinkViewModel: makeAccountLinkViewModel
+                        )
+                    } label: {
+                        Label("Restore", systemImage: "qrcode.viewfinder")
+                    }
+                    NavigationLink {
                         ServerSettingsView(viewModel: viewModel)
                     } label: {
                         Label("Server", systemImage: "server.rack")
