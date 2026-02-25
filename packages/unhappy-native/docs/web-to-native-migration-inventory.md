@@ -48,11 +48,11 @@ Last updated: 2026-02-25
 | `terminal/index.tsx` | Not started | terminal connect 진입 플로우 미구현. |
 | `terminal/connect.tsx` | Not started | QR/URL terminal auth 연결 UI 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
-| `settings/index.tsx` | Partial | 최소 설정만 존재. |
+| `settings/index.tsx` | Partial | Server/Language/Appearance/Machine 진입 제공. account/features/profiles/usage/voice/connectors는 미구현. |
 | `settings/account.tsx` | Not started | account/profile/connect/disconnect/github UI 미구현. |
 | `settings/features.tsx` | Not started | feature flags/local settings 미구현. |
-| `settings/language.tsx` | Not started | 앱 언어 설정 미구현. |
-| `settings/appearance.tsx` | Not started | appearance/theme 옵션 미구현. |
+| `settings/language.tsx` | Done | 앱 언어(System/English/Korean) 선택 및 로컬 저장 구현. |
+| `settings/appearance.tsx` | Done | 테마(System/Light/Dark) 선택 및 로컬 저장 구현. |
 | `settings/usage.tsx` | Not started | usage panel 미구현. |
 | `settings/profiles.tsx` | Not started | AI backend profiles UI 미구현. |
 | `settings/voice.tsx` | Not started | voice 설정 미구현. |
@@ -91,7 +91,7 @@ Last updated: 2026-02-25
 | `apiSocket` + realtime reducer pipeline | Not started | 현재 native는 polling 중심, socket/reducer parity 없음. |
 | Encryption (`encryption/*`) | Not started | machine/session/artifact encryption stack 미이관. |
 | Git/worktree (`gitStatusSync`, `projectManager`, `worktreeDiscovery`) | Not started | review/finish/new-session 고급 흐름에 필요. |
-| Local settings / profiles / purchases | Not started | settings/profiles/RevenueCat parity 없음. |
+| Local settings / profiles / purchases | Partial | server/language/appearance 로컬 설정 저장 구현. profiles/purchases parity는 미구현. |
 
 ## Recommended Migration Order (Execution Backlog)
 
