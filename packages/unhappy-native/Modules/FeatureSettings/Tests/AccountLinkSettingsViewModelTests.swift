@@ -10,6 +10,7 @@ struct AccountLinkSettingsViewModelTests {
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
             restorer: MockAccountRestorer(),
+            qrRestorer: MockAccountQRRestorer(),
             secretStore: secretStore
         )
 
@@ -24,6 +25,7 @@ struct AccountLinkSettingsViewModelTests {
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
             restorer: MockAccountRestorer(),
+            qrRestorer: MockAccountQRRestorer(),
             secretStore: secretStore
         )
 
@@ -40,6 +42,7 @@ struct AccountLinkSettingsViewModelTests {
         let model = AccountLinkSettingsViewModel(
             linker: linker,
             restorer: MockAccountRestorer(),
+            qrRestorer: MockAccountQRRestorer(),
             secretStore: MemoryAccountSecretStore(initialSecret: "secret")
         )
 
@@ -62,6 +65,7 @@ struct AccountLinkSettingsViewModelTests {
         let model = AccountLinkSettingsViewModel(
             linker: linker,
             restorer: MockAccountRestorer(),
+            qrRestorer: MockAccountQRRestorer(),
             secretStore: MemoryAccountSecretStore(initialSecret: "secret")
         )
 
@@ -83,6 +87,7 @@ struct AccountLinkSettingsViewModelTests {
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
             restorer: restorer,
+            qrRestorer: MockAccountQRRestorer(),
             secretStore: MemoryAccountSecretStore(initialSecret: "secret")
         )
 
@@ -102,6 +107,7 @@ struct AccountLinkSettingsViewModelTests {
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
             restorer: restorer,
+            qrRestorer: MockAccountQRRestorer(),
             secretStore: MemoryAccountSecretStore(initialSecret: "secret")
         )
 
@@ -112,6 +118,50 @@ struct AccountLinkSettingsViewModelTests {
         #expect(model.statusMessage == nil)
         #expect(model.errorMessage == "Invalid account secret key")
         #expect(model.isRestoring == false)
+    }
+
+    @Test
+    func restoreTokenFromQRCodeSetsSecretAndReturnsToken() async {
+        let qrRestorer = MockAccountQRRestorer(
+            pollResults: [
+                .authorized(AccountRestoreQRCredentials(token: "qr-token", secretBase64URL: "qr-secret"))
+            ]
+        )
+        let model = AccountLinkSettingsViewModel(
+            linker: MockAccountLinker(),
+            restorer: MockAccountRestorer(),
+            qrRestorer: qrRestorer,
+            secretStore: MemoryAccountSecretStore(initialSecret: "secret")
+        )
+
+        await model.loadFromStore()
+        let token = await model.restoreTokenFromQRCode(serverURLString: "https://api.unhappy.im")
+
+        #expect(token == "qr-token")
+        #expect(model.accountSecretBase64URL == "qr-secret")
+        #expect(model.statusMessage == "Recovered API token from QR approval")
+        #expect(model.errorMessage == nil)
+        #expect(model.isRestoringByQR == false)
+        #expect(await qrRestorer.pollCallCount == 1)
+    }
+
+    @Test
+    func restoreTokenFromQRCodeSetsErrorMessage() async {
+        let qrRestorer = MockAccountQRRestorer(error: AccountRestoreQRError.missingTokenInResponse)
+        let model = AccountLinkSettingsViewModel(
+            linker: MockAccountLinker(),
+            restorer: MockAccountRestorer(),
+            qrRestorer: qrRestorer,
+            secretStore: MemoryAccountSecretStore(initialSecret: "secret")
+        )
+
+        await model.loadFromStore()
+        let token = await model.restoreTokenFromQRCode(serverURLString: "https://api.unhappy.im")
+
+        #expect(token == nil)
+        #expect(model.statusMessage == nil)
+        #expect(model.errorMessage == "Auth response is missing token")
+        #expect(model.isRestoringByQR == false)
     }
 }
 
@@ -188,5 +238,39 @@ private actor MockAccountRestorer: AccountTokenRestoringAction {
             accountSecretRaw: accountSecretRaw
         )
         return token
+    }
+}
+
+private actor MockAccountQRRestorer: AccountQRRestoringAction {
+    private(set) var pollCallCount = 0
+    private let pollResults: [AccountRestoreQRPollResult]
+    private let error: Error?
+
+    init(
+        pollResults: [AccountRestoreQRPollResult] = [.pending],
+        error: Error? = nil
+    ) {
+        self.pollResults = pollResults
+        self.error = error
+    }
+
+    func createSession() async throws -> AccountRestoreQRSession {
+        AccountRestoreQRSession(
+            publicKeyBase64: "public-key",
+            secretKey: Data(repeating: 1, count: 32),
+            qrPayload: "unhappy:///account?abc123"
+        )
+    }
+
+    func pollStatus(
+        serverURLString: String,
+        session: AccountRestoreQRSession
+    ) async throws -> AccountRestoreQRPollResult {
+        if let error {
+            throw error
+        }
+        pollCallCount += 1
+        let index = min(pollCallCount - 1, pollResults.count - 1)
+        return pollResults[index]
     }
 }

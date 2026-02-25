@@ -69,7 +69,7 @@ Last updated: 2026-02-25
 | `zen/index.tsx` | Not started | zen home 미구현. |
 | `zen/new.tsx` | Not started | zen task creation 미구현. |
 | `zen/view.tsx` | Not started | zen detail 미구현. |
-| `restore/index.tsx` | Not started | account restore QR flow 미구현. |
+| `restore/index.tsx` | Partial | dedicated restore route는 없지만 Settings `Account`에서 QR 표시 + `/v1/auth/account/request` polling + encrypted token/secret 복호화 기반 계정 복구 구현. web route-level UX parity는 미구현. |
 | `restore/manual.tsx` | Partial | dedicated restore route는 없지만 Settings `Account`에서 secret 입력 후 `/v1/auth` 토큰 복구 액션 제공. web route-level UX parity는 미구현. |
 | `scanner/account.tsx` | Partial | standalone scanner route 대신 Settings `Account` 화면 내 QR scanner sheet + URL paste로 account link 승인 플로우 제공. |
 | `scanner/terminal.tsx` | Partial | Settings `Terminal`에서 QR scanner sheet(iOS supported device)로 URL 스캔 후 승인 플로우 연동. standalone scanner route parity는 미구현. |
@@ -85,7 +85,7 @@ Last updated: 2026-02-25
 | `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 브릿지 + native 수동 action UI(allow/deny/abort/switch) 구현. `session/[id]` composer에서 queue/immediate steer 전송 가능. |
 | `ops` file/dir/ripgrep/bash session tools | Partial | 서버 `commands/*` + 네이티브 file viewer/kill/bash/ripgrep/difftastic 실행 기본 UI 구현. review/finish 전용 UI는 미이관. |
 | `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`(resume IDs/session token/env vars 포함), `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
-| `auth` account link (`/v1/auth/account/response`) | Partial | account QR URL 파싱 + TweetNacl box 암호화 응답 + native approve API 호출 + secret 기반 `/v1/auth` token restore 호출 구현. restore QR request/wait full flow은 미구현. |
+| `auth` account link (`/v1/auth/account/response`) | Partial | account QR URL 파싱 + TweetNacl box 암호화 응답 + native approve API 호출 + secret 기반 `/v1/auth` token restore + `/v1/auth/account/request` QR restore polling/복호화 구현. restore route-level UX parity는 미구현. |
 | `apiArtifacts` | Not started | artifact CRUD 전부 미이관. |
 | `apiFriends`, `apiFeed`, `apiGithub`, `apiServices` | Not started | social/account integrations 미이관. |
 | `apiUsage`, `apiPush`, `apiKv`, `apiVoice` | Not started | usage/push/kv/voice 전부 미이관. |
