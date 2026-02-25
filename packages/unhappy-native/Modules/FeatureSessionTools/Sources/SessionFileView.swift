@@ -23,6 +23,58 @@ public struct SessionFileView: View {
 
     public var body: some View {
         List {
+            Section("Directory") {
+                TextField("Directory path", text: $viewModel.directoryPath)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+
+                Button("Browse Directory") {
+                    Task {
+                        await viewModel.loadDirectory(
+                            sessionID: session.id,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .disabled(viewModel.isLoadingDirectory)
+
+                if viewModel.isLoadingDirectory {
+                    ProgressView("Loading directory…")
+                } else if let error = viewModel.directoryErrorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                } else if !viewModel.directoryEntries.isEmpty {
+                    ForEach(viewModel.directoryEntries) { entry in
+                        Button {
+                            Task {
+                                await viewModel.selectDirectoryEntry(
+                                    entry,
+                                    sessionID: session.id,
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: entry.type == "directory" ? "folder" : "doc")
+                                    .foregroundStyle(entry.type == "directory" ? Color.accentColor : Color.secondary)
+                                Text(entry.name)
+                                    .lineLimit(1)
+                                Spacer()
+                                if entry.type == "directory" {
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
             Section("Path") {
                 TextField("Absolute path", text: $viewModel.filePath)
                     .textInputAutocapitalization(.never)
@@ -51,17 +103,43 @@ public struct SessionFileView: View {
                     Text("No content loaded")
                         .foregroundStyle(.secondary)
                 } else {
-                    ScrollView(.vertical) {
-                        Text(viewModel.fileContent)
-                            .font(.system(.footnote, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                            .textSelection(.enabled)
-                            .padding(.vertical, 4)
+                    TextEditor(text: $viewModel.fileContent)
+                        .font(.system(.footnote, design: .monospaced))
+                        .frame(minHeight: 260)
+                    Button(viewModel.isWritingFile ? "Saving…" : "Save File") {
+                        Task {
+                            await viewModel.writeCurrentFile(
+                                sessionID: session.id,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
+                    }
+                    .disabled(
+                        viewModel.isWritingFile ||
+                        viewModel.filePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                    if let status = viewModel.writeStatusMessage {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(.green)
+                    }
+                    if let error = viewModel.writeErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
                     }
                 }
             }
         }
         .navigationTitle("Session File")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: "\(serverURLString)|\(token)|\(session.id)") {
+            await viewModel.loadDirectory(
+                sessionID: session.id,
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
     }
 }

@@ -4,9 +4,17 @@ import CoreKit
 @MainActor
 public final class SessionToolsViewModel: ObservableObject {
     @Published public var filePath: String = ""
-    @Published public private(set) var fileContent: String = ""
+    @Published public var fileContent: String = ""
     @Published public private(set) var fileErrorMessage: String?
     @Published public private(set) var isLoadingFile = false
+    @Published public private(set) var isWritingFile = false
+    @Published public private(set) var writeStatusMessage: String?
+    @Published public private(set) var writeErrorMessage: String?
+
+    @Published public var directoryPath: String = "~"
+    @Published public private(set) var directoryEntries: [APISessionDirectoryEntry] = []
+    @Published public private(set) var isLoadingDirectory = false
+    @Published public private(set) var directoryErrorMessage: String?
 
     @Published public private(set) var isKillingSession = false
     @Published public private(set) var killStatusMessage: String?
@@ -31,6 +39,8 @@ public final class SessionToolsViewModel: ObservableObject {
     @Published public private(set) var switchErrorMessage: String?
 
     private let fileLoader: any SessionFileLoadingAction
+    private let directoryLister: any SessionDirectoryListAction
+    private let fileWriter: any SessionFileWriteAction
     private let killer: any SessionKillAction
     private let aborter: any SessionTaskAbortAction
     private let permissionResponder: any SessionPermissionResponseAction
@@ -38,12 +48,16 @@ public final class SessionToolsViewModel: ObservableObject {
 
     public init(
         fileLoader: any SessionFileLoadingAction,
+        directoryLister: any SessionDirectoryListAction,
+        fileWriter: any SessionFileWriteAction,
         killer: any SessionKillAction,
         aborter: any SessionTaskAbortAction,
         permissionResponder: any SessionPermissionResponseAction,
         modeSwitcher: any SessionModeSwitchAction
     ) {
         self.fileLoader = fileLoader
+        self.directoryLister = directoryLister
+        self.fileWriter = fileWriter
         self.killer = killer
         self.aborter = aborter
         self.permissionResponder = permissionResponder
@@ -67,9 +81,90 @@ public final class SessionToolsViewModel: ObservableObject {
                 path: filePath
             )
             fileErrorMessage = nil
+            writeStatusMessage = nil
+            writeErrorMessage = nil
         } catch {
             fileContent = ""
             fileErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func loadDirectory(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        isLoadingDirectory = true
+        directoryErrorMessage = nil
+        defer { isLoadingDirectory = false }
+
+        do {
+            directoryPath = normalizedPath(directoryPath)
+            directoryEntries = try await directoryLister.listDirectory(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                path: directoryPath
+            )
+            directoryErrorMessage = nil
+        } catch {
+            directoryEntries = []
+            directoryErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func selectDirectoryEntry(
+        _ entry: APISessionDirectoryEntry,
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        if entry.type == "directory" {
+            directoryPath = resolvedPath(current: directoryPath, entryName: entry.name)
+            await loadDirectory(
+                sessionID: sessionID,
+                serverURLString: serverURLString,
+                token: token
+            )
+            return
+        }
+
+        filePath = resolvedPath(current: directoryPath, entryName: entry.name)
+        await loadFile(
+            sessionID: sessionID,
+            serverURLString: serverURLString,
+            token: token
+        )
+    }
+
+    public func writeCurrentFile(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        isWritingFile = true
+        writeStatusMessage = nil
+        writeErrorMessage = nil
+        defer { isWritingFile = false }
+
+        do {
+            let result = try await fileWriter.writeFile(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                path: filePath,
+                content: fileContent,
+                expectedHash: nil
+            )
+            if let hash = result.hash, !hash.isEmpty {
+                writeStatusMessage = "Saved (\(hash.prefix(10))…)"
+            } else {
+                writeStatusMessage = "Saved"
+            }
+            writeErrorMessage = nil
+        } catch {
+            writeStatusMessage = nil
+            writeErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -194,4 +289,52 @@ private func parsedAllowTools(_ raw: String) -> [String]? {
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         .filter { !$0.isEmpty }
     return items.isEmpty ? nil : items
+}
+
+private func normalizedPath(_ raw: String) -> String {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? "~" : trimmed
+}
+
+private func resolvedPath(current: String, entryName: String) -> String {
+    let path = normalizedPath(current)
+    let trimmedName = entryName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedName.isEmpty else { return path }
+    if trimmedName == "." {
+        return path
+    }
+    if trimmedName == ".." {
+        if path == "~" {
+            return "~"
+        }
+        if path.hasPrefix("~/") {
+            let suffix = String(path.dropFirst(2))
+            let components = suffix.split(separator: "/").dropLast()
+            if components.isEmpty {
+                return "~"
+            }
+            return "~/" + components.joined(separator: "/")
+        }
+        if path == "/" {
+            return "/"
+        }
+        let components = path.split(separator: "/").dropLast()
+        if components.isEmpty {
+            return "/"
+        }
+        return "/" + components.joined(separator: "/")
+    }
+    if trimmedName.hasPrefix("/") {
+        return trimmedName
+    }
+    if path == "/" {
+        return "/" + trimmedName
+    }
+    if path.hasSuffix("/") {
+        return path + trimmedName
+    }
+    if path == "~" {
+        return "~/" + trimmedName
+    }
+    return path + "/" + trimmedName
 }
