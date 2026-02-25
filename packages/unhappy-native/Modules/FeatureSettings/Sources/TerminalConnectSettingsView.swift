@@ -1,12 +1,26 @@
 import SwiftUI
+import CoreKit
 #if canImport(UIKit)
 import UIKit
 #endif
 
 @MainActor
 struct TerminalConnectSettingsView: View {
+    @StateObject private var viewModel: TerminalConnectSettingsViewModel
     @State private var authURLString = ""
-    @State private var statusMessage: String?
+    @State private var localStatusMessage: String?
+    private let serverURLString: String
+    private let token: String
+
+    init(
+        serverURLString: String,
+        token: String,
+        makeViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel
+    ) {
+        self.serverURLString = serverURLString
+        self.token = token
+        _viewModel = StateObject(wrappedValue: makeViewModel())
+    }
 
     private var parsedRequest: TerminalAuthRequest? {
         TerminalAuthURLParser.parse(authURLString)
@@ -19,6 +33,10 @@ struct TerminalConnectSettingsView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
+                    .onChange(of: authURLString, initial: false) { _, _ in
+                        localStatusMessage = nil
+                        viewModel.resetState()
+                    }
 
                 Text("Paste the terminal auth URL from daemon or CLI.")
                     .font(.footnote)
@@ -45,15 +63,84 @@ struct TerminalConnectSettingsView: View {
                 }
             }
 
+            Section("Request Status") {
+                if viewModel.isChecking {
+                    ProgressView("Checking request status...")
+                } else if viewModel.isApproving {
+                    ProgressView("Approving terminal request...")
+                } else {
+                    switch viewModel.requestState {
+                    case .idle:
+                        Text("No request checked yet.")
+                            .foregroundStyle(.secondary)
+                    case .pending(let supportsV2):
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Request is pending approval.")
+                                .foregroundStyle(.orange)
+                            Text("Supports V2: \(supportsV2 ? "Yes" : "No")")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    case .authorized:
+                        Text("Terminal request is already authorized.")
+                            .foregroundStyle(.green)
+                    case .notFound:
+                        Text("Request not found or expired.")
+                            .foregroundStyle(.red)
+                    case .failed(let message):
+                        Text(message)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+
             Section("Actions") {
+                Button("Check Request") {
+                    guard let publicKey = parsedRequest?.publicKey else { return }
+                    Task {
+                        await viewModel.checkRequest(
+                            serverURLString: serverURLString,
+                            publicKeyBase64URL: publicKey
+                        )
+                    }
+                }
+                .disabled(parsedRequest == nil || viewModel.isChecking || viewModel.isApproving)
+
+                Button("Approve Terminal") {
+                    guard let publicKey = parsedRequest?.publicKey else { return }
+                    Task {
+                        await viewModel.approveRequest(
+                            serverURLString: serverURLString,
+                            token: token,
+                            publicKeyBase64URL: publicKey
+                        )
+                    }
+                }
+                .disabled(
+                    parsedRequest == nil
+                        || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || viewModel.isChecking
+                        || viewModel.isApproving
+                )
+
                 Button("Copy Public Key") {
                     guard let publicKey = parsedRequest?.publicKey else { return }
                     copyToClipboard(publicKey)
-                    statusMessage = "Copied public key"
+                    localStatusMessage = "Copied public key"
                 }
                 .disabled(parsedRequest == nil)
 
-                if let statusMessage {
+                if token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Set API token first in Settings > Account.")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+                if let localStatusMessage {
+                    Text(localStatusMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                }
+                if let statusMessage = viewModel.statusMessage {
                     Text(statusMessage)
                         .font(.footnote)
                         .foregroundStyle(.green)
@@ -61,7 +148,7 @@ struct TerminalConnectSettingsView: View {
             }
 
             Section("Notes") {
-                Text("Native terminal approval handshake is not migrated yet. This screen validates and previews incoming terminal URLs.")
+                Text("Native terminal approval uses daemon request status and encrypted approval response. QR scanner flow is still pending migration.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -76,6 +163,22 @@ struct TerminalConnectSettingsView: View {
         }
         return "\(key.prefix(12))...\(key.suffix(8))"
     }
+}
+
+#Preview {
+    TerminalConnectSettingsView(
+        serverURLString: "https://api.unhappy.im",
+        token: "token",
+        makeViewModel: {
+            TerminalConnectSettingsViewModel(
+                connector: TerminalConnectUseCase(
+                    service: URLSessionTerminalAuthService(),
+                    dataKeyStore: UserDefaultsTerminalDataKeyStore(),
+                    encryptor: TweetNaclTerminalAuthEncryptor()
+                )
+            )
+        }
+    )
 }
 
 private func copyToClipboard(_ value: String) {

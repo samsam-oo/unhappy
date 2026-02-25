@@ -63,6 +63,15 @@ struct FeatureHomeTests {
                 ConnectorsDaemonStatusViewModel(
                     loader: DaemonStatusLoadUseCase(service: URLSessionMachinesService())
                 )
+            },
+            makeTerminalConnectViewModel: {
+                TerminalConnectSettingsViewModel(
+                    connector: TerminalConnectUseCase(
+                        service: URLSessionTerminalAuthService(),
+                        dataKeyStore: UserDefaultsTerminalDataKeyStore(),
+                        encryptor: TweetNaclTerminalAuthEncryptor()
+                    )
+                )
             }
         )
     }

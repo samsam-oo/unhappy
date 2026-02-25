@@ -8,17 +8,20 @@ public struct SettingsView: View {
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
+    private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
 
     public init(
         viewModel: SettingsViewModel,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
-        makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel
+        makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
+        makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel
     ) {
         self.viewModel = viewModel
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
         self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
+        self.makeTerminalConnectViewModel = makeTerminalConnectViewModel
     }
 
     public var body: some View {
@@ -45,7 +48,11 @@ public struct SettingsView: View {
                         Label("Connectors", systemImage: "link")
                     }
                     NavigationLink {
-                        TerminalConnectSettingsView()
+                        TerminalConnectSettingsView(
+                            serverURLString: viewModel.serverURLString,
+                            token: viewModel.apiToken,
+                            makeViewModel: makeTerminalConnectViewModel
+                        )
                     } label: {
                         Label("Terminal", systemImage: "terminal")
                     }
@@ -125,6 +132,15 @@ public struct SettingsView: View {
         makeDaemonStatusViewModel: {
             ConnectorsDaemonStatusViewModel(
                 loader: DaemonStatusLoadUseCase(service: URLSessionMachinesService())
+            )
+        },
+        makeTerminalConnectViewModel: {
+            TerminalConnectSettingsViewModel(
+                connector: TerminalConnectUseCase(
+                    service: URLSessionTerminalAuthService(),
+                    dataKeyStore: UserDefaultsTerminalDataKeyStore(),
+                    encryptor: TweetNaclTerminalAuthEncryptor()
+                )
             )
         }
     )

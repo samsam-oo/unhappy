@@ -15,6 +15,7 @@ public struct HomeView: View {
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
+    private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
 
     public init(
         makeSettingsViewModel: @escaping @MainActor () -> SettingsViewModel,
@@ -23,7 +24,8 @@ public struct HomeView: View {
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
-        makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel
+        makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
+        makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel
     ) {
         _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
         self.makeSessionsViewModel = makeSessionsViewModel
@@ -32,6 +34,7 @@ public struct HomeView: View {
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
         self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
+        self.makeTerminalConnectViewModel = makeTerminalConnectViewModel
     }
 
     public var body: some View {
@@ -53,7 +56,8 @@ public struct HomeView: View {
                 viewModel: settingsViewModel,
                 makeMachinesViewModel: makeMachinesViewModel,
                 makeUsageViewModel: makeUsageViewModel,
-                makeDaemonStatusViewModel: makeDaemonStatusViewModel
+                makeDaemonStatusViewModel: makeDaemonStatusViewModel,
+                makeTerminalConnectViewModel: makeTerminalConnectViewModel
             )
                 .tabItem {
                     Label("Settings", systemImage: "gearshape")
@@ -117,6 +121,15 @@ public struct HomeView: View {
         makeDaemonStatusViewModel: {
             ConnectorsDaemonStatusViewModel(
                 loader: DaemonStatusLoadUseCase(service: URLSessionMachinesService())
+            )
+        },
+        makeTerminalConnectViewModel: {
+            TerminalConnectSettingsViewModel(
+                connector: TerminalConnectUseCase(
+                    service: URLSessionTerminalAuthService(),
+                    dataKeyStore: UserDefaultsTerminalDataKeyStore(),
+                    encryptor: TweetNaclTerminalAuthEncryptor()
+                )
             )
         }
     )

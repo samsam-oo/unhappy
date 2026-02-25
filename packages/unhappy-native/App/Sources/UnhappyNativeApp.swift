@@ -16,6 +16,7 @@ struct UnhappyNativeApp: App {
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
+    private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
 
     init() {
         let settingsStore = UserDefaultsAppSettingsStore()
@@ -44,6 +45,13 @@ struct UnhappyNativeApp: App {
         let newSessionProfiles = NewSessionProfilesUseCase(store: UserDefaultsNewSessionProfilesStore())
         let usageLoader = SettingsUsageLoadUseCase(service: sessionsService)
         let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
+        let terminalAuthService = URLSessionTerminalAuthService()
+        let terminalDataKeyStore = UserDefaultsTerminalDataKeyStore()
+        let terminalConnectUseCase = TerminalConnectUseCase(
+            service: terminalAuthService,
+            dataKeyStore: terminalDataKeyStore,
+            encryptor: TweetNaclTerminalAuthEncryptor()
+        )
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
         self.makeNewSessionViewModel = {
@@ -84,6 +92,9 @@ struct UnhappyNativeApp: App {
         self.makeDaemonStatusViewModel = {
             ConnectorsDaemonStatusViewModel(loader: daemonStatusLoader)
         }
+        self.makeTerminalConnectViewModel = {
+            TerminalConnectSettingsViewModel(connector: terminalConnectUseCase)
+        }
     }
 
     var body: some Scene {
@@ -95,7 +106,8 @@ struct UnhappyNativeApp: App {
                 makeSessionToolsViewModel: makeSessionToolsViewModel,
                 makeMachinesViewModel: makeMachinesViewModel,
                 makeUsageViewModel: makeUsageViewModel,
-                makeDaemonStatusViewModel: makeDaemonStatusViewModel
+                makeDaemonStatusViewModel: makeDaemonStatusViewModel,
+                makeTerminalConnectViewModel: makeTerminalConnectViewModel
             )
         }
     }
