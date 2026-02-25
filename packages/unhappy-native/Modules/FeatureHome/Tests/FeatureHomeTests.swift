@@ -136,7 +136,7 @@ private struct MockHomeServerStatusLoader: HomeServerConnectionStatusLoadingActi
 }
 
 private actor MockInboxLoader: InboxLoadingAction {
-    func loadInboxItems(serverURLString: String, token: String) async throws -> [InboxItem] {
-        []
+    func loadInboxSnapshot(serverURLString: String, token: String) async throws -> InboxSnapshot {
+        InboxSnapshot(feedItems: [], friendRequests: [], requestedFriends: [], friends: [])
     }
 }

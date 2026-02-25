@@ -29,6 +29,7 @@ struct UnhappyNativeApp: App {
         let sessionsService = URLSessionSessionsService()
         let machinesService = URLSessionMachinesService()
         let feedService = URLSessionFeedService()
+        let friendsService = URLSessionFriendsService()
         let sessionFileLoader = SessionFileLoadUseCase(service: sessionsService)
         let sessionDirectoryLister = SessionDirectoryListUseCase(service: sessionsService)
         let sessionFileWriter = SessionFileWriteUseCase(service: sessionsService)
@@ -51,7 +52,10 @@ struct UnhappyNativeApp: App {
         let newSessionProfiles = NewSessionProfilesUseCase(store: UserDefaultsNewSessionProfilesStore())
         let usageLoader = SettingsUsageLoadUseCase(service: sessionsService)
         let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
-        let inboxLoader = InboxLoadUseCase(service: feedService)
+        let inboxLoader = InboxLoadUseCase(
+            service: feedService,
+            friendsService: friendsService
+        )
         let homeServerStatusLoader = HomeServerConnectionStatusLoadUseCase()
         let terminalAuthService = URLSessionTerminalAuthService()
         let accountAuthService = URLSessionAccountAuthService()

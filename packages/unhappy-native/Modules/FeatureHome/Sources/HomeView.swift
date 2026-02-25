@@ -480,7 +480,12 @@ public struct HomeView: View {
             )
         },
         makeInboxViewModel: {
-            InboxViewModel(loader: InboxLoadUseCase(service: URLSessionFeedService()))
+            InboxViewModel(
+                loader: InboxLoadUseCase(
+                    service: URLSessionFeedService(),
+                    friendsService: URLSessionFriendsService()
+                )
+            )
         },
         makeSessionsViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
         makeNewSessionViewModel: {

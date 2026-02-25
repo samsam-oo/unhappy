@@ -5,11 +5,14 @@ import CoreKit
 
 struct InboxLoadUseCaseTests {
     @Test
-    func loadInboxItemsThrowsMissingToken() async {
-        let useCase = InboxLoadUseCase(service: MockFeedService(page: APIFeedPage(items: [], hasMore: false)))
+    func loadInboxSnapshotThrowsMissingToken() async {
+        let useCase = InboxLoadUseCase(
+            service: MockFeedService(page: APIFeedPage(items: [], hasMore: false)),
+            friendsService: MockFriendsService(friends: [])
+        )
 
         await #expect(throws: InboxLoadingError.missingToken) {
-            _ = try await useCase.loadInboxItems(
+            _ = try await useCase.loadInboxSnapshot(
                 serverURLString: "https://api.unhappy.im",
                 token: " "
             )
@@ -17,11 +20,14 @@ struct InboxLoadUseCaseTests {
     }
 
     @Test
-    func loadInboxItemsThrowsInvalidServerURL() async {
-        let useCase = InboxLoadUseCase(service: MockFeedService(page: APIFeedPage(items: [], hasMore: false)))
+    func loadInboxSnapshotThrowsInvalidServerURL() async {
+        let useCase = InboxLoadUseCase(
+            service: MockFeedService(page: APIFeedPage(items: [], hasMore: false)),
+            friendsService: MockFriendsService(friends: [])
+        )
 
         await #expect(throws: InboxLoadingError.invalidServerURL) {
-            _ = try await useCase.loadInboxItems(
+            _ = try await useCase.loadInboxSnapshot(
                 serverURLString: "not-a-url",
                 token: "token"
             )
@@ -29,8 +35,8 @@ struct InboxLoadUseCaseTests {
     }
 
     @Test
-    func loadInboxItemsMapsFeedRows() async throws {
-        let rows: [APIFeedItem] = [
+    func loadInboxSnapshotMapsFeedAndFriends() async throws {
+        let feedRows: [APIFeedItem] = [
             APIFeedItem(
                 id: "f1",
                 body: .friendRequest(uid: "user_a"),
@@ -40,41 +46,64 @@ struct InboxLoadUseCaseTests {
             ),
             APIFeedItem(
                 id: "f2",
-                body: .friendAccepted(uid: "user_b"),
+                body: .text(text: "Daemon updated"),
                 repeatKey: nil,
                 cursor: "0-11",
                 createdAt: 1_735_689_700_000
-            ),
-            APIFeedItem(
-                id: "f3",
-                body: .text(text: "Daemon updated"),
-                repeatKey: nil,
-                cursor: "0-12",
-                createdAt: 1_735_689_800_000
             )
         ]
+        let friendRows: [APIUserProfile] = [
+            APIUserProfile(
+                id: "u3",
+                firstName: "Zeta",
+                lastName: nil,
+                avatar: nil,
+                username: "zeta",
+                bio: nil,
+                status: .requested
+            ),
+            APIUserProfile(
+                id: "u1",
+                firstName: "Alpha",
+                lastName: nil,
+                avatar: nil,
+                username: "alpha",
+                bio: nil,
+                status: .pending
+            ),
+            APIUserProfile(
+                id: "u2",
+                firstName: "",
+                lastName: nil,
+                avatar: nil,
+                username: "friend2",
+                bio: nil,
+                status: .friend
+            )
+        ]
+
         let useCase = InboxLoadUseCase(
-            service: MockFeedService(page: APIFeedPage(items: rows, hasMore: false))
+            service: MockFeedService(page: APIFeedPage(items: feedRows, hasMore: false)),
+            friendsService: MockFriendsService(friends: friendRows)
         )
 
-        let loaded = try await useCase.loadInboxItems(
+        let snapshot = try await useCase.loadInboxSnapshot(
             serverURLString: "https://api.unhappy.im",
             token: "token"
         )
 
-        #expect(loaded.count == 3)
-        #expect(loaded[0].title == "Friend request")
-        #expect(loaded[0].subtitle == "From user_a")
-        #expect(loaded[1].title == "Friend request accepted")
-        #expect(loaded[1].subtitle == "user_b")
-        #expect(loaded[2].title == "Daemon updated")
-        #expect(loaded[2].subtitle == "Feed update")
-        #expect(loaded[0].timestamp == Date(timeIntervalSince1970: 1_735_689_600))
+        #expect(snapshot.feedItems.count == 2)
+        #expect(snapshot.feedItems[0].title == "Friend request")
+        #expect(snapshot.feedItems[1].title == "Daemon updated")
+        #expect(snapshot.feedItems[0].timestamp == Date(timeIntervalSince1970: 1_735_689_600))
+        #expect(snapshot.friendRequests.map(\.id) == ["u1"])
+        #expect(snapshot.requestedFriends.map(\.id) == ["u3"])
+        #expect(snapshot.friends.map(\.id) == ["u2"])
     }
 
     @Test
     func concurrentLoadsShareSingleInFlightRequest() async throws {
-        let service = SlowCountingFeedService(
+        let feedService = SlowCountingFeedService(
             page: APIFeedPage(
                 items: [
                     APIFeedItem(
@@ -88,13 +117,29 @@ struct InboxLoadUseCaseTests {
                 hasMore: false
             )
         )
-        let useCase = InboxLoadUseCase(service: service)
+        let friendsService = SlowCountingFriendsService(
+            friends: [
+                APIUserProfile(
+                    id: "u1",
+                    firstName: "User",
+                    lastName: nil,
+                    avatar: nil,
+                    username: "user",
+                    bio: nil,
+                    status: .friend
+                )
+            ]
+        )
+        let useCase = InboxLoadUseCase(
+            service: feedService,
+            friendsService: friendsService
+        )
 
-        async let first = useCase.loadInboxItems(
+        async let first = useCase.loadInboxSnapshot(
             serverURLString: "https://api.unhappy.im",
             token: "token"
         )
-        async let second = useCase.loadInboxItems(
+        async let second = useCase.loadInboxSnapshot(
             serverURLString: "https://api.unhappy.im",
             token: "token"
         )
@@ -102,7 +147,8 @@ struct InboxLoadUseCaseTests {
         _ = try await first
         _ = try await second
 
-        #expect(await service.fetchCount() == 1)
+        #expect(await feedService.fetchCount() == 1)
+        #expect(await friendsService.fetchCount() == 1)
     }
 }
 
@@ -117,6 +163,14 @@ private struct MockFeedService: FeedFetching {
         limit: Int
     ) async throws -> APIFeedPage {
         page
+    }
+}
+
+private struct MockFriendsService: FriendsFetching {
+    let friends: [APIUserProfile]
+
+    func fetchFriends(serverURL: URL, token: String) async throws -> [APIUserProfile] {
+        friends
     }
 }
 
@@ -138,6 +192,25 @@ private actor SlowCountingFeedService: FeedFetching {
         count += 1
         try await Task.sleep(nanoseconds: 80_000_000)
         return page
+    }
+
+    func fetchCount() -> Int {
+        count
+    }
+}
+
+private actor SlowCountingFriendsService: FriendsFetching {
+    private let friends: [APIUserProfile]
+    private var count: Int = 0
+
+    init(friends: [APIUserProfile]) {
+        self.friends = friends
+    }
+
+    func fetchFriends(serverURL: URL, token: String) async throws -> [APIUserProfile] {
+        count += 1
+        try await Task.sleep(nanoseconds: 80_000_000)
+        return friends
     }
 
     func fetchCount() -> Int {

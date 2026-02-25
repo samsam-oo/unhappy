@@ -27,25 +27,45 @@ public struct InboxView: View {
                         systemImage: "tray.full",
                         description: Text(errorMessage)
                     )
-                } else if viewModel.items.isEmpty {
+                } else if viewModel.isEmpty {
                     ContentUnavailableView(
                         "No inbox items",
                         systemImage: "tray",
                         description: Text("Notifications and pending requests will appear here.")
                     )
                 } else {
-                    List(viewModel.items) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.title)
-                                .font(.headline)
-                            Text(item.subtitle)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Text(item.timestamp, style: .relative)
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                    List {
+                        if !viewModel.feedItems.isEmpty {
+                            Section("Updates") {
+                                ForEach(viewModel.feedItems) { item in
+                                    feedRow(item: item)
+                                }
+                            }
                         }
-                        .padding(.vertical, 4)
+
+                        if !viewModel.friendRequests.isEmpty {
+                            Section("Pending Requests") {
+                                ForEach(viewModel.friendRequests) { friend in
+                                    friendRow(friend: friend)
+                                }
+                            }
+                        }
+
+                        if !viewModel.requestedFriends.isEmpty {
+                            Section("Sent Requests") {
+                                ForEach(viewModel.requestedFriends) { friend in
+                                    friendRow(friend: friend)
+                                }
+                            }
+                        }
+
+                        if !viewModel.friends.isEmpty {
+                            Section("Friends") {
+                                ForEach(viewModel.friends) { friend in
+                                    friendRow(friend: friend)
+                                }
+                            }
+                        }
                     }
                     .listStyle(.insetGrouped)
                 }
@@ -60,6 +80,31 @@ public struct InboxView: View {
             }
         }
     }
+
+    private func feedRow(item: InboxItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(item.title)
+                .font(.headline)
+            Text(item.subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(item.timestamp, style: .relative)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func friendRow(friend: InboxFriend) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(friend.displayName)
+                .font(.headline)
+            Text(friend.subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
 }
 
 #Preview {
@@ -72,14 +117,23 @@ public struct InboxView: View {
 }
 
 private actor PreviewInboxLoader: InboxLoadingAction {
-    func loadInboxItems(serverURLString: String, token: String) async throws -> [InboxItem] {
-        [
-            InboxItem(
-                id: "1",
-                title: "Daemon updated",
-                subtitle: "Machine mac-mini-01 is now on the latest daemon build.",
-                timestamp: Date().addingTimeInterval(-3600)
-            )
-        ]
+    func loadInboxSnapshot(serverURLString: String, token: String) async throws -> InboxSnapshot {
+        InboxSnapshot(
+            feedItems: [
+                InboxItem(
+                    id: "feed-1",
+                    title: "Daemon updated",
+                    subtitle: "Machine mac-mini-01 is now on the latest daemon build.",
+                    timestamp: Date().addingTimeInterval(-3600)
+                )
+            ],
+            friendRequests: [
+                InboxFriend(id: "u1", displayName: "Skyline", subtitle: "@skyline23")
+            ],
+            requestedFriends: [],
+            friends: [
+                InboxFriend(id: "u2", displayName: "Alex", subtitle: "@alex")
+            ]
+        )
     }
 }

@@ -5,15 +5,26 @@ import Testing
 @MainActor
 struct InboxViewModelTests {
     @Test
-    func loadPublishesItems() async {
-        let loader = MockInboxLoader(result: .success([
-            InboxItem(
-                id: "inbox-1",
-                title: "Title",
-                subtitle: "Subtitle",
-                timestamp: Date()
+    func loadPublishesSnapshot() async {
+        let loader = MockInboxLoader(
+            result: .success(
+                InboxSnapshot(
+                    feedItems: [
+                        InboxItem(
+                            id: "inbox-1",
+                            title: "Title",
+                            subtitle: "Subtitle",
+                            timestamp: Date()
+                        )
+                    ],
+                    friendRequests: [
+                        InboxFriend(id: "u1", displayName: "Alpha", subtitle: "@alpha")
+                    ],
+                    requestedFriends: [],
+                    friends: []
+                )
             )
-        ]))
+        )
         let viewModel = InboxViewModel(loader: loader)
         viewModel.updateConfiguration(
             serverURLString: "https://api.unhappy.im",
@@ -22,7 +33,10 @@ struct InboxViewModelTests {
 
         await viewModel.load()
 
-        #expect(viewModel.items.count == 1)
+        #expect(viewModel.feedItems.count == 1)
+        #expect(viewModel.friendRequests.count == 1)
+        #expect(viewModel.requestedFriends.isEmpty)
+        #expect(viewModel.friends.isEmpty)
         #expect(viewModel.errorMessage == nil)
         #expect(viewModel.isLoading == false)
         let call = await loader.firstCall()
@@ -40,7 +54,10 @@ struct InboxViewModelTests {
 
         await viewModel.load()
 
-        #expect(viewModel.items.isEmpty)
+        #expect(viewModel.feedItems.isEmpty)
+        #expect(viewModel.friendRequests.isEmpty)
+        #expect(viewModel.requestedFriends.isEmpty)
+        #expect(viewModel.friends.isEmpty)
         #expect(viewModel.errorMessage == "failed")
         #expect(viewModel.isLoading == false)
     }
@@ -53,14 +70,14 @@ private enum InboxTestError: LocalizedError {
 }
 
 private actor MockInboxLoader: InboxLoadingAction {
-    private let result: Result<[InboxItem], Error>
+    private let result: Result<InboxSnapshot, Error>
     private var calls: [(serverURLString: String, token: String)] = []
 
-    init(result: Result<[InboxItem], Error>) {
+    init(result: Result<InboxSnapshot, Error>) {
         self.result = result
     }
 
-    func loadInboxItems(serverURLString: String, token: String) async throws -> [InboxItem] {
+    func loadInboxSnapshot(serverURLString: String, token: String) async throws -> InboxSnapshot {
         calls.append((serverURLString: serverURLString, token: token))
         return try result.get()
     }

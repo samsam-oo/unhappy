@@ -2,7 +2,10 @@ import Foundation
 
 @MainActor
 public final class InboxViewModel: ObservableObject {
-    @Published public private(set) var items: [InboxItem] = []
+    @Published public private(set) var feedItems: [InboxItem] = []
+    @Published public private(set) var friendRequests: [InboxFriend] = []
+    @Published public private(set) var requestedFriends: [InboxFriend] = []
+    @Published public private(set) var friends: [InboxFriend] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
 
@@ -20,6 +23,13 @@ public final class InboxViewModel: ObservableObject {
         self.token = token
     }
 
+    public var isEmpty: Bool {
+        feedItems.isEmpty
+        && friendRequests.isEmpty
+        && requestedFriends.isEmpty
+        && friends.isEmpty
+    }
+
     public func updateConfiguration(serverURLString: String, token: String) {
         self.serverURLString = serverURLString
         self.token = token
@@ -31,13 +41,20 @@ public final class InboxViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            items = try await loader.loadInboxItems(
+            let snapshot = try await loader.loadInboxSnapshot(
                 serverURLString: serverURLString,
                 token: token
             )
+            feedItems = snapshot.feedItems
+            friendRequests = snapshot.friendRequests
+            requestedFriends = snapshot.requestedFriends
+            friends = snapshot.friends
             errorMessage = nil
         } catch {
-            items = []
+            feedItems = []
+            friendRequests = []
+            requestedFriends = []
+            friends = []
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
