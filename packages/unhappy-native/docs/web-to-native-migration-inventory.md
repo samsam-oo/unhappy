@@ -31,7 +31,7 @@ Last updated: 2026-02-25
 | Web Route | Native Status | Notes |
 | --- | --- | --- |
 | `_layout.tsx` | Partial | Native `TabView` exists but tabs/headers/status parity is incomplete (`Inbox`, richer header actions missing). |
-| `index.tsx` | Partial | Native Home에 비인증 온보딩(서버 URL 입력, Create Account `/v1/auth`, Restore sheet 진입) 추가됨. web의 header/landscape 세부 레이아웃 parity는 미구현. |
+| `index.tsx` | Partial | Native Home에 비인증 온보딩(서버 URL 입력, Create Account `/v1/auth`, Restore 진입)과 portrait/landscape 반응형 레이아웃 + 플랫폼형 CTA 분기(모바일/대화면) 추가됨. web의 header 세부 parity는 미구현. |
 | `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) + 상단 고정 multi-agent 상태 배너 구현. message-level tool detail/review/finish flow은 미구현. |
 | `session/recent.tsx` | Done | Sessions 화면에서 `Recent` 진입 제공, 날짜별(오늘/어제/N일 전) 그룹핑 리스트 구현. |
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission/mode switch + bash/ripgrep/difftastic 실행 기본 액션 + metadata/agentState parsed fields + quick actions(copy/review/finish) 구현. web full parity는 미구현. |
