@@ -176,6 +176,11 @@ public enum APISessionSwitchTarget: String, Encodable, CaseIterable, Sendable {
     case local
 }
 
+public enum APISessionSteerMode: String, Encodable, CaseIterable, Sendable {
+    case queue
+    case immediate
+}
+
 public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
     public let success: Bool
     public let sessionID: String?
@@ -311,6 +316,16 @@ public struct APISessionSwitchResult: Decodable, Equatable, Sendable {
     public init(success: Bool, switched: Bool?, error: String?) {
         self.success = success
         self.switched = switched
+        self.error = error
+    }
+}
+
+public struct APISessionSendMessageResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let error: String?
+
+    public init(success: Bool, error: String?) {
+        self.success = success
         self.error = error
     }
 }

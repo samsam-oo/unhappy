@@ -312,6 +312,34 @@ public enum SessionsAPI {
         return request
     }
 
+    public static func makeSessionSendMessageRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        text: String,
+        steerMode: APISessionSteerMode? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            throw SessionsAPIError.missingMessageText
+        }
+
+        let messageURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/message")
+        var request = try makeRequest(
+            url: messageURL,
+            method: "POST",
+            token: token
+        )
+        request.httpBody = try JSONEncoder().encode(
+            SessionMessagePayload(text: normalizedText, steerMode: steerMode)
+        )
+        return request
+    }
+
     public static func makeSessionBashRequest(
         serverURL: URL,
         token: String,
@@ -508,6 +536,11 @@ public enum SessionsAPI {
         return try decoder.decode(APISessionSwitchResult.self, from: data)
     }
 
+    public static func decodeSessionSendMessageResponse(_ data: Data) throws -> APISessionSendMessageResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionSendMessageResult.self, from: data)
+    }
+
     public static func decodeSessionBashResponse(_ data: Data) throws -> APISessionBashResult {
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionBashResult.self, from: data)
@@ -553,6 +586,7 @@ public enum SessionsAPIError: LocalizedError, Equatable {
     case missingPermissionRequestID
     case missingDirectory
     case missingPath
+    case missingMessageText
     case missingFileContent
     case missingCommand
     case missingSessionTitle
@@ -570,6 +604,8 @@ public enum SessionsAPIError: LocalizedError, Equatable {
             return "Directory is required"
         case .missingPath:
             return "Path is required"
+        case .missingMessageText:
+            return "Message text is required"
         case .missingFileContent:
             return "File content is required"
         case .missingCommand:
@@ -626,6 +662,11 @@ private struct SessionPermissionPayload: Encodable {
 
 private struct SessionSwitchPayload: Encodable {
     let to: APISessionSwitchTarget
+}
+
+private struct SessionMessagePayload: Encodable {
+    let text: String
+    let steerMode: APISessionSteerMode?
 }
 
 private struct SessionBashPayload: Encodable {
@@ -751,6 +792,16 @@ public protocol SessionModeSwitching: Sendable {
     ) async throws -> APISessionSwitchResult
 }
 
+public protocol SessionMessaging: Sendable {
+    func sendMessage(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        text: String,
+        steerMode: APISessionSteerMode?
+    ) async throws -> APISessionSendMessageResult
+}
+
 public protocol SessionBashRunning: Sendable {
     func runBash(
         serverURL: URL,
@@ -799,7 +850,7 @@ public protocol SessionKilling: Sendable {
     ) async throws -> APISessionKillResult
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionBashRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling {
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -1080,6 +1131,32 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
 
         return try SessionsAPI.decodeSessionSwitchResponse(data)
+    }
+
+    public func sendMessage(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        text: String,
+        steerMode: APISessionSteerMode?
+    ) async throws -> APISessionSendMessageResult {
+        let request = try SessionsAPI.makeSessionSendMessageRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            text: text,
+            steerMode: steerMode
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionSendMessageResponse(data)
     }
 
     public func runBash(

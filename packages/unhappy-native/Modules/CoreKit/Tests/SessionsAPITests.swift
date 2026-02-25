@@ -464,6 +464,26 @@ struct SessionsAPITests {
     }
 
     @Test
+    func sessionSendMessageRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionSendMessageRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            text: "Run tests",
+            steerMode: .immediate
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/message")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["text"] as? String == "Run tests")
+        #expect(payload?["steerMode"] as? String == "immediate")
+    }
+
+    @Test
     func decodeSessionCommandResponseParsesPayload() throws {
         let json = """
         {
@@ -487,6 +507,18 @@ struct SessionsAPITests {
         let response = try SessionsAPI.decodeSessionSwitchResponse(json)
         #expect(response.success == true)
         #expect(response.switched == true)
+    }
+
+    @Test
+    func decodeSessionSendMessageResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionSendMessageResponse(json)
+        #expect(response.success == true)
     }
 
     @Test
