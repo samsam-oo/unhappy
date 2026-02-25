@@ -48,7 +48,7 @@ Last updated: 2026-02-25
 | `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력 + 요청 상태 조회(`pending/authorized/not_found`) + approve 액션 구현. QR 승인 플로우는 미구현. |
 | `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 + encrypted approve(`v1/v2`) + iOS QR scanner sheet(DataScanner) 구현. web deep-link parity는 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
-| `settings/index.tsx` | Partial | Account/Server/Connectors/Terminal/Language/Appearance/Features/Profiles/Usage/Voice/Machine 진입 제공. |
+| `settings/index.tsx` | Partial | Account/Restore/Server/Connectors/Terminal/Language/Appearance/Features/Profiles/Usage/Voice/Machine 진입 제공. |
 | `settings/account.tsx` | Partial | token 기반 app access 상태/복사/토큰 제거 + account secret 저장 + account QR 스캔/붙여넣기/링크 승인 + secret 기반 `/v1/auth` 토큰 복구 구현. OAuth/social connect/disconnect/github/profile sync는 미구현. |
 | `settings/features.tsx` | Done | experiments/hideInactiveSessions/useEnhancedSessionWizard 토글 + 로컬 저장 구현. |
 | `settings/language.tsx` | Done | 앱 언어(System/English/Korean) 선택 및 로컬 저장 구현. |
@@ -69,8 +69,8 @@ Last updated: 2026-02-25
 | `zen/index.tsx` | Not started | zen home 미구현. |
 | `zen/new.tsx` | Not started | zen task creation 미구현. |
 | `zen/view.tsx` | Not started | zen detail 미구현. |
-| `restore/index.tsx` | Partial | dedicated restore route는 없지만 Settings `Account`에서 QR 표시 + `/v1/auth/account/request` polling + encrypted token/secret 복호화 기반 계정 복구 구현. web route-level UX parity는 미구현. |
-| `restore/manual.tsx` | Partial | dedicated restore route는 없지만 Settings `Account`에서 secret 입력 후 `/v1/auth` 토큰 복구 액션 제공. web route-level UX parity는 미구현. |
+| `restore/index.tsx` | Partial | Settings `Restore` 전용 화면에서 QR 표시 + `/v1/auth/account/request` polling + encrypted token/secret 복호화 기반 계정 복구 구현. web route-level UX parity는 미구현. |
+| `restore/manual.tsx` | Partial | Settings `Restore` 전용 화면에서 secret 입력 후 `/v1/auth` 토큰 복구 액션 제공. web route-level UX parity는 미구현. |
 | `scanner/account.tsx` | Partial | standalone scanner route 대신 Settings `Account` 화면 내 QR scanner sheet + URL paste로 account link 승인 플로우 제공. |
 | `scanner/terminal.tsx` | Partial | Settings `Terminal`에서 QR scanner sheet(iOS supported device)로 URL 스캔 후 승인 플로우 연동. standalone scanner route parity는 미구현. |
 | `changelog.tsx` | Not started | changelog viewer 미구현. |
