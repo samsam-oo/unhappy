@@ -36,7 +36,7 @@ Last updated: 2026-02-25
 | `session/recent.tsx` | Partial | Session list exists; dedicated recent-only UX is not separated. |
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission/mode switch + bash/ripgrep/difftastic 실행 기본 액션 구현. full metadata UI 미구현. |
 | `session/[id]/file.tsx` | Partial | file read/viewer + directory browse + write-file 저장 구현. syntax highlight/diff view 미구현. |
-| `session/[id]/review.tsx` | Not started | Diff review/editor flow 미구현. |
+| `session/[id]/review.tsx` | Partial | Session Tools에서 git review diff 조회 화면 구현(plain diff viewer). web `ChangesEditor` 수준 렌더링/에디팅은 미구현. |
 | `session/[id]/finish.tsx` | Not started | worktree finish/merge/commit UI 미구현. |
 | `session/[id]/message/[messageId].tsx` | Partial | 메시지 row 탭 시 metadata + payload preview detail 화면 구현. tool expanded renderer parity는 미구현. |
 | `new/index.tsx` | Partial | 기본 machine/path/agent 기반 spawn 플로우 구현됨. profile/env/worktree 고급 옵션 미구현. |
