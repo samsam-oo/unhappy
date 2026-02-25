@@ -122,7 +122,13 @@ public struct SessionDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(viewModel.selectedSessionMessages) { message in
-                        SessionMessageRow(message: message)
+                        NavigationLink {
+                            SessionMessageDetailView(
+                                presentation: SessionMessageDetailPresentationBuilder.make(from: message)
+                            )
+                        } label: {
+                            SessionMessageRow(message: message)
+                        }
                     }
                 }
             }
@@ -669,5 +675,70 @@ private struct SessionMessageRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct SessionMessageDetailView: View {
+    let presentation: SessionMessageDetailPresentation
+
+    var body: some View {
+        List {
+            Section("Overview") {
+                LabeledContent("Sequence") {
+                    Text(presentation.sequenceText)
+                        .font(.footnote.monospaced())
+                }
+                LabeledContent("Message ID") {
+                    Text(presentation.id)
+                        .font(.footnote.monospaced())
+                        .lineLimit(1)
+                }
+                if let localID = presentation.localID {
+                    LabeledContent("Local ID") {
+                        Text(localID)
+                            .font(.footnote.monospaced())
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Section("Timestamps") {
+                LabeledContent("Created") {
+                    Text(presentation.createdAtText)
+                }
+                LabeledContent("Updated") {
+                    Text(presentation.updatedAtText)
+                }
+            }
+
+            Section("Content") {
+                if let contentType = presentation.contentType {
+                    LabeledContent("Type") {
+                        Text(contentType)
+                            .font(.footnote.monospaced())
+                    }
+                    LabeledContent("Payload Size") {
+                        Text("\(presentation.payloadCharacterCount) chars")
+                            .font(.footnote.monospaced())
+                    }
+                    if let payloadPreview = presentation.payloadPreview {
+                        Text(payloadPreview)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                    }
+                    if presentation.payloadTruncated {
+                        Text("Payload preview is truncated to first \(SessionMessageDetailPresentationBuilder.payloadPreviewLimit) chars.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("No content payload")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Message")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
