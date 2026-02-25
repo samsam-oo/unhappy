@@ -544,6 +544,26 @@ struct SessionsAPITests {
     }
 
     @Test
+    func sessionRipgrepRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionRipgrepRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            args: ["TODO", "Sources"],
+            cwd: "/tmp/work"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/ripgrep")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect((payload?["args"] as? [String]) == ["TODO", "Sources"])
+        #expect(payload?["cwd"] as? String == "/tmp/work")
+    }
+
+    @Test
     func sessionReadFileRequestUsesExpectedPathAndBody() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try SessionsAPI.makeSessionReadFileRequest(
@@ -668,5 +688,22 @@ struct SessionsAPITests {
         #expect(response.entries?.count == 1)
         #expect(response.entries?.first?.name == "Sources")
         #expect(response.entries?.first?.type == "directory")
+    }
+
+    @Test
+    func decodeSessionRipgrepResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "stdout": "Sources/App.swift:12:TODO",
+          "stderr": "",
+          "exitCode": 0
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionRipgrepResponse(json)
+        #expect(response.success == true)
+        #expect(response.stdout.contains("TODO"))
+        #expect(response.exitCode == 0)
     }
 }
