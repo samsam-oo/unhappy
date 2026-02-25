@@ -1,10 +1,14 @@
 import SwiftUI
 
 @MainActor
-struct ServerSettingsView: View {
+public struct ServerSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
 
-    var body: some View {
+    public init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         Form {
             Section("API") {
                 TextField("Server URL", text: $viewModel.serverURLString)

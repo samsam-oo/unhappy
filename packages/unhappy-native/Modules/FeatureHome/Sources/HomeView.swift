@@ -14,6 +14,7 @@ public struct HomeView: View {
     @State private var onboardingErrorMessage: String?
     @State private var onboardingStatusMessage: String?
     @State private var isRestoreNavigationPresented = false
+    @State private var isServerSettingsPresented = false
     private let onboarding: any HomeAccountOnboardingAction
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
@@ -127,11 +128,43 @@ public struct HomeView: View {
             }
             .navigationTitle("Welcome")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Image(systemName: "bolt.shield.fill")
+                        .foregroundStyle(.blue)
+                }
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 1) {
+                        Text("Sessions")
+                            .font(.headline)
+                        if let subtitle = customServerSubtitle {
+                            Text(subtitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("Not connected")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isServerSettingsPresented = true
+                    } label: {
+                        Image(systemName: "server.rack")
+                    }
+                    .accessibilityLabel("Open Server Settings")
+                }
+            }
             .navigationDestination(isPresented: $isRestoreNavigationPresented) {
                 AccountRestoreView(
                     viewModel: settingsViewModel,
                     makeAccountLinkViewModel: makeAccountLinkViewModel
                 )
+            }
+            .navigationDestination(isPresented: $isServerSettingsPresented) {
+                ServerSettingsView(viewModel: settingsViewModel)
             }
         }
     }
@@ -339,6 +372,22 @@ public struct HomeView: View {
             return description
         }
         return error.localizedDescription
+    }
+
+    private var customServerSubtitle: String? {
+        let trimmed = settingsViewModel.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let host = url.host else {
+            return nil
+        }
+        let isDefaultHost = host.caseInsensitiveCompare("api.unhappy.im") == .orderedSame
+            && (url.port == nil || url.port == 443)
+        guard !isDefaultHost else {
+            return nil
+        }
+        if let port = url.port {
+            return "\(host):\(port)"
+        }
+        return host
     }
 }
 
