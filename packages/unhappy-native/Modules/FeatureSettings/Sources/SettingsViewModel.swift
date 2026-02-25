@@ -45,6 +45,18 @@ public final class SettingsViewModel: ObservableObject {
             schedulePersistence()
         }
     }
+    @Published public var voiceEnabled: Bool {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
+    @Published public var voiceLanguage: AppVoiceLanguageOption {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
 
     private let settingsManager: any SettingsManaging
     private var hasLoadedInitialSettings = false
@@ -59,6 +71,8 @@ public final class SettingsViewModel: ObservableObject {
         self.experimentsEnabled = false
         self.hideInactiveSessions = false
         self.useEnhancedSessionWizard = false
+        self.voiceEnabled = false
+        self.voiceLanguage = .system
     }
 
     deinit {
@@ -75,6 +89,8 @@ public final class SettingsViewModel: ObservableObject {
         experimentsEnabled = settings.experimentsEnabled
         hideInactiveSessions = settings.hideInactiveSessions
         useEnhancedSessionWizard = settings.useEnhancedSessionWizard
+        voiceEnabled = settings.voiceEnabled
+        voiceLanguage = settings.voiceLanguage
         hasLoadedInitialSettings = true
     }
 
@@ -91,6 +107,8 @@ public final class SettingsViewModel: ObservableObject {
         let experimentsEnabled = self.experimentsEnabled
         let hideInactiveSessions = self.hideInactiveSessions
         let useEnhancedSessionWizard = self.useEnhancedSessionWizard
+        let voiceEnabled = self.voiceEnabled
+        let voiceLanguage = self.voiceLanguage
         persistenceTask?.cancel()
         persistenceTask = Task {
             guard !Task.isCancelled else { return }
@@ -101,7 +119,9 @@ public final class SettingsViewModel: ObservableObject {
                 appearance: selectedAppearance,
                 experimentsEnabled: experimentsEnabled,
                 hideInactiveSessions: hideInactiveSessions,
-                useEnhancedSessionWizard: useEnhancedSessionWizard
+                useEnhancedSessionWizard: useEnhancedSessionWizard,
+                voiceEnabled: voiceEnabled,
+                voiceLanguage: voiceLanguage
             )
         }
     }

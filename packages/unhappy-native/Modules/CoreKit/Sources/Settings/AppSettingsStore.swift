@@ -8,6 +8,8 @@ public protocol AppSettingsStore: Sendable {
     func experimentsEnabled() async -> Bool
     func hideInactiveSessions() async -> Bool
     func useEnhancedSessionWizard() async -> Bool
+    func voiceEnabled() async -> Bool
+    func voiceLanguageCode() async -> String
     func setServerURLString(_ value: String) async
     func setAPIToken(_ value: String) async
     func setAppLanguageCode(_ value: String) async
@@ -15,6 +17,8 @@ public protocol AppSettingsStore: Sendable {
     func setExperimentsEnabled(_ value: Bool) async
     func setHideInactiveSessions(_ value: Bool) async
     func setUseEnhancedSessionWizard(_ value: Bool) async
+    func setVoiceEnabled(_ value: Bool) async
+    func setVoiceLanguageCode(_ value: String) async
 }
 
 public actor UserDefaultsAppSettingsStore: AppSettingsStore {
@@ -26,6 +30,8 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
     private let experimentsEnabledKey: String
     private let hideInactiveSessionsKey: String
     private let useEnhancedSessionWizardKey: String
+    private let voiceEnabledKey: String
+    private let voiceLanguageKey: String
     private let defaultServerURL: String
 
     public init(
@@ -37,6 +43,8 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         experimentsEnabledKey: String = "unhappy.native.experimentsEnabled",
         hideInactiveSessionsKey: String = "unhappy.native.hideInactiveSessions",
         useEnhancedSessionWizardKey: String = "unhappy.native.useEnhancedSessionWizard",
+        voiceEnabledKey: String = "unhappy.native.voiceEnabled",
+        voiceLanguageKey: String = "unhappy.native.voiceLanguage",
         defaultServerURL: String = "https://api.unhappy.im"
     ) {
         self.defaults = defaults
@@ -47,6 +55,8 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         self.experimentsEnabledKey = experimentsEnabledKey
         self.hideInactiveSessionsKey = hideInactiveSessionsKey
         self.useEnhancedSessionWizardKey = useEnhancedSessionWizardKey
+        self.voiceEnabledKey = voiceEnabledKey
+        self.voiceLanguageKey = voiceLanguageKey
         self.defaultServerURL = defaultServerURL
     }
 
@@ -83,6 +93,14 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         defaults.bool(forKey: useEnhancedSessionWizardKey)
     }
 
+    public func voiceEnabled() async -> Bool {
+        defaults.bool(forKey: voiceEnabledKey)
+    }
+
+    public func voiceLanguageCode() async -> String {
+        defaults.string(forKey: voiceLanguageKey) ?? "system"
+    }
+
     public func setServerURLString(_ value: String) async {
         defaults.set(value, forKey: serverURLKey)
     }
@@ -109,5 +127,13 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
 
     public func setUseEnhancedSessionWizard(_ value: Bool) async {
         defaults.set(value, forKey: useEnhancedSessionWizardKey)
+    }
+
+    public func setVoiceEnabled(_ value: Bool) async {
+        defaults.set(value, forKey: voiceEnabledKey)
+    }
+
+    public func setVoiceLanguageCode(_ value: String) async {
+        defaults.set(value, forKey: voiceLanguageKey)
     }
 }

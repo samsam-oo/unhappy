@@ -13,7 +13,9 @@ struct SettingsUseCaseTests {
             initialAppearance: "dark",
             initialExperimentsEnabled: true,
             initialHideInactiveSessions: true,
-            initialUseEnhancedSessionWizard: true
+            initialUseEnhancedSessionWizard: true,
+            initialVoiceEnabled: true,
+            initialVoiceLanguage: "korean"
         )
         let useCase = SettingsUseCase(store: store)
 
@@ -26,6 +28,8 @@ struct SettingsUseCaseTests {
         #expect(loaded.experimentsEnabled == true)
         #expect(loaded.hideInactiveSessions == true)
         #expect(loaded.useEnhancedSessionWizard == true)
+        #expect(loaded.voiceEnabled == true)
+        #expect(loaded.voiceLanguage == .korean)
     }
 
     @Test
@@ -40,7 +44,9 @@ struct SettingsUseCaseTests {
             appearance: .light,
             experimentsEnabled: true,
             hideInactiveSessions: true,
-            useEnhancedSessionWizard: false
+            useEnhancedSessionWizard: false,
+            voiceEnabled: true,
+            voiceLanguage: .english
         )
 
         #expect(await store.serverURLString() == "https://new.example.com")
@@ -50,6 +56,8 @@ struct SettingsUseCaseTests {
         #expect(await store.experimentsEnabled() == true)
         #expect(await store.hideInactiveSessions() == true)
         #expect(await store.useEnhancedSessionWizard() == false)
+        #expect(await store.voiceEnabled() == true)
+        #expect(await store.voiceLanguageCode() == "english")
     }
 }
 
@@ -61,6 +69,8 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     private var savedExperimentsEnabled: Bool
     private var savedHideInactiveSessions: Bool
     private var savedUseEnhancedSessionWizard: Bool
+    private var savedVoiceEnabled: Bool
+    private var savedVoiceLanguage: String
 
     init(
         initialServerURLString: String = "https://api.unhappy.im",
@@ -69,7 +79,9 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
         initialAppearance: String = "system",
         initialExperimentsEnabled: Bool = false,
         initialHideInactiveSessions: Bool = false,
-        initialUseEnhancedSessionWizard: Bool = false
+        initialUseEnhancedSessionWizard: Bool = false,
+        initialVoiceEnabled: Bool = false,
+        initialVoiceLanguage: String = "system"
     ) {
         self.savedServerURLString = initialServerURLString
         self.savedAPIToken = initialAPIToken
@@ -78,6 +90,8 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
         self.savedExperimentsEnabled = initialExperimentsEnabled
         self.savedHideInactiveSessions = initialHideInactiveSessions
         self.savedUseEnhancedSessionWizard = initialUseEnhancedSessionWizard
+        self.savedVoiceEnabled = initialVoiceEnabled
+        self.savedVoiceLanguage = initialVoiceLanguage
     }
 
     func serverURLString() async -> String { savedServerURLString }
@@ -87,6 +101,8 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     func experimentsEnabled() async -> Bool { savedExperimentsEnabled }
     func hideInactiveSessions() async -> Bool { savedHideInactiveSessions }
     func useEnhancedSessionWizard() async -> Bool { savedUseEnhancedSessionWizard }
+    func voiceEnabled() async -> Bool { savedVoiceEnabled }
+    func voiceLanguageCode() async -> String { savedVoiceLanguage }
     func setServerURLString(_ value: String) async { savedServerURLString = value }
     func setAPIToken(_ value: String) async { savedAPIToken = value }
     func setAppLanguageCode(_ value: String) async { savedLanguage = value }
@@ -94,4 +110,6 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     func setExperimentsEnabled(_ value: Bool) async { savedExperimentsEnabled = value }
     func setHideInactiveSessions(_ value: Bool) async { savedHideInactiveSessions = value }
     func setUseEnhancedSessionWizard(_ value: Bool) async { savedUseEnhancedSessionWizard = value }
+    func setVoiceEnabled(_ value: Bool) async { savedVoiceEnabled = value }
+    func setVoiceLanguageCode(_ value: String) async { savedVoiceLanguage = value }
 }

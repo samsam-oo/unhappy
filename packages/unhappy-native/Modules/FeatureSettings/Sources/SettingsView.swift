@@ -51,6 +51,11 @@ public struct SettingsView: View {
                         Label("Features", systemImage: "slider.horizontal.3")
                     }
                     NavigationLink {
+                        VoiceSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Voice", systemImage: "waveform")
+                    }
+                    NavigationLink {
                         UsageSettingsView(
                             serverURLString: viewModel.serverURLString,
                             token: viewModel.apiToken,
@@ -115,6 +120,8 @@ private actor PreviewSettingsManager: SettingsManaging {
         appearance: AppAppearanceOption,
         experimentsEnabled: Bool,
         hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool
+        useEnhancedSessionWizard: Bool,
+        voiceEnabled: Bool,
+        voiceLanguage: AppVoiceLanguageOption
     ) async {}
 }

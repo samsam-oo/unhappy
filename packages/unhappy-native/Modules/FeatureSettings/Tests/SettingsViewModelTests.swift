@@ -13,7 +13,9 @@ struct SettingsViewModelTests {
             initialAppearance: .dark,
             initialExperimentsEnabled: true,
             initialHideInactiveSessions: true,
-            initialUseEnhancedSessionWizard: true
+            initialUseEnhancedSessionWizard: true,
+            initialVoiceEnabled: true,
+            initialVoiceLanguage: .korean
         )
         let model = SettingsViewModel(settingsManager: settingsManager)
 
@@ -26,6 +28,8 @@ struct SettingsViewModelTests {
         #expect(model.experimentsEnabled == true)
         #expect(model.hideInactiveSessions == true)
         #expect(model.useEnhancedSessionWizard == true)
+        #expect(model.voiceEnabled == true)
+        #expect(model.voiceLanguage == .korean)
     }
 
     @Test
@@ -41,6 +45,8 @@ struct SettingsViewModelTests {
         model.experimentsEnabled = true
         model.hideInactiveSessions = true
         model.useEnhancedSessionWizard = false
+        model.voiceEnabled = true
+        model.voiceLanguage = .english
         await model.waitForPendingPersistence()
 
         let persisted = await settingsManager.loadSettings()
@@ -51,6 +57,8 @@ struct SettingsViewModelTests {
         #expect(persisted.experimentsEnabled == true)
         #expect(persisted.hideInactiveSessions == true)
         #expect(persisted.useEnhancedSessionWizard == false)
+        #expect(persisted.voiceEnabled == true)
+        #expect(persisted.voiceLanguage == .english)
     }
 }
 
@@ -62,6 +70,8 @@ private actor MemorySettingsManager: SettingsManaging {
     private var savedExperimentsEnabled: Bool
     private var savedHideInactiveSessions: Bool
     private var savedUseEnhancedSessionWizard: Bool
+    private var savedVoiceEnabled: Bool
+    private var savedVoiceLanguage: AppVoiceLanguageOption
 
     init(
         initialServerURLString: String = "https://api.unhappy.im",
@@ -70,7 +80,9 @@ private actor MemorySettingsManager: SettingsManaging {
         initialAppearance: AppAppearanceOption = .system,
         initialExperimentsEnabled: Bool = false,
         initialHideInactiveSessions: Bool = false,
-        initialUseEnhancedSessionWizard: Bool = false
+        initialUseEnhancedSessionWizard: Bool = false,
+        initialVoiceEnabled: Bool = false,
+        initialVoiceLanguage: AppVoiceLanguageOption = .system
     ) {
         self.savedServerURLString = initialServerURLString
         self.savedAPIToken = initialAPIToken
@@ -79,6 +91,8 @@ private actor MemorySettingsManager: SettingsManaging {
         self.savedExperimentsEnabled = initialExperimentsEnabled
         self.savedHideInactiveSessions = initialHideInactiveSessions
         self.savedUseEnhancedSessionWizard = initialUseEnhancedSessionWizard
+        self.savedVoiceEnabled = initialVoiceEnabled
+        self.savedVoiceLanguage = initialVoiceLanguage
     }
 
     func loadSettings() async -> AppSettingsSnapshot {
@@ -89,7 +103,9 @@ private actor MemorySettingsManager: SettingsManaging {
             appearance: savedAppearance,
             experimentsEnabled: savedExperimentsEnabled,
             hideInactiveSessions: savedHideInactiveSessions,
-            useEnhancedSessionWizard: savedUseEnhancedSessionWizard
+            useEnhancedSessionWizard: savedUseEnhancedSessionWizard,
+            voiceEnabled: savedVoiceEnabled,
+            voiceLanguage: savedVoiceLanguage
         )
     }
 
@@ -100,7 +116,9 @@ private actor MemorySettingsManager: SettingsManaging {
         appearance: AppAppearanceOption,
         experimentsEnabled: Bool,
         hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool
+        useEnhancedSessionWizard: Bool,
+        voiceEnabled: Bool,
+        voiceLanguage: AppVoiceLanguageOption
     ) async {
         savedServerURLString = serverURLString
         savedAPIToken = apiToken
@@ -109,5 +127,7 @@ private actor MemorySettingsManager: SettingsManaging {
         savedExperimentsEnabled = experimentsEnabled
         savedHideInactiveSessions = hideInactiveSessions
         savedUseEnhancedSessionWizard = useEnhancedSessionWizard
+        savedVoiceEnabled = voiceEnabled
+        savedVoiceLanguage = voiceLanguage
     }
 }

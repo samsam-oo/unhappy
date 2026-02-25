@@ -73,6 +73,8 @@ private actor MockSettingsManager: SettingsManaging {
         appearance: AppAppearanceOption,
         experimentsEnabled: Bool,
         hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool
+        useEnhancedSessionWizard: Bool,
+        voiceEnabled: Bool,
+        voiceLanguage: AppVoiceLanguageOption
     ) async {}
 }
