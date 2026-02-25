@@ -25,6 +25,7 @@ public struct MachineDetailView: View {
     }
 
     public var body: some View {
+        let presentation = MachineDetailPresentationBuilder.make(from: machine)
         List {
             Section("Machine") {
                 LabeledContent("ID") {
@@ -36,7 +37,67 @@ public struct MachineDetailView: View {
                         .foregroundStyle(machine.active ? Color.green : Color.secondary)
                 }
                 LabeledContent("Active At") {
-                    Text(Date(timeIntervalSince1970: machine.activeAt), style: .relative)
+                    Text(presentation.activeAtText)
+                }
+                LabeledContent("Created At") {
+                    Text(presentation.createdAtText)
+                }
+                LabeledContent("Updated At") {
+                    Text(presentation.updatedAtText)
+                }
+            }
+
+            Section("Daemon Diagnostics") {
+                LabeledContent("Daemon State Version") {
+                    Text(presentation.daemonStateVersionText)
+                }
+
+                if !presentation.daemonStateFields.isEmpty {
+                    ForEach(presentation.daemonStateFields) { field in
+                        LabeledContent(field.key) {
+                            Text(field.value)
+                                .font(.footnote.monospaced())
+                                .lineLimit(2)
+                        }
+                    }
+                }
+
+                if let daemonStatePreview = presentation.daemonStatePreview {
+                    Text(daemonStatePreview)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                    if presentation.daemonStateTruncated {
+                        Text("Daemon state preview truncated")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("No daemon state payload")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("Metadata Diagnostics") {
+                LabeledContent("Metadata Version") {
+                    Text(presentation.metadataVersionText)
+                }
+                if !presentation.metadataFields.isEmpty {
+                    ForEach(presentation.metadataFields) { field in
+                        LabeledContent(field.key) {
+                            Text(field.value)
+                                .font(.footnote.monospaced())
+                                .lineLimit(2)
+                        }
+                    }
+                }
+
+                Text(presentation.metadataPreview)
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                if presentation.metadataTruncated {
+                    Text("Metadata preview truncated")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
