@@ -79,6 +79,17 @@ public struct SessionDetailView: View {
                 } label: {
                     Label("File Viewer", systemImage: "doc.text")
                 }
+
+                NavigationLink {
+                    SessionReviewView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("Review Diff", systemImage: "doc.text.magnifyingglass")
+                }
             }
 
             Section("Messages") {
