@@ -15,7 +15,8 @@ struct SettingsUseCaseTests {
             initialHideInactiveSessions: true,
             initialUseEnhancedSessionWizard: true,
             initialVoiceEnabled: true,
-            initialVoiceLanguage: "korean"
+            initialVoiceLanguage: "korean",
+            initialDefaultAgent: "codex"
         )
         let useCase = SettingsUseCase(store: store)
 
@@ -30,6 +31,7 @@ struct SettingsUseCaseTests {
         #expect(loaded.useEnhancedSessionWizard == true)
         #expect(loaded.voiceEnabled == true)
         #expect(loaded.voiceLanguage == .korean)
+        #expect(loaded.defaultNewSessionAgent == .codex)
     }
 
     @Test
@@ -46,7 +48,8 @@ struct SettingsUseCaseTests {
             hideInactiveSessions: true,
             useEnhancedSessionWizard: false,
             voiceEnabled: true,
-            voiceLanguage: .english
+            voiceLanguage: .english,
+            defaultNewSessionAgent: .gemini
         )
 
         #expect(await store.serverURLString() == "https://new.example.com")
@@ -58,6 +61,7 @@ struct SettingsUseCaseTests {
         #expect(await store.useEnhancedSessionWizard() == false)
         #expect(await store.voiceEnabled() == true)
         #expect(await store.voiceLanguageCode() == "english")
+        #expect(await store.defaultNewSessionAgent() == "gemini")
     }
 }
 
@@ -71,6 +75,7 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     private var savedUseEnhancedSessionWizard: Bool
     private var savedVoiceEnabled: Bool
     private var savedVoiceLanguage: String
+    private var savedDefaultAgent: String
 
     init(
         initialServerURLString: String = "https://api.unhappy.im",
@@ -81,7 +86,8 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
         initialHideInactiveSessions: Bool = false,
         initialUseEnhancedSessionWizard: Bool = false,
         initialVoiceEnabled: Bool = false,
-        initialVoiceLanguage: String = "system"
+        initialVoiceLanguage: String = "system",
+        initialDefaultAgent: String = "claude"
     ) {
         self.savedServerURLString = initialServerURLString
         self.savedAPIToken = initialAPIToken
@@ -92,6 +98,7 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
         self.savedUseEnhancedSessionWizard = initialUseEnhancedSessionWizard
         self.savedVoiceEnabled = initialVoiceEnabled
         self.savedVoiceLanguage = initialVoiceLanguage
+        self.savedDefaultAgent = initialDefaultAgent
     }
 
     func serverURLString() async -> String { savedServerURLString }
@@ -103,6 +110,7 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     func useEnhancedSessionWizard() async -> Bool { savedUseEnhancedSessionWizard }
     func voiceEnabled() async -> Bool { savedVoiceEnabled }
     func voiceLanguageCode() async -> String { savedVoiceLanguage }
+    func defaultNewSessionAgent() async -> String { savedDefaultAgent }
     func setServerURLString(_ value: String) async { savedServerURLString = value }
     func setAPIToken(_ value: String) async { savedAPIToken = value }
     func setAppLanguageCode(_ value: String) async { savedLanguage = value }
@@ -112,4 +120,5 @@ private actor MemoryAppSettingsStore: AppSettingsStore {
     func setUseEnhancedSessionWizard(_ value: Bool) async { savedUseEnhancedSessionWizard = value }
     func setVoiceEnabled(_ value: Bool) async { savedVoiceEnabled = value }
     func setVoiceLanguageCode(_ value: String) async { savedVoiceLanguage = value }
+    func setDefaultNewSessionAgent(_ value: String) async { savedDefaultAgent = value }
 }

@@ -51,6 +51,11 @@ public struct SettingsView: View {
                         Label("Features", systemImage: "slider.horizontal.3")
                     }
                     NavigationLink {
+                        ProfilesSettingsView(viewModel: viewModel)
+                    } label: {
+                        Label("Profiles", systemImage: "person.2")
+                    }
+                    NavigationLink {
                         VoiceSettingsView(viewModel: viewModel)
                     } label: {
                         Label("Voice", systemImage: "waveform")
@@ -122,6 +127,7 @@ private actor PreviewSettingsManager: SettingsManaging {
         hideInactiveSessions: Bool,
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption
+        voiceLanguage: AppVoiceLanguageOption,
+        defaultNewSessionAgent: APISessionSpawnAgent
     ) async {}
 }

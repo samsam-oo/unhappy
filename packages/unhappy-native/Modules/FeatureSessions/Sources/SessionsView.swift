@@ -9,6 +9,7 @@ public struct SessionsView: View {
     private let serverURLString: String
     private let token: String
     private let hideInactiveSessions: Bool
+    private let defaultNewSessionAgent: APISessionSpawnAgent
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     @State private var pendingDeleteSession: APISession?
@@ -18,6 +19,7 @@ public struct SessionsView: View {
         serverURLString: String,
         token: String,
         hideInactiveSessions: Bool = false,
+        defaultNewSessionAgent: APISessionSpawnAgent = .claude,
         makeViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
@@ -25,6 +27,7 @@ public struct SessionsView: View {
         self.serverURLString = serverURLString
         self.token = token
         self.hideInactiveSessions = hideInactiveSessions
+        self.defaultNewSessionAgent = defaultNewSessionAgent
         _viewModel = StateObject(wrappedValue: makeViewModel())
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
@@ -182,6 +185,7 @@ public struct SessionsView: View {
                 NewSessionView(
                     serverURLString: serverURLString,
                     token: token,
+                    defaultAgent: defaultNewSessionAgent,
                     makeViewModel: makeNewSessionViewModel,
                     onSessionSpawned: { _ in
                         Task {

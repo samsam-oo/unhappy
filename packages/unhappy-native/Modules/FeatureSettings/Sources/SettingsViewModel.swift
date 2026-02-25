@@ -1,4 +1,5 @@
 import Foundation
+import CoreKit
 
 @MainActor
 public final class SettingsViewModel: ObservableObject {
@@ -57,6 +58,12 @@ public final class SettingsViewModel: ObservableObject {
             schedulePersistence()
         }
     }
+    @Published public var defaultNewSessionAgent: APISessionSpawnAgent {
+        didSet {
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
 
     private let settingsManager: any SettingsManaging
     private var hasLoadedInitialSettings = false
@@ -73,6 +80,7 @@ public final class SettingsViewModel: ObservableObject {
         self.useEnhancedSessionWizard = false
         self.voiceEnabled = false
         self.voiceLanguage = .system
+        self.defaultNewSessionAgent = .claude
     }
 
     deinit {
@@ -91,6 +99,7 @@ public final class SettingsViewModel: ObservableObject {
         useEnhancedSessionWizard = settings.useEnhancedSessionWizard
         voiceEnabled = settings.voiceEnabled
         voiceLanguage = settings.voiceLanguage
+        defaultNewSessionAgent = settings.defaultNewSessionAgent
         hasLoadedInitialSettings = true
     }
 
@@ -109,6 +118,7 @@ public final class SettingsViewModel: ObservableObject {
         let useEnhancedSessionWizard = self.useEnhancedSessionWizard
         let voiceEnabled = self.voiceEnabled
         let voiceLanguage = self.voiceLanguage
+        let defaultNewSessionAgent = self.defaultNewSessionAgent
         persistenceTask?.cancel()
         persistenceTask = Task {
             guard !Task.isCancelled else { return }
@@ -121,7 +131,8 @@ public final class SettingsViewModel: ObservableObject {
                 hideInactiveSessions: hideInactiveSessions,
                 useEnhancedSessionWizard: useEnhancedSessionWizard,
                 voiceEnabled: voiceEnabled,
-                voiceLanguage: voiceLanguage
+                voiceLanguage: voiceLanguage,
+                defaultNewSessionAgent: defaultNewSessionAgent
             )
         }
     }

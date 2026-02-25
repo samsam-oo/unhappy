@@ -75,6 +75,7 @@ private actor MockSettingsManager: SettingsManaging {
         hideInactiveSessions: Bool,
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption
+        voiceLanguage: AppVoiceLanguageOption,
+        defaultNewSessionAgent: APISessionSpawnAgent
     ) async {}
 }

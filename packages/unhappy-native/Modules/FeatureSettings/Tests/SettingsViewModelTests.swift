@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import FeatureSettings
+import CoreKit
 
 @MainActor
 struct SettingsViewModelTests {
@@ -15,7 +16,8 @@ struct SettingsViewModelTests {
             initialHideInactiveSessions: true,
             initialUseEnhancedSessionWizard: true,
             initialVoiceEnabled: true,
-            initialVoiceLanguage: .korean
+            initialVoiceLanguage: .korean,
+            initialDefaultNewSessionAgent: .codex
         )
         let model = SettingsViewModel(settingsManager: settingsManager)
 
@@ -30,6 +32,7 @@ struct SettingsViewModelTests {
         #expect(model.useEnhancedSessionWizard == true)
         #expect(model.voiceEnabled == true)
         #expect(model.voiceLanguage == .korean)
+        #expect(model.defaultNewSessionAgent == .codex)
     }
 
     @Test
@@ -47,6 +50,7 @@ struct SettingsViewModelTests {
         model.useEnhancedSessionWizard = false
         model.voiceEnabled = true
         model.voiceLanguage = .english
+        model.defaultNewSessionAgent = .gemini
         await model.waitForPendingPersistence()
 
         let persisted = await settingsManager.loadSettings()
@@ -59,6 +63,7 @@ struct SettingsViewModelTests {
         #expect(persisted.useEnhancedSessionWizard == false)
         #expect(persisted.voiceEnabled == true)
         #expect(persisted.voiceLanguage == .english)
+        #expect(persisted.defaultNewSessionAgent == .gemini)
     }
 }
 
@@ -72,6 +77,7 @@ private actor MemorySettingsManager: SettingsManaging {
     private var savedUseEnhancedSessionWizard: Bool
     private var savedVoiceEnabled: Bool
     private var savedVoiceLanguage: AppVoiceLanguageOption
+    private var savedDefaultNewSessionAgent: APISessionSpawnAgent
 
     init(
         initialServerURLString: String = "https://api.unhappy.im",
@@ -82,7 +88,8 @@ private actor MemorySettingsManager: SettingsManaging {
         initialHideInactiveSessions: Bool = false,
         initialUseEnhancedSessionWizard: Bool = false,
         initialVoiceEnabled: Bool = false,
-        initialVoiceLanguage: AppVoiceLanguageOption = .system
+        initialVoiceLanguage: AppVoiceLanguageOption = .system,
+        initialDefaultNewSessionAgent: APISessionSpawnAgent = .claude
     ) {
         self.savedServerURLString = initialServerURLString
         self.savedAPIToken = initialAPIToken
@@ -93,6 +100,7 @@ private actor MemorySettingsManager: SettingsManaging {
         self.savedUseEnhancedSessionWizard = initialUseEnhancedSessionWizard
         self.savedVoiceEnabled = initialVoiceEnabled
         self.savedVoiceLanguage = initialVoiceLanguage
+        self.savedDefaultNewSessionAgent = initialDefaultNewSessionAgent
     }
 
     func loadSettings() async -> AppSettingsSnapshot {
@@ -105,7 +113,8 @@ private actor MemorySettingsManager: SettingsManaging {
             hideInactiveSessions: savedHideInactiveSessions,
             useEnhancedSessionWizard: savedUseEnhancedSessionWizard,
             voiceEnabled: savedVoiceEnabled,
-            voiceLanguage: savedVoiceLanguage
+            voiceLanguage: savedVoiceLanguage,
+            defaultNewSessionAgent: savedDefaultNewSessionAgent
         )
     }
 
@@ -118,7 +127,8 @@ private actor MemorySettingsManager: SettingsManaging {
         hideInactiveSessions: Bool,
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption
+        voiceLanguage: AppVoiceLanguageOption,
+        defaultNewSessionAgent: APISessionSpawnAgent
     ) async {
         savedServerURLString = serverURLString
         savedAPIToken = apiToken
@@ -129,5 +139,6 @@ private actor MemorySettingsManager: SettingsManaging {
         savedUseEnhancedSessionWizard = useEnhancedSessionWizard
         savedVoiceEnabled = voiceEnabled
         savedVoiceLanguage = voiceLanguage
+        savedDefaultNewSessionAgent = defaultNewSessionAgent
     }
 }

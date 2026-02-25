@@ -37,6 +37,7 @@ public struct HomeView: View {
                 serverURLString: settingsViewModel.serverURLString,
                 token: settingsViewModel.apiToken,
                 hideInactiveSessions: settingsViewModel.hideInactiveSessions,
+                defaultNewSessionAgent: settingsViewModel.defaultNewSessionAgent,
                 makeViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel

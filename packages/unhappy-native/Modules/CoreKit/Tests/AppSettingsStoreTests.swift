@@ -28,6 +28,7 @@ struct AppSettingsStoreTests {
         #expect(await store.useEnhancedSessionWizard() == false)
         #expect(await store.voiceEnabled() == false)
         #expect(await store.voiceLanguageCode() == "system")
+        #expect(await store.defaultNewSessionAgent() == "claude")
     }
 
     @Test
@@ -51,6 +52,7 @@ struct AppSettingsStoreTests {
         await store.setUseEnhancedSessionWizard(true)
         await store.setVoiceEnabled(true)
         await store.setVoiceLanguageCode("korean")
+        await store.setDefaultNewSessionAgent("codex")
 
         #expect(await store.serverURLString() == "https://api.example.com")
         #expect(await store.apiToken() == "secret")
@@ -61,5 +63,6 @@ struct AppSettingsStoreTests {
         #expect(await store.useEnhancedSessionWizard() == true)
         #expect(await store.voiceEnabled() == true)
         #expect(await store.voiceLanguageCode() == "korean")
+        #expect(await store.defaultNewSessionAgent() == "codex")
     }
 }

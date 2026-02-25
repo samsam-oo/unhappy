@@ -62,6 +62,7 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
     public let useEnhancedSessionWizard: Bool
     public let voiceEnabled: Bool
     public let voiceLanguage: AppVoiceLanguageOption
+    public let defaultNewSessionAgent: APISessionSpawnAgent
 
     public init(
         serverURLString: String,
@@ -72,7 +73,8 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
         hideInactiveSessions: Bool = false,
         useEnhancedSessionWizard: Bool = false,
         voiceEnabled: Bool = false,
-        voiceLanguage: AppVoiceLanguageOption = .system
+        voiceLanguage: AppVoiceLanguageOption = .system,
+        defaultNewSessionAgent: APISessionSpawnAgent = .claude
     ) {
         self.serverURLString = serverURLString
         self.apiToken = apiToken
@@ -83,6 +85,7 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
         self.useEnhancedSessionWizard = useEnhancedSessionWizard
         self.voiceEnabled = voiceEnabled
         self.voiceLanguage = voiceLanguage
+        self.defaultNewSessionAgent = defaultNewSessionAgent
     }
 }
 
@@ -97,7 +100,8 @@ public protocol SettingsManaging: Sendable {
         hideInactiveSessions: Bool,
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption
+        voiceLanguage: AppVoiceLanguageOption,
+        defaultNewSessionAgent: APISessionSpawnAgent
     ) async
 }
 
@@ -112,6 +116,7 @@ public actor SettingsUseCase: SettingsManaging {
         let appLanguage = AppLanguageOption(rawValue: await store.appLanguageCode()) ?? .system
         let appearance = AppAppearanceOption(rawValue: await store.appearanceMode()) ?? .system
         let voiceLanguage = AppVoiceLanguageOption(rawValue: await store.voiceLanguageCode()) ?? .system
+        let defaultNewSessionAgent = APISessionSpawnAgent(rawValue: await store.defaultNewSessionAgent()) ?? .claude
         return AppSettingsSnapshot(
             serverURLString: await store.serverURLString(),
             apiToken: await store.apiToken(),
@@ -121,7 +126,8 @@ public actor SettingsUseCase: SettingsManaging {
             hideInactiveSessions: await store.hideInactiveSessions(),
             useEnhancedSessionWizard: await store.useEnhancedSessionWizard(),
             voiceEnabled: await store.voiceEnabled(),
-            voiceLanguage: voiceLanguage
+            voiceLanguage: voiceLanguage,
+            defaultNewSessionAgent: defaultNewSessionAgent
         )
     }
 
@@ -134,7 +140,8 @@ public actor SettingsUseCase: SettingsManaging {
         hideInactiveSessions: Bool,
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption
+        voiceLanguage: AppVoiceLanguageOption,
+        defaultNewSessionAgent: APISessionSpawnAgent
     ) async {
         await store.setServerURLString(serverURLString)
         await store.setAPIToken(apiToken)
@@ -145,5 +152,6 @@ public actor SettingsUseCase: SettingsManaging {
         await store.setUseEnhancedSessionWizard(useEnhancedSessionWizard)
         await store.setVoiceEnabled(voiceEnabled)
         await store.setVoiceLanguageCode(voiceLanguage.rawValue)
+        await store.setDefaultNewSessionAgent(defaultNewSessionAgent.rawValue)
     }
 }

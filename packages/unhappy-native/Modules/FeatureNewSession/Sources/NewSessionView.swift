@@ -5,6 +5,7 @@ import CoreKit
 public struct NewSessionView: View {
     private let serverURLString: String
     private let token: String
+    private let defaultAgent: APISessionSpawnAgent
     private let onSessionSpawned: @MainActor (String?) -> Void
 
     @StateObject private var viewModel: NewSessionViewModel
@@ -13,11 +14,13 @@ public struct NewSessionView: View {
     public init(
         serverURLString: String,
         token: String,
+        defaultAgent: APISessionSpawnAgent = .claude,
         makeViewModel: @escaping @MainActor () -> NewSessionViewModel,
         onSessionSpawned: @escaping @MainActor (String?) -> Void = { _ in }
     ) {
         self.serverURLString = serverURLString
         self.token = token
+        self.defaultAgent = defaultAgent
         self.onSessionSpawned = onSessionSpawned
         _viewModel = StateObject(wrappedValue: makeViewModel())
     }
@@ -194,6 +197,7 @@ public struct NewSessionView: View {
                 }
             }
             .task(id: "\(serverURLString)|\(token)") {
+                viewModel.selectedAgent = defaultAgent
                 await viewModel.loadMachines(serverURLString: serverURLString, token: token)
             }
         }

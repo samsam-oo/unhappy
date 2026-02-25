@@ -10,6 +10,7 @@ public protocol AppSettingsStore: Sendable {
     func useEnhancedSessionWizard() async -> Bool
     func voiceEnabled() async -> Bool
     func voiceLanguageCode() async -> String
+    func defaultNewSessionAgent() async -> String
     func setServerURLString(_ value: String) async
     func setAPIToken(_ value: String) async
     func setAppLanguageCode(_ value: String) async
@@ -19,6 +20,7 @@ public protocol AppSettingsStore: Sendable {
     func setUseEnhancedSessionWizard(_ value: Bool) async
     func setVoiceEnabled(_ value: Bool) async
     func setVoiceLanguageCode(_ value: String) async
+    func setDefaultNewSessionAgent(_ value: String) async
 }
 
 public actor UserDefaultsAppSettingsStore: AppSettingsStore {
@@ -32,6 +34,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
     private let useEnhancedSessionWizardKey: String
     private let voiceEnabledKey: String
     private let voiceLanguageKey: String
+    private let defaultNewSessionAgentKey: String
     private let defaultServerURL: String
 
     public init(
@@ -45,6 +48,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         useEnhancedSessionWizardKey: String = "unhappy.native.useEnhancedSessionWizard",
         voiceEnabledKey: String = "unhappy.native.voiceEnabled",
         voiceLanguageKey: String = "unhappy.native.voiceLanguage",
+        defaultNewSessionAgentKey: String = "unhappy.native.defaultNewSessionAgent",
         defaultServerURL: String = "https://api.unhappy.im"
     ) {
         self.defaults = defaults
@@ -57,6 +61,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         self.useEnhancedSessionWizardKey = useEnhancedSessionWizardKey
         self.voiceEnabledKey = voiceEnabledKey
         self.voiceLanguageKey = voiceLanguageKey
+        self.defaultNewSessionAgentKey = defaultNewSessionAgentKey
         self.defaultServerURL = defaultServerURL
     }
 
@@ -101,6 +106,10 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         defaults.string(forKey: voiceLanguageKey) ?? "system"
     }
 
+    public func defaultNewSessionAgent() async -> String {
+        defaults.string(forKey: defaultNewSessionAgentKey) ?? "claude"
+    }
+
     public func setServerURLString(_ value: String) async {
         defaults.set(value, forKey: serverURLKey)
     }
@@ -135,5 +144,9 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
 
     public func setVoiceLanguageCode(_ value: String) async {
         defaults.set(value, forKey: voiceLanguageKey)
+    }
+
+    public func setDefaultNewSessionAgent(_ value: String) async {
+        defaults.set(value, forKey: defaultNewSessionAgentKey)
     }
 }
