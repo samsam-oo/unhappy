@@ -33,7 +33,7 @@ Last updated: 2026-02-25
 | `_layout.tsx` | Partial | Native `TabView` exists but tabs/headers/status parity is incomplete (`Inbox`, richer header actions missing). |
 | `index.tsx` | Partial | Native home exists, but auth onboarding/create/restore flow parity is missing. |
 | `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) + 상단 고정 multi-agent 상태 배너 구현. message-level tool detail/review/finish flow은 미구현. |
-| `session/recent.tsx` | Partial | Session list exists; dedicated recent-only UX is not separated. |
+| `session/recent.tsx` | Done | Sessions 화면에서 `Recent` 진입 제공, 날짜별(오늘/어제/N일 전) 그룹핑 리스트 구현. |
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission/mode switch + bash/ripgrep/difftastic 실행 기본 액션 구현. full metadata UI 미구현. |
 | `session/[id]/file.tsx` | Partial | file read/viewer + directory browse + write-file 저장 구현. syntax highlight/diff view 미구현. |
 | `session/[id]/review.tsx` | Partial | Session Tools에서 git review diff 조회 화면 구현(세션 cwd 자동 감지 + plain diff viewer). web `ChangesEditor` 수준 렌더링/에디팅은 미구현. |
