@@ -45,10 +45,10 @@ Last updated: 2026-02-25
 | `new/pick/profile-edit.tsx` | Not started | profile edit 연결 미구현. |
 | `new/pick/project.tsx` | Not started | project discovery picker 미구현. |
 | `machine/[id].tsx` | Partial | machine detail + daemon control + spawn 구현됨. metadata 편집/고급 진단 미구현. |
-| `terminal/index.tsx` | Not started | terminal connect 진입 플로우 미구현. |
-| `terminal/connect.tsx` | Not started | QR/URL terminal auth 연결 UI 미구현. |
+| `terminal/index.tsx` | Partial | Settings `Terminal`에서 수동 URL 입력/요청 미리보기 진입 구현. QR 승인 플로우는 미구현. |
+| `terminal/connect.tsx` | Partial | `unhappy://terminal?...` URL 파싱/유효성 검사/public key 미리보기 구현. 실제 terminal approval handshake는 미구현. |
 | `server.tsx` | Done | Settings에서 독립 `Server` 화면으로 URL/토큰 설정 제공. |
-| `settings/index.tsx` | Partial | Account/Server/Connectors/Language/Appearance/Features/Profiles/Usage/Voice/Machine 진입 제공. |
+| `settings/index.tsx` | Partial | Account/Server/Connectors/Terminal/Language/Appearance/Features/Profiles/Usage/Voice/Machine 진입 제공. |
 | `settings/account.tsx` | Partial | token 기반 account 상태/복사/토큰 제거 UI 구현. OAuth/social connect/disconnect/github/profile sync는 미구현. |
 | `settings/features.tsx` | Done | experiments/hideInactiveSessions/useEnhancedSessionWizard 토글 + 로컬 저장 구현. |
 | `settings/language.tsx` | Done | 앱 언어(System/English/Korean) 선택 및 로컬 저장 구현. |
