@@ -157,6 +157,25 @@ public enum APISessionSpawnAgent: String, Encodable, Sendable {
     case gemini
 }
 
+public enum APISessionPermissionMode: String, Encodable, CaseIterable, Sendable {
+    case `default`
+    case acceptEdits
+    case bypassPermissions
+    case plan
+}
+
+public enum APISessionPermissionDecision: String, Encodable, CaseIterable, Sendable {
+    case approved
+    case approvedForSession = "approved_for_session"
+    case denied
+    case abort
+}
+
+public enum APISessionSwitchTarget: String, Encodable, CaseIterable, Sendable {
+    case remote
+    case local
+}
+
 public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
     public let success: Bool
     public let sessionID: String?
@@ -232,5 +251,27 @@ public struct APISessionKillResult: Decodable, Equatable, Sendable {
     public init(success: Bool, message: String) {
         self.success = success
         self.message = message
+    }
+}
+
+public struct APISessionCommandResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let error: String?
+
+    public init(success: Bool, error: String?) {
+        self.success = success
+        self.error = error
+    }
+}
+
+public struct APISessionSwitchResult: Decodable, Equatable, Sendable {
+    public let success: Bool
+    public let switched: Bool?
+    public let error: String?
+
+    public init(success: Bool, switched: Bool?, error: String?) {
+        self.success = success
+        self.switched = switched
+        self.error = error
     }
 }

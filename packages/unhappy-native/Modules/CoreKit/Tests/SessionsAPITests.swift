@@ -403,6 +403,93 @@ struct SessionsAPITests {
     }
 
     @Test
+    func sessionAbortRequestUsesExpectedPathAndOptionalBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionAbortRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            reason: "user-requested"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/abort")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["reason"] as? String == "user-requested")
+    }
+
+    @Test
+    func sessionPermissionRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionPermissionRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            permissionRequestID: "perm_123",
+            approved: true,
+            mode: .acceptEdits,
+            allowTools: ["bash", "readFile"],
+            decision: .approvedForSession
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/permission")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["id"] as? String == "perm_123")
+        #expect(payload?["approved"] as? Bool == true)
+        #expect(payload?["mode"] as? String == "acceptEdits")
+        #expect(payload?["decision"] as? String == "approved_for_session")
+    }
+
+    @Test
+    func sessionSwitchRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionSwitchRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            to: .local
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/switch")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["to"] as? String == "local")
+    }
+
+    @Test
+    func decodeSessionCommandResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionCommandResponse(json)
+        #expect(response.success == true)
+    }
+
+    @Test
+    func decodeSessionSwitchResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "switched": true
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionSwitchResponse(json)
+        #expect(response.success == true)
+        #expect(response.switched == true)
+    }
+
+    @Test
     func sessionBashRequestUsesExpectedPathAndBody() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try SessionsAPI.makeSessionBashRequest(

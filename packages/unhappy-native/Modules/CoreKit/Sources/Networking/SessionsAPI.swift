@@ -227,6 +227,91 @@ public enum SessionsAPI {
         return request
     }
 
+    public static func makeSessionAbortRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        reason: String? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+
+        let abortURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/abort")
+        var request = try makeRequest(
+            url: abortURL,
+            method: "POST",
+            token: token
+        )
+        let normalizedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedReason, !normalizedReason.isEmpty {
+            request.httpBody = try JSONEncoder().encode(SessionAbortPayload(reason: normalizedReason))
+        }
+        return request
+    }
+
+    public static func makeSessionPermissionRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        permissionRequestID: String,
+        approved: Bool,
+        mode: APISessionPermissionMode? = nil,
+        allowTools: [String]? = nil,
+        decision: APISessionPermissionDecision? = nil
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+        let normalizedPermissionRequestID = permissionRequestID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPermissionRequestID.isEmpty else {
+            throw SessionsAPIError.missingPermissionRequestID
+        }
+
+        let permissionURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/permission")
+        var request = try makeRequest(
+            url: permissionURL,
+            method: "POST",
+            token: token
+        )
+        let normalizedAllowTools = allowTools?.compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        let payload = SessionPermissionPayload(
+            id: normalizedPermissionRequestID,
+            approved: approved,
+            mode: mode,
+            allowTools: normalizedAllowTools?.isEmpty == false ? normalizedAllowTools : nil,
+            decision: decision
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
+        return request
+    }
+
+    public static func makeSessionSwitchRequest(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        to: APISessionSwitchTarget
+    ) throws -> URLRequest {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw SessionsAPIError.missingSessionID
+        }
+
+        let switchURL = serverURL.appending(path: "v1/sessions/\(normalizedSessionID)/commands/switch")
+        var request = try makeRequest(
+            url: switchURL,
+            method: "POST",
+            token: token
+        )
+        request.httpBody = try JSONEncoder().encode(SessionSwitchPayload(to: to))
+        return request
+    }
+
     public static func makeSessionBashRequest(
         serverURL: URL,
         token: String,
@@ -342,6 +427,16 @@ public enum SessionsAPI {
         return try decoder.decode(APISessionSpawnResult.self, from: data)
     }
 
+    public static func decodeSessionCommandResponse(_ data: Data) throws -> APISessionCommandResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionCommandResult.self, from: data)
+    }
+
+    public static func decodeSessionSwitchResponse(_ data: Data) throws -> APISessionSwitchResult {
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionSwitchResult.self, from: data)
+    }
+
     public static func decodeSessionBashResponse(_ data: Data) throws -> APISessionBashResult {
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionBashResult.self, from: data)
@@ -374,6 +469,7 @@ public enum SessionsAPI {
 public enum SessionsAPIError: LocalizedError, Equatable {
     case missingToken
     case missingSessionID
+    case missingPermissionRequestID
     case missingDirectory
     case missingPath
     case missingCommand
@@ -386,6 +482,8 @@ public enum SessionsAPIError: LocalizedError, Equatable {
             return "API token is required"
         case .missingSessionID:
             return "Session ID is required"
+        case .missingPermissionRequestID:
+            return "Permission request ID is required"
         case .missingDirectory:
             return "Directory is required"
         case .missingPath:
@@ -428,6 +526,22 @@ private struct SessionSpawnPayload: Encodable {
     let codexResumeThreadId: String?
     let claudeResumeSessionId: String?
     let approvedNewDirectoryCreation: Bool?
+}
+
+private struct SessionAbortPayload: Encodable {
+    let reason: String
+}
+
+private struct SessionPermissionPayload: Encodable {
+    let id: String
+    let approved: Bool
+    let mode: APISessionPermissionMode?
+    let allowTools: [String]?
+    let decision: APISessionPermissionDecision?
+}
+
+private struct SessionSwitchPayload: Encodable {
+    let to: APISessionSwitchTarget
 }
 
 private struct SessionBashPayload: Encodable {
@@ -508,6 +622,37 @@ public protocol SessionSpawning: Sendable {
     ) async throws -> APISessionSpawnResult
 }
 
+public protocol SessionAborting: Sendable {
+    func abortSessionTask(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        reason: String?
+    ) async throws -> APISessionCommandResult
+}
+
+public protocol SessionPermissionResponding: Sendable {
+    func respondPermission(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        permissionRequestID: String,
+        approved: Bool,
+        mode: APISessionPermissionMode?,
+        allowTools: [String]?,
+        decision: APISessionPermissionDecision?
+    ) async throws -> APISessionCommandResult
+}
+
+public protocol SessionModeSwitching: Sendable {
+    func switchSessionMode(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        to: APISessionSwitchTarget
+    ) async throws -> APISessionSwitchResult
+}
+
 public protocol SessionBashRunning: Sendable {
     func runBash(
         serverURL: URL,
@@ -536,7 +681,7 @@ public protocol SessionKilling: Sendable {
     ) async throws -> APISessionKillResult
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionBashRunning, SessionFileReading, SessionKilling {
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionBashRunning, SessionFileReading, SessionKilling {
     public init() {}
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
@@ -737,6 +882,86 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         }
 
         return try SessionsAPI.decodeSpawnSessionResponse(data)
+    }
+
+    public func abortSessionTask(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        reason: String?
+    ) async throws -> APISessionCommandResult {
+        let request = try SessionsAPI.makeSessionAbortRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            reason: reason
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionCommandResponse(data)
+    }
+
+    public func respondPermission(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        permissionRequestID: String,
+        approved: Bool,
+        mode: APISessionPermissionMode?,
+        allowTools: [String]?,
+        decision: APISessionPermissionDecision?
+    ) async throws -> APISessionCommandResult {
+        let request = try SessionsAPI.makeSessionPermissionRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            permissionRequestID: permissionRequestID,
+            approved: approved,
+            mode: mode,
+            allowTools: allowTools,
+            decision: decision
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionCommandResponse(data)
+    }
+
+    public func switchSessionMode(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        to: APISessionSwitchTarget
+    ) async throws -> APISessionSwitchResult {
+        let request = try SessionsAPI.makeSessionSwitchRequest(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            to: to
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        return try SessionsAPI.decodeSessionSwitchResponse(data)
     }
 
     public func runBash(
