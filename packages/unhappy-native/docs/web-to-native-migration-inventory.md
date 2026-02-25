@@ -32,7 +32,7 @@ Last updated: 2026-02-25
 | --- | --- | --- |
 | `_layout.tsx` | Partial | Native `TabView` exists but tabs/headers/status parity is incomplete (`Inbox`, richer header actions missing). |
 | `index.tsx` | Partial | Native home exists, but auth onboarding/create/restore flow parity is missing. |
-| `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) 구현. message-level tool detail/review/finish flow은 미구현. |
+| `session/[id].tsx` | Partial | Native detail/messages view + follow-up composer(queue/steer immediate) + 상단 고정 multi-agent 상태 배너 구현. message-level tool detail/review/finish flow은 미구현. |
 | `session/recent.tsx` | Partial | Session list exists; dedicated recent-only UX is not separated. |
 | `session/[id]/info.tsx` | Partial | 제목/삭제/코덱스·클로드 목록 + kill/abort/permission response/mode switch 기본 액션 구현. CLI diagnostics, full metadata UI 미구현. |
 | `session/[id]/file.tsx` | Partial | file read/viewer + directory browse + write-file 저장 구현. syntax highlight/diff view 미구현. |
