@@ -30,6 +30,7 @@ let project = Project(
             infoPlist: .extendingDefault(with: [
                 "NSCameraUsageDescription": .string("Scan terminal QR codes to approve secure device connections."),
                 "UILaunchStoryboardName": .string("LaunchScreen"),
+                "NSSupportsLiveActivities": .boolean(true),
             ]),
             buildableFolders: [
                 "App/Sources",
@@ -40,10 +41,34 @@ let project = Project(
                 .target(name: "FeatureInbox"),
                 .target(name: "FeatureMachine"),
                 .target(name: "FeatureNewSession"),
+                .target(name: "UnhappyLiveActivitiesExtension"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:native-bootstrap",
+                "tag:layer:app",
+            ])
+        ),
+        .target(
+            name: "UnhappyLiveActivitiesExtension",
+            destinations: .iOS,
+            product: .appExtension,
+            bundleId: "im.unhappy.app.live-activities",
+            infoPlist: .extendingDefault(with: [
+                "NSExtension": .dictionary([
+                    "NSExtensionPointIdentifier": .string("com.apple.widgetkit-extension")
+                ])
+            ]),
+            buildableFolders: [
+                "App/LiveActivities/Sources",
+                "App/LiveActivities/Resources",
+            ],
+            dependencies: [
+                .target(name: "CoreKit"),
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:live-activity",
                 "tag:layer:app",
             ])
         ),
@@ -82,6 +107,7 @@ let project = Project(
                 .target(name: "CoreKit"),
                 .target(name: "FeatureNewSession"),
                 .target(name: "FeatureSessionTools"),
+                .external(name: "TweetNacl"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
@@ -117,7 +143,6 @@ let project = Project(
             dependencies: [
                 .target(name: "CoreKit"),
                 .target(name: "FeatureMachine"),
-                .external(name: "TweetNacl"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",

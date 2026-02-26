@@ -1,13 +1,28 @@
 import { z } from "zod";
 import { type Fastify } from "../types";
 import * as privacyKit from "privacy-kit";
-import { randomBytes } from "node:crypto";
+import {
+    createCipheriv,
+    createPublicKey,
+    diffieHellman,
+    generateKeyPairSync,
+    hkdfSync,
+    randomBytes,
+} from "node:crypto";
+import type { KeyObject } from "node:crypto";
 import tweetnacl from "tweetnacl";
 import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
 
 const AUTH_REQUEST_TTL_MS = 5 * 60 * 1000;
+const AUTH_ENVELOPE_VERSION = 1;
+const AUTH_ENVELOPE_PUBLIC_KEY_LENGTH = 32;
+const AUTH_ENVELOPE_NONCE_LENGTH = 12;
+const AUTH_ENVELOPE_TAG_LENGTH = 16;
+const AUTH_ENVELOPE_KDF_SALT = Buffer.from("unhappy.auth.envelope.salt.v1", "utf8");
+const AUTH_ENVELOPE_KDF_INFO = Buffer.from("unhappy.auth.envelope.info.v1", "utf8");
+const X25519_SPKI_PREFIX = Buffer.from("302a300506032b656e032100", "hex");
 
 function isAuthRequestExpired(createdAt: Date): boolean {
     return Date.now() - createdAt.getTime() > AUTH_REQUEST_TTL_MS;
@@ -23,15 +38,61 @@ function hasPrismaErrorCode(error: unknown, code: string): boolean {
 }
 
 function encryptForPublicKey(data: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
-    const ephemeralKeyPair = tweetnacl.box.keyPair();
-    const nonce = new Uint8Array(randomBytes(tweetnacl.box.nonceLength));
-    const encrypted = tweetnacl.box(data, nonce, recipientPublicKey, ephemeralKeyPair.secretKey);
+    const { privateKey: ephemeralPrivateKey, publicKey: ephemeralPublicKeyObject } = generateKeyPairSync("x25519");
+    const recipientPublicKeyObject = x25519PublicKeyFromRaw(recipientPublicKey);
+    const sharedSecret = diffieHellman({
+        privateKey: ephemeralPrivateKey,
+        publicKey: recipientPublicKeyObject,
+    });
+    const symmetricKey = Buffer.from(
+        hkdfSync("sha256", sharedSecret, AUTH_ENVELOPE_KDF_SALT, AUTH_ENVELOPE_KDF_INFO, 32),
+    );
+    const nonce = randomBytes(AUTH_ENVELOPE_NONCE_LENGTH);
+    const cipher = createCipheriv("chacha20-poly1305", symmetricKey, nonce, {
+        authTagLength: AUTH_ENVELOPE_TAG_LENGTH,
+    });
+    const ciphertext = Buffer.concat([
+        cipher.update(Buffer.from(data)),
+        cipher.final(),
+    ]);
+    const tag = cipher.getAuthTag();
+    return new Uint8Array(Buffer.concat([
+        Buffer.from([AUTH_ENVELOPE_VERSION]),
+        x25519RawPublicKey(ephemeralPublicKeyObject),
+        nonce,
+        ciphertext,
+        tag,
+    ]));
+}
 
-    const result = new Uint8Array(ephemeralKeyPair.publicKey.length + nonce.length + encrypted.length);
-    result.set(ephemeralKeyPair.publicKey, 0);
-    result.set(nonce, ephemeralKeyPair.publicKey.length);
-    result.set(encrypted, ephemeralKeyPair.publicKey.length + nonce.length);
-    return result;
+function isValidAuthPublicKey(publicKey: Uint8Array): boolean {
+    if (publicKey.length !== AUTH_ENVELOPE_PUBLIC_KEY_LENGTH) {
+        return false;
+    }
+
+    try {
+        x25519PublicKeyFromRaw(publicKey);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function x25519PublicKeyFromRaw(raw: Uint8Array) {
+    return createPublicKey({
+        key: Buffer.concat([X25519_SPKI_PREFIX, Buffer.from(raw)]),
+        format: "der",
+        type: "spki",
+    });
+}
+
+function x25519RawPublicKey(publicKey: KeyObject): Buffer {
+    const spkiDer = publicKey.export({
+        format: "der",
+        type: "spki",
+    });
+    const bytes = Buffer.isBuffer(spkiDer) ? spkiDer : Buffer.from(spkiDer);
+    return bytes.subarray(bytes.length - AUTH_ENVELOPE_PUBLIC_KEY_LENGTH);
 }
 
 export function authRoutes(app: Fastify) {
@@ -89,7 +150,7 @@ export function authRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
-        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        const isValid = isValidAuthPublicKey(publicKey);
         if (!isValid) {
             return reply.code(401).send({ error: 'Invalid public key' });
         }
@@ -182,7 +243,7 @@ export function authRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const publicKey = privacyKit.decodeBase64(request.query.publicKey);
-        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        const isValid = isValidAuthPublicKey(publicKey);
         if (!isValid) {
             return reply.send({ status: 'not_found', supportsV2: false });
         }
@@ -222,7 +283,7 @@ export function authRoutes(app: Fastify) {
     }, async (request, reply) => {
         log({ module: 'auth-response' }, `Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`);
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
-        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        const isValid = isValidAuthPublicKey(publicKey);
         if (!isValid) {
             log({ module: 'auth-response' }, `Invalid public key length: ${publicKey.length}`);
             return reply.code(401).send({ error: 'Invalid public key' });
@@ -282,7 +343,7 @@ export function authRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
-        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        const isValid = isValidAuthPublicKey(publicKey);
         if (!isValid) {
             return reply.code(401).send({ error: 'Invalid public key' });
         }
@@ -358,7 +419,7 @@ export function authRoutes(app: Fastify) {
         }
     }, async (request, reply) => {
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
-        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        const isValid = isValidAuthPublicKey(publicKey);
         if (!isValid) {
             return reply.code(401).send({ error: 'Invalid public key' });
         }

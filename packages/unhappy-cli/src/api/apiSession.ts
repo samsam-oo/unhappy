@@ -11,6 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+import axios from 'axios';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -128,6 +129,7 @@ export class ApiSessionClient extends EventEmitter {
                     'permission',
                     'switch',
                     'sendMessage',
+                    'listMessages',
                     'bash',
                     'readFile',
                     'writeFile',
@@ -183,6 +185,11 @@ export class ApiSessionClient extends EventEmitter {
                         message: encrypted
                     });
                     callback({ success: true });
+                    return;
+                }
+                if (command === 'listMessages') {
+                    const result = await this.listMessagesForPublicCommand();
+                    callback(result);
                     return;
                 }
                 if (!this.rpcHandlerManager.hasHandler(command)) {
@@ -625,5 +632,143 @@ export class ApiSessionClient extends EventEmitter {
     async close() {
         logger.debug('[API] socket.close() called');
         this.socket.close();
+    }
+
+    private async listMessagesForPublicCommand(): Promise<
+        { success: true; messages: Array<Record<string, unknown>> }
+        | { success: false; error: string }
+    > {
+        try {
+            const response = await axios.get(
+                `${configuration.serverUrl}/v1/sessions/${this.sessionId}/messages`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${this.token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    timeout: 15000,
+                },
+            );
+            const rows = this.extractMessageRowsFromResponse(response.data);
+            const messages = rows.map((row, index) =>
+                this.normalizeMessageForPublicCommand(row, index),
+            );
+            return { success: true, messages };
+        } catch (error) {
+            const message =
+                axios.isAxiosError(error)
+                    ? error.response?.data?.error || error.message
+                    : error instanceof Error
+                        ? error.message
+                        : 'Failed to list session messages';
+            return { success: false, error: message };
+        }
+    }
+
+    private extractMessageRowsFromResponse(payload: unknown): Array<Record<string, unknown>> {
+        if (Array.isArray(payload)) {
+            return payload.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object');
+        }
+        if (!payload || typeof payload !== 'object') {
+            return [];
+        }
+        const container = payload as Record<string, unknown>;
+        const candidates = [
+            container.messages,
+            container.items,
+            container.rows,
+            container.data,
+        ];
+        for (const candidate of candidates) {
+            if (!Array.isArray(candidate)) continue;
+            return candidate.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object');
+        }
+        return [];
+    }
+
+    private normalizeMessageForPublicCommand(
+        message: Record<string, unknown>,
+        index: number,
+    ): Record<string, unknown> {
+        const idRaw = typeof message.id === 'string' ? message.id.trim() : '';
+        const localIdRaw = typeof message.localId === 'string' ? message.localId.trim() : '';
+        const content = this.normalizeMessageContentForPublicCommand(message.content);
+        const createdAt = this.normalizeNumericTimestamp(message.createdAt);
+        const updatedAt = this.normalizeNumericTimestamp(message.updatedAt);
+
+        return {
+            id: idRaw || `message-${index + 1}`,
+            seq: this.normalizeInteger(message.seq, index + 1),
+            localId: localIdRaw || undefined,
+            content,
+            createdAt,
+            updatedAt,
+        };
+    }
+
+    private normalizeMessageContentForPublicCommand(
+        value: unknown,
+    ): Record<string, string> | null {
+        if (typeof value === 'string') {
+            return {
+                t: 'encrypted',
+                c: value,
+            };
+        }
+        if (!value || typeof value !== 'object') {
+            return null;
+        }
+
+        const object = value as Record<string, unknown>;
+        const typeRaw = typeof object.t === 'string'
+            ? object.t
+            : typeof object.type === 'string'
+                ? object.type
+                : 'encrypted';
+        const payloadRaw = typeof object.c === 'string'
+            ? object.c
+            : typeof object.payload === 'string'
+                ? object.payload
+                : typeof object.text === 'string'
+                    ? object.text
+                    : '';
+
+        if (typeRaw.toLowerCase() === 'encrypted') {
+            return {
+                t: 'encrypted',
+                c: payloadRaw,
+            };
+        }
+
+        return {
+            t: typeRaw,
+            c: payloadRaw,
+        };
+    }
+
+    private normalizeInteger(value: unknown, fallback: number): number {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return Math.max(0, Math.floor(value));
+        }
+        if (typeof value === 'string') {
+            const parsed = Number.parseInt(value, 10);
+            if (Number.isFinite(parsed)) {
+                return Math.max(0, parsed);
+            }
+        }
+        return fallback;
+    }
+
+    private normalizeNumericTimestamp(value: unknown): number {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+            return value;
+        }
+        if (typeof value === 'string') {
+            const numeric = Number(value);
+            if (Number.isFinite(numeric)) {
+                return numeric;
+            }
+        }
+        return Date.now() / 1000;
     }
 }

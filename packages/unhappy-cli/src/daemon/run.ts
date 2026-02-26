@@ -31,7 +31,7 @@ import { projectPath } from '@/projectPath';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { getTmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, normalize } from 'path';
 import {
   checkIfDaemonRunningAndCleanupStaleState,
   cleanupDaemonState,
@@ -50,6 +50,31 @@ export const initialMachineMetadata: MachineMetadata = {
   unhappyHomeDir: configuration.unhappyHomeDir,
   unhappyLibDir: projectPath(),
 };
+
+function normalizeDaemonPath(path: string, homeDir: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+
+  const canonical = trimmed.normalize('NFKC').replaceAll('\\', '/');
+  const unquoted =
+    (canonical.startsWith('"') && canonical.endsWith('"')) ||
+    (canonical.startsWith("'") && canonical.endsWith("'"))
+      ? canonical.slice(1, -1).trim()
+      : canonical;
+
+  if (!unquoted) return '';
+  if (unquoted === '~' || unquoted === '~/') {
+    return homeDir;
+  }
+  if (unquoted.startsWith('~/')) {
+    return normalize(join(homeDir, unquoted.slice(2)));
+  }
+  if (isAbsolute(unquoted)) {
+    return normalize(unquoted);
+  }
+
+  return normalize(join(homeDir, unquoted));
+}
 
 // Get environment variables for a profile, filtered for agent compatibility
 async function getProfileEnvironmentVariablesForAgent(
@@ -384,6 +409,13 @@ export async function startDaemon(): Promise<void> {
         machineId,
         approvedNewDirectoryCreation = true,
       } = options;
+      const homeDir = (machine.metadata?.homeDir || os.homedir()).trim() || os.homedir();
+      const normalizedDirectory = normalizeDaemonPath(directory, homeDir);
+      logger.debug('[DAEMON RUN] Directory normalization', {
+        requestedDirectory: directory,
+        normalizedDirectory,
+        homeDir,
+      });
       if (
         options.agent !== 'claude' &&
         options.agent !== 'codex' &&
@@ -409,32 +441,32 @@ export async function startDaemon(): Promise<void> {
       let directoryCreated = false;
 
       try {
-        await fs.access(directory);
-        logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
+        await fs.access(normalizedDirectory);
+        logger.debug(`[DAEMON RUN] Directory exists: ${normalizedDirectory}`);
       } catch (error) {
         logger.debug(
-          `[DAEMON RUN] Directory doesn't exist, creating: ${directory}`,
+          `[DAEMON RUN] Directory doesn't exist, creating: ${normalizedDirectory}`,
         );
 
         // Check if directory creation is approved
         if (!approvedNewDirectoryCreation) {
           logger.debug(
-            `[DAEMON RUN] Directory creation not approved for: ${directory}`,
+            `[DAEMON RUN] Directory creation not approved for: ${normalizedDirectory}`,
           );
           return {
             type: 'requestToApproveDirectoryCreation',
-            directory,
+            directory: normalizedDirectory,
           };
         }
 
         try {
-          await fs.mkdir(directory, { recursive: true });
+          await fs.mkdir(normalizedDirectory, { recursive: true });
           logger.debug(
-            `[DAEMON RUN] Successfully created directory: ${directory}`,
+            `[DAEMON RUN] Successfully created directory: ${normalizedDirectory}`,
           );
           directoryCreated = true;
         } catch (mkdirError: any) {
-          let errorMessage = `Unable to create directory at '${directory}'. `;
+          let errorMessage = `Unable to create directory at '${normalizedDirectory}'. `;
 
           // Provide more helpful error messages based on the error code
           if (mkdirError.code === 'EACCES') {
@@ -681,7 +713,7 @@ export async function startDaemon(): Promise<void> {
             {
               sessionName: tmuxSessionName,
               windowName: windowName,
-              cwd: directory,
+              cwd: normalizedDirectory,
             },
             tmuxEnv,
           ); // Pass complete environment for tmux session
@@ -703,7 +735,7 @@ export async function startDaemon(): Promise<void> {
               tmuxSessionId: tmuxResult.sessionId,
               directoryCreated,
               message: directoryCreated
-                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
+                ? `The path '${normalizedDirectory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
                 : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`,
             };
 
@@ -794,7 +826,7 @@ export async function startDaemon(): Promise<void> {
           // TODO: sessionId is still reserved for future generic resume semantics.
           // Codex resume currently uses explicit --resume-thread-id above.
           const happyProcess = spawnUnhappyCLI(args, {
-            cwd: directory,
+            cwd: normalizedDirectory,
             detached: true, // Sessions stay alive when daemon stops
             stdio: ['ignore', 'pipe', 'pipe'], // Capture stdout/stderr for debugging
             env: {
@@ -833,7 +865,7 @@ export async function startDaemon(): Promise<void> {
             childProcess: happyProcess,
             directoryCreated,
             message: directoryCreated
-              ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.`
+              ? `The path '${normalizedDirectory}' did not exist. We created a new folder and spawned a new session there.`
               : undefined,
           };
 

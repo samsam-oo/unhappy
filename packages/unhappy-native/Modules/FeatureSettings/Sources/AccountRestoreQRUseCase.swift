@@ -1,7 +1,5 @@
 import Foundation
-import Security
 import CoreKit
-import TweetNacl
 
 public struct AccountRestoreQRSession: Sendable, Equatable {
     public let publicKeyBase64: String
@@ -54,7 +52,7 @@ public enum AccountRestoreQRError: LocalizedError, Equatable {
         case .decryptionFailed:
             return "Failed to decrypt restore payload"
         case .missingTokenInResponse:
-            return "Auth response is missing token"
+            return "Auth response is missing encrypted token"
         case .invalidSecretInResponse:
             return "Auth response has invalid account secret"
         case .failed(let message):
@@ -79,10 +77,9 @@ public actor AccountRestoreQRUseCase: AccountQRRestoringAction {
     }
 
     public func createSession() async throws -> AccountRestoreQRSession {
-        let seed = try randomBytes(count: 32)
-        let keyPair: (publicKey: Data, secretKey: Data)
+        let keyPair: AuthEnvelopeKeyPair
         do {
-            keyPair = try NaclBox.keyPair(fromSecretKey: seed)
+            keyPair = try AuthEnvelopeCrypto.generateKeyPair()
         } catch {
             throw AccountRestoreQRError.keyGenerationFailed
         }
@@ -91,7 +88,7 @@ public actor AccountRestoreQRUseCase: AccountQRRestoringAction {
         let publicKeyBase64URL = Base64URLCodec.encode(keyPair.publicKey)
         return AccountRestoreQRSession(
             publicKeyBase64: publicKeyBase64,
-            secretKey: keyPair.secretKey,
+            secretKey: keyPair.privateKey,
             qrPayload: "unhappy:///account?\(publicKeyBase64URL)"
         )
     }
@@ -133,26 +130,22 @@ public actor AccountRestoreQRUseCase: AccountQRRestoringAction {
             throw AccountRestoreQRError.invalidSecretInResponse
         }
 
-        let token: String
-        if let encryptedTokenBase64 = status.encryptedToken?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !encryptedTokenBase64.isEmpty {
-            let tokenData = try decryptBundle(
-                encryptedBundleBase64: encryptedTokenBase64,
-                recipientSecretKey: session.secretKey
-            )
-            let decodedToken = String(data: tokenData, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let decodedToken, !decodedToken.isEmpty else {
-                throw AccountRestoreQRError.missingTokenInResponse
-            }
-            token = decodedToken
-        } else {
-            let plainToken = status.token?.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let plainToken, !plainToken.isEmpty else {
-                throw AccountRestoreQRError.missingTokenInResponse
-            }
-            token = plainToken
+        guard
+            let encryptedTokenBase64 = status.encryptedToken?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !encryptedTokenBase64.isEmpty
+        else {
+            throw AccountRestoreQRError.missingTokenInResponse
         }
+        let tokenData = try decryptBundle(
+            encryptedBundleBase64: encryptedTokenBase64,
+            recipientSecretKey: session.secretKey
+        )
+        let decodedToken = String(data: tokenData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let decodedToken, !decodedToken.isEmpty else {
+            throw AccountRestoreQRError.missingTokenInResponse
+        }
+        let token = decodedToken
 
         return .authorized(
             AccountRestoreQRCredentials(
@@ -179,31 +172,18 @@ public actor AccountRestoreQRUseCase: AccountQRRestoringAction {
         encryptedBundleBase64: String,
         recipientSecretKey: Data
     ) throws -> Data {
-        guard let bundle = Data(base64Encoded: encryptedBundleBase64), bundle.count > 56 else {
+        guard let bundle = Data(base64Encoded: encryptedBundleBase64),
+              bundle.count >= AuthEnvelopeCrypto.minimumBundleLength else {
             throw AccountRestoreQRError.invalidEncryptedPayload
         }
-        let ephemeralPublicKey = bundle.prefix(32)
-        let nonce = bundle.dropFirst(32).prefix(24)
-        let encryptedPayload = bundle.dropFirst(56)
 
         do {
-            return try NaclBox.open(
-                message: Data(encryptedPayload),
-                nonce: Data(nonce),
-                publicKey: Data(ephemeralPublicKey),
-                secretKey: recipientSecretKey
+            return try AuthEnvelopeCrypto.decrypt(
+                bundle: bundle,
+                recipientPrivateKey: recipientSecretKey
             )
         } catch {
             throw AccountRestoreQRError.decryptionFailed
         }
     }
-}
-
-private func randomBytes(count: Int) throws -> Data {
-    var bytes = [UInt8](repeating: 0, count: count)
-    let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    guard status == errSecSuccess else {
-        throw AccountRestoreQRError.keyGenerationFailed
-    }
-    return Data(bytes)
 }

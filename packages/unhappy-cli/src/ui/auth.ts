@@ -12,12 +12,34 @@ import { openBrowser } from '@/utils/browser';
 import { delay } from '@/utils/time';
 import axios from 'axios';
 import { render } from 'ink';
-import { randomBytes, randomUUID } from 'node:crypto';
+import {
+  createDecipheriv,
+  createPrivateKey,
+  createPublicKey,
+  diffieHellman,
+  hkdfSync,
+  randomBytes,
+  randomUUID,
+} from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
 import React from 'react';
-import tweetnacl from 'tweetnacl';
 import { AuthMethod, AuthSelector } from './ink/AuthSelector';
 import { logger } from './logger';
 import { displayQRCode } from './qrcode';
+
+const AUTH_ENVELOPE_VERSION = 1;
+const AUTH_ENVELOPE_PUBLIC_KEY_LENGTH = 32;
+const AUTH_ENVELOPE_NONCE_LENGTH = 12;
+const AUTH_ENVELOPE_TAG_LENGTH = 16;
+const AUTH_ENVELOPE_KDF_SALT = Buffer.from('unhappy.auth.envelope.salt.v1', 'utf8');
+const AUTH_ENVELOPE_KDF_INFO = Buffer.from('unhappy.auth.envelope.info.v1', 'utf8');
+const X25519_SPKI_PREFIX = Buffer.from('302a300506032b656e032100', 'hex');
+const X25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b656e04220420', 'hex');
+
+type AuthKeyPair = {
+  publicKey: Uint8Array;
+  secretKey: Uint8Array;
+};
 
 export async function doAuth(): Promise<Credentials | null> {
   console.clear();
@@ -29,9 +51,8 @@ export async function doAuth(): Promise<Credentials | null> {
     process.exit(0);
   }
 
-  // Generating ephemeral key
-  const secret = new Uint8Array(randomBytes(32));
-  const keypair = tweetnacl.box.keyPair.fromSecretKey(secret);
+  // Generate ephemeral auth key pair for X25519 key agreement.
+  const keypair = generateAuthKeyPair();
 
   // Create a new authentication request
   try {
@@ -116,7 +137,7 @@ function selectAuthenticationMethod(): Promise<AuthMethod | null> {
  * Handle mobile authentication flow
  */
 async function doMobileAuth(
-  keypair: tweetnacl.BoxKeyPair,
+  keypair: AuthKeyPair,
 ): Promise<Credentials | null> {
   console.clear();
   console.log('\nMobile Authentication\n');
@@ -136,7 +157,7 @@ async function doMobileAuth(
  * Handle web authentication flow
  */
 async function doWebAuth(
-  keypair: tweetnacl.BoxKeyPair,
+  keypair: AuthKeyPair,
 ): Promise<Credentials | null> {
   console.clear();
   console.log('\nWeb Authentication\n');
@@ -168,7 +189,7 @@ async function doWebAuth(
  * Wait for authentication to complete and return credentials
  */
 async function waitForAuthentication(
-  keypair: tweetnacl.BoxKeyPair,
+  keypair: AuthKeyPair,
 ): Promise<Credentials | null> {
   process.stdout.write('Waiting for authentication');
   let dots = 0;
@@ -197,25 +218,31 @@ async function waitForAuthentication(
           },
         );
         if (response.data.state === 'authorized') {
-          let token = response.data.token as string | undefined;
           const encryptedToken = response.data.encryptedToken as string | undefined;
-          if (encryptedToken) {
-            const decryptedToken = decryptWithEphemeralKey(
-              decodeBase64(encryptedToken),
-              keypair.secretKey,
+          if (!encryptedToken) {
+            console.log(
+              '\n\nAuthentication token is missing encrypted payload. Please try again.',
             );
-            if (!decryptedToken) {
-              console.log(
-                '\n\nFailed to decrypt authentication token. Please try again.',
-              );
-              return null;
-            }
-            token = new TextDecoder().decode(decryptedToken);
-          }
-          if (!token) {
-            console.log('\n\nAuthentication token is missing. Please try again.');
             return null;
           }
+
+          const decryptedToken = decryptWithEphemeralKey(
+            decodeBase64(encryptedToken),
+            keypair.secretKey,
+          );
+          if (!decryptedToken) {
+            console.log(
+              '\n\nFailed to decrypt authentication token. Please try again.',
+            );
+            return null;
+          }
+
+          const token = new TextDecoder().decode(decryptedToken).trim();
+          if (!token) {
+            console.log('\n\nAuthentication token is invalid. Please try again.');
+            return null;
+          }
+
           let r = decodeBase64(response.data.response);
           let decrypted = decryptWithEphemeralKey(r, keypair.secretKey);
           if (decrypted) {
@@ -330,22 +357,97 @@ export function decryptWithEphemeralKey(
   encryptedBundle: Uint8Array,
   recipientSecretKey: Uint8Array,
 ): Uint8Array | null {
-  // Extract components from bundle: ephemeral public key (32 bytes) + nonce (24 bytes) + encrypted data
-  const ephemeralPublicKey = encryptedBundle.slice(0, 32);
-  const nonce = encryptedBundle.slice(32, 32 + tweetnacl.box.nonceLength);
-  const encrypted = encryptedBundle.slice(32 + tweetnacl.box.nonceLength);
+  try {
+    if (
+      encryptedBundle.length <
+      1 + AUTH_ENVELOPE_PUBLIC_KEY_LENGTH + AUTH_ENVELOPE_NONCE_LENGTH + AUTH_ENVELOPE_TAG_LENGTH
+    ) {
+      return null;
+    }
+    if (encryptedBundle[0] !== AUTH_ENVELOPE_VERSION) {
+      return null;
+    }
+    if (recipientSecretKey.length !== AUTH_ENVELOPE_PUBLIC_KEY_LENGTH) {
+      return null;
+    }
 
-  const decrypted = tweetnacl.box.open(
-    encrypted,
-    nonce,
-    ephemeralPublicKey,
-    recipientSecretKey,
-  );
-  if (!decrypted) {
+    const ephemeralStart = 1;
+    const ephemeralEnd = ephemeralStart + AUTH_ENVELOPE_PUBLIC_KEY_LENGTH;
+    const nonceStart = ephemeralEnd;
+    const nonceEnd = nonceStart + AUTH_ENVELOPE_NONCE_LENGTH;
+    const ephemeralPublicKey = encryptedBundle.slice(ephemeralStart, ephemeralEnd);
+    const nonce = encryptedBundle.slice(nonceStart, nonceEnd);
+    const encryptedWithTag = encryptedBundle.slice(nonceEnd);
+    const ciphertext = encryptedWithTag.slice(0, -AUTH_ENVELOPE_TAG_LENGTH);
+    const tag = encryptedWithTag.slice(-AUTH_ENVELOPE_TAG_LENGTH);
+
+    const key = deriveAuthSharedKey(recipientSecretKey, ephemeralPublicKey);
+    const decipher = createDecipheriv('chacha20-poly1305', key, Buffer.from(nonce), {
+      authTagLength: AUTH_ENVELOPE_TAG_LENGTH,
+    });
+    decipher.setAuthTag(Buffer.from(tag));
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(ciphertext)),
+      decipher.final(),
+    ]);
+    return new Uint8Array(decrypted);
+  } catch {
     return null;
   }
+}
 
-  return decrypted;
+function generateAuthKeyPair(): AuthKeyPair {
+  const secretKey = new Uint8Array(randomBytes(32));
+  const privateKeyObject = x25519PrivateKeyFromRaw(secretKey);
+  const publicKeyObject = createPublicKey(privateKeyObject);
+  return {
+    publicKey: new Uint8Array(x25519RawPublicKey(publicKeyObject)),
+    secretKey,
+  };
+}
+
+function deriveAuthSharedKey(
+  privateKey: Uint8Array,
+  peerPublicKey: Uint8Array,
+): Buffer {
+  const sharedSecret = diffieHellman({
+    privateKey: x25519PrivateKeyFromRaw(privateKey),
+    publicKey: x25519PublicKeyFromRaw(peerPublicKey),
+  });
+  return Buffer.from(
+    hkdfSync(
+      'sha256',
+      sharedSecret,
+      AUTH_ENVELOPE_KDF_SALT,
+      AUTH_ENVELOPE_KDF_INFO,
+      32,
+    ),
+  );
+}
+
+function x25519PublicKeyFromRaw(raw: Uint8Array): KeyObject {
+  return createPublicKey({
+    key: Buffer.concat([X25519_SPKI_PREFIX, Buffer.from(raw)]),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function x25519PrivateKeyFromRaw(raw: Uint8Array): KeyObject {
+  return createPrivateKey({
+    key: Buffer.concat([X25519_PKCS8_PREFIX, Buffer.from(raw)]),
+    format: 'der',
+    type: 'pkcs8',
+  });
+}
+
+function x25519RawPublicKey(publicKey: KeyObject): Buffer {
+  const spkiDer = publicKey.export({
+    format: 'der',
+    type: 'spki',
+  });
+  const bytes = Buffer.isBuffer(spkiDer) ? spkiDer : Buffer.from(spkiDer);
+  return bytes.subarray(bytes.length - AUTH_ENVELOPE_PUBLIC_KEY_LENGTH);
 }
 
 /**

@@ -56,13 +56,16 @@ public struct NewSessionView: View {
                 }
 
                 Section("Directory") {
-                    TextField("Path", text: $viewModel.directoryPath)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    Text("Selected directory: \(viewModel.directoryPath)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Selected Directory")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(viewModel.directoryPath)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     if !viewModel.recentProjects.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -84,7 +87,8 @@ public struct NewSessionView: View {
                                             .foregroundStyle(.secondary)
                                         Text(projectPath)
                                             .font(.footnote.monospaced())
-                                            .lineLimit(1)
+                                            .lineLimit(2)
+                                            .truncationMode(.middle)
                                         Spacer()
                                     }
                                 }
@@ -158,10 +162,7 @@ public struct NewSessionView: View {
                 }
 
                 Section("Advanced") {
-                    TextField("Codex resume thread ID (optional)", text: $viewModel.codexResumeThreadID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : "Choose Existing Codex Session") {
+                    Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
                         showCodexThreadsSheet = true
                         Task {
                             await viewModel.loadCodexThreads(
@@ -180,11 +181,22 @@ public struct NewSessionView: View {
                             .font(.footnote)
                             .foregroundStyle(.red)
                     }
+                    if !viewModel.codexResumeThreadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Selected Codex Session")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(viewModel.codexResumeThreadID)
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                            Button("Clear Codex Selection") {
+                                viewModel.clearCodexSelection()
+                            }
+                            .font(.footnote)
+                        }
+                    }
 
-                    TextField("Claude resume session ID (optional)", text: $viewModel.claudeResumeSessionID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : "Choose Existing Claude Session") {
+                    Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : claudeSelectionButtonTitle) {
                         showClaudeSessionsSheet = true
                         Task {
                             await viewModel.loadClaudeSessions(
@@ -202,6 +214,20 @@ public struct NewSessionView: View {
                         Text(error)
                             .font(.footnote)
                             .foregroundStyle(.red)
+                    }
+                    if !viewModel.claudeResumeSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Selected Claude Session")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(viewModel.claudeResumeSessionID)
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                            Button("Clear Claude Selection") {
+                                viewModel.clearClaudeSelection()
+                            }
+                            .font(.footnote)
+                        }
                     }
 
                     TextField("Session token (optional)", text: $viewModel.sessionToken)
@@ -221,7 +247,7 @@ public struct NewSessionView: View {
                 }
 
                 Section("Action") {
-                    Button(viewModel.isSpawning ? "Starting…" : "Start Session") {
+                    Button(viewModel.isSpawning ? "Starting…" : primaryActionTitle) {
                         Task {
                             let success = await viewModel.startSession(
                                 serverURLString: serverURLString,
@@ -327,6 +353,12 @@ public struct NewSessionView: View {
                                 Button {
                                     viewModel.selectCodexThread(thread)
                                     showCodexThreadsSheet = false
+                                    Task {
+                                        await viewModel.loadDirectory(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
                                 } label: {
                                     CodexThreadSelectionRow(thread: thread)
                                 }
@@ -392,34 +424,26 @@ public struct NewSessionView: View {
                     VStack(spacing: 0) {
                         Form {
                             Section("Current Path") {
-                                Text(viewModel.directoryPath)
-                                    .font(.footnote.monospaced())
-                                    .lineLimit(2)
-                                    .textSelection(.enabled)
-
-                                HStack(spacing: 8) {
-                                    TextField("Go to path", text: $directoryBrowserPathDraft)
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-
-                                    Button("Go") {
-                                        Task {
-                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
-                                        }
-                                    }
-                                    .buttonStyle(.borderedProminent)
+                                TextField("Go to path", text: $directoryBrowserPathDraft)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .submitLabel(.done)
                                     .disabled(
                                         viewModel.selectedMachineID == nil ||
                                         viewModel.isLoadingDirectory
                                     )
-                                }
+                                    .onSubmit {
+                                        Task {
+                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
+                                        }
+                                    }
 
                                 Button {
                                     Task {
                                         await goToParentDirectoryFromBrowser()
                                     }
                                 } label: {
-                                    Label("Up One Level", systemImage: "arrow.up.backward.folder")
+                                    Label("Up One Level", systemImage: "folder")
                                 }
                                 .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingDirectory)
                             }
@@ -466,8 +490,15 @@ public struct NewSessionView: View {
                                             HStack(spacing: 10) {
                                                 Image(systemName: "folder")
                                                     .foregroundStyle(Color.accentColor)
-                                                Text(entry.name)
-                                                    .lineLimit(1)
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(entry.name)
+                                                        .lineLimit(1)
+                                                    Text(directoryEntryFullPath(entry))
+                                                        .font(.caption.monospaced())
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(1)
+                                                        .truncationMode(.middle)
+                                                }
                                                 Spacer()
                                                 Image(systemName: "chevron.right")
                                                     .font(.caption)
@@ -536,6 +567,12 @@ public struct NewSessionView: View {
                                 Button {
                                     viewModel.selectClaudeSession(session)
                                     showClaudeSessionsSheet = false
+                                    Task {
+                                        await viewModel.loadDirectory(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
                                 } label: {
                                     ClaudeSessionSelectionRow(session: session)
                                 }
@@ -614,6 +651,21 @@ public struct NewSessionView: View {
         }
     }
 
+    private func directoryEntryFullPath(_ entry: APIMachineDirectoryEntry) -> String {
+        let current = viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = current.isEmpty ? "~" : current
+        let trimmedName = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedName.isEmpty else { return path }
+        if trimmedName == "." { return path }
+        if trimmedName == ".." { return parentDirectoryPath(from: path) }
+        if trimmedName.hasPrefix("/") { return trimmedName }
+        if path == "/" { return "/" + trimmedName }
+        if path.hasSuffix("/") { return path + trimmedName }
+        if path == "~" { return "~/" + trimmedName }
+        return path + "/" + trimmedName
+    }
+
     private func loadDirectoryFromBrowserPath(_ path: String) async {
         viewModel.directoryPath = path
         await viewModel.loadDirectory(
@@ -663,6 +715,36 @@ public struct NewSessionView: View {
                 }
             }
         )
+    }
+
+    private var primaryActionTitle: String {
+        hasResumeSelection ? "Resume Session" : "Start Session"
+    }
+
+    private var hasResumeSelection: Bool {
+        selectedCodexResumeID != nil || selectedClaudeResumeID != nil
+    }
+
+    private var selectedCodexResumeID: String? {
+        normalized(viewModel.codexResumeThreadID)
+    }
+
+    private var selectedClaudeResumeID: String? {
+        normalized(viewModel.claudeResumeSessionID)
+    }
+
+    private var codexSelectionButtonTitle: String {
+        if let id = selectedCodexResumeID {
+            return "Codex Session: \(abbreviatedIdentifier(id))"
+        }
+        return "Choose Existing Codex Session"
+    }
+
+    private var claudeSelectionButtonTitle: String {
+        if let id = selectedClaudeResumeID {
+            return "Claude Session: \(abbreviatedIdentifier(id))"
+        }
+        return "Choose Existing Claude Session"
     }
 }
 
@@ -722,6 +804,13 @@ private func normalized(_ value: String?) -> String? {
     guard let value else { return nil }
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
+}
+
+private func abbreviatedIdentifier(_ value: String) -> String {
+    guard value.count > 16 else { return value }
+    let prefix = value.prefix(8)
+    let suffix = value.suffix(6)
+    return "\(prefix)…\(suffix)"
 }
 
 #Preview {

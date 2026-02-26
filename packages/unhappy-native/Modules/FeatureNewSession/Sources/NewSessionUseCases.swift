@@ -290,20 +290,30 @@ public actor NewSessionRecentProjectsUseCase: NewSessionRecentProjectsManaging {
     }
 
     public func loadRecentProjects() async -> [String] {
-        await store.recentProjectPaths()
+        let existing = await store.recentProjectPaths()
+        let normalized = normalizeRecentProjects(existing, maxProjects: maxProjects)
+        if normalized != existing {
+            await store.setRecentProjectPaths(normalized)
+        }
+        return normalized
     }
 
     public func recordRecentProject(_ path: String) async -> [String] {
-        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedPath.isEmpty else {
-            return await store.recentProjectPaths()
+        guard let normalizedPath = normalizeRecentProjectPath(path) else {
+            return await loadRecentProjects()
         }
 
-        let existing = await store.recentProjectPaths()
+        let existing = await loadRecentProjects()
         var updated = [normalizedPath]
-        for item in existing where item != normalizedPath {
-            updated.append(item)
+        var seen = Set([recentProjectDedupKey(normalizedPath)])
+
+        for item in existing {
+            guard let normalizedItem = normalizeRecentProjectPath(item) else { continue }
+            if seen.insert(recentProjectDedupKey(normalizedItem)).inserted {
+                updated.append(normalizedItem)
+            }
         }
+
         if updated.count > maxProjects {
             updated = Array(updated.prefix(maxProjects))
         }
@@ -311,6 +321,77 @@ public actor NewSessionRecentProjectsUseCase: NewSessionRecentProjectsManaging {
         await store.setRecentProjectPaths(updated)
         return updated
     }
+}
+
+private func normalizeRecentProjects(_ value: [String], maxProjects: Int) -> [String] {
+    var normalized: [String] = []
+    var seen = Set<String>()
+
+    for raw in value {
+        guard let path = normalizeRecentProjectPath(raw) else { continue }
+        let key = recentProjectDedupKey(path)
+        guard seen.insert(key).inserted else { continue }
+        normalized.append(path)
+        if normalized.count >= maxProjects {
+            break
+        }
+    }
+
+    return normalized
+}
+
+private func recentProjectDedupKey(_ path: String) -> String {
+    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed == "~" {
+        return "~"
+    }
+    if trimmed.hasPrefix("~/") {
+        return "~/" + String(trimmed.dropFirst(2))
+    }
+    return trimmed
+}
+
+private func normalizeRecentProjectPath(_ raw: String) -> String? {
+    var path = raw
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: "\\", with: "/")
+    guard !path.isEmpty else {
+        return nil
+    }
+
+    while path.contains("//") {
+        path = path.replacingOccurrences(of: "//", with: "/")
+    }
+
+    if path == "~/" {
+        path = "~"
+    } else if path.hasPrefix("~/") {
+        let suffix = path.dropFirst(2)
+        path = suffix.isEmpty ? "~" : "~/" + suffix
+    }
+
+    if path.hasPrefix("/Users/") || path.hasPrefix("/home/") {
+        let components = path.split(separator: "/", omittingEmptySubsequences: true)
+        if components.count >= 2 {
+            let remainder = components.dropFirst(2)
+            path = remainder.isEmpty ? "~" : "~/" + remainder.joined(separator: "/")
+        }
+    }
+
+    if path != "/" {
+        while path.hasSuffix("/") {
+            path.removeLast()
+            if path == "~" {
+                break
+            }
+        }
+    }
+
+    if path == "~/" {
+        path = "~"
+    }
+
+    return path.isEmpty ? nil : path
 }
 
 private func normalizedOptional(_ raw: String?) -> String? {

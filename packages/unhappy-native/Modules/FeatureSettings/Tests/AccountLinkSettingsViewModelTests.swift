@@ -160,7 +160,7 @@ struct AccountLinkSettingsViewModelTests {
 
         #expect(token == nil)
         #expect(model.statusMessage == nil)
-        #expect(model.errorMessage == "Auth response is missing token")
+        #expect(model.errorMessage == "Auth response is missing encrypted token")
         #expect(model.isRestoringByQR == false)
     }
 }
