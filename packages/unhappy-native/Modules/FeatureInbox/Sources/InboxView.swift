@@ -4,6 +4,7 @@ import SwiftUI
 public struct InboxView: View {
     @StateObject private var viewModel: InboxViewModel
     @State private var isSearchPresented = false
+    @State private var isFriendsPresented = false
     @State private var selectedUser: SelectedInboxUser?
     private let serverURLString: String
     private let token: String
@@ -122,6 +123,14 @@ public struct InboxView: View {
             }
             .navigationTitle("Inbox")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isFriendsPresented = true
+                    } label: {
+                        Image(systemName: "person.2")
+                    }
+                    .accessibilityLabel("Open friends")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isSearchPresented = true
@@ -141,6 +150,9 @@ public struct InboxView: View {
         }
         .sheet(isPresented: $isSearchPresented) {
             InboxFriendSearchSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $isFriendsPresented) {
+            InboxFriendsSheet(viewModel: viewModel)
         }
         .sheet(item: $selectedUser) { selected in
             InboxUserProfileSheet(userID: selected.id, viewModel: viewModel)
@@ -175,6 +187,118 @@ public struct InboxView: View {
 
 private struct SelectedInboxUser: Identifiable {
     let id: String
+}
+
+@MainActor
+private struct InboxFriendsSheet: View {
+    @ObservedObject var viewModel: InboxViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedUser: SelectedInboxUser?
+    @State private var isSearchPresented = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !viewModel.friendRequests.isEmpty {
+                    Section("Pending Requests") {
+                        ForEach(viewModel.friendRequests) { friend in
+                            Button {
+                                selectedUser = SelectedInboxUser(id: friend.id)
+                            } label: {
+                                friendRow(friend)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button("Reject", role: .destructive) {
+                                    Task { await viewModel.rejectFriendRequest(userID: friend.id) }
+                                }
+                                .disabled(viewModel.isApplyingFriendAction)
+
+                                Button("Accept") {
+                                    Task { await viewModel.acceptFriendRequest(userID: friend.id) }
+                                }
+                                .tint(.green)
+                                .disabled(viewModel.isApplyingFriendAction)
+                            }
+                        }
+                    }
+                }
+
+                if !viewModel.requestedFriends.isEmpty {
+                    Section("Sent Requests") {
+                        ForEach(viewModel.requestedFriends) { friend in
+                            Button {
+                                selectedUser = SelectedInboxUser(id: friend.id)
+                            } label: {
+                                friendRow(friend)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button("Cancel", role: .destructive) {
+                                    Task { await viewModel.cancelFriendRequest(userID: friend.id) }
+                                }
+                                .disabled(viewModel.isApplyingFriendAction)
+                            }
+                        }
+                    }
+                }
+
+                Section("Friends") {
+                    if viewModel.friends.isEmpty {
+                        Text("No friends yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(viewModel.friends) { friend in
+                            Button {
+                                selectedUser = SelectedInboxUser(id: friend.id)
+                            } label: {
+                                friendRow(friend)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button("Remove", role: .destructive) {
+                                    Task { await viewModel.removeFriend(userID: friend.id) }
+                                }
+                                .disabled(viewModel.isApplyingFriendAction)
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Friends")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isSearchPresented = true
+                    } label: {
+                        Image(systemName: "person.badge.plus")
+                    }
+                    .accessibilityLabel("Search users")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .sheet(isPresented: $isSearchPresented) {
+            InboxFriendSearchSheet(viewModel: viewModel)
+        }
+        .sheet(item: $selectedUser) { selected in
+            InboxUserProfileSheet(userID: selected.id, viewModel: viewModel)
+        }
+    }
+
+    private func friendRow(_ friend: InboxFriend) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(friend.displayName)
+                .font(.headline)
+            Text(friend.subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+    }
 }
 
 @MainActor
