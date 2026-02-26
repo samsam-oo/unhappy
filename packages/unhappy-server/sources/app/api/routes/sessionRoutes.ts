@@ -54,8 +54,7 @@ export function sessionRoutes(app: Fastify) {
         userId: string,
         sessionId: string,
         command: string,
-        params: unknown,
-        fallbackToMachine: boolean
+        params: unknown
     ): Promise<
         | { ok: true; result: any }
         | { ok: false; statusCode: number; error: string }
@@ -66,34 +65,11 @@ export function sessionRoutes(app: Fastify) {
             return { ok: true, result };
         }
 
-        if (!fallbackToMachine) {
-            return {
-                ok: false,
-                statusCode: 409,
-                error: 'Session RPC is not connected'
-            };
-        }
-
-        const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
-        if (!fallbackMachineId) {
-            return {
-                ok: false,
-                statusCode: 409,
-                error: 'Session or machine RPC is not connected'
-            };
-        }
-
-        const machineTarget = findConnectedMachine(userId, fallbackMachineId);
-        if (!machineTarget) {
-            return {
-                ok: false,
-                statusCode: 409,
-                error: 'Session or machine RPC is not connected'
-            };
-        }
-
-        const result = await invokePublicCommand(machineTarget, { command, params });
-        return { ok: true, result };
+        return {
+            ok: false,
+            statusCode: 409,
+            error: 'Session RPC is not connected'
+        };
     }
 
     // Sessions API
@@ -529,8 +505,7 @@ export function sessionRoutes(app: Fastify) {
             'abort',
             {
                 reason: request.body?.reason
-            },
-            false
+            }
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -574,8 +549,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'permission',
-            request.body,
-            false
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -615,8 +589,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'switch',
-            request.body,
-            false
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -668,8 +641,7 @@ export function sessionRoutes(app: Fastify) {
             {
                 text: normalizedText,
                 steerMode: request.body.steerMode
-            },
-            false
+            }
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -711,8 +683,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'bash',
-            request.body,
-            true
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -744,8 +715,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'readFile',
-            request.body,
-            true
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -779,8 +749,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'writeFile',
-            request.body,
-            true
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -816,8 +785,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'listDirectory',
-            request.body,
-            true
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -850,8 +818,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'getDirectoryTree',
-            request.body,
-            true
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -884,8 +851,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'ripgrep',
-            request.body,
-            true
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -918,8 +884,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'difftastic',
-            request.body,
-            true
+            request.body
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
@@ -948,8 +913,7 @@ export function sessionRoutes(app: Fastify) {
             userId,
             sessionId,
             'killSession',
-            {},
-            false
+            {}
         );
         if (!invoked.ok) {
             if (invoked.error === 'Session RPC is not connected') {
@@ -1001,33 +965,17 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        let result: any = null;
         const sessionTarget = findConnectedSession(userId, sessionId);
-        if (sessionTarget) {
-            result = await invokePublicCommand(sessionTarget, {
-                command: 'codex-list-threads',
-                params: {
-                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                    limit
-                }
-            });
-        } else {
-            const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
-            if (!fallbackMachineId) {
-                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
-            }
-            const machineTarget = findConnectedMachine(userId, fallbackMachineId);
-            if (!machineTarget) {
-                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
-            }
-            result = await invokePublicCommand(machineTarget, {
-                command: 'codex-list-threads',
-                params: {
-                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                    limit
-                }
-            });
+        if (!sessionTarget) {
+            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
         }
+        const result = await invokePublicCommand(sessionTarget, {
+            command: 'codex-list-threads',
+            params: {
+                cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                limit
+            }
+        });
 
         if (!result?.success) {
             return reply.code(502).send({
@@ -1068,33 +1016,17 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
-        let result: any = null;
         const sessionTarget = findConnectedSession(userId, sessionId);
-        if (sessionTarget) {
-            result = await invokePublicCommand(sessionTarget, {
-                command: 'claude-list-sessions',
-                params: {
-                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                    limit
-                }
-            });
-        } else {
-            const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
-            if (!fallbackMachineId) {
-                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
-            }
-            const machineTarget = findConnectedMachine(userId, fallbackMachineId);
-            if (!machineTarget) {
-                return reply.code(409).send({ success: false, error: 'Session or machine RPC is not connected' });
-            }
-            result = await invokePublicCommand(machineTarget, {
-                command: 'claude-list-sessions',
-                params: {
-                    cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                    limit
-                }
-            });
+        if (!sessionTarget) {
+            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
         }
+        const result = await invokePublicCommand(sessionTarget, {
+            command: 'claude-list-sessions',
+            params: {
+                cwd: cwd && cwd.length > 0 ? cwd : undefined,
+                limit
+            }
+        });
 
         if (!result?.success) {
             return reply.code(502).send({

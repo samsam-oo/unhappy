@@ -12,6 +12,9 @@ import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
+import { machinePublicCommandHandler } from "./socket/machinePublicCommandHandler";
+import { sessionPublicCommandHandler } from "./socket/sessionPublicCommandHandler";
+import { db } from "@/storage/db";
 
 export function startSocket(app: Fastify) {
     const io = new Server(app.server, {
@@ -122,11 +125,25 @@ export function startSocket(app: Fastify) {
 
             // Broadcast daemon offline status
             if (connection.connectionType === 'machine-scoped') {
-                const machineActivity = buildMachineActivityEphemeral(connection.machineId, false, Date.now());
+                const disconnectedAt = Date.now();
+                const machineActivity = buildMachineActivityEphemeral(connection.machineId, false, disconnectedAt);
                 eventRouter.emitEphemeral({
                     userId,
                     payload: machineActivity,
                     recipientFilter: { type: 'user-scoped-only' }
+                });
+
+                void db.machine.updateMany({
+                    where: {
+                        accountId: userId,
+                        id: connection.machineId
+                    },
+                    data: {
+                        active: false,
+                        lastActiveAt: new Date(disconnectedAt)
+                    }
+                }).catch((error) => {
+                    log({ module: 'websocket', level: 'error' }, `Failed to mark machine offline: ${error}`);
                 });
             }
         });
@@ -144,6 +161,8 @@ export function startSocket(app: Fastify) {
         machineUpdateHandler(userId, socket);
         artifactUpdateHandler(userId, socket);
         accessKeyHandler(userId, socket);
+        machinePublicCommandHandler(userId, socket);
+        sessionPublicCommandHandler(userId, socket);
 
         // Ready
         log({ module: 'websocket' }, `User connected: ${userId}`);
