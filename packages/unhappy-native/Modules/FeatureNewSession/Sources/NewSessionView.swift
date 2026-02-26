@@ -397,12 +397,6 @@ public struct NewSessionView: View {
                     VStack(spacing: 0) {
                         Form {
                             Section("Current Path") {
-                                Text(viewModel.directoryPath)
-                                    .font(.footnote.monospaced())
-                                    .lineLimit(nil)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .textSelection(.enabled)
-
                                 TextField("Go to path", text: $directoryBrowserPathDraft)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
