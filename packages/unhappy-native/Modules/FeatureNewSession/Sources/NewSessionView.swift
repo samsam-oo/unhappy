@@ -403,29 +403,26 @@ public struct NewSessionView: View {
                                     .fixedSize(horizontal: false, vertical: true)
                                     .textSelection(.enabled)
 
-                                HStack(spacing: 8) {
-                                    TextField("Go to path", text: $directoryBrowserPathDraft)
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-
-                                    Button("Go") {
-                                        Task {
-                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
-                                        }
-                                    }
-                                    .buttonStyle(.borderedProminent)
+                                TextField("Go to path", text: $directoryBrowserPathDraft)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .submitLabel(.go)
                                     .disabled(
                                         viewModel.selectedMachineID == nil ||
                                         viewModel.isLoadingDirectory
                                     )
-                                }
+                                    .onSubmit {
+                                        Task {
+                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
+                                        }
+                                    }
 
                                 Button {
                                     Task {
                                         await goToParentDirectoryFromBrowser()
                                     }
                                 } label: {
-                                    Label("Up One Level", systemImage: "arrow.up.backward.folder")
+                                    Label("Up One Level", systemImage: "folder")
                                 }
                                 .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingDirectory)
                             }
