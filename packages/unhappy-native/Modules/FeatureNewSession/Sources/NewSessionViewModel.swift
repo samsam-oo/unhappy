@@ -61,6 +61,7 @@ public final class NewSessionViewModel: ObservableObject {
     }
 
     public func loadMachines(serverURLString: String, token: String) async {
+        guard !isLoadingMachines else { return }
         isLoadingMachines = true
         errorMessage = nil
         defer { isLoadingMachines = false }
@@ -81,6 +82,8 @@ public final class NewSessionViewModel: ObservableObject {
             }
 
             if self.selectedMachineID != nil {
+                // Keep machine-loading UI scoped to machine fetch, not directory fetch.
+                isLoadingMachines = false
                 await loadDirectory(serverURLString: serverURLString, token: token)
             } else {
                 directoryEntries = []

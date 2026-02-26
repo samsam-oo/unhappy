@@ -156,6 +156,34 @@ struct NewSessionViewModelTests {
     }
 
     @Test
+    func loadMachinesStopsMachineSpinnerBeforeDirectoryLoadCompletes() async throws {
+        let machine = makeMachine(id: "machine-1")
+        let lister = SuspendingDirectoryLister()
+        let model = NewSessionViewModel(
+            machinesLoader: ViewModelMachinesLoader(machines: [machine]),
+            directoryLister: lister,
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        let task = Task {
+            await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        }
+
+        await lister.waitUntilStarted()
+        await Task.yield()
+
+        #expect(model.isLoadingMachines == false)
+        #expect(model.isLoadingDirectory == true)
+
+        await lister.resume()
+        await task.value
+    }
+
+    @Test
     func loadDirectoryRecoversFromMissingMachineByRefreshingMachines() async throws {
         let machine1 = makeMachine(id: "machine-1")
         let machine2 = makeMachine(id: "machine-2")
@@ -409,6 +437,42 @@ private actor SequenceDirectoryLister: NewSessionDirectoryListingAction {
         case .failure(let error):
             throw error
         }
+    }
+}
+
+private actor SuspendingDirectoryLister: NewSessionDirectoryListingAction {
+    private var hasStarted = false
+    private var startedContinuation: CheckedContinuation<Void, Never>?
+    private var resumeContinuation: CheckedContinuation<Void, Never>?
+
+    func listDirectory(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> [APIMachineDirectoryEntry] {
+        hasStarted = true
+        startedContinuation?.resume()
+        startedContinuation = nil
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            resumeContinuation = continuation
+        }
+        return []
+    }
+
+    func waitUntilStarted() async {
+        if hasStarted {
+            return
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            startedContinuation = continuation
+        }
+    }
+
+    func resume() {
+        resumeContinuation?.resume()
+        resumeContinuation = nil
     }
 }
 
