@@ -182,9 +182,6 @@ public struct NewSessionView: View {
                             .foregroundStyle(.red)
                     }
 
-                    TextField("Claude resume session ID (optional)", text: $viewModel.claudeResumeSessionID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
                     Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : "Choose Existing Claude Session") {
                         showClaudeSessionsSheet = true
                         Task {
