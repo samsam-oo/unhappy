@@ -718,6 +718,10 @@ public enum SessionsAPIError: LocalizedError, Equatable {
     case missingCommand
     case missingSessionTitle
     case invalidHTTPStatus(Int)
+    case rpcSocketConnectionFailed(String)
+    case rpcTimedOut
+    case rpcCallFailed(String)
+    case invalidRPCPayload
 
     public var errorDescription: String? {
         switch self {
@@ -741,6 +745,14 @@ public enum SessionsAPIError: LocalizedError, Equatable {
             return "Session title is required"
         case .invalidHTTPStatus(let code):
             return "Request failed with status \(code)"
+        case .rpcSocketConnectionFailed(let reason):
+            return "Failed to connect session RPC socket: \(reason)"
+        case .rpcTimedOut:
+            return "Session RPC request timed out"
+        case .rpcCallFailed(let reason):
+            return reason
+        case .invalidRPCPayload:
+            return "Received invalid session RPC payload"
         }
     }
 }
@@ -1015,7 +1027,13 @@ public protocol SessionKilling: Sendable {
 }
 
 public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionRipgrepRunning, SessionDifftasticRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling {
-    public init() {}
+    private let rpcCommandService: any SessionRPCCommandDispatching
+
+    public init(
+        rpcCommandService: any SessionRPCCommandDispatching = SocketIOSessionRPCCommandService()
+    ) {
+        self.rpcCommandService = rpcCommandService
+    }
 
     public func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         let page = try await fetchSessionsPage(
@@ -1144,22 +1162,25 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         var merged: [APICodexThreadSummary] = []
 
         for _ in 0..<50 {
-            let request = try SessionsAPI.makeCodexThreadsRequest(
+            var params: [String: Any] = [
+                "limit": boundedLimit,
+            ]
+            let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let normalizedCWD, !normalizedCWD.isEmpty {
+                params["cwd"] = normalizedCWD
+            }
+            if let cursor, !cursor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                params["cursor"] = cursor
+            }
+
+            let data = try await rpcCommandService.invokeCommand(
                 serverURL: serverURL,
                 token: token,
                 sessionID: sessionID,
-                limit: boundedLimit,
-                cwd: cwd,
-                cursor: cursor
+                command: "codex-list-threads",
+                params: params,
+                allowMachineFallback: false
             )
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let http = response as? HTTPURLResponse else {
-                throw URLError(.badServerResponse)
-            }
-            guard (200..<300).contains(http.statusCode) else {
-                throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-            }
 
             let page = try SessionsAPI.decodeCodexThreadsPageResponse(data)
             for row in page.threads where seenIDs.insert(row.id).inserted {
@@ -1192,22 +1213,25 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         var merged: [APIClaudeSessionSummary] = []
 
         for _ in 0..<50 {
-            let request = try SessionsAPI.makeClaudeSessionsRequest(
+            var params: [String: Any] = [
+                "limit": boundedLimit,
+            ]
+            let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let normalizedCWD, !normalizedCWD.isEmpty {
+                params["cwd"] = normalizedCWD
+            }
+            if let cursor, !cursor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                params["cursor"] = cursor
+            }
+
+            let data = try await rpcCommandService.invokeCommand(
                 serverURL: serverURL,
                 token: token,
                 sessionID: sessionID,
-                limit: boundedLimit,
-                cwd: cwd,
-                cursor: cursor
+                command: "claude-list-sessions",
+                params: params,
+                allowMachineFallback: false
             )
-            let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let http = response as? HTTPURLResponse else {
-                throw URLError(.badServerResponse)
-            }
-            guard (200..<300).contains(http.statusCode) else {
-                throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-            }
 
             let page = try SessionsAPI.decodeClaudeSessionsPageResponse(data)
             for row in page.sessions where seenIDs.insert(row.id).inserted {
@@ -1236,28 +1260,37 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?
     ) async throws -> APISessionSpawnResult {
-        let request = try SessionsAPI.makeSpawnSessionRequest(
+        let normalizedDirectory = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedDirectory.isEmpty else {
+            throw SessionsAPIError.missingDirectory
+        }
+
+        var params: [String: Any] = [
+            "directory": normalizedDirectory,
+        ]
+        if let agent {
+            params["agent"] = agent.rawValue
+        }
+        let normalizedCodexResumeThreadID = codexResumeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCodexResumeThreadID, !normalizedCodexResumeThreadID.isEmpty {
+            params["codexResumeThreadId"] = normalizedCodexResumeThreadID
+        }
+        let normalizedClaudeResumeSessionID = claudeResumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedClaudeResumeSessionID, !normalizedClaudeResumeSessionID.isEmpty {
+            params["claudeResumeSessionId"] = normalizedClaudeResumeSessionID
+        }
+        if let approvedNewDirectoryCreation {
+            params["approvedNewDirectoryCreation"] = approvedNewDirectoryCreation
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            directory: directory,
-            agent: agent,
-            codexResumeThreadID: codexResumeThreadID,
-            claudeResumeSessionID: claudeResumeSessionID,
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation
+            command: "spawn-unhappy-session",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        if http.statusCode == 409 {
-            return try SessionsAPI.decodeSpawnSessionResponse(data)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSpawnSessionResponse(data)
     }
 
@@ -1267,21 +1300,19 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         sessionID: String,
         reason: String?
     ) async throws -> APISessionCommandResult {
-        let request = try SessionsAPI.makeSessionAbortRequest(
+        var params: [String: Any] = [:]
+        let normalizedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedReason, !normalizedReason.isEmpty {
+            params["reason"] = normalizedReason
+        }
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            reason: reason
+            command: "abort",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionCommandResponse(data)
     }
 
@@ -1295,25 +1326,38 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         allowTools: [String]?,
         decision: APISessionPermissionDecision?
     ) async throws -> APISessionCommandResult {
-        let request = try SessionsAPI.makeSessionPermissionRequest(
+        let normalizedPermissionRequestID = permissionRequestID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPermissionRequestID.isEmpty else {
+            throw SessionsAPIError.missingPermissionRequestID
+        }
+
+        let normalizedAllowTools = allowTools?.compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        var params: [String: Any] = [
+            "id": normalizedPermissionRequestID,
+            "approved": approved,
+        ]
+        if let mode {
+            params["mode"] = mode.rawValue
+        }
+        if let normalizedAllowTools, !normalizedAllowTools.isEmpty {
+            params["allowTools"] = normalizedAllowTools
+        }
+        if let decision {
+            params["decision"] = decision.rawValue
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            permissionRequestID: permissionRequestID,
-            approved: approved,
-            mode: mode,
-            allowTools: allowTools,
-            decision: decision
+            command: "permission",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionCommandResponse(data)
     }
 
@@ -1323,21 +1367,14 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         sessionID: String,
         to: APISessionSwitchTarget
     ) async throws -> APISessionSwitchResult {
-        let request = try SessionsAPI.makeSessionSwitchRequest(
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            to: to
+            command: "switch",
+            params: ["to": to.rawValue],
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionSwitchResponse(data)
     }
 
@@ -1348,22 +1385,24 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         text: String,
         steerMode: APISessionSteerMode?
     ) async throws -> APISessionSendMessageResult {
-        let request = try SessionsAPI.makeSessionSendMessageRequest(
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            throw SessionsAPIError.missingMessageText
+        }
+
+        var params: [String: Any] = ["text": normalizedText]
+        if let steerMode {
+            params["steerMode"] = steerMode.rawValue
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            text: text,
-            steerMode: steerMode
+            command: "sendMessage",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionSendMessageResponse(data)
     }
 
@@ -1375,23 +1414,30 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         cwd: String?,
         timeout: Int?
     ) async throws -> APISessionBashResult {
-        let request = try SessionsAPI.makeSessionBashRequest(
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw SessionsAPIError.missingCommand
+        }
+
+        var params: [String: Any] = [
+            "command": normalizedCommand,
+        ]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            params["cwd"] = normalizedCWD
+        }
+        if let timeout {
+            params["timeout"] = timeout
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            command: command,
-            cwd: cwd,
-            timeout: timeout
+            command: "bash",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionBashResponse(data)
     }
 
@@ -1402,22 +1448,30 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         args: [String],
         cwd: String?
     ) async throws -> APISessionBashResult {
-        let request = try SessionsAPI.makeSessionRipgrepRequest(
+        let normalizedArgs = args.compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard !normalizedArgs.isEmpty else {
+            throw SessionsAPIError.missingCommand
+        }
+
+        var params: [String: Any] = [
+            "args": normalizedArgs,
+        ]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            params["cwd"] = normalizedCWD
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            args: args,
-            cwd: cwd
+            command: "ripgrep",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionRipgrepResponse(data)
     }
 
@@ -1428,22 +1482,30 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         args: [String],
         cwd: String?
     ) async throws -> APISessionBashResult {
-        let request = try SessionsAPI.makeSessionDifftasticRequest(
+        let normalizedArgs = args.compactMap { raw in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        guard !normalizedArgs.isEmpty else {
+            throw SessionsAPIError.missingCommand
+        }
+
+        var params: [String: Any] = [
+            "args": normalizedArgs,
+        ]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            params["cwd"] = normalizedCWD
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            args: args,
-            cwd: cwd
+            command: "difftastic",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionDifftasticResponse(data)
     }
 
@@ -1453,21 +1515,19 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         sessionID: String,
         path: String
     ) async throws -> APISessionReadFileResult {
-        let request = try SessionsAPI.makeSessionReadFileRequest(
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw SessionsAPIError.missingPath
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            path: path
+            command: "readFile",
+            params: ["path": normalizedPath],
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionReadFileResponse(data)
     }
 
@@ -1479,23 +1539,31 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         content: String,
         expectedHash: String?
     ) async throws -> APISessionWriteFileResult {
-        let request = try SessionsAPI.makeSessionWriteFileRequest(
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw SessionsAPIError.missingPath
+        }
+        guard !content.isEmpty else {
+            throw SessionsAPIError.missingFileContent
+        }
+
+        var params: [String: Any] = [
+            "path": normalizedPath,
+            "content": content,
+        ]
+        let normalizedExpectedHash = expectedHash?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedExpectedHash, !normalizedExpectedHash.isEmpty {
+            params["expectedHash"] = normalizedExpectedHash
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            path: path,
-            content: content,
-            expectedHash: expectedHash
+            command: "writeFile",
+            params: params,
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionWriteFileResponse(data)
     }
 
@@ -1505,25 +1573,25 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         sessionID: String,
         path: String
     ) async throws -> APISessionListDirectoryResult {
-        let request = try SessionsAPI.makeSessionListDirectoryRequest(
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw SessionsAPIError.missingPath
+        }
+
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            path: path,
-            includeStats: true,
-            types: ["file", "directory"],
-            sort: true,
-            maxEntries: 300
+            command: "listDirectory",
+            params: [
+                "path": normalizedPath,
+                "includeStats": true,
+                "types": ["file", "directory"],
+                "sort": true,
+                "maxEntries": 300,
+            ],
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionListDirectoryResponse(data)
     }
 
@@ -1532,20 +1600,14 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         token: String,
         sessionID: String
     ) async throws -> APISessionKillResult {
-        let request = try SessionsAPI.makeSessionKillRequest(
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
-            sessionID: sessionID
+            sessionID: sessionID,
+            command: "killSession",
+            params: [:],
+            allowMachineFallback: false
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeSessionKillResponse(data)
     }
 }

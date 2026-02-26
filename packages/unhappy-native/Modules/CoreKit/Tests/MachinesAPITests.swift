@@ -4,6 +4,15 @@ import Testing
 
 struct MachinesAPITests {
     @Test
+    func endpointUnavailableErrorHasActionableDescription() {
+        let error = MachinesAPIError.endpointUnavailable("/v1/machines/:id/commands/list-directory")
+        let description = error.errorDescription ?? ""
+
+        #expect(description.contains("Server endpoint is unavailable"))
+        #expect(description.contains("list-directory"))
+    }
+
+    @Test
     func listRequestIncludesExpectedHeadersAndPath() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try MachinesAPI.makeListRequest(serverURL: baseURL, token: "abc123")
