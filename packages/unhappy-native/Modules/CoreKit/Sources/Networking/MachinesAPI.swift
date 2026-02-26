@@ -251,6 +251,13 @@ public enum MachinesAPIError: LocalizedError, Equatable {
     case missingMachineID
     case missingDirectory
     case missingPath
+    case missingCommand
+    case machineNotFound(String)
+    case rpcSocketConnectionFailed(String)
+    case rpcTimedOut
+    case rpcCallFailed(String)
+    case invalidRPCPayload
+    case endpointUnavailable(String)
     case invalidHTTPStatus(Int)
 
     public var errorDescription: String? {
@@ -263,6 +270,20 @@ public enum MachinesAPIError: LocalizedError, Equatable {
             return "Directory is required"
         case .missingPath:
             return "Path is required"
+        case .missingCommand:
+            return "Command is required"
+        case .machineNotFound(let machineID):
+            return "Machine not found: \(machineID)"
+        case .rpcSocketConnectionFailed(let reason):
+            return "Failed to connect daemon RPC socket: \(reason)"
+        case .rpcTimedOut:
+            return "Daemon RPC timed out. The backend may be missing machine socket command bridge support or WebSocket traffic may be blocked."
+        case .rpcCallFailed(let message):
+            return "Daemon RPC failed: \(message)"
+        case .invalidRPCPayload:
+            return "Daemon RPC returned invalid payload"
+        case .endpointUnavailable(let endpoint):
+            return "Server endpoint is unavailable: \(endpoint). Update backend API server to latest."
         case .invalidHTTPStatus(let code):
             return "Request failed with status \(code)"
         }
@@ -403,7 +424,13 @@ public protocol MachineClaudeSessionsFetching: Sendable {
 }
 
 public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching {
-    public init() {}
+    private let rpcDirectoryService: any MachineRPCDirectoryListing
+
+    public init(
+        rpcDirectoryService: any MachineRPCDirectoryListing = SocketIOMachineRPCDirectoryService()
+    ) {
+        self.rpcDirectoryService = rpcDirectoryService
+    }
 
     public func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
         let request = try MachinesAPI.makeListRequest(serverURL: serverURL, token: token)
@@ -431,67 +458,149 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         sessionToken: String?,
         environmentVariables: [String: String]?
     ) async throws -> APISessionSpawnResult {
-        let request = try MachinesAPI.makeSpawnSessionRequest(
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedDirectory = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedDirectory.isEmpty else {
+            throw MachinesAPIError.missingDirectory
+        }
+
+        var params: [String: Any] = [
+            "directory": normalizedDirectory,
+            "machineId": normalizedMachineID,
+        ]
+        if let agent {
+            params["agent"] = agent.rawValue
+        }
+        let normalizedCodexResumeThreadID = codexResumeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCodexResumeThreadID, !normalizedCodexResumeThreadID.isEmpty {
+            params["codexResumeThreadId"] = normalizedCodexResumeThreadID
+        }
+        let normalizedClaudeResumeSessionID = claudeResumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedClaudeResumeSessionID, !normalizedClaudeResumeSessionID.isEmpty {
+            params["claudeResumeSessionId"] = normalizedClaudeResumeSessionID
+        }
+        if let approvedNewDirectoryCreation {
+            params["approvedNewDirectoryCreation"] = approvedNewDirectoryCreation
+        }
+        let normalizedSessionToken = sessionToken?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedSessionToken, !normalizedSessionToken.isEmpty {
+            params["token"] = normalizedSessionToken
+        }
+        if let environmentVariables {
+            params["environmentVariables"] = environmentVariables
+        }
+
+        let data = try await rpcDirectoryService.invokeCommand(
             serverURL: serverURL,
             token: token,
-            machineID: machineID,
-            directory: directory,
-            agent: agent,
-            codexResumeThreadID: codexResumeThreadID,
-            claudeResumeSessionID: claudeResumeSessionID,
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-            sessionToken: sessionToken,
-            environmentVariables: environmentVariables
+            machineID: normalizedMachineID,
+            command: "spawn-unhappy-session",
+            params: params
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        if http.statusCode == 409 {
-            return try MachinesAPI.decodeSpawnResponse(data)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MachinesAPIError.invalidRPCPayload
         }
 
-        return try MachinesAPI.decodeSpawnResponse(data)
+        if let type = payload["type"] as? String {
+            if type == "requestToApproveDirectoryCreation" {
+                return APISessionSpawnResult(
+                    success: false,
+                    sessionID: nil,
+                    requiresUserApproval: true,
+                    actionRequired: "CREATE_DIRECTORY",
+                    directory: payload["directory"] as? String,
+                    error: nil
+                )
+            }
+            if type == "success", let sessionID = payload["sessionId"] as? String {
+                return APISessionSpawnResult(
+                    success: true,
+                    sessionID: sessionID,
+                    requiresUserApproval: nil,
+                    actionRequired: nil,
+                    directory: nil,
+                    error: nil
+                )
+            }
+        }
+
+        if payload["success"] as? Bool == false {
+            return APISessionSpawnResult(
+                success: false,
+                sessionID: nil,
+                requiresUserApproval: nil,
+                actionRequired: nil,
+                directory: nil,
+                error: payload["error"] as? String
+            )
+        }
+
+        return APISessionSpawnResult(
+            success: false,
+            sessionID: nil,
+            requiresUserApproval: nil,
+            actionRequired: nil,
+            directory: nil,
+            error: (payload["error"] as? String) ?? (payload["errorMessage"] as? String) ?? "Failed to spawn session"
+        )
     }
 
     public func stopDaemon(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
-        let request = try MachinesAPI.makeStopDaemonRequest(
+        let data = try await rpcDirectoryService.invokeCommand(
             serverURL: serverURL,
             token: token,
-            machineID: machineID
+            machineID: machineID,
+            command: "stop-daemon",
+            params: [:]
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MachinesAPIError.invalidRPCPayload
         }
 
-        return try MachinesAPI.decodeCommandResponse(data)
+        let success = payload["success"] as? Bool ?? false
+        let normalizedError = (payload["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !success {
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to stop daemon"
+            )
+        }
+        let normalizedMessage = (payload["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return APIMachineCommandResult(
+            success: true,
+            message: (normalizedMessage?.isEmpty == false ? normalizedMessage : nil) ?? "Daemon stop request acknowledged",
+            error: nil
+        )
     }
 
     public func updateDaemon(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
-        let request = try MachinesAPI.makeUpdateDaemonRequest(
+        let data = try await rpcDirectoryService.invokeCommand(
             serverURL: serverURL,
             token: token,
-            machineID: machineID
+            machineID: machineID,
+            command: "update-daemon",
+            params: [:]
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MachinesAPIError.invalidRPCPayload
         }
 
-        return try MachinesAPI.decodeCommandResponse(data)
+        let success = payload["success"] as? Bool ?? false
+        let normalizedError = (payload["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !success {
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to update daemon"
+            )
+        }
+        let normalizedMessage = (payload["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return APIMachineCommandResult(
+            success: true,
+            message: (normalizedMessage?.isEmpty == false ? normalizedMessage : nil) ?? "Daemon update requested",
+            error: nil
+        )
     }
 
     public func listDirectory(
@@ -500,26 +609,13 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         machineID: String,
         path: String
     ) async throws -> APIMachineListDirectoryResult {
-        let request = try MachinesAPI.makeListDirectoryRequest(
+        return try await rpcDirectoryService.listDirectory(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             path: path,
-            includeStats: true,
-            types: ["file", "directory"],
-            sort: true,
-            maxEntries: 300
+            machineDataEncryptionKey: nil
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
-        return try MachinesAPI.decodeListDirectoryResponse(data)
     }
 
     public func fetchCodexThreads(
@@ -569,7 +665,7 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         cursor: String?
     ) async throws -> APICodexThreadsPage {
         let boundedLimit = min(max(limit, 1), 100)
-        let request = try MachinesAPI.makeCodexThreadsRequest(
+        return try await rpcDirectoryService.fetchCodexThreadsPage(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
@@ -577,16 +673,6 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
             cwd: cwd,
             cursor: cursor
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
-        return try MachinesAPI.decodeCodexThreadsPageResponse(data)
     }
 
     public func fetchClaudeSessions(
@@ -636,7 +722,7 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         cursor: String?
     ) async throws -> APIClaudeSessionsPage {
         let boundedLimit = min(max(limit, 1), 100)
-        let request = try MachinesAPI.makeClaudeSessionsRequest(
+        return try await rpcDirectoryService.fetchClaudeSessionsPage(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
@@ -644,15 +730,5 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
             cwd: cwd,
             cursor: cursor
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
-        return try MachinesAPI.decodeClaudeSessionsPageResponse(data)
     }
 }

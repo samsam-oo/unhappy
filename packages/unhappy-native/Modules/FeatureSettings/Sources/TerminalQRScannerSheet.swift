@@ -44,6 +44,9 @@ struct TerminalQRScannerSheet: View {
     @ViewBuilder
     private var scannerContent: some View {
 #if canImport(VisionKit)
+        #if targetEnvironment(simulator)
+        unsupportedContent
+        #else
         if #available(iOS 16.0, *),
            DataScannerViewController.isSupported,
            DataScannerViewController.isAvailable {
@@ -74,6 +77,7 @@ struct TerminalQRScannerSheet: View {
         } else {
             unsupportedContent
         }
+        #endif
 #else
         unsupportedContent
 #endif
@@ -136,17 +140,26 @@ private struct TerminalDataScannerView: UIViewControllerRepresentable {
             isHighlightingEnabled: true
         )
         scanner.delegate = context.coordinator
-        do {
-            try scanner.startScanning()
-        } catch {
-            context.coordinator.reportError("Failed to start scanner: \(error.localizedDescription)")
-        }
         return scanner
     }
 
-    func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {
+        guard !context.coordinator.hasStartedScanning else { return }
+        do {
+            try uiViewController.startScanning()
+            context.coordinator.hasStartedScanning = true
+        } catch {
+            context.coordinator.reportError("Failed to start scanner: \(error.localizedDescription)")
+        }
+    }
+
+    static func dismantleUIViewController(_ uiViewController: DataScannerViewController, coordinator: Coordinator) {
+        uiViewController.stopScanning()
+        coordinator.hasStartedScanning = false
+    }
 
     final class Coordinator: NSObject, DataScannerViewControllerDelegate {
+        var hasStartedScanning = false
         private var hasEmitted = false
         private let onScanned: (String) -> Void
         private let onError: (String) -> Void

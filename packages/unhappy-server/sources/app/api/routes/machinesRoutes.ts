@@ -1,11 +1,15 @@
-import { eventRouter } from "@/app/events/eventRouter";
+import {
+    buildMachineActivityEphemeral,
+    buildNewMachineUpdate,
+    buildUpdateMachineUpdate,
+    eventRouter
+} from "@/app/events/eventRouter";
 import { Fastify } from "../types";
 import { z } from "zod";
 import { db } from "@/storage/db";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
-import { buildNewMachineUpdate, buildUpdateMachineUpdate } from "@/app/events/eventRouter";
 import {
     findConnectedMachine,
     invokePublicCommand
@@ -340,6 +344,24 @@ export function machinesRoutes(app: Fastify) {
             typeof result?.message === 'string' && result.message.trim().length > 0
                 ? result.message.trim()
                 : 'Daemon stop request acknowledged'
+
+        const stoppedAt = Date.now();
+        await db.machine.updateMany({
+            where: {
+                accountId: userId,
+                id,
+            },
+            data: {
+                active: false,
+                lastActiveAt: new Date(stoppedAt),
+            },
+        });
+
+        eventRouter.emitEphemeral({
+            userId,
+            payload: buildMachineActivityEphemeral(id, false, stoppedAt),
+            recipientFilter: { type: 'user-scoped-only' }
+        });
 
         return reply.send({
             success: true,

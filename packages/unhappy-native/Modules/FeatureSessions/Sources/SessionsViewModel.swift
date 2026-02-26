@@ -50,6 +50,8 @@ public final class SessionsViewModel: ObservableObject {
     private var messagesBySessionID: [String: [APISessionMessage]] = [:]
     private var messageCacheLRU: [String] = []
     private var nextCursor: String?
+    private var selectedSessionMessagesPollingTask: Task<Void, Never>?
+    private var selectedSessionMessagesPollingTaskID: UUID?
 
     public init(
         loader: any SessionsLoading,
@@ -122,6 +124,10 @@ public final class SessionsViewModel: ObservableObject {
         messagesBySessionID.count
     }
 
+    var isSelectedSessionMessagesPolling: Bool {
+        selectedSessionMessagesPollingTask != nil
+    }
+
     public func isDeleting(sessionID: String) -> Bool {
         deletingSessionIDs.contains(sessionID)
     }
@@ -135,6 +141,7 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     public func load(serverURLString: String, token: String) async {
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -215,19 +222,57 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
-    public func loadMessages(for sessionID: String, serverURLString: String, token: String) async {
+    public func startSelectedSessionMessagesPolling(
+        for sessionID: String,
+        serverURLString: String,
+        token: String,
+        interval: Duration = .seconds(5)
+    ) {
+        stopSelectedSessionMessagesPolling()
+
+        let taskID = UUID()
+        selectedSessionMessagesPollingTaskID = taskID
+        selectedSessionMessagesPollingTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runSelectedSessionMessagesPolling(
+                taskID: taskID,
+                sessionID: sessionID,
+                serverURLString: serverURLString,
+                token: token,
+                interval: interval
+            )
+        }
+    }
+
+    public func stopSelectedSessionMessagesPolling() {
+        selectedSessionMessagesPollingTask?.cancel()
+        selectedSessionMessagesPollingTask = nil
+        selectedSessionMessagesPollingTaskID = nil
+    }
+
+    public func loadMessages(
+        for sessionID: String,
+        serverURLString: String,
+        token: String,
+        showsLoadingState: Bool = true,
+        clearsMessagesOnFailure: Bool = true
+    ) async {
         selectedSessionID = sessionID
         selectedSessionErrorMessage = nil
-        isLoadingSessionMessages = true
 
-        if let cachedMessages = messagesBySessionID[sessionID] {
-            selectedSessionMessages = cachedMessages
-        } else {
-            selectedSessionMessages = []
+        if showsLoadingState {
+            isLoadingSessionMessages = true
+            if let cachedMessages = messagesBySessionID[sessionID] {
+                setSelectedSessionMessagesIfNeeded(cachedMessages)
+            } else {
+                setSelectedSessionMessagesIfNeeded([])
+            }
         }
 
         defer {
-            isLoadingSessionMessages = false
+            if showsLoadingState {
+                isLoadingSessionMessages = false
+            }
         }
 
         do {
@@ -236,14 +281,33 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 sessionID: sessionID
             )
-            cacheMessages(messages, for: sessionID)
+            let normalizedMessages = cacheMessages(messages, for: sessionID)
             if selectedSessionID == sessionID {
-                selectedSessionMessages = messagesBySessionID[sessionID] ?? messages
+                setSelectedSessionMessagesIfNeeded(normalizedMessages)
                 selectedSessionErrorMessage = nil
+            }
+        } catch let apiError as SessionsAPIError {
+            if case .invalidHTTPStatus(404) = apiError {
+                sessions.removeAll { $0.id == sessionID }
+                messagesBySessionID[sessionID] = nil
+                messageCacheLRU.removeAll { $0 == sessionID }
+                if selectedSessionID == sessionID {
+                    setSelectedSessionMessagesIfNeeded([])
+                    selectedSessionErrorMessage = "Session no longer exists on server."
+                }
+                return
+            }
+            if selectedSessionID == sessionID {
+                if clearsMessagesOnFailure {
+                    setSelectedSessionMessagesIfNeeded([])
+                }
+                selectedSessionErrorMessage = apiError.errorDescription ?? apiError.localizedDescription
             }
         } catch {
             if selectedSessionID == sessionID {
-                selectedSessionMessages = []
+                if clearsMessagesOnFailure {
+                    setSelectedSessionMessagesIfNeeded([])
+                }
                 selectedSessionErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
         }
@@ -471,8 +535,9 @@ public final class SessionsViewModel: ObservableObject {
             sessions.removeAll { $0.id == sessionID }
             messagesBySessionID[sessionID] = nil
             if selectedSessionID == sessionID {
+                stopSelectedSessionMessagesPolling()
                 selectedSessionID = nil
-                selectedSessionMessages = []
+                setSelectedSessionMessagesIfNeeded([])
                 selectedSessionErrorMessage = nil
             }
             messageCacheLRU.removeAll { $0 == sessionID }
@@ -483,8 +548,9 @@ public final class SessionsViewModel: ObservableObject {
 
     public func clearDetailSelectionIfNeeded(sessionID: String) {
         guard selectedSessionID == sessionID else { return }
+        stopSelectedSessionMessagesPolling()
         selectedSessionID = nil
-        selectedSessionMessages = []
+        setSelectedSessionMessagesIfNeeded([])
         selectedSessionErrorMessage = nil
         if selectedCodexThreadsSessionID == sessionID {
             selectedCodexThreadsSessionID = nil
@@ -550,7 +616,8 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
-    private func cacheMessages(_ messages: [APISessionMessage], for sessionID: String) {
+    @discardableResult
+    private func cacheMessages(_ messages: [APISessionMessage], for sessionID: String) -> [APISessionMessage] {
         let normalizedMessages: [APISessionMessage]
         if messages.count > CachePolicy.maxMessagesPerSession {
             normalizedMessages = Array(messages.suffix(CachePolicy.maxMessagesPerSession))
@@ -558,9 +625,60 @@ public final class SessionsViewModel: ObservableObject {
             normalizedMessages = messages
         }
 
-        messagesBySessionID[sessionID] = normalizedMessages
+        if messagesBySessionID[sessionID] != normalizedMessages {
+            messagesBySessionID[sessionID] = normalizedMessages
+        }
         touchCache(sessionID: sessionID)
         evictCacheIfNeeded(preserving: selectedSessionID)
+        return normalizedMessages
+    }
+
+    private func setSelectedSessionMessagesIfNeeded(_ messages: [APISessionMessage]) {
+        guard selectedSessionMessages != messages else { return }
+        selectedSessionMessages = messages
+    }
+
+    private func runSelectedSessionMessagesPolling(
+        taskID: UUID,
+        sessionID: String,
+        serverURLString: String,
+        token: String,
+        interval: Duration
+    ) async {
+        await loadMessages(
+            for: sessionID,
+            serverURLString: serverURLString,
+            token: token
+        )
+
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: interval)
+            } catch is CancellationError {
+                break
+            } catch {
+                break
+            }
+            if Task.isCancelled {
+                break
+            }
+
+            await loadMessages(
+                for: sessionID,
+                serverURLString: serverURLString,
+                token: token,
+                showsLoadingState: false,
+                clearsMessagesOnFailure: false
+            )
+        }
+
+        clearSelectedSessionMessagesPollingTaskIfNeeded(taskID: taskID)
+    }
+
+    private func clearSelectedSessionMessagesPollingTaskIfNeeded(taskID: UUID) {
+        guard selectedSessionMessagesPollingTaskID == taskID else { return }
+        selectedSessionMessagesPollingTask = nil
+        selectedSessionMessagesPollingTaskID = nil
     }
 
     private func touchCache(sessionID: String) {

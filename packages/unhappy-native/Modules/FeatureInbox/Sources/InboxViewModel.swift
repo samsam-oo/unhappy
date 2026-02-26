@@ -46,6 +46,7 @@ public final class InboxViewModel: ObservableObject {
     }
 
     public func load() async {
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

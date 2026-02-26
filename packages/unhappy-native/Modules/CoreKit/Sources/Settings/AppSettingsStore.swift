@@ -11,6 +11,7 @@ public protocol AppSettingsStore: Sendable {
     func voiceEnabled() async -> Bool
     func voiceLanguageCode() async -> String
     func defaultNewSessionAgent() async -> String
+    func lastViewedChangelogID() async -> String
     func recentProjectPaths() async -> [String]
     func setServerURLString(_ value: String) async
     func setAPIToken(_ value: String) async
@@ -22,6 +23,7 @@ public protocol AppSettingsStore: Sendable {
     func setVoiceEnabled(_ value: Bool) async
     func setVoiceLanguageCode(_ value: String) async
     func setDefaultNewSessionAgent(_ value: String) async
+    func setLastViewedChangelogID(_ value: String) async
     func setRecentProjectPaths(_ value: [String]) async
 }
 
@@ -37,6 +39,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
     private let voiceEnabledKey: String
     private let voiceLanguageKey: String
     private let defaultNewSessionAgentKey: String
+    private let lastViewedChangelogIDKey: String
     private let recentProjectPathsKey: String
     private let defaultServerURL: String
 
@@ -52,6 +55,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         voiceEnabledKey: String = "unhappy.native.voiceEnabled",
         voiceLanguageKey: String = "unhappy.native.voiceLanguage",
         defaultNewSessionAgentKey: String = "unhappy.native.defaultNewSessionAgent",
+        lastViewedChangelogIDKey: String = "unhappy.native.lastViewedChangelogID",
         recentProjectPathsKey: String = "unhappy.native.recentProjectPaths",
         defaultServerURL: String = "https://api.unhappy.im"
     ) {
@@ -66,6 +70,7 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
         self.voiceEnabledKey = voiceEnabledKey
         self.voiceLanguageKey = voiceLanguageKey
         self.defaultNewSessionAgentKey = defaultNewSessionAgentKey
+        self.lastViewedChangelogIDKey = lastViewedChangelogIDKey
         self.recentProjectPathsKey = recentProjectPathsKey
         self.defaultServerURL = defaultServerURL
     }
@@ -113,6 +118,10 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
 
     public func defaultNewSessionAgent() async -> String {
         defaults.string(forKey: defaultNewSessionAgentKey) ?? "claude"
+    }
+
+    public func lastViewedChangelogID() async -> String {
+        defaults.string(forKey: lastViewedChangelogIDKey) ?? ""
     }
 
     public func recentProjectPaths() async -> [String] {
@@ -164,6 +173,10 @@ public actor UserDefaultsAppSettingsStore: AppSettingsStore {
 
     public func setDefaultNewSessionAgent(_ value: String) async {
         defaults.set(value, forKey: defaultNewSessionAgentKey)
+    }
+
+    public func setLastViewedChangelogID(_ value: String) async {
+        defaults.set(value, forKey: lastViewedChangelogIDKey)
     }
 
     public func setRecentProjectPaths(_ value: [String]) async {

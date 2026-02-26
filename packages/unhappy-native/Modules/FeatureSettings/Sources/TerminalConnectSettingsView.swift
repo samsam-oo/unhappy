@@ -30,7 +30,7 @@ struct TerminalConnectSettingsView: View {
     var body: some View {
         Form {
             Section("Connection URL") {
-                TextField("unhappy://terminal?...", text: $authURLString, axis: .vertical)
+                TextField("unhappy://terminal?... or https://.../terminal/connect#key=...", text: $authURLString, axis: .vertical)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
@@ -39,7 +39,7 @@ struct TerminalConnectSettingsView: View {
                         viewModel.resetState()
                     }
 
-                Text("Paste the terminal auth URL from daemon or CLI.")
+                Text("Paste terminal auth URL from daemon/CLI. Both custom-scheme and web connect URLs are supported.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

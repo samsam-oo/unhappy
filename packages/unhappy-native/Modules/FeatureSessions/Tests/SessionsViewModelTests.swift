@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Testing
 @testable import FeatureSessions
 import CoreKit
@@ -150,6 +151,112 @@ struct SessionsViewModelTests {
         #expect(model.selectedSessionID == "session-1")
         #expect(model.selectedSessionMessages == [message])
         #expect(model.selectedSessionErrorMessage == nil)
+    }
+
+    @Test
+    func selectedSessionMessagePollingUpdatesWhenMessagesChange() async throws {
+        let message1 = APISessionMessage(
+            id: "m1",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(t: "encrypted", c: "first"),
+            createdAt: 1,
+            updatedAt: 1
+        )
+        let message2 = APISessionMessage(
+            id: "m2",
+            seq: 2,
+            localId: nil,
+            content: APIEncryptedMessageContent(t: "encrypted", c: "second"),
+            createdAt: 2,
+            updatedAt: 2
+        )
+
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: SequenceMessagesLoader(messagesByCall: [[message1], [message1, message2]]),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        model.startSelectedSessionMessagesPolling(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            interval: .milliseconds(20)
+        )
+
+        try await Task.sleep(for: .milliseconds(120))
+        model.stopSelectedSessionMessagesPolling()
+
+        #expect(model.selectedSessionMessages == [message1, message2])
+    }
+
+    @Test
+    func selectedSessionMessagePollingDoesNotChurnWhenMessagesUnchanged() async throws {
+        let message = APISessionMessage(
+            id: "m1",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(t: "encrypted", c: "stable"),
+            createdAt: 1,
+            updatedAt: 1
+        )
+
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([message])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        var publishCountForStablePayload = 0
+        let cancellable = model.$selectedSessionMessages.sink { messages in
+            if messages == [message] {
+                publishCountForStablePayload += 1
+            }
+        }
+
+        model.startSelectedSessionMessagesPolling(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            interval: .milliseconds(20)
+        )
+
+        try await Task.sleep(for: .milliseconds(120))
+        model.stopSelectedSessionMessagesPolling()
+        cancellable.cancel()
+
+        #expect(model.selectedSessionMessages == [message])
+        #expect(publishCountForStablePayload == 1)
+    }
+
+    @Test
+    func stopSelectedSessionMessagePollingClearsTaskState() async throws {
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        model.startSelectedSessionMessagesPolling(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            interval: .seconds(1)
+        )
+        #expect(model.isSelectedSessionMessagesPolling == true)
+
+        model.stopSelectedSessionMessagesPolling()
+        #expect(model.isSelectedSessionMessagesPolling == false)
     }
 
     @Test
@@ -670,6 +777,24 @@ private struct MockSessionsMessagesLoader: SessionsMessagesLoading {
         case .failure(let error):
             throw error
         }
+    }
+}
+
+private actor SequenceMessagesLoader: SessionsMessagesLoading {
+    private var messagesByCall: [[APISessionMessage]]
+
+    init(messagesByCall: [[APISessionMessage]]) {
+        self.messagesByCall = messagesByCall
+    }
+
+    func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
+        if messagesByCall.isEmpty {
+            return []
+        }
+        if messagesByCall.count == 1 {
+            return messagesByCall[0]
+        }
+        return messagesByCall.removeFirst()
     }
 }
 

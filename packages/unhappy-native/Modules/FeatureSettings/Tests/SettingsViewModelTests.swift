@@ -17,7 +17,8 @@ struct SettingsViewModelTests {
             initialUseEnhancedSessionWizard: true,
             initialVoiceEnabled: true,
             initialVoiceLanguage: .korean,
-            initialDefaultNewSessionAgent: .codex
+            initialDefaultNewSessionAgent: .codex,
+            initialLastViewedChangelogID: "2026.02.21"
         )
         let model = SettingsViewModel(settingsManager: settingsManager)
 
@@ -33,6 +34,8 @@ struct SettingsViewModelTests {
         #expect(model.voiceEnabled == true)
         #expect(model.voiceLanguage == .korean)
         #expect(model.defaultNewSessionAgent == .codex)
+        #expect(model.lastViewedChangelogID == "2026.02.21")
+        #expect(model.hasUnreadChangelog == true)
     }
 
     @Test
@@ -51,6 +54,7 @@ struct SettingsViewModelTests {
         model.voiceEnabled = true
         model.voiceLanguage = .english
         model.defaultNewSessionAgent = .gemini
+        model.lastViewedChangelogID = "2026.02.14"
         await model.waitForPendingPersistence()
 
         let persisted = await settingsManager.loadSettings()
@@ -64,6 +68,27 @@ struct SettingsViewModelTests {
         #expect(persisted.voiceEnabled == true)
         #expect(persisted.voiceLanguage == .english)
         #expect(persisted.defaultNewSessionAgent == .gemini)
+        #expect(persisted.lastViewedChangelogID == "2026.02.14")
+    }
+
+    @Test
+    func markLatestChangelogViewedClearsUnreadAndPersists() async {
+        let settingsManager = MemorySettingsManager(
+            initialLastViewedChangelogID: "2026.02.14"
+        )
+        let model = SettingsViewModel(settingsManager: settingsManager)
+        await model.loadFromStore()
+
+        #expect(model.hasUnreadChangelog == true)
+
+        model.markLatestChangelogViewed()
+        await model.waitForPendingPersistence()
+
+        #expect(model.lastViewedChangelogID == SettingsChangelog.latestEntryID)
+        #expect(model.hasUnreadChangelog == false)
+
+        let persisted = await settingsManager.loadSettings()
+        #expect(persisted.lastViewedChangelogID == SettingsChangelog.latestEntryID)
     }
 }
 
@@ -78,6 +103,7 @@ private actor MemorySettingsManager: SettingsManaging {
     private var savedVoiceEnabled: Bool
     private var savedVoiceLanguage: AppVoiceLanguageOption
     private var savedDefaultNewSessionAgent: APISessionSpawnAgent
+    private var savedLastViewedChangelogID: String
 
     init(
         initialServerURLString: String = "https://api.unhappy.im",
@@ -89,7 +115,8 @@ private actor MemorySettingsManager: SettingsManaging {
         initialUseEnhancedSessionWizard: Bool = false,
         initialVoiceEnabled: Bool = false,
         initialVoiceLanguage: AppVoiceLanguageOption = .system,
-        initialDefaultNewSessionAgent: APISessionSpawnAgent = .claude
+        initialDefaultNewSessionAgent: APISessionSpawnAgent = .claude,
+        initialLastViewedChangelogID: String = ""
     ) {
         self.savedServerURLString = initialServerURLString
         self.savedAPIToken = initialAPIToken
@@ -101,6 +128,7 @@ private actor MemorySettingsManager: SettingsManaging {
         self.savedVoiceEnabled = initialVoiceEnabled
         self.savedVoiceLanguage = initialVoiceLanguage
         self.savedDefaultNewSessionAgent = initialDefaultNewSessionAgent
+        self.savedLastViewedChangelogID = initialLastViewedChangelogID
     }
 
     func loadSettings() async -> AppSettingsSnapshot {
@@ -114,7 +142,8 @@ private actor MemorySettingsManager: SettingsManaging {
             useEnhancedSessionWizard: savedUseEnhancedSessionWizard,
             voiceEnabled: savedVoiceEnabled,
             voiceLanguage: savedVoiceLanguage,
-            defaultNewSessionAgent: savedDefaultNewSessionAgent
+            defaultNewSessionAgent: savedDefaultNewSessionAgent,
+            lastViewedChangelogID: savedLastViewedChangelogID
         )
     }
 
@@ -128,7 +157,8 @@ private actor MemorySettingsManager: SettingsManaging {
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
         voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent
+        defaultNewSessionAgent: APISessionSpawnAgent,
+        lastViewedChangelogID: String
     ) async {
         savedServerURLString = serverURLString
         savedAPIToken = apiToken
@@ -140,5 +170,6 @@ private actor MemorySettingsManager: SettingsManaging {
         savedVoiceEnabled = voiceEnabled
         savedVoiceLanguage = voiceLanguage
         savedDefaultNewSessionAgent = defaultNewSessionAgent
+        savedLastViewedChangelogID = lastViewedChangelogID
     }
 }

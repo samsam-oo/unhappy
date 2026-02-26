@@ -1,15 +1,17 @@
-name: Expo App TypeScript typecheck
+name: Monorepo TypeScript typecheck
 
 on:
     pull_request:
         paths:
-            - 'packages/unhappy-app/**'
+            - 'packages/unhappy-cli/**'
+            - 'packages/unhappy-server/**'
             - '.github/workflows/typecheck.yml'
     push:
         branches:
             - main
         paths:
-            - 'packages/unhappy-app/**'
+            - 'packages/unhappy-cli/**'
+            - 'packages/unhappy-server/**'
             - '.github/workflows/typecheck.yml'
 
 jobs:
@@ -29,5 +31,8 @@ jobs:
             - name: Install dependencies
               run: yarn install --frozen-lockfile
 
-            - name: TypeScript typecheck
-              run: yarn workspace unhappy-app typecheck
+            - name: TypeScript typecheck (CLI)
+              run: yarn workspace unhappy-cli typecheck
+
+            - name: TypeScript typecheck (Server)
+              run: yarn workspace unhappy-server build

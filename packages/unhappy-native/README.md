@@ -60,6 +60,7 @@ Targets use `buildableFolders` so file add/remove in those folders does not requ
 
 ```bash
 cd packages/unhappy-native
+UNHAPPY_DEVELOPMENT_TEAM=Q23JLSJCCV \
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer tuist generate --no-open
 ```
 

@@ -5,7 +5,7 @@ import CoreKit
 
 struct NewSessionUseCasesTests {
     @Test
-    func loadMachinesSortsActiveFirst() async throws {
+    func loadMachinesIncludesOnlyActiveMachines() async throws {
         let rows = [
             APIMachine(
                 id: "offline",
@@ -39,7 +39,7 @@ struct NewSessionUseCasesTests {
             token: "token"
         )
 
-        #expect(loaded.map(\.id) == ["online", "offline"])
+        #expect(loaded.map(\.id) == ["online"])
     }
 
     @Test

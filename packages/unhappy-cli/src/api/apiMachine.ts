@@ -230,6 +230,7 @@ export class ApiMachineClient {
       }, 100);
 
       return {
+        success: true,
         message:
           'Daemon stop request acknowledged, starting shutdown sequence...',
       };

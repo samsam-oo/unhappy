@@ -249,7 +249,13 @@ private struct SessionsRow: View {
     }
 
     private var sessionDisplayTitle: String {
-        normalizedDisplayTitle ?? "Untitled"
+        if let normalizedDisplayTitle {
+            return normalizedDisplayTitle
+        }
+        if let seq = session.seq, seq > 0 {
+            return "Session #\(seq)"
+        }
+        return "Session"
     }
 }
 

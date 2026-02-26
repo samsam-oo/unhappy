@@ -117,7 +117,8 @@ private actor MockSettingsManager: SettingsManaging {
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
         voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent
+        defaultNewSessionAgent: APISessionSpawnAgent,
+        lastViewedChangelogID: String
     ) async {}
 }
 

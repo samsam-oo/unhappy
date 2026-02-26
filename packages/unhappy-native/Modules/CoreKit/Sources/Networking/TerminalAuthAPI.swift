@@ -37,7 +37,12 @@ public enum TerminalAuthAPI {
         guard var components = URLComponents(url: statusURL, resolvingAgainstBaseURL: false) else {
             throw URLError(.badURL)
         }
-        components.queryItems = [URLQueryItem(name: "publicKey", value: normalizedPublicKey)]
+        guard let encodedPublicKey = normalizedPublicKey.addingPercentEncoding(
+            withAllowedCharacters: queryValueAllowedCharacters
+        ) else {
+            throw URLError(.badURL)
+        }
+        components.percentEncodedQuery = "publicKey=\(encodedPublicKey)"
         guard let requestURL = components.url else {
             throw URLError(.badURL)
         }
@@ -91,6 +96,12 @@ public enum TerminalAuthAPI {
         return try decoder.decode(APITerminalAuthApproveResult.self, from: data)
     }
 }
+
+private let queryValueAllowedCharacters: CharacterSet = {
+    var set = CharacterSet.alphanumerics
+    set.insert(charactersIn: "-._~")
+    return set
+}()
 
 public enum TerminalAuthAPIError: LocalizedError, Equatable {
     case missingToken

@@ -111,15 +111,14 @@ public actor NewSessionMachinesLoadUseCase: NewSessionMachinesLoadingAction {
             directory: nil
         )
         let rows = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
-        return rows.sorted { lhs, rhs in
-            if lhs.active != rhs.active {
-                return lhs.active && !rhs.active
-            }
+        return rows
+            .filter(\.active)
+            .sorted { lhs, rhs in
             if lhs.activeAt != rhs.activeAt {
                 return lhs.activeAt > rhs.activeAt
             }
             return lhs.updatedAt > rhs.updatedAt
-        }
+            }
     }
 }
 

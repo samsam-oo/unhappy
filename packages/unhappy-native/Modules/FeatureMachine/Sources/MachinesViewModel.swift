@@ -33,6 +33,7 @@ public final class MachinesViewModel: ObservableObject {
     }
 
     public func loadMachines(serverURLString: String, token: String) async {
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -139,6 +140,7 @@ public final class MachinesViewModel: ObservableObject {
                 token: token,
                 machineID: machineID
             )
+            machines.removeAll { $0.id == machineID }
             statusByMachineID[machineID] = result.message
             errorByMachineID[machineID] = nil
         } catch {

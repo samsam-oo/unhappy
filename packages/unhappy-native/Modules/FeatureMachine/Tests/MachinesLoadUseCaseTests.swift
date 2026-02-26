@@ -17,7 +17,7 @@ struct MachinesLoadUseCaseTests {
     }
 
     @Test
-    func loadMachinesSortsOnlineMachinesFirst() async throws {
+    func loadMachinesIncludesOnlyOnlineMachines() async throws {
         let rows = [
             APIMachine(
                 id: "offline",
@@ -51,7 +51,7 @@ struct MachinesLoadUseCaseTests {
             token: "token"
         )
 
-        #expect(loaded.map(\.id) == ["online", "offline"])
+        #expect(loaded.map(\.id) == ["online"])
     }
 
     @Test
