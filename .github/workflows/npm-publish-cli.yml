@@ -37,6 +37,9 @@ jobs:
           cache: yarn
           cache-dependency-path: yarn.lock
 
+      - name: Normalize npm user config for npm 11+
+        run: npm config delete always-auth --location=user || true
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
