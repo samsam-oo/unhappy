@@ -24,6 +24,7 @@ struct SessionsAPITests {
           "sessions": [
             {
               "id": "s1",
+              "displayName": "Session One",
               "active": true,
               "activeAt": 1700000000,
               "createdAt": 1699999900,
@@ -39,8 +40,58 @@ struct SessionsAPITests {
 
         #expect(sessions.count == 1)
         #expect(sessions.first?.id == "s1")
+        #expect(sessions.first?.displayName == "Session One")
         #expect(sessions.first?.active == true)
         #expect(sessions.first?.metadataVersion == 1)
+    }
+
+    @Test
+    func decodeListResponseRepairsMojibakeDisplayName() throws {
+        let json = """
+        {
+          "sessions": [
+            {
+              "id": "s1",
+              "displayName": "ìë",
+              "active": true,
+              "activeAt": 1700000000,
+              "createdAt": 1699999900,
+              "updatedAt": 1700000010,
+              "metadataVersion": 1,
+              "metadata": "ZW5jcnlwdGVk"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let sessions = try SessionsAPI.decodeListResponse(json)
+        #expect(sessions.first?.displayName == "안녕")
+    }
+
+    @Test
+    func decodeListResponseNormalizesMillisecondTimestampsToSeconds() throws {
+        let json = """
+        {
+          "sessions": [
+            {
+              "id": "s1",
+              "active": true,
+              "activeAt": 1700000000000,
+              "createdAt": 1699999900000,
+              "updatedAt": 1700000010000,
+              "metadataVersion": 1,
+              "metadata": "ZW5jcnlwdGVk"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let sessions = try SessionsAPI.decodeListResponse(json)
+        let row = try #require(sessions.first)
+
+        #expect(row.activeAt == 1_700_000_000)
+        #expect(row.createdAt == 1_699_999_900)
+        #expect(row.updatedAt == 1_700_000_010)
     }
 
     @Test
@@ -132,6 +183,57 @@ struct SessionsAPITests {
         #expect(messages.first?.seq == 7)
         #expect(messages.first?.localId == "l-1")
         #expect(messages.first?.content?.t == "encrypted")
+    }
+
+    @Test
+    func decodeMessagesResponseNormalizesMillisecondsAndStringContent() throws {
+        let json = """
+        {
+          "messages": [
+            {
+              "id": "m1",
+              "seq": "7",
+              "localId": "l-1",
+              "content": "ZW5jcnlwdGVk",
+              "createdAt": 1700000001000,
+              "updatedAt": 1700000002000
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let messages = try SessionsAPI.decodeMessagesResponse(json)
+        let first = try #require(messages.first)
+
+        #expect(first.seq == 7)
+        #expect(first.content?.t == "encrypted")
+        #expect(first.content?.c == "ZW5jcnlwdGVk")
+        #expect(first.createdAt == 1_700_000_001)
+        #expect(first.updatedAt == 1_700_000_002)
+    }
+
+    @Test
+    func decodeMessagesResponseSupportsItemsContainer() throws {
+        let json = """
+        {
+          "items": [
+            {
+              "id": "m1",
+              "seq": 1,
+              "content": {
+                "t": "encrypted",
+                "c": "ZW5jcnlwdGVk"
+              },
+              "createdAt": 1700000001,
+              "updatedAt": 1700000002
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let messages = try SessionsAPI.decodeMessagesResponse(json)
+        #expect(messages.count == 1)
+        #expect(messages.first?.id == "m1")
     }
 
     @Test
@@ -248,6 +350,25 @@ struct SessionsAPITests {
     }
 
     @Test
+    func codexThreadsRequestIncludesCursorWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeCodexThreadsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 20,
+            cwd: "/tmp/workspace",
+            cursor: "40"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/sessions/session-1/codex/threads?limit=20&cwd=/tmp/workspace&cursor=40"
+        )
+    }
+
+    @Test
     func decodeCodexThreadsResponseParsesRows() throws {
         let json = """
         {
@@ -271,6 +392,55 @@ struct SessionsAPITests {
         #expect(threads.first?.id == "thread_1")
         #expect(threads.first?.name == "Feature Work")
         #expect(threads.first?.cwd == "/tmp/work")
+    }
+
+    @Test
+    func decodeCodexThreadsResponseRepairsMojibakeName() throws {
+        let json = """
+        {
+          "success": true,
+          "threads": [
+            {
+              "id": "thread_1",
+              "name": "ìë",
+              "cwd": "/tmp/work",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z",
+              "archived": false
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let threads = try SessionsAPI.decodeCodexThreadsResponse(json)
+        #expect(threads.first?.name == "안녕")
+    }
+
+    @Test
+    func decodeCodexThreadsPageResponseParsesPaginationMetadata() throws {
+        let json = """
+        {
+          "success": true,
+          "threads": [
+            {
+              "id": "thread_1",
+              "name": "Feature Work",
+              "cwd": "/tmp/work",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z",
+              "archived": false
+            }
+          ],
+          "nextCursor": "20",
+          "hasNext": true
+        }
+        """.data(using: .utf8)!
+
+        let page = try SessionsAPI.decodeCodexThreadsPageResponse(json)
+
+        #expect(page.threads.count == 1)
+        #expect(page.nextCursor == "20")
+        #expect(page.hasNext == true)
     }
 
     @Test
@@ -308,6 +478,25 @@ struct SessionsAPITests {
     }
 
     @Test
+    func claudeSessionsRequestIncludesCursorWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeClaudeSessionsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 12,
+            cwd: "/tmp/workspace",
+            cursor: "24"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/sessions/session-1/claude/sessions?limit=12&cwd=/tmp/workspace&cursor=24"
+        )
+    }
+
+    @Test
     func decodeClaudeSessionsResponseParsesRows() throws {
         let json = """
         {
@@ -328,6 +517,31 @@ struct SessionsAPITests {
         #expect(sessions.count == 1)
         #expect(sessions.first?.id == "a1b2c3d4-1111-2222-3333-444444444444")
         #expect(sessions.first?.cwd == "/tmp/repo")
+    }
+
+    @Test
+    func decodeClaudeSessionsPageResponseParsesPaginationMetadata() throws {
+        let json = """
+        {
+          "success": true,
+          "sessions": [
+            {
+              "id": "a1b2c3d4-1111-2222-3333-444444444444",
+              "cwd": "/tmp/repo",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z"
+            }
+          ],
+          "nextCursor": "12",
+          "hasNext": true
+        }
+        """.data(using: .utf8)!
+
+        let page = try SessionsAPI.decodeClaudeSessionsPageResponse(json)
+
+        #expect(page.sessions.count == 1)
+        #expect(page.nextCursor == "12")
+        #expect(page.hasNext == true)
     }
 
     @Test
@@ -400,5 +614,347 @@ struct SessionsAPITests {
         #expect(response.requiresUserApproval == true)
         #expect(response.actionRequired == "CREATE_DIRECTORY")
         #expect(response.directory == "/tmp/new-project")
+    }
+
+    @Test
+    func sessionAbortRequestUsesExpectedPathAndOptionalBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionAbortRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            reason: "user-requested"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/abort")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["reason"] as? String == "user-requested")
+    }
+
+    @Test
+    func sessionPermissionRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionPermissionRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            permissionRequestID: "perm_123",
+            approved: true,
+            mode: .acceptEdits,
+            allowTools: ["bash", "readFile"],
+            decision: .approvedForSession
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/permission")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["id"] as? String == "perm_123")
+        #expect(payload?["approved"] as? Bool == true)
+        #expect(payload?["mode"] as? String == "acceptEdits")
+        #expect(payload?["decision"] as? String == "approved_for_session")
+    }
+
+    @Test
+    func sessionSwitchRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionSwitchRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            to: .local
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/switch")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["to"] as? String == "local")
+    }
+
+    @Test
+    func sessionSendMessageRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionSendMessageRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            text: "Run tests",
+            steerMode: .immediate
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/message")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["text"] as? String == "Run tests")
+        #expect(payload?["steerMode"] as? String == "immediate")
+    }
+
+    @Test
+    func decodeSessionCommandResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionCommandResponse(json)
+        #expect(response.success == true)
+    }
+
+    @Test
+    func decodeSessionSwitchResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "switched": true
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionSwitchResponse(json)
+        #expect(response.success == true)
+        #expect(response.switched == true)
+    }
+
+    @Test
+    func decodeSessionSendMessageResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionSendMessageResponse(json)
+        #expect(response.success == true)
+    }
+
+    @Test
+    func sessionBashRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionBashRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            command: "ls -la",
+            cwd: "/tmp/work",
+            timeout: 20_000
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/bash")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["command"] as? String == "ls -la")
+        #expect(payload?["cwd"] as? String == "/tmp/work")
+        #expect(payload?["timeout"] as? Int == 20_000)
+    }
+
+    @Test
+    func sessionRipgrepRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionRipgrepRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            args: ["TODO", "Sources"],
+            cwd: "/tmp/work"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/ripgrep")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect((payload?["args"] as? [String]) == ["TODO", "Sources"])
+        #expect(payload?["cwd"] as? String == "/tmp/work")
+    }
+
+    @Test
+    func sessionDifftasticRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionDifftasticRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            args: ["--display", "inline", "HEAD~1", "HEAD"],
+            cwd: "/tmp/work"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/difftastic")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect((payload?["args"] as? [String]) == ["--display", "inline", "HEAD~1", "HEAD"])
+        #expect(payload?["cwd"] as? String == "/tmp/work")
+    }
+
+    @Test
+    func sessionReadFileRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionReadFileRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            path: "/tmp/work/file.txt"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/read-file")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["path"] as? String == "/tmp/work/file.txt")
+    }
+
+    @Test
+    func sessionWriteFileRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionWriteFileRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            path: "/tmp/work/file.txt",
+            content: "aGVsbG8gdXBkYXRlZA==",
+            expectedHash: "abc123"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/write-file")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["path"] as? String == "/tmp/work/file.txt")
+        #expect(payload?["content"] as? String == "aGVsbG8gdXBkYXRlZA==")
+        #expect(payload?["expectedHash"] as? String == "abc123")
+    }
+
+    @Test
+    func sessionListDirectoryRequestUsesExpectedPathAndBody() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionListDirectoryRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            path: "/tmp/work",
+            includeStats: true,
+            types: ["file", "directory"],
+            sort: true,
+            maxEntries: 200
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/commands/list-directory")
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["path"] as? String == "/tmp/work")
+        #expect(payload?["maxEntries"] as? Int == 200)
+    }
+
+    @Test
+    func sessionKillRequestUsesExpectedPathAndMethod() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionKillRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1"
+        )
+
+        #expect(request.httpMethod == "POST")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/sessions/session-1/kill")
+    }
+
+    @Test
+    func decodeSessionReadFileResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "content": "aGVsbG8="
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionReadFileResponse(json)
+        #expect(response.success == true)
+        #expect(response.content == "aGVsbG8=")
+    }
+
+    @Test
+    func decodeSessionWriteFileResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "hash": "next-hash"
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionWriteFileResponse(json)
+        #expect(response.success == true)
+        #expect(response.hash == "next-hash")
+    }
+
+    @Test
+    func decodeSessionListDirectoryResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "entries": [
+            {
+              "name": "Sources",
+              "type": "directory",
+              "size": 4096,
+              "modified": 1700000000
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionListDirectoryResponse(json)
+        #expect(response.success == true)
+        #expect(response.entries?.count == 1)
+        #expect(response.entries?.first?.name == "Sources")
+        #expect(response.entries?.first?.type == "directory")
+    }
+
+    @Test
+    func decodeSessionRipgrepResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "stdout": "Sources/App.swift:12:TODO",
+          "stderr": "",
+          "exitCode": 0
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionRipgrepResponse(json)
+        #expect(response.success == true)
+        #expect(response.stdout.contains("TODO"))
+        #expect(response.exitCode == 0)
+    }
+
+    @Test
+    func decodeSessionDifftasticResponseParsesPayload() throws {
+        let json = """
+        {
+          "success": true,
+          "stdout": "diff --git a/a.txt b/a.txt",
+          "stderr": "",
+          "exitCode": 0
+        }
+        """.data(using: .utf8)!
+
+        let response = try SessionsAPI.decodeSessionDifftasticResponse(json)
+        #expect(response.success == true)
+        #expect(response.stdout.contains("diff --git"))
+        #expect(response.exitCode == 0)
     }
 }

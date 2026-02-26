@@ -120,6 +120,7 @@ interface DifftasticResponse {
 interface ClaudeListSessionsRequest {
     cwd?: string;
     limit?: number;
+    cursor?: string;
 }
 
 interface ClaudeSessionSummary {
@@ -132,6 +133,8 @@ interface ClaudeSessionSummary {
 interface ClaudeListSessionsResponse {
     success: boolean;
     sessions?: ClaudeSessionSummary[];
+    nextCursor?: string;
+    hasNext?: boolean;
     error?: string;
 }
 
@@ -149,7 +152,7 @@ export interface SpawnSessionOptions {
     // Optional explicit Claude session id to resume on first turn.
     claudeResumeSessionId?: string;
     approvedNewDirectoryCreation?: boolean;
-    agent?: 'claude' | 'codex' | 'gemini';
+    agent: 'claude' | 'codex' | 'gemini';
     token?: string;
     environmentVariables?: {
         // Anthropic Claude API configuration
@@ -275,6 +278,13 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
                     ? Math.floor(data.limit)
                     : 20;
             const limit = Math.max(1, Math.min(100, limitRaw));
+            const cursorRaw = typeof data?.cursor === 'string' ? data.cursor.trim() : '';
+            const offset = (() => {
+                if (!cursorRaw) return 0;
+                const parsed = Number.parseInt(cursorRaw, 10);
+                if (!Number.isFinite(parsed) || parsed < 0) return 0;
+                return parsed;
+            })();
 
             try {
                 const projectDir = getProjectPath(cwd);
@@ -312,20 +322,27 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
                         })
                 );
 
-                const sessions = rows
+                const orderedRows = rows
                     .filter((row): row is NonNullable<typeof row> => row !== null)
-                    .sort((lhs, rhs) => rhs.updatedAtMs - lhs.updatedAtMs)
-                    .slice(0, limit)
+                    .sort((lhs, rhs) => rhs.updatedAtMs - lhs.updatedAtMs);
+                const start = Math.min(offset, orderedRows.length);
+                const end = Math.min(start + limit, orderedRows.length);
+                const sessions = orderedRows
+                    .slice(start, end)
                     .map((row) => ({
                         id: row.id,
                         cwd: row.cwd,
                         createdAt: row.createdAt,
                         updatedAt: row.updatedAt
                     }));
+                const hasNext = end < orderedRows.length;
+                const nextCursor = hasNext ? String(end) : undefined;
 
                 return {
                     success: true,
-                    sessions
+                    sessions,
+                    hasNext,
+                    nextCursor
                 };
             } catch (error) {
                 logger.debug('Failed to list Claude sessions:', error);

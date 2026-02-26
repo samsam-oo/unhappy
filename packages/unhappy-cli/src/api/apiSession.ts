@@ -123,12 +123,66 @@ export class ApiSessionClient extends EventEmitter {
                     callback({ success: false, error: 'Command is required' });
                     return;
                 }
-                if (
-                    command !== 'codex-list-threads' &&
-                    command !== 'codex-set-thread-name' &&
-                    command !== 'claude-list-sessions'
-                ) {
+                const supportedCommands = new Set([
+                    'abort',
+                    'permission',
+                    'switch',
+                    'sendMessage',
+                    'bash',
+                    'readFile',
+                    'writeFile',
+                    'listDirectory',
+                    'getDirectoryTree',
+                    'ripgrep',
+                    'difftastic',
+                    'killSession',
+                    'codex-list-threads',
+                    'codex-set-thread-name',
+                    'claude-list-sessions'
+                ]);
+                if (!supportedCommands.has(command)) {
                     callback({ success: false, error: 'Unsupported command' });
+                    return;
+                }
+                if (command === 'sendMessage') {
+                    const textRaw = typeof data?.params?.text === 'string' ? data.params.text : '';
+                    const text = textRaw.trim();
+                    if (!text) {
+                        callback({ success: false, error: 'Message text is required' });
+                        return;
+                    }
+                    const steerModeRaw = data?.params?.steerMode;
+                    const steerMode =
+                        steerModeRaw === 'immediate'
+                            ? 'immediate'
+                            : steerModeRaw === 'queue'
+                                ? 'queue'
+                                : undefined;
+
+                    if (!this.socket.connected) {
+                        callback({ success: false, error: 'Session socket is not connected' });
+                        return;
+                    }
+
+                    const content: MessageContent = {
+                        role: 'user',
+                        content: {
+                            type: 'text',
+                            text
+                        },
+                        meta: {
+                            sentFrom: 'native',
+                            ...(steerMode ? { steerMode } : {})
+                        }
+                    };
+                    const encrypted = encodeBase64(
+                        encrypt(this.encryptionKey, this.encryptionVariant, content)
+                    );
+                    this.socket.emit('message', {
+                        sid: this.sessionId,
+                        message: encrypted
+                    });
+                    callback({ success: true });
                     return;
                 }
                 if (!this.rpcHandlerManager.hasHandler(command)) {
@@ -140,6 +194,10 @@ export class ApiSessionClient extends EventEmitter {
                         command,
                         data?.params ?? {},
                     );
+                    if (typeof result === 'undefined') {
+                        callback({ success: true });
+                        return;
+                    }
                     callback(result);
                 } catch (error) {
                     callback({

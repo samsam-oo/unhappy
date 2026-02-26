@@ -1,0 +1,62 @@
+name: Publish unhappy-cli to npm
+
+on:
+  push:
+    tags:
+      - "unhappy-cli-v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run npm publish in dry-run mode"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Ensure tag version matches package version
+        if: github.event_name == 'push'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#unhappy-cli-v}"
+          PACKAGE_VERSION="$(node -p "require('./packages/unhappy-cli/package.json').version")"
+          if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
+            echo "Tag version ($TAG_VERSION) does not match package version ($PACKAGE_VERSION)"
+            exit 1
+          fi
+
+      - name: Build unhappy-cli
+        run: yarn workspace unhappy-cli build
+
+      - name: Publish unhappy-cli (dry-run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        working-directory: packages/unhappy-cli
+        run: npm publish --access public --provenance --dry-run
+
+      - name: Publish unhappy-cli
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        working-directory: packages/unhappy-cli
+        run: npm publish --access public --provenance

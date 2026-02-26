@@ -384,6 +384,18 @@ export async function startDaemon(): Promise<void> {
         machineId,
         approvedNewDirectoryCreation = true,
       } = options;
+      if (
+        options.agent !== 'claude' &&
+        options.agent !== 'codex' &&
+        options.agent !== 'gemini'
+      ) {
+        return {
+          type: 'error',
+          errorMessage:
+            "Agent is required. Choose one of: 'claude', 'codex', 'gemini'.",
+        };
+      }
+      const resolvedAgent = options.agent;
       const normalizedCodexResumeThreadId =
         typeof codexResumeThreadId === 'string' &&
         codexResumeThreadId.trim().length > 0
@@ -456,7 +468,7 @@ export async function startDaemon(): Promise<void> {
         // Layer 1: Resolve authentication token if provided
         const authEnv: Record<string, string> = {};
         if (options.token) {
-          if (options.agent === 'codex') {
+          if (resolvedAgent === 'codex') {
             // Use a stable CODEX_HOME so Codex transcripts can be resumed after restarts.
             // We still (re)write auth.json before spawning to avoid startup races.
             const codexHomeDir = join(configuration.unhappyHomeDir, 'codex-home');
@@ -475,9 +487,12 @@ export async function startDaemon(): Promise<void> {
             } catch {}
 
             authEnv.CODEX_HOME = codexHomeDir;
-          } else {
-            // Assuming claude
+          } else if (resolvedAgent === 'claude') {
             authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
+          } else {
+            logger.debug(
+              '[DAEMON RUN] Ignoring generic token payload for Gemini spawn (Gemini auth uses profile/env vars or local OAuth config)',
+            );
           }
         }
 
@@ -509,11 +524,11 @@ export async function startDaemon(): Promise<void> {
               // Get profile environment variables filtered for agent compatibility
               profileEnv = await getProfileEnvironmentVariablesForAgent(
                 settings.activeProfileId,
-                options.agent || 'claude',
+                resolvedAgent,
               );
 
               logger.debug(
-                `[DAEMON RUN] Loaded ${Object.keys(profileEnv).length} environment variables from CLI local profile for agent ${options.agent || 'claude'}`,
+                `[DAEMON RUN] Loaded ${Object.keys(profileEnv).length} environment variables from CLI local profile for agent ${resolvedAgent}`,
               );
               logger.debug(
                 `[DAEMON RUN] CLI profile env var keys: ${Object.keys(profileEnv).join(', ')}`,
@@ -551,12 +566,7 @@ export async function startDaemon(): Promise<void> {
         // even when spawning a different agent. Node spawn doesn't expand ${...}, so we expand from daemon env.
         // If a profile for another agent is accidentally selected, we should not block spawning by validating
         // irrelevant auth vars (e.g. ANTHROPIC_AUTH_TOKEN when spawning Codex/Gemini).
-        const agentType: 'claude' | 'codex' | 'gemini' =
-          options.agent === 'gemini'
-            ? 'gemini'
-            : options.agent === 'codex'
-              ? 'codex'
-              : 'claude';
+        const agentType: 'claude' | 'codex' | 'gemini' = resolvedAgent;
 
         const potentialAuthVars =
           agentType === 'claude'
@@ -639,12 +649,7 @@ export async function startDaemon(): Promise<void> {
           // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           // Determine agent command - support claude, codex, and gemini
-          const agent =
-            options.agent === 'gemini'
-              ? 'gemini'
-              : options.agent === 'codex'
-                ? 'codex'
-                : 'claude';
+          const agent = resolvedAgent;
           let fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --unhappy-starting-mode remote --started-by daemon`;
           if (agent === 'codex' && normalizedCodexResumeThreadId) {
             fullCommand += ` --resume-thread-id ${JSON.stringify(normalizedCodexResumeThreadId)}`;
@@ -749,9 +754,8 @@ export async function startDaemon(): Promise<void> {
 
           // Construct arguments for the CLI - support claude, codex, and gemini
           let agentCommand: string;
-          switch (options.agent) {
+          switch (resolvedAgent) {
             case 'claude':
-            case undefined:
               agentCommand = 'claude';
               break;
             case 'codex':

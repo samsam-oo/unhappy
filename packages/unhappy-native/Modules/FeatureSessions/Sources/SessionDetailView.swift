@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import FeatureSessionTools
 
 @MainActor
 public struct SessionDetailView: View {
@@ -7,6 +8,7 @@ public struct SessionDetailView: View {
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
+    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirmation = false
@@ -15,42 +17,32 @@ public struct SessionDetailView: View {
     @State private var showClaudeSessionsSheet = false
     @State private var renameDraft = ""
     @State private var codexCwdFilterDraft = ""
+    @State private var codexResumeDirectoryDraft = ""
     @State private var claudeCwdFilterDraft = ""
     @State private var claudeResumeDirectoryDraft = ""
+    @State private var draftMessage = ""
+    @State private var steerMode: APISessionSteerMode = .queue
 
     public init(
         session: APISession,
         viewModel: SessionsViewModel,
         serverURLString: String,
-        token: String
+        token: String,
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.session = session
         self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
+        self.makeSessionToolsViewModel = makeSessionToolsViewModel
     }
 
     public var body: some View {
         List {
-            Section("Multi-Agent") {
-                HStack {
-                    Text(viewModel.activeSessionsCount == 1 ? "1 active session" : "\(viewModel.activeSessionsCount) active sessions")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(viewModel.multiAgentInProgress ? "진행중" : "완료됨")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(viewModel.multiAgentInProgress ? Color.green.opacity(0.16) : Color.gray.opacity(0.14))
-                        .foregroundStyle(viewModel.multiAgentInProgress ? Color.green : Color.secondary)
-                        .clipShape(Capsule())
-                }
-            }
-
             Section("Session") {
                 LabeledContent("Title") {
-                    Text(currentSession.displayName ?? "Untitled")
-                        .foregroundStyle(currentSession.displayName == nil ? .secondary : .primary)
+                    Text(currentSessionTitle)
+                        .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
                 }
                 LabeledContent("ID") {
                     Text(currentSession.id)
@@ -62,6 +54,52 @@ public struct SessionDetailView: View {
                 }
                 LabeledContent("Updated") {
                     Text(Date(timeIntervalSince1970: currentSession.updatedAt), style: .relative)
+                }
+            }
+
+            Section("Tools") {
+                NavigationLink {
+                    SessionInfoView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("Session Info", systemImage: "info.circle")
+                }
+
+                NavigationLink {
+                    SessionFileView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("File Viewer", systemImage: "doc.text")
+                }
+
+                NavigationLink {
+                    SessionReviewView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("Review Diff", systemImage: "doc.text.magnifyingglass")
+                }
+
+                NavigationLink {
+                    SessionFinishView(
+                        session: currentSession,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    Label("Finish Worktree", systemImage: "checkmark.circle")
                 }
             }
 
@@ -91,8 +129,61 @@ public struct SessionDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(viewModel.selectedSessionMessages) { message in
-                        SessionMessageRow(message: message)
+                        NavigationLink {
+                            SessionMessageDetailView(
+                                presentation: SessionMessageDetailPresentationBuilder.make(from: message)
+                            )
+                        } label: {
+                            SessionMessageRow(message: message)
+                        }
                     }
+                }
+            }
+
+            Section("Composer") {
+                TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
+                    .lineLimit(2...6)
+                    .textInputAutocapitalization(.sentences)
+
+                Picker("Send Mode", selection: $steerMode) {
+                    Text("Queue").tag(APISessionSteerMode.queue)
+                    Text("Steer").tag(APISessionSteerMode.immediate)
+                }
+                .pickerStyle(.segmented)
+
+                Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send Message") {
+                    let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    Task {
+                        let sent = await viewModel.sendMessage(
+                            for: session.id,
+                            text: text,
+                            steerMode: steerMode,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        if sent {
+                            draftMessage = ""
+                            if steerMode == .immediate {
+                                steerMode = .queue
+                            }
+                        }
+                    }
+                }
+                .disabled(
+                    viewModel.isSendingMessage(sessionID: session.id) ||
+                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+
+                if let status = viewModel.sendMessageStatusMessage {
+                    Text(status)
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                }
+                if let error = viewModel.sendMessageErrorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
                 }
             }
         }
@@ -106,6 +197,9 @@ public struct SessionDetailView: View {
                     Menu {
                         Button("List Codex Sessions", systemImage: "list.bullet") {
                             showCodexThreadsSheet = true
+                            if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                codexResumeDirectoryDraft = codexCwdFilterDraft
+                            }
                             Task {
                                 await viewModel.loadCodexThreads(
                                     for: session.id,
@@ -142,8 +236,8 @@ public struct SessionDetailView: View {
                 }
             }
         }
-        .task(id: session.id) {
-            await viewModel.loadMessages(
+        .onAppear {
+            viewModel.startSelectedSessionMessagesPolling(
                 for: session.id,
                 serverURLString: serverURLString,
                 token: token
@@ -157,6 +251,7 @@ public struct SessionDetailView: View {
             )
         }
         .onDisappear {
+            viewModel.stopSelectedSessionMessagesPolling()
             viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
         }
         .sheet(isPresented: $showRenameSheet) {
@@ -216,6 +311,24 @@ public struct SessionDetailView: View {
                         }
                         .disabled(viewModel.isLoadingCodexThreads)
                     }
+                    Section("Resume") {
+                        TextField("Directory for resumed session", text: $codexResumeDirectoryDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Text("If empty, selected row cwd is used.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if let status = viewModel.codexResumeStatusMessage {
+                            Text(status)
+                                .font(.footnote)
+                                .foregroundStyle(.green)
+                        }
+                        if let error = viewModel.codexResumeErrorMessage {
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
+                        }
+                    }
 
                     if viewModel.isLoadingCodexThreads {
                         ProgressView("Loading Codex sessions…")
@@ -243,7 +356,32 @@ public struct SessionDetailView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(viewModel.selectedCodexThreads) { thread in
-                            CodexThreadRow(thread: thread)
+                            Button {
+                                let resumeDirectory =
+                                    normalizedCWD(from: codexResumeDirectoryDraft)
+                                    ?? normalizedCWD(from: thread.cwd ?? "")
+                                    ?? normalizedCWD(from: codexCwdFilterDraft)
+                                    ?? ""
+                                Task {
+                                    await viewModel.resumeCodexThread(
+                                        from: session.id,
+                                        codexResumeThreadID: thread.id,
+                                        serverURLString: serverURLString,
+                                        token: token,
+                                        directory: resumeDirectory
+                                    )
+                                }
+                            } label: {
+                                CodexThreadRow(
+                                    thread: thread,
+                                    isResuming: viewModel.codexResumeInProgressThreadID == thread.id
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(
+                                viewModel.isResumingCodexSession &&
+                                    viewModel.codexResumeInProgressThreadID != thread.id
+                            )
                         }
                     }
                 }
@@ -392,6 +530,23 @@ public struct SessionDetailView: View {
         viewModel.sessions.first(where: { $0.id == session.id }) ?? session
     }
 
+    private var currentSessionDisplayTitle: String? {
+        guard let raw = currentSession.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              raw != currentSession.id else {
+            return nil
+        }
+        return raw
+    }
+
+    private var currentSessionHasDisplayTitle: Bool {
+        currentSessionDisplayTitle != nil
+    }
+
+    private var currentSessionTitle: String {
+        currentSessionDisplayTitle ?? "Untitled"
+    }
+
     private func normalizedCWD(from value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
@@ -411,12 +566,24 @@ private struct CodexThreadRow: View {
     }()
 
     let thread: APICodexThreadSummary
+    let isResuming: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(threadName)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                Text(threadName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                if isResuming {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Resume")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
             Text(thread.id)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
@@ -533,5 +700,88 @@ private struct SessionMessageRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct SessionMessageDetailView: View {
+    let presentation: SessionMessageDetailPresentation
+
+    var body: some View {
+        List {
+            Section("Overview") {
+                LabeledContent("Sequence") {
+                    Text(presentation.sequenceText)
+                        .font(.footnote.monospaced())
+                }
+                LabeledContent("Message ID") {
+                    Text(presentation.id)
+                        .font(.footnote.monospaced())
+                        .lineLimit(1)
+                }
+                if let localID = presentation.localID {
+                    LabeledContent("Local ID") {
+                        Text(localID)
+                            .font(.footnote.monospaced())
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Section("Timestamps") {
+                LabeledContent("Created") {
+                    Text(presentation.createdAtText)
+                }
+                LabeledContent("Updated") {
+                    Text(presentation.updatedAtText)
+                }
+            }
+
+            Section("Content") {
+                if let contentType = presentation.contentType {
+                    LabeledContent("Type") {
+                        Text(contentType)
+                            .font(.footnote.monospaced())
+                    }
+                    LabeledContent("Payload Size") {
+                        Text("\(presentation.payloadCharacterCount) chars")
+                            .font(.footnote.monospaced())
+                    }
+                    if let payloadPreview = presentation.payloadPreview {
+                        Text(payloadPreview)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                    }
+                    if presentation.payloadTruncated {
+                        Text("Payload preview is truncated to first \(SessionMessageDetailPresentationBuilder.payloadPreviewLimit) chars.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !presentation.payloadFields.isEmpty {
+                        Divider()
+                        Text("Parsed Fields")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(presentation.payloadFields) { field in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(field.key)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(field.value)
+                                    .font(.footnote.monospaced())
+                                    .textSelection(.enabled)
+                                    .lineLimit(nil)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                } else {
+                    Text("No content payload")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Message")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

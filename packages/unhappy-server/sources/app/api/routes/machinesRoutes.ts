@@ -12,6 +12,39 @@ import {
 } from "./codexPublicCommands";
 
 export function machinesRoutes(app: Fastify) {
+    async function ensureMachineBelongsToUser(userId: string, machineId: string): Promise<boolean> {
+        const machine = await db.machine.findFirst({
+            where: {
+                accountId: userId,
+                id: machineId
+            },
+            select: { id: true }
+        });
+        return Boolean(machine);
+    }
+
+    async function invokeMachineCommand(
+        userId: string,
+        machineId: string,
+        command: string,
+        params: unknown
+    ): Promise<
+        | { ok: true; result: any }
+        | { ok: false; statusCode: number; error: string }
+    > {
+        const target = findConnectedMachine(userId, machineId);
+        if (!target) {
+            return {
+                ok: false,
+                statusCode: 409,
+                error: 'Machine daemon is not connected'
+            };
+        }
+
+        const result = await invokePublicCommand(target, { command, params });
+        return { ok: true, result };
+    }
+
     app.post('/v1/machines', {
         preHandler: app.authenticate,
         schema: {
@@ -176,6 +209,223 @@ export function machinesRoutes(app: Fastify) {
                 updatedAt: machine.updatedAt.getTime()
             }
         };
+    });
+
+    app.post('/v1/machines/:id/spawn', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            body: z.object({
+                directory: z.string(),
+                agent: z.enum(['claude', 'codex', 'gemini']).optional(),
+                codexResumeThreadId: z.string().optional(),
+                claudeResumeSessionId: z.string().optional(),
+                approvedNewDirectoryCreation: z.boolean().optional(),
+                token: z.string().optional(),
+                environmentVariables: z.record(z.string(), z.string()).optional()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const {
+            directory,
+            agent,
+            codexResumeThreadId,
+            claudeResumeSessionId,
+            approvedNewDirectoryCreation,
+            token,
+            environmentVariables
+        } = request.body;
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const normalizedDirectory = directory.trim();
+        if (!normalizedDirectory) {
+            return reply.code(400).send({ success: false, error: 'Directory is required' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'spawn-unhappy-session',
+            {
+                directory: normalizedDirectory,
+                machineId: id,
+                sessionId: undefined,
+                agent,
+                codexResumeThreadId:
+                    typeof codexResumeThreadId === 'string' && codexResumeThreadId.trim().length > 0
+                        ? codexResumeThreadId.trim()
+                        : undefined,
+                claudeResumeSessionId:
+                    typeof claudeResumeSessionId === 'string' && claudeResumeSessionId.trim().length > 0
+                        ? claudeResumeSessionId.trim()
+                        : undefined,
+                approvedNewDirectoryCreation,
+                token: typeof token === 'string' && token.trim().length > 0 ? token.trim() : undefined,
+                environmentVariables
+            }
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        const result = invoked.result;
+        if (result?.type === 'requestToApproveDirectoryCreation') {
+            return reply.code(409).send({
+                success: false,
+                requiresUserApproval: true,
+                actionRequired: 'CREATE_DIRECTORY',
+                directory: result.directory
+            });
+        }
+        if (result?.type === 'success' && typeof result?.sessionId === 'string') {
+            return reply.send({
+                success: true,
+                sessionId: result.sessionId
+            });
+        }
+
+        return reply.code(502).send({
+            success: false,
+            error: typeof result?.error === 'string'
+                ? result.error
+                : typeof result?.errorMessage === 'string'
+                    ? result.errorMessage
+                    : 'Failed to spawn session'
+        });
+    });
+
+    app.post('/v1/machines/:id/daemon/stop', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'stop-daemon',
+            {}
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        const result = invoked.result;
+        if (result?.success === false) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to stop daemon'
+            });
+        }
+
+        const message =
+            typeof result?.message === 'string' && result.message.trim().length > 0
+                ? result.message.trim()
+                : 'Daemon stop request acknowledged'
+
+        return reply.send({
+            success: true,
+            message
+        });
+    });
+
+    app.post('/v1/machines/:id/daemon/update', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'update-daemon',
+            {}
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        const result = invoked.result;
+        if (result?.success === false) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to update daemon'
+            });
+        }
+
+        const message =
+            typeof result?.message === 'string' && result.message.trim().length > 0
+                ? result.message.trim()
+                : 'Daemon update requested'
+
+        return reply.send({
+            success: true,
+            message
+        });
+    });
+
+    app.post('/v1/machines/:id/commands/list-directory', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            body: z.object({
+                path: z.string(),
+                includeStats: z.boolean().optional(),
+                types: z.array(z.enum(['file', 'directory', 'other'])).optional(),
+                sort: z.boolean().optional(),
+                maxEntries: z.number().int().positive().max(10_000).optional()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'listDirectory',
+            request.body
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        return reply.send(invoked.result);
     });
 
     app.get('/v1/machines/:id/codex/threads', {

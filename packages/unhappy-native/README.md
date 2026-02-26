@@ -34,8 +34,27 @@ This repository is migrating all app features to native modules with the followi
 - `Modules/FeatureHome/`:
   - `Sources` (feature UI)
   - `Tests`
+- `Modules/FeatureSessions/`:
+  - `Sources` (session list/detail + chat baseline)
+  - `Tests`
+- `Modules/FeatureSessionTools/`:
+  - `Sources` (session command surfaces: file read/write + directory browse, info, kill/abort/permission/switch)
+  - `Tests`
+- `Modules/FeatureMachine/`:
+  - `Sources` (machine management: spawn/daemon control)
+  - `Tests`
+- `Modules/FeatureNewSession/`:
+  - `Sources` (machine/path/agent 기반 새 세션 시작)
+  - `Tests`
+- `Modules/FeatureSettings/`:
+  - `Sources` (settings + machine entry points)
+  - `Tests`
 
 Targets use `buildableFolders` so file add/remove in those folders does not require manifest edits.
+
+## Migration Tracking
+
+- Web-to-native parity inventory: `docs/web-to-native-migration-inventory.md`
 
 ## Generate
 

@@ -163,6 +163,11 @@ export class ApiMachineClient {
         if (!directory) {
           throw new Error('Directory is required');
         }
+        if (agent !== 'claude' && agent !== 'codex' && agent !== 'gemini') {
+          throw new Error(
+            "Agent is required. Choose one of: 'claude', 'codex', 'gemini'.",
+          );
+        }
 
         const result = await spawnSession({
           directory,
@@ -254,6 +259,12 @@ export class ApiMachineClient {
     const listModelsFetch = async (
       agent: 'claude' | 'codex' | 'gemini' | undefined,
     ): Promise<ListModelsResponse> => {
+      if (!agent) {
+        return {
+          success: false,
+          error: "Agent is required. Choose one of: 'claude', 'codex', 'gemini'.",
+        };
+      }
       if (agent === 'gemini') {
         return {
           success: true as const,
@@ -267,14 +278,20 @@ export class ApiMachineClient {
       if (agent === 'codex') {
         return await listCodexModels();
       }
-      // Default to Claude when unspecified.
+      // Claude model list is static and does not need process spawning.
       return await listClaudeModels();
     };
 
     const listModelsCached = async (
       agent: 'claude' | 'codex' | 'gemini' | undefined,
     ): Promise<ListModelsResponse> => {
-      const key = agent ?? 'claude';
+      if (!agent) {
+        return {
+          success: false,
+          error: "Agent is required. Choose one of: 'claude', 'codex', 'gemini'.",
+        };
+      }
+      const key = agent;
       if (key !== 'codex') {
         // Avoid caching Claude/Gemini: the UX should reflect current support immediately.
         return await listModelsFetch(agent);
@@ -324,7 +341,7 @@ export class ApiMachineClient {
       logger.debug('[API MACHINE] list-models request', { agent });
       const resp = await listModelsCached(agent);
       logger.debug('[API MACHINE] list-models response', {
-        agent: agent ?? 'claude',
+        agent: agent ?? 'unspecified',
         success: resp.success,
         count: resp.success ? resp.models.length : 0,
         error: resp.success ? undefined : resp.error,
@@ -346,14 +363,30 @@ export class ApiMachineClient {
             ? Math.floor(params.limit)
             : 20;
         const limit = Math.max(1, Math.min(100, limitRaw));
+        const cursorRaw =
+          typeof params?.cursor === 'string' ? params.cursor.trim() : '';
+        const offset = (() => {
+          if (!cursorRaw) return 0;
+          const parsed = Number.parseInt(cursorRaw, 10);
+          if (!Number.isFinite(parsed) || parsed < 0) return 0;
+          return parsed;
+        })();
+        const requestLimit = Math.max(limit, Math.min(100, offset + limit));
 
         const codexClient = new CodexAppServerClient();
         try {
           await codexClient.connect();
-          const threads = await codexClient.listRecentThreadsByCwd(cwd, {
-            limit,
+          const rows = await codexClient.listRecentThreadsByCwd(cwd, {
+            limit: requestLimit,
           });
-          return { success: true, threads };
+          const start = Math.min(offset, rows.length);
+          const end = Math.min(start + limit, rows.length);
+          const threads = rows.slice(start, end);
+          const hasDefiniteNext = end < rows.length;
+          const hasPossibleNext = rows.length === requestLimit && requestLimit < 100;
+          const hasNext = hasDefiniteNext || hasPossibleNext;
+          const nextCursor = hasNext ? String(end) : undefined;
+          return { success: true, threads, hasNext, nextCursor };
         } catch (error) {
           logger.debug('[API MACHINE] codex-list-threads failed', error);
           return {
@@ -608,7 +641,20 @@ export class ApiMachineClient {
           callback({ success: false, error: 'Command is required' });
           return;
         }
-        if (command !== 'codex-list-threads' && command !== 'claude-list-sessions') {
+        const supportedCommands = new Set([
+          'spawn-unhappy-session',
+          'stop-daemon',
+          'update-daemon',
+          'bash',
+          'readFile',
+          'writeFile',
+          'listDirectory',
+          'getDirectoryTree',
+          'ripgrep',
+          'codex-list-threads',
+          'claude-list-sessions',
+        ]);
+        if (!supportedCommands.has(command)) {
           callback({ success: false, error: 'Unsupported command' });
           return;
         }
@@ -621,6 +667,10 @@ export class ApiMachineClient {
             command,
             data?.params ?? {},
           );
+          if (typeof result === 'undefined') {
+            callback({ success: true });
+            return;
+          }
           callback(result);
         } catch (error) {
           callback({

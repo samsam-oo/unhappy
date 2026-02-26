@@ -1,0 +1,15 @@
+{
+  "originHash" : "4974a4e1ab787d6c4462248e0d4028f6ba8eec80e4b1f807535614a158eff1cf",
+  "pins" : [
+    {
+      "identity" : "tweetnacl-swiftwrap",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/bitmark-inc/tweetnacl-swiftwrap.git",
+      "state" : {
+        "revision" : "f8fd111642bf2336b11ef9ea828510693106e954",
+        "version" : "1.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}

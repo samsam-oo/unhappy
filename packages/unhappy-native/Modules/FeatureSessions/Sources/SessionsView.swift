@@ -1,34 +1,41 @@
 import SwiftUI
 import CoreKit
+import FeatureNewSession
+import FeatureSessionTools
 
 @MainActor
 public struct SessionsView: View {
     @StateObject private var viewModel: SessionsViewModel
     private let serverURLString: String
     private let token: String
+    private let hideInactiveSessions: Bool
+    private let defaultNewSessionAgent: APISessionSpawnAgent
+    private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
+    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     @State private var pendingDeleteSession: APISession?
+    @State private var isPresentingNewSession = false
 
     public init(
         serverURLString: String,
         token: String,
-        makeViewModel: @escaping @MainActor () -> SessionsViewModel
+        hideInactiveSessions: Bool = false,
+        defaultNewSessionAgent: APISessionSpawnAgent = .claude,
+        makeViewModel: @escaping @MainActor () -> SessionsViewModel,
+        makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.serverURLString = serverURLString
         self.token = token
+        self.hideInactiveSessions = hideInactiveSessions
+        self.defaultNewSessionAgent = defaultNewSessionAgent
         _viewModel = StateObject(wrappedValue: makeViewModel())
+        self.makeNewSessionViewModel = makeNewSessionViewModel
+        self.makeSessionToolsViewModel = makeSessionToolsViewModel
     }
 
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                MultiAgentStatusBanner(
-                    inProgress: viewModel.multiAgentInProgress,
-                    activeSessionsCount: viewModel.activeSessionsCount
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
-
                 if viewModel.isLoading {
                     ProgressView("Loading sessions…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -42,19 +49,20 @@ public struct SessionsView: View {
                     }
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else if viewModel.sessions.isEmpty {
+                } else if visibleSessions.isEmpty {
                     Text("No sessions")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 } else {
                     List {
-                        ForEach(viewModel.sessions) { session in
+                        ForEach(visibleSessions) { session in
                             NavigationLink {
                                 SessionDetailView(
                                     session: session,
                                     viewModel: viewModel,
                                     serverURLString: serverURLString,
-                                    token: token
+                                    token: token,
+                                    makeSessionToolsViewModel: makeSessionToolsViewModel
                                 )
                             } label: {
                                 SessionsRow(
@@ -99,6 +107,29 @@ public struct SessionsView: View {
                 }
             }
             .navigationTitle("Sessions")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        SessionRecentView(
+                            viewModel: viewModel,
+                            serverURLString: serverURLString,
+                            token: token,
+                            makeSessionToolsViewModel: makeSessionToolsViewModel
+                        )
+                    } label: {
+                        Label("Recent", systemImage: "clock")
+                    }
+                    .accessibilityLabel("Recent Sessions")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isPresentingNewSession = true
+                    } label: {
+                        Image(systemName: "plus.circle.fill")
+                    }
+                    .accessibilityLabel("New Session")
+                }
+            }
             .task(id: "\(serverURLString)|\(token)") {
                 await viewModel.load(
                     serverURLString: serverURLString,
@@ -142,36 +173,30 @@ public struct SessionsView: View {
                     Text("This removes the session permanently from the server.")
                 }
             )
+            .sheet(isPresented: $isPresentingNewSession) {
+                NewSessionView(
+                    serverURLString: serverURLString,
+                    token: token,
+                    defaultAgent: defaultNewSessionAgent,
+                    makeViewModel: makeNewSessionViewModel,
+                    onSessionSpawned: { _ in
+                        Task {
+                            await viewModel.load(
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
-}
 
-private struct MultiAgentStatusBanner: View {
-    let inProgress: Bool
-    let activeSessionsCount: Int
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "person.2.badge.gearshape")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text("Multi-Agent")
-                .font(.subheadline.weight(.medium))
-            Spacer()
-            Text(activeSessionsCount == 1 ? "1 active" : "\(activeSessionsCount) active")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(inProgress ? "진행중" : "완료됨")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(inProgress ? Color.green.opacity(0.16) : Color.gray.opacity(0.14))
-                .foregroundStyle(inProgress ? Color.green : Color.secondary)
-                .clipShape(Capsule())
+    private var visibleSessions: [APISession] {
+        if hideInactiveSessions {
+            return viewModel.sessions.filter(\.active)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        return viewModel.sessions
     }
 }
 
@@ -182,8 +207,9 @@ private struct SessionsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(session.displayName ?? session.id)
-                    .font(session.displayName == nil ? .footnote.monospaced() : .subheadline.weight(.semibold))
+                Text(sessionDisplayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(hasDisplayTitle ? .primary : .secondary)
                     .lineLimit(1)
                 if isDeleting {
                     ProgressView()
@@ -197,12 +223,10 @@ private struct SessionsRow: View {
                 Text(session.active ? "Active" : "Inactive")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if session.displayName != nil {
-                    Text(session.id)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+                Text(session.id)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
                 Text("Updated \(Date(timeIntervalSince1970: session.updatedAt), style: .relative)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -210,12 +234,58 @@ private struct SessionsRow: View {
         }
         .padding(.vertical, 4)
     }
+
+    private var normalizedDisplayTitle: String? {
+        guard let raw = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              raw != session.id else {
+            return nil
+        }
+        return raw
+    }
+
+    private var hasDisplayTitle: Bool {
+        normalizedDisplayTitle != nil
+    }
+
+    private var sessionDisplayTitle: String {
+        normalizedDisplayTitle ?? "Untitled"
+    }
 }
 
 #Preview {
     SessionsView(
         serverURLString: "https://api.unhappy.im",
         token: "",
-        makeViewModel: { SessionsViewModel(service: URLSessionSessionsService()) }
+        makeViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
+        makeNewSessionViewModel: {
+            let service = URLSessionMachinesService()
+            return NewSessionViewModel(
+                machinesLoader: NewSessionMachinesLoadUseCase(service: service),
+                directoryLister: NewSessionDirectoryListUseCase(service: service),
+                spawner: NewSessionSpawnUseCase(service: service),
+                recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+                profilesManager: NewSessionNoopProfilesManager(),
+                codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
+                claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
+            )
+        },
+        makeSessionToolsViewModel: {
+            let service = URLSessionSessionsService()
+            let basher = SessionBashUseCase(service: service)
+            return SessionToolsViewModel(
+                fileLoader: SessionFileLoadUseCase(service: service),
+                directoryLister: SessionDirectoryListUseCase(service: service),
+                fileWriter: SessionFileWriteUseCase(service: service),
+                fileDiffPreviewer: SessionFileDiffPreviewUseCase(basher: basher),
+                killer: SessionKillUseCase(service: service),
+                aborter: SessionTaskAbortUseCase(service: service),
+                permissionResponder: SessionPermissionUseCase(service: service),
+                modeSwitcher: SessionModeSwitchUseCase(service: service),
+                basher: basher,
+                ripgrepRunner: SessionRipgrepUseCase(service: service),
+                difftasticRunner: SessionDifftasticUseCase(service: service)
+            )
+        }
     )
 }
