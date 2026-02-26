@@ -36,14 +36,6 @@ public struct SessionsView: View {
     public var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                MultiAgentStatusBanner(
-                    inProgress: viewModel.multiAgentInProgress,
-                    activeSessionsCount: viewModel.activeSessionsCount
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
-
                 if viewModel.isLoading {
                     ProgressView("Loading sessions…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -205,35 +197,6 @@ public struct SessionsView: View {
             return viewModel.sessions.filter(\.active)
         }
         return viewModel.sessions
-    }
-}
-
-private struct MultiAgentStatusBanner: View {
-    let inProgress: Bool
-    let activeSessionsCount: Int
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "person.2.badge.gearshape")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text("Multi-Agent")
-                .font(.subheadline.weight(.medium))
-            Spacer()
-            Text(activeSessionsCount == 1 ? "1 active" : "\(activeSessionsCount) active")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(inProgress ? "진행중" : "완료됨")
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(inProgress ? Color.green.opacity(0.16) : Color.gray.opacity(0.14))
-                .foregroundStyle(inProgress ? Color.green : Color.secondary)
-                .clipShape(Capsule())
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 

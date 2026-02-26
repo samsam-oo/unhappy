@@ -187,17 +187,6 @@ public struct SessionDetailView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            MultiAgentStatusBanner(
-                presentation: MultiAgentStatusPresentationBuilder.make(
-                    activeSessionsCount: viewModel.activeSessionsCount,
-                    inProgress: viewModel.multiAgentInProgress
-                )
-            )
-            .padding(.horizontal, 14)
-            .padding(.top, 8)
-            .background(.clear)
-        }
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -247,8 +236,8 @@ public struct SessionDetailView: View {
                 }
             }
         }
-        .task(id: session.id) {
-            await viewModel.loadMessages(
+        .onAppear {
+            viewModel.startSelectedSessionMessagesPolling(
                 for: session.id,
                 serverURLString: serverURLString,
                 token: token
@@ -262,6 +251,7 @@ public struct SessionDetailView: View {
             )
         }
         .onDisappear {
+            viewModel.stopSelectedSessionMessagesPolling()
             viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
         }
         .sheet(isPresented: $showRenameSheet) {
@@ -776,36 +766,5 @@ private struct SessionMessageDetailView: View {
         }
         .navigationTitle("Message")
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct MultiAgentStatusBanner: View {
-    let presentation: MultiAgentStatusPresentation
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: presentation.symbolName)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(presentation.badgeForeground)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Multi-Agent")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(presentation.summaryText)
-                    .font(.footnote)
-                    .foregroundStyle(.primary)
-            }
-            Spacer()
-            Text(presentation.statusText)
-                .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(presentation.badgeBackground)
-                .foregroundStyle(presentation.badgeForeground)
-                .clipShape(Capsule())
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
