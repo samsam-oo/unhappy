@@ -67,52 +67,110 @@ struct NewSessionUseCasesTests {
 
     @Test
     func loadCodexThreadsForwardsMachineAndPath() async throws {
-        let expected = [
-            APICodexThreadSummary(
-                id: "thread-1",
-                name: "Bugfix",
-                cwd: "/repo",
-                updatedAt: "2026-02-24T10:00:00.000Z",
-                createdAt: "2026-02-24T09:00:00.000Z",
-                archived: false
-            )
-        ]
-        let service = CodexThreadsService(threads: expected)
+        let expected = APICodexThreadsPage(
+            threads: [
+                APICodexThreadSummary(
+                    id: "thread-1",
+                    name: "Bugfix",
+                    cwd: "/repo",
+                    updatedAt: "2026-02-24T10:00:00.000Z",
+                    createdAt: "2026-02-24T09:00:00.000Z",
+                    archived: false
+                )
+            ],
+            nextCursor: "next-cursor",
+            hasNext: true
+        )
+        let service = CodexThreadsService(page: expected)
         let useCase = NewSessionCodexThreadsLoadUseCase(service: service)
 
-        let rows = try await useCase.loadCodexThreads(
+        let page = try await useCase.loadCodexThreads(
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
             limit: 20,
-            cwd: "/repo"
+            cwd: "/repo",
+            cursor: nil
         )
 
-        #expect(rows == expected)
+        let request = await service.lastRequest
+        #expect(page == expected)
+        #expect(request?.machineID == "machine-1")
+        #expect(request?.cwd == "/repo")
+        #expect(request?.cursor == nil)
     }
 
     @Test
     func loadClaudeSessionsForwardsMachineAndPath() async throws {
-        let expected = [
-            APIClaudeSessionSummary(
-                id: "c7a2f5d1-1111-2222-3333-444444444444",
-                cwd: "/repo",
-                updatedAt: "2026-02-24T10:00:00.000Z",
-                createdAt: "2026-02-24T09:00:00.000Z"
-            )
-        ]
-        let service = ClaudeSessionsService(sessions: expected)
+        let expected = APIClaudeSessionsPage(
+            sessions: [
+                APIClaudeSessionSummary(
+                    id: "c7a2f5d1-1111-2222-3333-444444444444",
+                    cwd: "/repo",
+                    updatedAt: "2026-02-24T10:00:00.000Z",
+                    createdAt: "2026-02-24T09:00:00.000Z"
+                )
+            ],
+            nextCursor: "next-cursor",
+            hasNext: true
+        )
+        let service = ClaudeSessionsService(page: expected)
         let useCase = NewSessionClaudeSessionsLoadUseCase(service: service)
 
-        let rows = try await useCase.loadClaudeSessions(
+        let page = try await useCase.loadClaudeSessions(
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
             limit: 20,
-            cwd: "/repo"
+            cwd: "/repo",
+            cursor: nil
         )
 
-        #expect(rows == expected)
+        let request = await service.lastRequest
+        #expect(page == expected)
+        #expect(request?.machineID == "machine-1")
+        #expect(request?.cwd == "/repo")
+        #expect(request?.cursor == nil)
+    }
+
+    @Test
+    func loadCodexThreadsForwardsCursor() async throws {
+        let service = CodexThreadsService(
+            page: APICodexThreadsPage(threads: [], nextCursor: nil, hasNext: false)
+        )
+        let useCase = NewSessionCodexThreadsLoadUseCase(service: service)
+
+        _ = try await useCase.loadCodexThreads(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1",
+            limit: 20,
+            cwd: "/repo",
+            cursor: "cursor-20"
+        )
+
+        let request = await service.lastRequest
+        #expect(request?.cursor == "cursor-20")
+    }
+
+    @Test
+    func loadClaudeSessionsForwardsCursor() async throws {
+        let service = ClaudeSessionsService(
+            page: APIClaudeSessionsPage(sessions: [], nextCursor: nil, hasNext: false)
+        )
+        let useCase = NewSessionClaudeSessionsLoadUseCase(service: service)
+
+        _ = try await useCase.loadClaudeSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1",
+            limit: 20,
+            cwd: "/repo",
+            cursor: "cursor-12"
+        )
+
+        let request = await service.lastRequest
+        #expect(request?.cursor == "cursor-12")
     }
 
     @Test
@@ -326,8 +384,38 @@ private struct DirectoryService: MachineDirectoryListing {
     }
 }
 
-private struct CodexThreadsService: MachineCodexThreadsFetching {
-    let threads: [APICodexThreadSummary]
+private struct ThreadsRequest: Equatable {
+    let machineID: String
+    let limit: Int
+    let cwd: String?
+    let cursor: String?
+}
+
+private actor CodexThreadsService: MachineCodexThreadsFetching {
+    let page: APICodexThreadsPage
+    var lastRequest: ThreadsRequest?
+
+    init(page: APICodexThreadsPage) {
+        self.page = page
+        self.lastRequest = nil
+    }
+
+    func fetchCodexThreadsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APICodexThreadsPage {
+        lastRequest = ThreadsRequest(
+            machineID: machineID,
+            limit: limit,
+            cwd: cwd,
+            cursor: cursor
+        )
+        return page
+    }
 
     func fetchCodexThreads(
         serverURL: URL,
@@ -336,12 +424,35 @@ private struct CodexThreadsService: MachineCodexThreadsFetching {
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
-        threads
+        page.threads
     }
 }
 
-private struct ClaudeSessionsService: MachineClaudeSessionsFetching {
-    let sessions: [APIClaudeSessionSummary]
+private actor ClaudeSessionsService: MachineClaudeSessionsFetching {
+    let page: APIClaudeSessionsPage
+    var lastRequest: ThreadsRequest?
+
+    init(page: APIClaudeSessionsPage) {
+        self.page = page
+        self.lastRequest = nil
+    }
+
+    func fetchClaudeSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIClaudeSessionsPage {
+        lastRequest = ThreadsRequest(
+            machineID: machineID,
+            limit: limit,
+            cwd: cwd,
+            cursor: cursor
+        )
+        return page
+    }
 
     func fetchClaudeSessions(
         serverURL: URL,
@@ -350,7 +461,7 @@ private struct ClaudeSessionsService: MachineClaudeSessionsFetching {
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
-        sessions
+        page.sessions
     }
 }
 

@@ -35,8 +35,9 @@ public protocol NewSessionCodexThreadsLoadingAction: Sendable {
         token: String,
         machineID: String,
         limit: Int,
-        cwd: String?
-    ) async throws -> [APICodexThreadSummary]
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APICodexThreadsPage
 }
 
 public protocol NewSessionClaudeSessionsLoadingAction: Sendable {
@@ -45,8 +46,9 @@ public protocol NewSessionClaudeSessionsLoadingAction: Sendable {
         token: String,
         machineID: String,
         limit: Int,
-        cwd: String?
-    ) async throws -> [APIClaudeSessionSummary]
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIClaudeSessionsPage
 }
 
 public protocol NewSessionRecentProjectsManaging: Sendable {
@@ -225,8 +227,9 @@ public actor NewSessionCodexThreadsLoadUseCase: NewSessionCodexThreadsLoadingAct
         token: String,
         machineID: String,
         limit: Int,
-        cwd: String?
-    ) async throws -> [APICodexThreadSummary] {
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APICodexThreadsPage {
         let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
             serverURLString: serverURLString,
             token: token,
@@ -234,12 +237,13 @@ public actor NewSessionCodexThreadsLoadUseCase: NewSessionCodexThreadsLoadingAct
             directory: nil
         )
 
-        return try await service.fetchCodexThreads(
+        return try await service.fetchCodexThreadsPage(
             serverURL: serverURL,
             token: normalizedToken,
             machineID: normalizedMachineID,
             limit: limit,
-            cwd: normalizedOptional(cwd)
+            cwd: normalizedOptional(cwd),
+            cursor: normalizedOptional(cursor)
         )
     }
 }
@@ -256,8 +260,9 @@ public actor NewSessionClaudeSessionsLoadUseCase: NewSessionClaudeSessionsLoadin
         token: String,
         machineID: String,
         limit: Int,
-        cwd: String?
-    ) async throws -> [APIClaudeSessionSummary] {
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIClaudeSessionsPage {
         let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
             serverURLString: serverURLString,
             token: token,
@@ -265,12 +270,13 @@ public actor NewSessionClaudeSessionsLoadUseCase: NewSessionClaudeSessionsLoadin
             directory: nil
         )
 
-        return try await service.fetchClaudeSessions(
+        return try await service.fetchClaudeSessionsPage(
             serverURL: serverURL,
             token: normalizedToken,
             machineID: normalizedMachineID,
             limit: limit,
-            cwd: normalizedOptional(cwd)
+            cwd: normalizedOptional(cwd),
+            cursor: normalizedOptional(cursor)
         )
     }
 }
