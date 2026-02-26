@@ -6,6 +6,7 @@
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
 import { backoff } from '@/utils/time';
+import os from 'os';
 import { io, Socket } from 'socket.io-client';
 import { z } from 'zod';
 import {
@@ -101,6 +102,18 @@ interface DaemonToServerEvents {
   ) => void;
 }
 
+function normalizeMachinePath(path: string, homeDir: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed === '~' || trimmed === '~/') {
+    return homeDir;
+  }
+  if (trimmed.startsWith('~/')) {
+    return `${homeDir}/${trimmed.slice(2)}`;
+  }
+  return trimmed;
+}
+
 type MachineRpcHandlers = {
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   stopSession: (sessionId: string) => boolean;
@@ -168,9 +181,13 @@ export class ApiMachineClient {
             "Agent is required. Choose one of: 'claude', 'codex', 'gemini'.",
           );
         }
+        const homeDir =
+          (this.machine?.metadata?.homeDir || os.homedir()).trim() ||
+          os.homedir();
+        const normalizedDirectory = normalizeMachinePath(directory, homeDir);
 
         const result = await spawnSession({
-          directory,
+          directory: normalizedDirectory,
           sessionId,
           codexResumeThreadId,
           claudeResumeSessionId,
@@ -358,7 +375,13 @@ export class ApiMachineClient {
       async (params: any) => {
         const cwdRaw =
           typeof params?.cwd === 'string' ? params.cwd.trim() : '';
-        const cwd = cwdRaw || this.machine?.metadata?.homeDir || process.cwd();
+        const homeDir =
+          (this.machine?.metadata?.homeDir || os.homedir()).trim() ||
+          os.homedir();
+        const cwd = normalizeMachinePath(
+          cwdRaw || this.machine?.metadata?.homeDir || process.cwd(),
+          homeDir,
+        );
         const limitRaw =
           typeof params?.limit === 'number' && Number.isFinite(params.limit)
             ? Math.floor(params.limit)
