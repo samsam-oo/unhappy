@@ -280,6 +280,52 @@ struct NewSessionUseCasesTests {
     }
 
     @Test
+    func recentProjectsUseCaseNormalizesHomeAliases() async {
+        let suiteName = "im.unhappy.newsession.tests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("failed to create UserDefaults test suite")
+            return
+        }
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        let useCase = NewSessionRecentProjectsUseCase(store: store, maxProjects: 8)
+
+        _ = await useCase.recordRecentProject("/Users/skyline23/Downloads/unhappy")
+        _ = await useCase.recordRecentProject("~/Downloads/unhappy")
+        _ = await useCase.recordRecentProject("/Users/skyline23/Downloads/space-os/")
+
+        #expect(await useCase.loadRecentProjects() == ["~/Downloads/space-os", "~/Downloads/unhappy"])
+    }
+
+    @Test
+    func recentProjectsUseCaseCleansLegacyMixedFormatsOnLoad() async {
+        let suiteName = "im.unhappy.newsession.tests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            Issue.record("failed to create UserDefaults test suite")
+            return
+        }
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let store = UserDefaultsAppSettingsStore(defaults: defaults)
+        await store.setRecentProjectPaths([
+            "/Users/skyline23/Downloads/unhappy",
+            "~/Downloads/unhappy",
+            "/Users/skyline23/Downloads/space-os"
+        ])
+
+        let useCase = NewSessionRecentProjectsUseCase(store: store, maxProjects: 8)
+        let normalized = await useCase.loadRecentProjects()
+
+        #expect(normalized == ["~/Downloads/unhappy", "~/Downloads/space-os"])
+        #expect(await store.recentProjectPaths() == ["~/Downloads/unhappy", "~/Downloads/space-os"])
+    }
+
+    @Test
     func profilesUseCaseSavesLoadsAndDeletes() async {
         let suiteName = "im.unhappy.newsession.profiles.tests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
