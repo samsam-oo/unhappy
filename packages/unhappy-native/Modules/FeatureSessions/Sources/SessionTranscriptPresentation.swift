@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import CoreKit
+import TweetNacl
 
 enum SessionTranscriptEntryRole: String, Equatable, Sendable {
     case user
@@ -45,6 +46,7 @@ struct SessionTranscriptMessagePresentation: Equatable, Sendable {
 
 enum SessionTranscriptPresentationBuilder {
     private static let entryBodyLimit = 8_000
+    private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
 
     static func make(
         from message: APISessionMessage,
@@ -680,10 +682,21 @@ enum SessionTranscriptPresentationBuilder {
             return payload
         }
 
-        if let decrypted = decryptDataKeyPayload(
+        if let resolvedDataKey = resolveDataEncryptionKey(raw: dataEncryptionKey),
+           let decrypted = decryptDataKeyPayload(
             payload: payload,
-            dataEncryptionKey: dataEncryptionKey
+            keyData: resolvedDataKey
         ),
+           let text = String(data: decrypted, encoding: .utf8),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+
+        if let accountSecret = loadAccountSecret(),
+           let decrypted = decryptLegacyPayload(
+            payload: payload,
+            secretKey: accountSecret
+           ),
            let text = String(data: decrypted, encoding: .utf8),
            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return text
@@ -697,12 +710,48 @@ enum SessionTranscriptPresentationBuilder {
         return payload
     }
 
+    private static func resolveDataEncryptionKey(raw: String?) -> Data? {
+        guard let raw else { return nil }
+        guard let decoded = decodeBase64(raw) else { return nil }
+        if decoded.count == 32 {
+            return decoded
+        }
+        guard decoded.count > 1, decoded.first == 0 else {
+            return nil
+        }
+        guard let accountSecret = loadAccountSecret() else {
+            return nil
+        }
+        let wrappedKey = decoded.subdata(in: 1..<decoded.count)
+        return decryptWrappedDataKey(bundle: wrappedKey, secretKey: accountSecret)
+    }
+
+    private static func decryptWrappedDataKey(bundle: Data, secretKey: Data) -> Data? {
+        guard secretKey.count == 32, bundle.count > 56 else {
+            return nil
+        }
+        let ephemeralPublicKey = bundle.prefix(32)
+        let nonce = bundle.dropFirst(32).prefix(24)
+        let encryptedPayload = bundle.dropFirst(56)
+
+        do {
+            let opened = try NaclBox.open(
+                message: Data(encryptedPayload),
+                nonce: Data(nonce),
+                publicKey: Data(ephemeralPublicKey),
+                secretKey: secretKey
+            )
+            return opened.count == 32 ? opened : nil
+        } catch {
+            return nil
+        }
+    }
+
     private static func decryptDataKeyPayload(
         payload: String,
-        dataEncryptionKey: String?
+        keyData: Data
     ) -> Data? {
-        guard let dataEncryptionKey else { return nil }
-        guard let keyData = decodeBase64(dataEncryptionKey), keyData.count == 32 else {
+        guard keyData.count == 32 else {
             return nil
         }
         guard let bundle = decodeBase64(payload) else {
@@ -728,6 +777,40 @@ enum SessionTranscriptPresentationBuilder {
         } catch {
             return nil
         }
+    }
+
+    private static func decryptLegacyPayload(
+        payload: String,
+        secretKey: Data
+    ) -> Data? {
+        guard secretKey.count == 32 else { return nil }
+        guard let bundle = decodeBase64(payload), bundle.count > 24 else {
+            return nil
+        }
+        let nonce = bundle.prefix(24)
+        let box = bundle.dropFirst(24)
+        do {
+            return try NaclSecretBox.open(
+                box: Data(box),
+                nonce: Data(nonce),
+                key: secretKey
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private static func loadAccountSecret() -> Data? {
+        let raw = UserDefaults.standard
+            .string(forKey: accountSecretDefaultsKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw, !raw.isEmpty else {
+            return nil
+        }
+        guard let decoded = decodeBase64(raw), decoded.count == 32 else {
+            return nil
+        }
+        return decoded
     }
 
     private static func decodeBase64(_ raw: String) -> Data? {

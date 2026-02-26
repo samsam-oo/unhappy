@@ -1070,20 +1070,14 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
     }
 
     public func fetchSessionMessages(serverURL: URL, token: String, sessionID: String) async throws -> [APISessionMessage] {
-        let request = try SessionsAPI.makeMessagesRequest(
+        let data = try await rpcCommandService.invokeCommand(
             serverURL: serverURL,
             token: token,
-            sessionID: sessionID
+            sessionID: sessionID,
+            command: "listMessages",
+            params: [:],
+            allowMachineFallback: true
         )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
         return try SessionsAPI.decodeMessagesResponse(data)
     }
 
