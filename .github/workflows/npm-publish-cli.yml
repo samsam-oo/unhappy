@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'packages/unhappy-cli/**'
+      - 'yarn.lock'
+      - '.github/workflows/npm-publish-cli.yml'
     tags:
       - "unhappy-cli-v*"
   workflow_dispatch:
