@@ -62,7 +62,7 @@ Last updated: 2026-02-26
 | `artifacts/new.tsx` | Not started | artifact create 미구현. |
 | `artifacts/[id].tsx` | Not started | artifact detail 미구현. |
 | `artifacts/edit/[id].tsx` | Not started | artifact edit 미구현. |
-| `friends/index.tsx` | Not started | friends list/requests 관리 미구현. |
+| `friends/index.tsx` | Partial | Inbox toolbar에서 Friends 전용 시트로 `Pending Requests`/`Sent Requests`/`Friends` 섹션 + accept/reject/cancel/remove 액션 제공. web route-level 화면 구조/스타일 parity는 미구현. |
 | `friends/search.tsx` | Partial | standalone friends search route는 없지만 Inbox toolbar에서 user search + add/cancel/accept 액션 제공(`/v1/user/search`, `/v1/friends/add`, `/v1/friends/remove`). web dedicated screen parity는 미구현. |
 | `user/[id].tsx` | Partial | Inbox row 탭 시 profile sheet에서 user detail + 관계 상태별 액션(add/accept/reject/cancel/remove) 제공(`/v1/user/:id`). web route-level 화면 구성 parity는 미구현. |
 | `inbox/index.tsx` | Partial | Inbox tab에서 `Updates` + `Pending Requests` + `Sent Requests` + `Friends` 섹션 렌더링 구현(`/v1/feed`, `/v1/friends`) + swipe 액션 + profile sheet/search sheet 연동 구현. web update banner parity는 미구현. |
