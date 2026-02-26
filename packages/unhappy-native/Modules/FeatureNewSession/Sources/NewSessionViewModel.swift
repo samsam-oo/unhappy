@@ -19,9 +19,13 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public var environmentVariablesText: String = ""
     @Published public private(set) var codexThreads: [APICodexThreadSummary] = []
     @Published public private(set) var isLoadingCodexThreads = false
+    @Published public private(set) var isLoadingMoreCodexThreads = false
+    @Published public private(set) var codexThreadsHasNext = false
     @Published public private(set) var codexThreadsErrorMessage: String?
     @Published public private(set) var claudeSessions: [APIClaudeSessionSummary] = []
     @Published public private(set) var isLoadingClaudeSessions = false
+    @Published public private(set) var isLoadingMoreClaudeSessions = false
+    @Published public private(set) var claudeSessionsHasNext = false
     @Published public private(set) var claudeSessionsErrorMessage: String?
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var infoMessage: String?
@@ -35,6 +39,8 @@ public final class NewSessionViewModel: ObservableObject {
     private let profilesManager: any NewSessionProfilesManaging
     private let codexThreadsLoader: (any NewSessionCodexThreadsLoadingAction)?
     private let claudeSessionsLoader: (any NewSessionClaudeSessionsLoadingAction)?
+    private var codexThreadsNextCursor: String?
+    private var claudeSessionsNextCursor: String?
 
     public init(
         machinesLoader: any NewSessionMachinesLoadingAction,
@@ -93,8 +99,14 @@ public final class NewSessionViewModel: ObservableObject {
     ) async {
         selectedMachineID = machineID
         codexThreads = []
+        codexThreadsNextCursor = nil
+        codexThreadsHasNext = false
+        isLoadingMoreCodexThreads = false
         codexThreadsErrorMessage = nil
         claudeSessions = []
+        claudeSessionsNextCursor = nil
+        claudeSessionsHasNext = false
+        isLoadingMoreClaudeSessions = false
         claudeSessionsErrorMessage = nil
         approvalDirectory = nil
         spawnedSessionID = nil
@@ -130,12 +142,17 @@ public final class NewSessionViewModel: ObservableObject {
     public func loadCodexThreads(serverURLString: String, token: String, limit: Int = 20) async {
         guard let machineID = selectedMachineID else {
             codexThreads = []
+            codexThreadsNextCursor = nil
+            codexThreadsHasNext = false
             codexThreadsErrorMessage = NewSessionError.missingMachineID.errorDescription
             return
         }
 
         isLoadingCodexThreads = true
+        isLoadingMoreCodexThreads = false
         codexThreads = []
+        codexThreadsNextCursor = nil
+        codexThreadsHasNext = false
         codexThreadsErrorMessage = nil
         defer { isLoadingCodexThreads = false }
 
@@ -145,16 +162,23 @@ public final class NewSessionViewModel: ObservableObject {
         }
 
         do {
-            codexThreads = try await codexThreadsLoader.loadCodexThreads(
+            let page = try await codexThreadsLoader.loadCodexThreads(
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
                 limit: limit,
-                cwd: normalizedPath(directoryPath)
+                cwd: normalizedPath(directoryPath),
+                cursor: nil
             )
+            codexThreads = page.threads
+            let metadata = paginationMetadata(nextCursor: page.nextCursor, hasNext: page.hasNext)
+            codexThreadsNextCursor = metadata.nextCursor
+            codexThreadsHasNext = metadata.hasNext
             codexThreadsErrorMessage = nil
         } catch {
             codexThreads = []
+            codexThreadsNextCursor = nil
+            codexThreadsHasNext = false
             codexThreadsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -162,12 +186,17 @@ public final class NewSessionViewModel: ObservableObject {
     public func loadClaudeSessions(serverURLString: String, token: String, limit: Int = 20) async {
         guard let machineID = selectedMachineID else {
             claudeSessions = []
+            claudeSessionsNextCursor = nil
+            claudeSessionsHasNext = false
             claudeSessionsErrorMessage = NewSessionError.missingMachineID.errorDescription
             return
         }
 
         isLoadingClaudeSessions = true
+        isLoadingMoreClaudeSessions = false
         claudeSessions = []
+        claudeSessionsNextCursor = nil
+        claudeSessionsHasNext = false
         claudeSessionsErrorMessage = nil
         defer { isLoadingClaudeSessions = false }
 
@@ -177,16 +206,101 @@ public final class NewSessionViewModel: ObservableObject {
         }
 
         do {
-            claudeSessions = try await claudeSessionsLoader.loadClaudeSessions(
+            let page = try await claudeSessionsLoader.loadClaudeSessions(
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
                 limit: limit,
-                cwd: normalizedPath(directoryPath)
+                cwd: normalizedPath(directoryPath),
+                cursor: nil
             )
+            claudeSessions = page.sessions
+            let metadata = paginationMetadata(nextCursor: page.nextCursor, hasNext: page.hasNext)
+            claudeSessionsNextCursor = metadata.nextCursor
+            claudeSessionsHasNext = metadata.hasNext
             claudeSessionsErrorMessage = nil
         } catch {
             claudeSessions = []
+            claudeSessionsNextCursor = nil
+            claudeSessionsHasNext = false
+            claudeSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func loadMoreCodexThreads(serverURLString: String, token: String, limit: Int = 20) async {
+        guard !isLoadingCodexThreads else { return }
+        guard !isLoadingMoreCodexThreads else { return }
+        guard let machineID = selectedMachineID else {
+            codexThreadsErrorMessage = NewSessionError.missingMachineID.errorDescription
+            return
+        }
+        guard codexThreadsHasNext, let cursor = codexThreadsNextCursor else {
+            codexThreadsHasNext = false
+            codexThreadsNextCursor = nil
+            return
+        }
+        guard let codexThreadsLoader else {
+            codexThreadsErrorMessage = "Codex session listing is unavailable in this build"
+            return
+        }
+
+        isLoadingMoreCodexThreads = true
+        defer { isLoadingMoreCodexThreads = false }
+
+        do {
+            let page = try await codexThreadsLoader.loadCodexThreads(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: machineID,
+                limit: limit,
+                cwd: normalizedPath(directoryPath),
+                cursor: cursor
+            )
+            codexThreads = mergeUniqueByID(existing: codexThreads, incoming: page.threads)
+            let metadata = paginationMetadata(nextCursor: page.nextCursor, hasNext: page.hasNext)
+            codexThreadsNextCursor = metadata.nextCursor
+            codexThreadsHasNext = metadata.hasNext
+            codexThreadsErrorMessage = nil
+        } catch {
+            codexThreadsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func loadMoreClaudeSessions(serverURLString: String, token: String, limit: Int = 20) async {
+        guard !isLoadingClaudeSessions else { return }
+        guard !isLoadingMoreClaudeSessions else { return }
+        guard let machineID = selectedMachineID else {
+            claudeSessionsErrorMessage = NewSessionError.missingMachineID.errorDescription
+            return
+        }
+        guard claudeSessionsHasNext, let cursor = claudeSessionsNextCursor else {
+            claudeSessionsHasNext = false
+            claudeSessionsNextCursor = nil
+            return
+        }
+        guard let claudeSessionsLoader else {
+            claudeSessionsErrorMessage = "Claude session listing is unavailable in this build"
+            return
+        }
+
+        isLoadingMoreClaudeSessions = true
+        defer { isLoadingMoreClaudeSessions = false }
+
+        do {
+            let page = try await claudeSessionsLoader.loadClaudeSessions(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: machineID,
+                limit: limit,
+                cwd: normalizedPath(directoryPath),
+                cursor: cursor
+            )
+            claudeSessions = mergeUniqueByID(existing: claudeSessions, incoming: page.sessions)
+            let metadata = paginationMetadata(nextCursor: page.nextCursor, hasNext: page.hasNext)
+            claudeSessionsNextCursor = metadata.nextCursor
+            claudeSessionsHasNext = metadata.hasNext
+            claudeSessionsErrorMessage = nil
+        } catch {
             claudeSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -354,6 +468,31 @@ public final class NewSessionViewModel: ObservableObject {
     }
 }
 
+
+private struct CursorPaginationMetadata {
+    let nextCursor: String?
+    let hasNext: Bool
+}
+
+private func paginationMetadata(nextCursor: String?, hasNext: Bool) -> CursorPaginationMetadata {
+    let normalizedCursor = normalizedOptionalPath(nextCursor)
+    return CursorPaginationMetadata(
+        nextCursor: normalizedCursor,
+        hasNext: hasNext && normalizedCursor != nil
+    )
+}
+
+private func mergeUniqueByID<Row: Identifiable>(
+    existing: [Row],
+    incoming: [Row]
+) -> [Row] where Row.ID == String {
+    var merged = existing
+    var seenIDs = Set(existing.map(\.id))
+    for row in incoming where seenIDs.insert(row.id).inserted {
+        merged.append(row)
+    }
+    return merged
+}
 
 private func normalizedPath(_ raw: String) -> String {
     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)

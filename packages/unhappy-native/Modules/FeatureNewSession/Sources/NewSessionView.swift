@@ -198,7 +198,11 @@ public struct NewSessionView: View {
                             )
                         }
                     }
-                    .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingCodexThreads)
+                    .disabled(
+                        viewModel.selectedMachineID == nil ||
+                        viewModel.isLoadingCodexThreads ||
+                        viewModel.isLoadingMoreCodexThreads
+                    )
                     if let error = viewModel.codexThreadsErrorMessage {
                         Text(error)
                             .font(.footnote)
@@ -217,7 +221,11 @@ public struct NewSessionView: View {
                             )
                         }
                     }
-                    .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingClaudeSessions)
+                    .disabled(
+                        viewModel.selectedMachineID == nil ||
+                        viewModel.isLoadingClaudeSessions ||
+                        viewModel.isLoadingMoreClaudeSessions
+                    )
                     if let error = viewModel.claudeSessionsErrorMessage {
                         Text(error)
                             .font(.footnote)
@@ -315,31 +323,33 @@ public struct NewSessionView: View {
             .sheet(isPresented: $showCodexThreadsSheet) {
                 NavigationStack {
                     List {
-                        if viewModel.isLoadingCodexThreads {
+                        if viewModel.isLoadingCodexThreads && viewModel.codexThreads.isEmpty {
                             ProgressView("Loading Codex sessions…")
-                        } else if let error = viewModel.codexThreadsErrorMessage {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Unable to load Codex sessions")
-                                    .font(.headline)
-                                Text(error)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Button("Retry") {
-                                    Task {
-                                        await viewModel.loadCodexThreads(
-                                            serverURLString: serverURLString,
-                                            token: token
-                                        )
+                        } else if viewModel.codexThreads.isEmpty {
+                            if let error = viewModel.codexThreadsErrorMessage {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Unable to load Codex sessions")
+                                        .font(.headline)
+                                    Text(error)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Button("Retry") {
+                                        Task {
+                                            await viewModel.loadCodexThreads(
+                                                serverURLString: serverURLString,
+                                                token: token
+                                            )
+                                        }
                                     }
                                 }
+                                .padding(.vertical, 8)
+                            } else {
+                                ContentUnavailableView(
+                                    "No existing Codex sessions",
+                                    systemImage: "list.bullet",
+                                    description: Text("Start one in CLI first, then refresh here.")
+                                )
                             }
-                            .padding(.vertical, 8)
-                        } else if viewModel.codexThreads.isEmpty {
-                            ContentUnavailableView(
-                                "No existing Codex sessions",
-                                systemImage: "list.bullet",
-                                description: Text("Start one in CLI first, then refresh here.")
-                            )
                         } else {
                             ForEach(viewModel.codexThreads) { thread in
                                 Button {
@@ -349,6 +359,43 @@ public struct NewSessionView: View {
                                     CodexThreadSelectionRow(thread: thread)
                                 }
                                 .buttonStyle(.plain)
+                            }
+
+                            if viewModel.isLoadingMoreCodexThreads {
+                                HStack {
+                                    Spacer()
+                                    ProgressView("Loading more…")
+                                    Spacer()
+                                }
+                            } else if viewModel.codexThreadsHasNext {
+                                Button("Load More") {
+                                    Task {
+                                        await viewModel.loadMoreCodexThreads(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            }
+
+                            if let error = viewModel.codexThreadsErrorMessage {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Unable to load additional Codex sessions")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(error)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                    Button("Retry") {
+                                        Task {
+                                            await viewModel.loadMoreCodexThreads(
+                                                serverURLString: serverURLString,
+                                                token: token
+                                            )
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 8)
                             }
                         }
                     }
@@ -371,31 +418,33 @@ public struct NewSessionView: View {
             .sheet(isPresented: $showClaudeSessionsSheet) {
                 NavigationStack {
                     List {
-                        if viewModel.isLoadingClaudeSessions {
+                        if viewModel.isLoadingClaudeSessions && viewModel.claudeSessions.isEmpty {
                             ProgressView("Loading Claude sessions…")
-                        } else if let error = viewModel.claudeSessionsErrorMessage {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Unable to load Claude sessions")
-                                    .font(.headline)
-                                Text(error)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                Button("Retry") {
-                                    Task {
-                                        await viewModel.loadClaudeSessions(
-                                            serverURLString: serverURLString,
-                                            token: token
-                                        )
+                        } else if viewModel.claudeSessions.isEmpty {
+                            if let error = viewModel.claudeSessionsErrorMessage {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Unable to load Claude sessions")
+                                        .font(.headline)
+                                    Text(error)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    Button("Retry") {
+                                        Task {
+                                            await viewModel.loadClaudeSessions(
+                                                serverURLString: serverURLString,
+                                                token: token
+                                            )
+                                        }
                                     }
                                 }
+                                .padding(.vertical, 8)
+                            } else {
+                                ContentUnavailableView(
+                                    "No existing Claude sessions",
+                                    systemImage: "list.bullet.rectangle",
+                                    description: Text("Start one in CLI first, then refresh here.")
+                                )
                             }
-                            .padding(.vertical, 8)
-                        } else if viewModel.claudeSessions.isEmpty {
-                            ContentUnavailableView(
-                                "No existing Claude sessions",
-                                systemImage: "list.bullet.rectangle",
-                                description: Text("Start one in CLI first, then refresh here.")
-                            )
                         } else {
                             ForEach(viewModel.claudeSessions) { session in
                                 Button {
@@ -405,6 +454,43 @@ public struct NewSessionView: View {
                                     ClaudeSessionSelectionRow(session: session)
                                 }
                                 .buttonStyle(.plain)
+                            }
+
+                            if viewModel.isLoadingMoreClaudeSessions {
+                                HStack {
+                                    Spacer()
+                                    ProgressView("Loading more…")
+                                    Spacer()
+                                }
+                            } else if viewModel.claudeSessionsHasNext {
+                                Button("Load More") {
+                                    Task {
+                                        await viewModel.loadMoreClaudeSessions(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            }
+
+                            if let error = viewModel.claudeSessionsErrorMessage {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Unable to load additional Claude sessions")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(error)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                    Button("Retry") {
+                                        Task {
+                                            await viewModel.loadMoreClaudeSessions(
+                                                serverURLString: serverURLString,
+                                                token: token
+                                            )
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 8)
                             }
                         }
                     }
