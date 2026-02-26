@@ -12,17 +12,23 @@ public final class InboxViewModel: ObservableObject {
 
     private let loader: any InboxLoadingAction
     private let friendAction: any InboxFriendActionPerforming
+    private let userProfileLoader: any InboxUserProfileLoadingAction
+    private let userSearcher: any InboxUserSearchingAction
     private var serverURLString: String
     private var token: String
 
     public init(
         loader: any InboxLoadingAction,
         friendAction: any InboxFriendActionPerforming = InboxNoopFriendActionUseCase(),
+        userProfileLoader: any InboxUserProfileLoadingAction = InboxNoopUserProfileLoader(),
+        userSearcher: any InboxUserSearchingAction = InboxNoopUserSearcher(),
         serverURLString: String = "",
         token: String = ""
     ) {
         self.loader = loader
         self.friendAction = friendAction
+        self.userProfileLoader = userProfileLoader
+        self.userSearcher = userSearcher
         self.serverURLString = serverURLString
         self.token = token
     }
@@ -101,6 +107,32 @@ public final class InboxViewModel: ObservableObject {
                 userID: userID
             )
         }
+    }
+
+    public func sendFriendRequest(userID: String) async {
+        await performFriendAction {
+            try await friendAction.acceptFriendRequest(
+                serverURLString: serverURLString,
+                token: token,
+                userID: userID
+            )
+        }
+    }
+
+    public func loadUserProfile(userID: String) async throws -> InboxUserProfile? {
+        try await userProfileLoader.loadUserProfile(
+            serverURLString: serverURLString,
+            token: token,
+            userID: userID
+        )
+    }
+
+    public func searchUsers(query: String) async throws -> [InboxUserProfile] {
+        try await userSearcher.searchUsers(
+            serverURLString: serverURLString,
+            token: token,
+            query: query
+        )
     }
 
     private func performFriendAction(_ action: () async throws -> Void) async {

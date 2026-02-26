@@ -30,6 +30,7 @@ struct UnhappyNativeApp: App {
         let machinesService = URLSessionMachinesService()
         let feedService = URLSessionFeedService()
         let friendsService = URLSessionFriendsService()
+        let usersService = URLSessionUsersService()
         let sessionFileLoader = SessionFileLoadUseCase(service: sessionsService)
         let sessionDirectoryLister = SessionDirectoryListUseCase(service: sessionsService)
         let sessionFileWriter = SessionFileWriteUseCase(service: sessionsService)
@@ -60,6 +61,8 @@ struct UnhappyNativeApp: App {
             adder: friendsService,
             remover: friendsService
         )
+        let inboxUserProfileLoader = InboxUserProfileLoadUseCase(service: usersService)
+        let inboxUserSearcher = InboxUserSearchUseCase(service: usersService)
         let homeServerStatusLoader = HomeServerConnectionStatusLoadUseCase()
         let terminalAuthService = URLSessionTerminalAuthService()
         let accountAuthService = URLSessionAccountAuthService()
@@ -89,7 +92,9 @@ struct UnhappyNativeApp: App {
         self.makeInboxViewModel = {
             InboxViewModel(
                 loader: inboxLoader,
-                friendAction: inboxFriendAction
+                friendAction: inboxFriendAction,
+                userProfileLoader: inboxUserProfileLoader,
+                userSearcher: inboxUserSearcher
             )
         }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }

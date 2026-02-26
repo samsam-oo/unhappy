@@ -6,12 +6,20 @@ public struct InboxItem: Equatable, Identifiable, Sendable {
     public let title: String
     public let subtitle: String
     public let timestamp: Date
+    public let relatedUserID: String?
 
-    public init(id: String, title: String, subtitle: String, timestamp: Date) {
+    public init(
+        id: String,
+        title: String,
+        subtitle: String,
+        timestamp: Date,
+        relatedUserID: String? = nil
+    ) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.timestamp = timestamp
+        self.relatedUserID = relatedUserID
     }
 }
 
@@ -154,23 +162,28 @@ private extension InboxLoadUseCase {
 
         let title: String
         let subtitle: String
+        let relatedUserID: String?
         switch row.body {
         case .friendRequest(let uid):
             title = "Friend request"
             subtitle = "From \(uid)"
+            relatedUserID = uid
         case .friendAccepted(let uid):
             title = "Friend request accepted"
             subtitle = uid
+            relatedUserID = uid
         case .text(let text):
             title = text
             subtitle = "Feed update"
+            relatedUserID = nil
         }
 
         return InboxItem(
             id: row.id,
             title: title,
             subtitle: subtitle,
-            timestamp: timestamp
+            timestamp: timestamp,
+            relatedUserID: relatedUserID
         )
     }
 

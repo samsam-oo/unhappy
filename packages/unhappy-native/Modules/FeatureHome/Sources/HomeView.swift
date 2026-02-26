@@ -480,11 +480,19 @@ public struct HomeView: View {
             )
         },
         makeInboxViewModel: {
-            InboxViewModel(
+            let friendsService = URLSessionFriendsService()
+            let usersService = URLSessionUsersService()
+            return InboxViewModel(
                 loader: InboxLoadUseCase(
                     service: URLSessionFeedService(),
-                    friendsService: URLSessionFriendsService()
-                )
+                    friendsService: friendsService
+                ),
+                friendAction: InboxFriendActionUseCase(
+                    adder: friendsService,
+                    remover: friendsService
+                ),
+                userProfileLoader: InboxUserProfileLoadUseCase(service: usersService),
+                userSearcher: InboxUserSearchUseCase(service: usersService)
             )
         },
         makeSessionsViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
