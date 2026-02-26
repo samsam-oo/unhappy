@@ -19,6 +19,7 @@ const ALLOWED_SESSION_COMMANDS = new Set<string>([
     "permission",
     "switch",
     "sendMessage",
+    "listMessages",
     "bash",
     "readFile",
     "writeFile",
