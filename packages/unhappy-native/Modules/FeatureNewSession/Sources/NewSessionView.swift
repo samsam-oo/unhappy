@@ -60,9 +60,16 @@ public struct NewSessionView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
-                    Text("Selected directory: \(viewModel.directoryPath)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Selected Directory")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(viewModel.directoryPath)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     if !viewModel.recentProjects.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -84,7 +91,8 @@ public struct NewSessionView: View {
                                             .foregroundStyle(.secondary)
                                         Text(projectPath)
                                             .font(.footnote.monospaced())
-                                            .lineLimit(1)
+                                            .lineLimit(2)
+                                            .truncationMode(.middle)
                                         Spacer()
                                     }
                                 }
@@ -394,7 +402,8 @@ public struct NewSessionView: View {
                             Section("Current Path") {
                                 Text(viewModel.directoryPath)
                                     .font(.footnote.monospaced())
-                                    .lineLimit(2)
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
                                     .textSelection(.enabled)
 
                                 HStack(spacing: 8) {
@@ -466,8 +475,15 @@ public struct NewSessionView: View {
                                             HStack(spacing: 10) {
                                                 Image(systemName: "folder")
                                                     .foregroundStyle(Color.accentColor)
-                                                Text(entry.name)
-                                                    .lineLimit(1)
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(entry.name)
+                                                        .lineLimit(1)
+                                                    Text(directoryEntryFullPath(entry))
+                                                        .font(.caption.monospaced())
+                                                        .foregroundStyle(.secondary)
+                                                        .lineLimit(1)
+                                                        .truncationMode(.middle)
+                                                }
                                                 Spacer()
                                                 Image(systemName: "chevron.right")
                                                     .font(.caption)
@@ -612,6 +628,10 @@ public struct NewSessionView: View {
         return folders.filter { entry in
             entry.name.localizedCaseInsensitiveContains(trimmedFilter)
         }
+    }
+
+    private func directoryEntryFullPath(_ entry: APIMachineDirectoryEntry) -> String {
+        resolvedPath(current: viewModel.directoryPath, entryName: entry.name)
     }
 
     private func loadDirectoryFromBrowserPath(_ path: String) async {
