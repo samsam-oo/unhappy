@@ -55,7 +55,8 @@ public enum MachinesAPI {
         token: String,
         machineID: String,
         limit: Int = 20,
-        cwd: String? = nil
+        cwd: String? = nil,
+        cursor: String? = nil
     ) throws -> URLRequest {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -71,6 +72,10 @@ public enum MachinesAPI {
         if let normalizedCWD, !normalizedCWD.isEmpty {
             queryItems.append(URLQueryItem(name: "cwd", value: normalizedCWD))
         }
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: normalizedCursor))
+        }
         components.queryItems = queryItems
         guard let url = components.url else {
             throw URLError(.badURL)
@@ -83,7 +88,8 @@ public enum MachinesAPI {
         token: String,
         machineID: String,
         limit: Int = 20,
-        cwd: String? = nil
+        cwd: String? = nil,
+        cursor: String? = nil
     ) throws -> URLRequest {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -98,6 +104,10 @@ public enum MachinesAPI {
         let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCWD, !normalizedCWD.isEmpty {
             queryItems.append(URLQueryItem(name: "cwd", value: normalizedCWD))
+        }
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: normalizedCursor))
         }
         components.queryItems = queryItems
         guard let url = components.url else {
@@ -189,15 +199,37 @@ public enum MachinesAPI {
     }
 
     public static func decodeCodexThreadsResponse(_ data: Data) throws -> [APICodexThreadSummary] {
+        try decodeCodexThreadsPageResponse(data).threads
+    }
+
+    public static func decodeCodexThreadsPageResponse(_ data: Data) throws -> APICodexThreadsPage {
         let decoder = JSONDecoder()
         let response = try decoder.decode(MachinesCodexThreadsResponse.self, from: data)
-        return response.threads
+        let nextCursor = response.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+        let hasNext = response.hasNext ?? (normalizedCursor != nil)
+        return APICodexThreadsPage(
+            threads: response.threads ?? [],
+            nextCursor: normalizedCursor,
+            hasNext: hasNext
+        )
     }
 
     public static func decodeClaudeSessionsResponse(_ data: Data) throws -> [APIClaudeSessionSummary] {
+        try decodeClaudeSessionsPageResponse(data).sessions
+    }
+
+    public static func decodeClaudeSessionsPageResponse(_ data: Data) throws -> APIClaudeSessionsPage {
         let decoder = JSONDecoder()
         let response = try decoder.decode(MachinesClaudeSessionsResponse.self, from: data)
-        return response.sessions
+        let nextCursor = response.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+        let hasNext = response.hasNext ?? (normalizedCursor != nil)
+        return APIClaudeSessionsPage(
+            sessions: response.sessions ?? [],
+            nextCursor: normalizedCursor,
+            hasNext: hasNext
+        )
     }
 
     private static func makeRequest(url: URL, method: String, token: String) throws -> URLRequest {
@@ -266,12 +298,16 @@ public struct APIMachineListDirectoryResult: Decodable, Equatable, Sendable {
 
 private struct MachinesCodexThreadsResponse: Decodable {
     let success: Bool
-    let threads: [APICodexThreadSummary]
+    let threads: [APICodexThreadSummary]?
+    let nextCursor: String?
+    let hasNext: Bool?
 }
 
 private struct MachinesClaudeSessionsResponse: Decodable {
     let success: Bool
-    let sessions: [APIClaudeSessionSummary]
+    let sessions: [APIClaudeSessionSummary]?
+    let nextCursor: String?
+    let hasNext: Bool?
 }
 
 private struct MachineSpawnPayload: Encodable {
@@ -475,23 +511,45 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
-        let request = try MachinesAPI.makeCodexThreadsRequest(
-            serverURL: serverURL,
-            token: token,
-            machineID: machineID,
-            limit: limit,
-            cwd: cwd
-        )
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let boundedLimit = min(max(limit, 1), 100)
+        var cursor: String?
+        var seenCursors: Set<String> = []
+        var seenIDs: Set<String> = []
+        var merged: [APICodexThreadSummary] = []
 
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        for _ in 0..<50 {
+            let request = try MachinesAPI.makeCodexThreadsRequest(
+                serverURL: serverURL,
+                token: token,
+                machineID: machineID,
+                limit: boundedLimit,
+                cwd: cwd,
+                cursor: cursor
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+
+            let page = try MachinesAPI.decodeCodexThreadsPageResponse(data)
+            for row in page.threads where seenIDs.insert(row.id).inserted {
+                merged.append(row)
+            }
+
+            guard page.hasNext, let nextCursor = page.nextCursor else {
+                break
+            }
+            guard seenCursors.insert(nextCursor).inserted else {
+                break
+            }
+            cursor = nextCursor
         }
 
-        return try MachinesAPI.decodeCodexThreadsResponse(data)
+        return merged
     }
 
     public func fetchClaudeSessions(
@@ -501,22 +559,44 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
-        let request = try MachinesAPI.makeClaudeSessionsRequest(
-            serverURL: serverURL,
-            token: token,
-            machineID: machineID,
-            limit: limit,
-            cwd: cwd
-        )
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let boundedLimit = min(max(limit, 1), 100)
+        var cursor: String?
+        var seenCursors: Set<String> = []
+        var seenIDs: Set<String> = []
+        var merged: [APIClaudeSessionSummary] = []
 
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        for _ in 0..<50 {
+            let request = try MachinesAPI.makeClaudeSessionsRequest(
+                serverURL: serverURL,
+                token: token,
+                machineID: machineID,
+                limit: boundedLimit,
+                cwd: cwd,
+                cursor: cursor
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+
+            let page = try MachinesAPI.decodeClaudeSessionsPageResponse(data)
+            for row in page.sessions where seenIDs.insert(row.id).inserted {
+                merged.append(row)
+            }
+
+            guard page.hasNext, let nextCursor = page.nextCursor else {
+                break
+            }
+            guard seenCursors.insert(nextCursor).inserted else {
+                break
+            }
+            cursor = nextCursor
         }
 
-        return try MachinesAPI.decodeClaudeSessionsResponse(data)
+        return merged
     }
 }

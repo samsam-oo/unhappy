@@ -151,6 +151,30 @@ public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Senda
     }
 }
 
+public struct APICodexThreadsPage: Decodable, Equatable, Sendable {
+    public let threads: [APICodexThreadSummary]
+    public let nextCursor: String?
+    public let hasNext: Bool
+
+    public init(threads: [APICodexThreadSummary], nextCursor: String?, hasNext: Bool) {
+        self.threads = threads
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
+    }
+}
+
+public struct APIClaudeSessionsPage: Decodable, Equatable, Sendable {
+    public let sessions: [APIClaudeSessionSummary]
+    public let nextCursor: String?
+    public let hasNext: Bool
+
+    public init(sessions: [APIClaudeSessionSummary], nextCursor: String?, hasNext: Bool) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
+    }
+}
+
 public enum APISessionSpawnAgent: String, Encodable, Sendable {
     case claude
     case codex

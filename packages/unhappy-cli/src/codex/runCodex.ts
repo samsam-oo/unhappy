@@ -693,13 +693,38 @@ export async function runCodex(opts: {
   // Expose recent Codex thread history for UI surfaces that want to show/import legacy sessions.
   session.rpcHandlerManager.registerHandler(
     'codex-list-threads',
-    async (params?: { cwd?: string; limit?: number }) => {
+    async (params?: { cwd?: string; limit?: number; cursor?: string }) => {
       try {
-        const threads = await client.listRecentThreadsByCwd(
-          typeof params?.cwd === 'string' && params.cwd.trim() ? params.cwd.trim() : cwd,
-          { limit: typeof params?.limit === 'number' ? params.limit : 20 },
+        const limitRaw =
+          typeof params?.limit === 'number' && Number.isFinite(params.limit)
+            ? Math.floor(params.limit)
+            : 20;
+        const limit = Math.max(1, Math.min(100, limitRaw));
+        const cursorRaw =
+          typeof params?.cursor === 'string' ? params.cursor.trim() : '';
+        const offset = (() => {
+          if (!cursorRaw) return 0;
+          const parsed = Number.parseInt(cursorRaw, 10);
+          if (!Number.isFinite(parsed) || parsed < 0) return 0;
+          return parsed;
+        })();
+        const requestLimit = Math.max(limit, Math.min(100, offset + limit));
+
+        const rows = await client.listRecentThreadsByCwd(
+          typeof params?.cwd === 'string' && params.cwd.trim()
+            ? params.cwd.trim()
+            : cwd,
+          { limit: requestLimit },
         );
-        return { success: true, threads };
+        const start = Math.min(offset, rows.length);
+        const end = Math.min(start + limit, rows.length);
+        const threads = rows.slice(start, end);
+        const hasDefiniteNext = end < rows.length;
+        const hasPossibleNext = rows.length === requestLimit && requestLimit < 100;
+        const hasNext = hasDefiniteNext || hasPossibleNext;
+        const nextCursor = hasNext ? String(end) : undefined;
+
+        return { success: true, threads, hasNext, nextCursor };
       } catch (error) {
         return {
           success: false,

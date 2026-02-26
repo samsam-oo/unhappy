@@ -248,6 +248,25 @@ struct SessionsAPITests {
     }
 
     @Test
+    func codexThreadsRequestIncludesCursorWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeCodexThreadsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 20,
+            cwd: "/tmp/workspace",
+            cursor: "40"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/sessions/session-1/codex/threads?limit=20&cwd=/tmp/workspace&cursor=40"
+        )
+    }
+
+    @Test
     func decodeCodexThreadsResponseParsesRows() throws {
         let json = """
         {
@@ -271,6 +290,33 @@ struct SessionsAPITests {
         #expect(threads.first?.id == "thread_1")
         #expect(threads.first?.name == "Feature Work")
         #expect(threads.first?.cwd == "/tmp/work")
+    }
+
+    @Test
+    func decodeCodexThreadsPageResponseParsesPaginationMetadata() throws {
+        let json = """
+        {
+          "success": true,
+          "threads": [
+            {
+              "id": "thread_1",
+              "name": "Feature Work",
+              "cwd": "/tmp/work",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z",
+              "archived": false
+            }
+          ],
+          "nextCursor": "20",
+          "hasNext": true
+        }
+        """.data(using: .utf8)!
+
+        let page = try SessionsAPI.decodeCodexThreadsPageResponse(json)
+
+        #expect(page.threads.count == 1)
+        #expect(page.nextCursor == "20")
+        #expect(page.hasNext == true)
     }
 
     @Test
@@ -308,6 +354,25 @@ struct SessionsAPITests {
     }
 
     @Test
+    func claudeSessionsRequestIncludesCursorWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeClaudeSessionsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            limit: 12,
+            cwd: "/tmp/workspace",
+            cursor: "24"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/sessions/session-1/claude/sessions?limit=12&cwd=/tmp/workspace&cursor=24"
+        )
+    }
+
+    @Test
     func decodeClaudeSessionsResponseParsesRows() throws {
         let json = """
         {
@@ -328,6 +393,31 @@ struct SessionsAPITests {
         #expect(sessions.count == 1)
         #expect(sessions.first?.id == "a1b2c3d4-1111-2222-3333-444444444444")
         #expect(sessions.first?.cwd == "/tmp/repo")
+    }
+
+    @Test
+    func decodeClaudeSessionsPageResponseParsesPaginationMetadata() throws {
+        let json = """
+        {
+          "success": true,
+          "sessions": [
+            {
+              "id": "a1b2c3d4-1111-2222-3333-444444444444",
+              "cwd": "/tmp/repo",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z"
+            }
+          ],
+          "nextCursor": "12",
+          "hasNext": true
+        }
+        """.data(using: .utf8)!
+
+        let page = try SessionsAPI.decodeClaudeSessionsPageResponse(json)
+
+        #expect(page.sessions.count == 1)
+        #expect(page.nextCursor == "12")
+        #expect(page.hasNext == true)
     }
 
     @Test
