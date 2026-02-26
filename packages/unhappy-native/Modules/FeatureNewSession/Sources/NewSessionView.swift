@@ -56,10 +56,6 @@ public struct NewSessionView: View {
                 }
 
                 Section("Directory") {
-                    TextField("Path", text: $viewModel.directoryPath)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Selected Directory")
                             .font(.caption.weight(.semibold))
