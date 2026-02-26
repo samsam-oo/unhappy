@@ -274,6 +274,64 @@ struct NewSessionViewModelTests {
         #expect(message.contains("Folder browse API is not deployed"))
         #expect(model.directoryEntries.isEmpty)
     }
+
+    @Test
+    func selectCodexThreadSetsResumeStateAndDirectoryFromThread() async throws {
+        let model = NewSessionViewModel(
+            machinesLoader: ViewModelMachinesLoader(machines: [makeMachine(id: "machine-1")]),
+            directoryLister: ViewModelDirectoryLister(),
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        model.selectCodexThread(
+            APICodexThreadSummary(
+                id: "thread-123",
+                name: "Resume Target",
+                cwd: "/Users/skyline23/Downloads/unhappy",
+                updatedAt: nil,
+                createdAt: nil,
+                archived: false
+            )
+        )
+
+        #expect(model.selectedAgent == .codex)
+        #expect(model.codexResumeThreadID == "thread-123")
+        #expect(model.claudeResumeSessionID.isEmpty)
+        #expect(model.directoryPath == "/Users/skyline23/Downloads/unhappy")
+    }
+
+    @Test
+    func selectClaudeSessionSetsResumeStateAndDirectoryFromSession() async throws {
+        let model = NewSessionViewModel(
+            machinesLoader: ViewModelMachinesLoader(machines: [makeMachine(id: "machine-1")]),
+            directoryLister: ViewModelDirectoryLister(),
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        model.selectClaudeSession(
+            APIClaudeSessionSummary(
+                id: "claude-456",
+                cwd: "~/Downloads/unhappy",
+                updatedAt: nil,
+                createdAt: nil
+            )
+        )
+
+        #expect(model.selectedAgent == .claude)
+        #expect(model.claudeResumeSessionID == "claude-456")
+        #expect(model.codexResumeThreadID.isEmpty)
+        #expect(model.directoryPath == "~/Downloads/unhappy")
+    }
 }
 
 private func makeMachine(id: String) -> APIMachine {

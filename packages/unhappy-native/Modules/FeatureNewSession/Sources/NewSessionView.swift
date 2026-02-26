@@ -162,7 +162,7 @@ public struct NewSessionView: View {
                 }
 
                 Section("Advanced") {
-                    Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : "Choose Existing Codex Session") {
+                    Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
                         showCodexThreadsSheet = true
                         Task {
                             await viewModel.loadCodexThreads(
@@ -181,8 +181,22 @@ public struct NewSessionView: View {
                             .font(.footnote)
                             .foregroundStyle(.red)
                     }
+                    if !viewModel.codexResumeThreadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Selected Codex Session")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(viewModel.codexResumeThreadID)
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                            Button("Clear Codex Selection") {
+                                viewModel.clearCodexSelection()
+                            }
+                            .font(.footnote)
+                        }
+                    }
 
-                    Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : "Choose Existing Claude Session") {
+                    Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : claudeSelectionButtonTitle) {
                         showClaudeSessionsSheet = true
                         Task {
                             await viewModel.loadClaudeSessions(
@@ -200,6 +214,20 @@ public struct NewSessionView: View {
                         Text(error)
                             .font(.footnote)
                             .foregroundStyle(.red)
+                    }
+                    if !viewModel.claudeResumeSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Selected Claude Session")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(viewModel.claudeResumeSessionID)
+                                .font(.footnote.monospaced())
+                                .textSelection(.enabled)
+                            Button("Clear Claude Selection") {
+                                viewModel.clearClaudeSelection()
+                            }
+                            .font(.footnote)
+                        }
                     }
 
                     TextField("Session token (optional)", text: $viewModel.sessionToken)
@@ -219,7 +247,7 @@ public struct NewSessionView: View {
                 }
 
                 Section("Action") {
-                    Button(viewModel.isSpawning ? "Starting…" : "Start Session") {
+                    Button(viewModel.isSpawning ? "Starting…" : primaryActionTitle) {
                         Task {
                             let success = await viewModel.startSession(
                                 serverURLString: serverURLString,
@@ -325,6 +353,12 @@ public struct NewSessionView: View {
                                 Button {
                                     viewModel.selectCodexThread(thread)
                                     showCodexThreadsSheet = false
+                                    Task {
+                                        await viewModel.loadDirectory(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
                                 } label: {
                                     CodexThreadSelectionRow(thread: thread)
                                 }
@@ -393,7 +427,7 @@ public struct NewSessionView: View {
                                 TextField("Go to path", text: $directoryBrowserPathDraft)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
-                                    .submitLabel(.go)
+                                    .submitLabel(.done)
                                     .disabled(
                                         viewModel.selectedMachineID == nil ||
                                         viewModel.isLoadingDirectory
@@ -533,6 +567,12 @@ public struct NewSessionView: View {
                                 Button {
                                     viewModel.selectClaudeSession(session)
                                     showClaudeSessionsSheet = false
+                                    Task {
+                                        await viewModel.loadDirectory(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
                                 } label: {
                                     ClaudeSessionSelectionRow(session: session)
                                 }
@@ -676,6 +716,36 @@ public struct NewSessionView: View {
             }
         )
     }
+
+    private var primaryActionTitle: String {
+        hasResumeSelection ? "Resume Session" : "Start Session"
+    }
+
+    private var hasResumeSelection: Bool {
+        selectedCodexResumeID != nil || selectedClaudeResumeID != nil
+    }
+
+    private var selectedCodexResumeID: String? {
+        normalized(viewModel.codexResumeThreadID)
+    }
+
+    private var selectedClaudeResumeID: String? {
+        normalized(viewModel.claudeResumeSessionID)
+    }
+
+    private var codexSelectionButtonTitle: String {
+        if let id = selectedCodexResumeID {
+            return "Codex Session: \(abbreviatedIdentifier(id))"
+        }
+        return "Choose Existing Codex Session"
+    }
+
+    private var claudeSelectionButtonTitle: String {
+        if let id = selectedClaudeResumeID {
+            return "Claude Session: \(abbreviatedIdentifier(id))"
+        }
+        return "Choose Existing Claude Session"
+    }
 }
 
 private struct CodexThreadSelectionRow: View {
@@ -734,6 +804,13 @@ private func normalized(_ value: String?) -> String? {
     guard let value else { return nil }
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
     return trimmed.isEmpty ? nil : trimmed
+}
+
+private func abbreviatedIdentifier(_ value: String) -> String {
+    guard value.count > 16 else { return value }
+    let prefix = value.prefix(8)
+    let suffix = value.suffix(6)
+    return "\(prefix)…\(suffix)"
 }
 
 #Preview {

@@ -348,12 +348,36 @@ public final class NewSessionViewModel: ObservableObject {
         codexResumeThreadID = thread.id
         claudeResumeSessionID = ""
         selectedAgent = .codex
+        if let threadCWD = normalizedOptionalPath(thread.cwd) {
+            directoryPath = normalizedPath(threadCWD)
+        }
+        infoMessage = "Selected Codex session \(thread.id)"
+        errorMessage = nil
     }
 
     public func selectClaudeSession(_ session: APIClaudeSessionSummary) {
         claudeResumeSessionID = session.id
         codexResumeThreadID = ""
         selectedAgent = .claude
+        if let sessionCWD = normalizedOptionalPath(session.cwd) {
+            directoryPath = normalizedPath(sessionCWD)
+        }
+        infoMessage = "Selected Claude session \(session.id)"
+        errorMessage = nil
+    }
+
+    public func clearCodexSelection() {
+        codexResumeThreadID = ""
+        if infoMessage?.contains("Selected Codex session") == true {
+            infoMessage = nil
+        }
+    }
+
+    public func clearClaudeSelection() {
+        claudeResumeSessionID = ""
+        if infoMessage?.contains("Selected Claude session") == true {
+            infoMessage = nil
+        }
     }
 
     public func selectDirectoryEntry(
