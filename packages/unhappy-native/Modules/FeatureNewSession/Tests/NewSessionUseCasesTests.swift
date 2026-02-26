@@ -66,6 +66,56 @@ struct NewSessionUseCasesTests {
     }
 
     @Test
+    func loadCodexThreadsForwardsMachineAndPath() async throws {
+        let expected = [
+            APICodexThreadSummary(
+                id: "thread-1",
+                name: "Bugfix",
+                cwd: "/repo",
+                updatedAt: "2026-02-24T10:00:00.000Z",
+                createdAt: "2026-02-24T09:00:00.000Z",
+                archived: false
+            )
+        ]
+        let service = CodexThreadsService(threads: expected)
+        let useCase = NewSessionCodexThreadsLoadUseCase(service: service)
+
+        let rows = try await useCase.loadCodexThreads(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1",
+            limit: 20,
+            cwd: "/repo"
+        )
+
+        #expect(rows == expected)
+    }
+
+    @Test
+    func loadClaudeSessionsForwardsMachineAndPath() async throws {
+        let expected = [
+            APIClaudeSessionSummary(
+                id: "c7a2f5d1-1111-2222-3333-444444444444",
+                cwd: "/repo",
+                updatedAt: "2026-02-24T10:00:00.000Z",
+                createdAt: "2026-02-24T09:00:00.000Z"
+            )
+        ]
+        let service = ClaudeSessionsService(sessions: expected)
+        let useCase = NewSessionClaudeSessionsLoadUseCase(service: service)
+
+        let rows = try await useCase.loadClaudeSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1",
+            limit: 20,
+            cwd: "/repo"
+        )
+
+        #expect(rows == expected)
+    }
+
+    @Test
     func spawnThrowsApprovalError() async {
         let response = APISessionSpawnResult(
             success: false,
@@ -273,6 +323,34 @@ private struct DirectoryService: MachineDirectoryListing {
         path: String
     ) async throws -> APIMachineListDirectoryResult {
         result
+    }
+}
+
+private struct CodexThreadsService: MachineCodexThreadsFetching {
+    let threads: [APICodexThreadSummary]
+
+    func fetchCodexThreads(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APICodexThreadSummary] {
+        threads
+    }
+}
+
+private struct ClaudeSessionsService: MachineClaudeSessionsFetching {
+    let sessions: [APIClaudeSessionSummary]
+
+    func fetchClaudeSessions(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APIClaudeSessionSummary] {
+        sessions
     }
 }
 

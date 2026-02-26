@@ -17,6 +17,12 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public var claudeResumeSessionID: String = ""
     @Published public var sessionToken: String = ""
     @Published public var environmentVariablesText: String = ""
+    @Published public private(set) var codexThreads: [APICodexThreadSummary] = []
+    @Published public private(set) var isLoadingCodexThreads = false
+    @Published public private(set) var codexThreadsErrorMessage: String?
+    @Published public private(set) var claudeSessions: [APIClaudeSessionSummary] = []
+    @Published public private(set) var isLoadingClaudeSessions = false
+    @Published public private(set) var claudeSessionsErrorMessage: String?
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var infoMessage: String?
     @Published public private(set) var approvalDirectory: String?
@@ -27,19 +33,25 @@ public final class NewSessionViewModel: ObservableObject {
     private let spawner: any NewSessionSpawningAction
     private let recentProjectsManager: any NewSessionRecentProjectsManaging
     private let profilesManager: any NewSessionProfilesManaging
+    private let codexThreadsLoader: (any NewSessionCodexThreadsLoadingAction)?
+    private let claudeSessionsLoader: (any NewSessionClaudeSessionsLoadingAction)?
 
     public init(
         machinesLoader: any NewSessionMachinesLoadingAction,
         directoryLister: any NewSessionDirectoryListingAction,
         spawner: any NewSessionSpawningAction,
         recentProjectsManager: any NewSessionRecentProjectsManaging,
-        profilesManager: any NewSessionProfilesManaging
+        profilesManager: any NewSessionProfilesManaging,
+        codexThreadsLoader: (any NewSessionCodexThreadsLoadingAction)? = nil,
+        claudeSessionsLoader: (any NewSessionClaudeSessionsLoadingAction)? = nil
     ) {
         self.machinesLoader = machinesLoader
         self.directoryLister = directoryLister
         self.spawner = spawner
         self.recentProjectsManager = recentProjectsManager
         self.profilesManager = profilesManager
+        self.codexThreadsLoader = codexThreadsLoader
+        self.claudeSessionsLoader = claudeSessionsLoader
     }
 
     public func loadMachines(serverURLString: String, token: String) async {
@@ -80,6 +92,10 @@ public final class NewSessionViewModel: ObservableObject {
         token: String
     ) async {
         selectedMachineID = machineID
+        codexThreads = []
+        codexThreadsErrorMessage = nil
+        claudeSessions = []
+        claudeSessionsErrorMessage = nil
         approvalDirectory = nil
         spawnedSessionID = nil
         infoMessage = nil
@@ -109,6 +125,82 @@ public final class NewSessionViewModel: ObservableObject {
             directoryEntries = []
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+    }
+
+    public func loadCodexThreads(serverURLString: String, token: String, limit: Int = 20) async {
+        guard let machineID = selectedMachineID else {
+            codexThreads = []
+            codexThreadsErrorMessage = NewSessionError.missingMachineID.errorDescription
+            return
+        }
+
+        isLoadingCodexThreads = true
+        codexThreads = []
+        codexThreadsErrorMessage = nil
+        defer { isLoadingCodexThreads = false }
+
+        guard let codexThreadsLoader else {
+            codexThreadsErrorMessage = "Codex session listing is unavailable in this build"
+            return
+        }
+
+        do {
+            codexThreads = try await codexThreadsLoader.loadCodexThreads(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: machineID,
+                limit: limit,
+                cwd: normalizedPath(directoryPath)
+            )
+            codexThreadsErrorMessage = nil
+        } catch {
+            codexThreads = []
+            codexThreadsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func loadClaudeSessions(serverURLString: String, token: String, limit: Int = 20) async {
+        guard let machineID = selectedMachineID else {
+            claudeSessions = []
+            claudeSessionsErrorMessage = NewSessionError.missingMachineID.errorDescription
+            return
+        }
+
+        isLoadingClaudeSessions = true
+        claudeSessions = []
+        claudeSessionsErrorMessage = nil
+        defer { isLoadingClaudeSessions = false }
+
+        guard let claudeSessionsLoader else {
+            claudeSessionsErrorMessage = "Claude session listing is unavailable in this build"
+            return
+        }
+
+        do {
+            claudeSessions = try await claudeSessionsLoader.loadClaudeSessions(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: machineID,
+                limit: limit,
+                cwd: normalizedPath(directoryPath)
+            )
+            claudeSessionsErrorMessage = nil
+        } catch {
+            claudeSessions = []
+            claudeSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func selectCodexThread(_ thread: APICodexThreadSummary) {
+        codexResumeThreadID = thread.id
+        claudeResumeSessionID = ""
+        selectedAgent = .codex
+    }
+
+    public func selectClaudeSession(_ session: APIClaudeSessionSummary) {
+        claudeResumeSessionID = session.id
+        codexResumeThreadID = ""
+        selectedAgent = .claude
     }
 
     public func selectDirectoryEntry(

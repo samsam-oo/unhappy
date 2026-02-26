@@ -29,6 +29,26 @@ public protocol NewSessionSpawningAction: Sendable {
     ) async throws -> APISessionSpawnResult
 }
 
+public protocol NewSessionCodexThreadsLoadingAction: Sendable {
+    func loadCodexThreads(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APICodexThreadSummary]
+}
+
+public protocol NewSessionClaudeSessionsLoadingAction: Sendable {
+    func loadClaudeSessions(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APIClaudeSessionSummary]
+}
+
 public protocol NewSessionRecentProjectsManaging: Sendable {
     func loadRecentProjects() async -> [String]
     func recordRecentProject(_ path: String) async -> [String]
@@ -189,6 +209,68 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         let normalizedError = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
         throw NewSessionError.failed(
             message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to spawn session"
+        )
+    }
+}
+
+public actor NewSessionCodexThreadsLoadUseCase: NewSessionCodexThreadsLoadingAction {
+    private let service: any MachineCodexThreadsFetching
+
+    public init(service: any MachineCodexThreadsFetching) {
+        self.service = service
+    }
+
+    public func loadCodexThreads(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APICodexThreadSummary] {
+        let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
+            serverURLString: serverURLString,
+            token: token,
+            machineID: machineID,
+            directory: nil
+        )
+
+        return try await service.fetchCodexThreads(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            limit: limit,
+            cwd: normalizedOptional(cwd)
+        )
+    }
+}
+
+public actor NewSessionClaudeSessionsLoadUseCase: NewSessionClaudeSessionsLoadingAction {
+    private let service: any MachineClaudeSessionsFetching
+
+    public init(service: any MachineClaudeSessionsFetching) {
+        self.service = service
+    }
+
+    public func loadClaudeSessions(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APIClaudeSessionSummary] {
+        let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
+            serverURLString: serverURLString,
+            token: token,
+            machineID: machineID,
+            directory: nil
+        )
+
+        return try await service.fetchClaudeSessions(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            limit: limit,
+            cwd: normalizedOptional(cwd)
         )
     }
 }

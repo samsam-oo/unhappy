@@ -503,7 +503,9 @@ public struct HomeView: View {
                 directoryLister: NewSessionDirectoryListUseCase(service: service),
                 spawner: NewSessionSpawnUseCase(service: service),
                 recentProjectsManager: NewSessionNoopRecentProjectsManager(),
-                profilesManager: NewSessionNoopProfilesManager()
+                profilesManager: NewSessionNoopProfilesManager(),
+                codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
+                claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
             )
         },
         makeSessionToolsViewModel: {

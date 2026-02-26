@@ -12,6 +12,8 @@ public struct NewSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showSaveProfilePrompt = false
     @State private var draftProfileName = ""
+    @State private var showCodexThreadsSheet = false
+    @State private var showClaudeSessionsSheet = false
 
     public init(
         serverURLString: String,
@@ -187,9 +189,41 @@ public struct NewSessionView: View {
                     TextField("Codex resume thread ID (optional)", text: $viewModel.codexResumeThreadID)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : "Choose Existing Codex Session") {
+                        showCodexThreadsSheet = true
+                        Task {
+                            await viewModel.loadCodexThreads(
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
+                    }
+                    .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingCodexThreads)
+                    if let error = viewModel.codexThreadsErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+
                     TextField("Claude resume session ID (optional)", text: $viewModel.claudeResumeSessionID)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : "Choose Existing Claude Session") {
+                        showClaudeSessionsSheet = true
+                        Task {
+                            await viewModel.loadClaudeSessions(
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
+                    }
+                    .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingClaudeSessions)
+                    if let error = viewModel.claudeSessionsErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+
                     TextField("Session token (optional)", text: $viewModel.sessionToken)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -278,6 +312,118 @@ public struct NewSessionView: View {
                     Button("Close") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showCodexThreadsSheet) {
+                NavigationStack {
+                    List {
+                        if viewModel.isLoadingCodexThreads {
+                            ProgressView("Loading Codex sessions…")
+                        } else if let error = viewModel.codexThreadsErrorMessage {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Unable to load Codex sessions")
+                                    .font(.headline)
+                                Text(error)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Button("Retry") {
+                                    Task {
+                                        await viewModel.loadCodexThreads(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        } else if viewModel.codexThreads.isEmpty {
+                            ContentUnavailableView(
+                                "No existing Codex sessions",
+                                systemImage: "list.bullet",
+                                description: Text("Start one in CLI first, then refresh here.")
+                            )
+                        } else {
+                            ForEach(viewModel.codexThreads) { thread in
+                                Button {
+                                    viewModel.selectCodexThread(thread)
+                                    showCodexThreadsSheet = false
+                                } label: {
+                                    CodexThreadSelectionRow(thread: thread)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .navigationTitle("Codex Sessions")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showCodexThreadsSheet = false }
+                        }
+                    }
+                    .refreshable {
+                        await viewModel.loadCodexThreads(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showClaudeSessionsSheet) {
+                NavigationStack {
+                    List {
+                        if viewModel.isLoadingClaudeSessions {
+                            ProgressView("Loading Claude sessions…")
+                        } else if let error = viewModel.claudeSessionsErrorMessage {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Unable to load Claude sessions")
+                                    .font(.headline)
+                                Text(error)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Button("Retry") {
+                                    Task {
+                                        await viewModel.loadClaudeSessions(
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        } else if viewModel.claudeSessions.isEmpty {
+                            ContentUnavailableView(
+                                "No existing Claude sessions",
+                                systemImage: "list.bullet.rectangle",
+                                description: Text("Start one in CLI first, then refresh here.")
+                            )
+                        } else {
+                            ForEach(viewModel.claudeSessions) { session in
+                                Button {
+                                    viewModel.selectClaudeSession(session)
+                                    showClaudeSessionsSheet = false
+                                } label: {
+                                    ClaudeSessionSelectionRow(session: session)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .navigationTitle("Claude Sessions")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { showClaudeSessionsSheet = false }
+                        }
+                    }
+                    .refreshable {
+                        await viewModel.loadClaudeSessions(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .task(id: "\(serverURLString)|\(token)") {
                 viewModel.selectedAgent = defaultAgent
                 await viewModel.loadMachines(serverURLString: serverURLString, token: token)
@@ -303,6 +449,64 @@ public struct NewSessionView: View {
     }
 }
 
+private struct CodexThreadSelectionRow: View {
+    let thread: APICodexThreadSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            Text(thread.id)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if let cwd = normalized(thread.cwd) {
+                Text(cwd)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var title: String {
+        normalized(thread.name) ?? "Untitled"
+    }
+}
+
+private struct ClaudeSessionSelectionRow: View {
+    let session: APIClaudeSessionSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(session.id)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            if let cwd = normalized(session.cwd) {
+                Text(cwd)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if let updatedAt = normalized(session.updatedAt) {
+                Text(updatedAt)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+private func normalized(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
 #Preview {
     NewSessionView(
         serverURLString: "https://api.unhappy.im",
@@ -314,7 +518,9 @@ public struct NewSessionView: View {
                 directoryLister: NewSessionDirectoryListUseCase(service: service),
                 spawner: NewSessionSpawnUseCase(service: service),
                 recentProjectsManager: NewSessionNoopRecentProjectsManager(),
-                profilesManager: NewSessionNoopProfilesManager()
+                profilesManager: NewSessionNoopProfilesManager(),
+                codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
+                claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
             )
         }
     )
