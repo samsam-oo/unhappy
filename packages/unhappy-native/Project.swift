@@ -1,7 +1,26 @@
 import ProjectDescription
+import Foundation
+
+let projectBaseSettings: SettingsDictionary = {
+    let defaultDevelopmentTeam = "Q23JLSJCCV"
+    var base: SettingsDictionary = [
+        "IPHONEOS_DEPLOYMENT_TARGET": "18.0",
+        "DEVELOPMENT_TEAM": .string(defaultDevelopmentTeam),
+    ]
+
+    if let developmentTeam = ProcessInfo.processInfo.environment["UNHAPPY_DEVELOPMENT_TEAM"],
+       !developmentTeam.isEmpty {
+        base["DEVELOPMENT_TEAM"] = .string(developmentTeam)
+    }
+
+    return base
+}()
 
 let project = Project(
     name: "UnhappyNative",
+    settings: .settings(
+        base: projectBaseSettings
+    ),
     targets: [
         .target(
             name: "UnhappyNative",
@@ -10,6 +29,7 @@ let project = Project(
             bundleId: "im.unhappy.app",
             infoPlist: .extendingDefault(with: [
                 "NSCameraUsageDescription": .string("Scan terminal QR codes to approve secure device connections."),
+                "UILaunchStoryboardName": .string("LaunchScreen"),
             ]),
             buildableFolders: [
                 "App/Sources",
@@ -164,7 +184,9 @@ let project = Project(
             buildableFolders: [
                 "Modules/CoreKit/Sources",
             ],
-            dependencies: [],
+            dependencies: [
+                .external(name: "SocketIO"),
+            ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:core",
