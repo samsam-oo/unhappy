@@ -170,7 +170,7 @@ public struct SessionsView: View {
                     }
                 },
                 message: {
-                    Text("This removes the session permanently from the server.")
+                    Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
                 }
             )
             .sheet(isPresented: $isPresentingNewSession) {
