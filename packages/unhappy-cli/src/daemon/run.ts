@@ -31,7 +31,7 @@ import { projectPath } from '@/projectPath';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { getTmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
 import { existsSync, readFileSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, normalize } from 'path';
 import {
   checkIfDaemonRunningAndCleanupStaleState,
   cleanupDaemonState,
@@ -54,13 +54,26 @@ export const initialMachineMetadata: MachineMetadata = {
 function normalizeDaemonPath(path: string, homeDir: string): string {
   const trimmed = path.trim();
   if (!trimmed) return trimmed;
-  if (trimmed === '~' || trimmed === '~/') {
+
+  const canonical = trimmed.normalize('NFKC').replaceAll('\\', '/');
+  const unquoted =
+    (canonical.startsWith('"') && canonical.endsWith('"')) ||
+    (canonical.startsWith("'") && canonical.endsWith("'"))
+      ? canonical.slice(1, -1).trim()
+      : canonical;
+
+  if (!unquoted) return '';
+  if (unquoted === '~' || unquoted === '~/') {
     return homeDir;
   }
-  if (trimmed.startsWith('~/')) {
-    return join(homeDir, trimmed.slice(2));
+  if (unquoted.startsWith('~/')) {
+    return normalize(join(homeDir, unquoted.slice(2)));
   }
-  return trimmed;
+  if (isAbsolute(unquoted)) {
+    return normalize(unquoted);
+  }
+
+  return normalize(join(homeDir, unquoted));
 }
 
 // Get environment variables for a profile, filtered for agent compatibility
@@ -398,6 +411,11 @@ export async function startDaemon(): Promise<void> {
       } = options;
       const homeDir = (machine.metadata?.homeDir || os.homedir()).trim() || os.homedir();
       const normalizedDirectory = normalizeDaemonPath(directory, homeDir);
+      logger.debug('[DAEMON RUN] Directory normalization', {
+        requestedDirectory: directory,
+        normalizedDirectory,
+        homeDir,
+      });
       if (
         options.agent !== 'claude' &&
         options.agent !== 'codex' &&

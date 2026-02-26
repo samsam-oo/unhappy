@@ -6,7 +6,9 @@
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
 import { backoff } from '@/utils/time';
+import { existsSync } from 'fs';
 import os from 'os';
+import { isAbsolute, join, normalize } from 'path';
 import { io, Socket } from 'socket.io-client';
 import { z } from 'zod';
 import {
@@ -14,7 +16,10 @@ import {
   SpawnSessionOptions,
   SpawnSessionResult,
 } from '../modules/common/registerCommonHandlers';
-import { CodexAppServerClient } from '@/codex/codexAppServerClient';
+import {
+  CodexAppServerClient,
+  type CodexThreadSummary,
+} from '@/codex/codexAppServerClient';
 import { listClaudeModels, listCodexModels } from '@/modules/common/listModels';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
@@ -105,13 +110,62 @@ interface DaemonToServerEvents {
 function normalizeMachinePath(path: string, homeDir: string): string {
   const trimmed = path.trim();
   if (!trimmed) return trimmed;
-  if (trimmed === '~' || trimmed === '~/') {
+
+  const canonical = trimmed.normalize('NFKC').replaceAll('\\', '/');
+  const unquoted =
+    (canonical.startsWith('"') && canonical.endsWith('"')) ||
+    (canonical.startsWith("'") && canonical.endsWith("'"))
+      ? canonical.slice(1, -1).trim()
+      : canonical;
+
+  if (!unquoted) return '';
+  if (unquoted === '~' || unquoted === '~/') {
     return homeDir;
   }
-  if (trimmed.startsWith('~/')) {
-    return `${homeDir}/${trimmed.slice(2)}`;
+  if (unquoted.startsWith('~/')) {
+    return normalize(join(homeDir, unquoted.slice(2)));
   }
-  return trimmed;
+  if (isAbsolute(unquoted)) {
+    return normalize(unquoted);
+  }
+
+  // Mobile UI frequently sends home-relative paths without an explicit "~/".
+  // Interpret these as relative to the user's home directory instead of daemon cwd.
+  return normalize(join(homeDir, unquoted));
+}
+
+function parseThreadUpdatedAtMs(row: CodexThreadSummary): number {
+  const updatedAtMs = row.updatedAt ? Date.parse(row.updatedAt) : Number.NaN;
+  if (Number.isFinite(updatedAtMs)) {
+    return updatedAtMs;
+  }
+  const createdAtMs = row.createdAt ? Date.parse(row.createdAt) : Number.NaN;
+  if (Number.isFinite(createdAtMs)) {
+    return createdAtMs;
+  }
+  return 0;
+}
+
+function buildCodexHomeCandidates(machine: Machine, homeDir: string): string[] {
+  const candidates = [
+    typeof process.env.CODEX_HOME === 'string' ? process.env.CODEX_HOME : '',
+    join(
+      (machine.metadata?.unhappyHomeDir || configuration.unhappyHomeDir).trim() ||
+        configuration.unhappyHomeDir,
+      'codex-home',
+    ),
+    join(homeDir, '.codex'),
+  ];
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const raw of candidates) {
+    const normalized = raw.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    if (!existsSync(normalized)) continue;
+    seen.add(normalized);
+    deduped.push(normalized);
+  }
+  return deduped;
 }
 
 type MachineRpcHandlers = {
@@ -382,6 +436,10 @@ export class ApiMachineClient {
           cwdRaw || this.machine?.metadata?.homeDir || process.cwd(),
           homeDir,
         );
+        logger.debug('[API MACHINE] codex-list-threads request', {
+          cwdRaw,
+          cwdNormalized: cwd,
+        });
         const limitRaw =
           typeof params?.limit === 'number' && Number.isFinite(params.limit)
             ? Math.floor(params.limit)
@@ -397,39 +455,81 @@ export class ApiMachineClient {
         })();
         const requestLimit = Math.max(limit, Math.min(100, offset + limit));
 
-        const codexClient = new CodexAppServerClient();
-        try {
-          await codexClient.connect();
-          const rows = await codexClient.listRecentThreadsByCwd(cwd, {
-            limit: requestLimit,
+        const codexHomeCandidates = buildCodexHomeCandidates(this.machine, homeDir);
+        logger.debug('[API MACHINE] codex-list-threads candidates', {
+          count: codexHomeCandidates.length,
+          codexHomeCandidates,
+        });
+        const mergedRowsById = new Map<string, CodexThreadSummary>();
+        let sawSuccessfulList = false;
+        let lastError: string | null = null;
+
+        for (const codexHomeDir of codexHomeCandidates) {
+          const codexClient = new CodexAppServerClient({
+            envOverrides: { CODEX_HOME: codexHomeDir },
           });
-          const start = Math.min(offset, rows.length);
-          const end = Math.min(start + limit, rows.length);
-          const threads = rows.slice(start, end);
-          const hasDefiniteNext = end < rows.length;
-          const hasPossibleNext = rows.length === requestLimit && requestLimit < 100;
-          const hasNext = hasDefiniteNext || hasPossibleNext;
-          const nextCursor = hasNext ? String(end) : undefined;
-          return { success: true, threads, hasNext, nextCursor };
-        } catch (error) {
-          logger.debug('[API MACHINE] codex-list-threads failed', error);
-          return {
-            success: false,
-            error:
-              error instanceof Error
-                ? error.message
-                : 'Failed to list Codex threads',
-          };
-        } finally {
           try {
-            await codexClient.forceCloseSession();
+            await codexClient.connect();
+            const rows = await codexClient.listRecentThreadsByCwd(cwd, {
+              limit: requestLimit,
+            });
+            sawSuccessfulList = true;
+            logger.debug('[API MACHINE] codex-list-threads candidate result', {
+              codexHomeDir,
+              rowCount: rows.length,
+            });
+
+            for (const row of rows) {
+              const existing = mergedRowsById.get(row.id);
+              if (!existing) {
+                mergedRowsById.set(row.id, row);
+                continue;
+              }
+              if (parseThreadUpdatedAtMs(row) > parseThreadUpdatedAtMs(existing)) {
+                mergedRowsById.set(row.id, row);
+              }
+            }
           } catch (error) {
-            logger.debug(
-              '[API MACHINE] codex-list-threads cleanup failed',
-              error,
-            );
+            const message =
+              error instanceof Error ? error.message : 'Failed to list Codex threads';
+            lastError = message;
+            logger.debug('[API MACHINE] codex-list-threads failed for CODEX_HOME', {
+              codexHomeDir,
+              error: message,
+            });
+          } finally {
+            try {
+              await codexClient.forceCloseSession();
+            } catch (error) {
+              logger.debug(
+                '[API MACHINE] codex-list-threads cleanup failed',
+                error,
+              );
+            }
           }
         }
+
+        if (!sawSuccessfulList && lastError) {
+          return { success: false, error: lastError };
+        }
+
+        const rows = Array.from(mergedRowsById.values()).sort(
+          (lhs, rhs) => parseThreadUpdatedAtMs(rhs) - parseThreadUpdatedAtMs(lhs),
+        );
+        logger.debug('[API MACHINE] codex-list-threads merged result', {
+          mergedCount: rows.length,
+          offset,
+          limit,
+          requestLimit,
+        });
+        const start = Math.min(offset, rows.length);
+        const end = Math.min(start + limit, rows.length);
+        const threads = rows.slice(start, end);
+        const hasDefiniteNext = end < rows.length;
+        const hasPossibleNext = rows.length === requestLimit && requestLimit < 100;
+        const hasNext = hasDefiniteNext || hasPossibleNext;
+        const nextCursor = hasNext ? String(end) : undefined;
+        return { success: true, threads, hasNext, nextCursor };
       },
     );
   }

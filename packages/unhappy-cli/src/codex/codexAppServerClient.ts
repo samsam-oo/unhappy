@@ -184,6 +184,11 @@ export class CodexAppServerClient {
   private needsThreadReattach = false;
   private sawLegacyCodexEvents = false;
   private recentAgentMessageKeys = new Map<string, number>();
+  private readonly envOverrides: Record<string, string>;
+
+  constructor(options?: { envOverrides?: Record<string, string> }) {
+    this.envOverrides = options?.envOverrides ?? {};
+  }
 
   setHandler(handler: ((event: unknown) => void) | null): void {
     this.handler = handler;
@@ -214,12 +219,19 @@ export class CodexAppServerClient {
     this.connectInFlight = (async () => {
       logger.debug('[CodexAppServer] Connecting to codex app-server');
       this.buffer = '';
+      const spawnEnv = Object.keys(process.env).reduce((acc, key) => {
+        const value = process.env[key];
+        if (typeof value === 'string') acc[key] = value;
+        return acc;
+      }, {} as Record<string, string>);
+      for (const [key, value] of Object.entries(this.envOverrides)) {
+        const normalized = value.trim();
+        if (normalized.length > 0) {
+          spawnEnv[key] = normalized;
+        }
+      }
       this.child = spawn('codex', ['app-server'], {
-        env: Object.keys(process.env).reduce((acc, key) => {
-          const value = process.env[key];
-          if (typeof value === 'string') acc[key] = value;
-          return acc;
-        }, {} as Record<string, string>),
+        env: spawnEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
@@ -370,7 +382,6 @@ export class CodexAppServerClient {
           cwd: normalizedCwd,
           limit,
           sortKey: 'updated_at',
-          archived: false,
         },
         { timeout: THREAD_META_TIMEOUT_MS },
       );
