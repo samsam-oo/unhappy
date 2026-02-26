@@ -74,7 +74,7 @@ struct FeatureHomeTests {
                     connector: TerminalConnectUseCase(
                         service: URLSessionTerminalAuthService(),
                         dataKeyStore: UserDefaultsTerminalDataKeyStore(),
-                        encryptor: TweetNaclTerminalAuthEncryptor()
+                        encryptor: CryptoKitTerminalAuthEncryptor()
                     )
                 )
             },
@@ -82,7 +82,7 @@ struct FeatureHomeTests {
                 AccountLinkSettingsViewModel(
                     linker: AccountLinkUseCase(
                         service: URLSessionAccountAuthService(),
-                        encryptor: TweetNaclTerminalAuthEncryptor()
+                        encryptor: CryptoKitTerminalAuthEncryptor()
                     ),
                     restorer: AccountRestoreUseCase(
                         authTokenService: URLSessionAuthTokenService()

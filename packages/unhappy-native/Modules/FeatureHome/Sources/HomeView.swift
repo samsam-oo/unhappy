@@ -553,7 +553,7 @@ public struct HomeView: View {
                 connector: TerminalConnectUseCase(
                     service: URLSessionTerminalAuthService(),
                     dataKeyStore: UserDefaultsTerminalDataKeyStore(),
-                    encryptor: TweetNaclTerminalAuthEncryptor()
+                    encryptor: CryptoKitTerminalAuthEncryptor()
                 )
             )
         },
@@ -561,7 +561,7 @@ public struct HomeView: View {
             AccountLinkSettingsViewModel(
                 linker: AccountLinkUseCase(
                     service: URLSessionAccountAuthService(),
-                    encryptor: TweetNaclTerminalAuthEncryptor()
+                    encryptor: CryptoKitTerminalAuthEncryptor()
                 ),
                 restorer: AccountRestoreUseCase(
                     authTokenService: URLSessionAuthTokenService()

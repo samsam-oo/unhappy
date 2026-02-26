@@ -1,7 +1,6 @@
 import Foundation
 import Security
 import CoreKit
-import TweetNacl
 
 public enum TerminalConnectRequestState: Equatable, Sendable {
     case pending(supportsV2: Bool)
@@ -85,7 +84,7 @@ public actor UserDefaultsTerminalDataKeyStore: TerminalDataKeyStoring {
     }
 }
 
-public struct TweetNaclTerminalAuthEncryptor: TerminalAuthEncrypting {
+public struct CryptoKitTerminalAuthEncryptor: TerminalAuthEncrypting {
     public init() {}
 
     public func encrypt(message: Data, recipientPublicKeyBase64URL: String) throws -> String {
@@ -97,19 +96,10 @@ public struct TweetNaclTerminalAuthEncryptor: TerminalAuthEncrypting {
         }
 
         do {
-            let ephemeralKeyPair = try NaclBox.keyPair()
-            let nonce = try randomBytes(count: 24)
-            let encrypted = try NaclBox.box(
+            let bundle = try AuthEnvelopeCrypto.encrypt(
                 message: message,
-                nonce: nonce,
-                publicKey: recipientPublicKey,
-                secretKey: ephemeralKeyPair.secretKey
+                recipientPublicKey: recipientPublicKey
             )
-
-            var bundle = Data()
-            bundle.append(ephemeralKeyPair.publicKey)
-            bundle.append(nonce)
-            bundle.append(encrypted)
             return bundle.base64EncodedString()
         } catch {
             throw TerminalConnectError.encryptionFailed

@@ -218,7 +218,7 @@ struct TerminalConnectSettingsView: View {
                 connector: TerminalConnectUseCase(
                     service: URLSessionTerminalAuthService(),
                     dataKeyStore: UserDefaultsTerminalDataKeyStore(),
-                    encryptor: TweetNaclTerminalAuthEncryptor()
+                    encryptor: CryptoKitTerminalAuthEncryptor()
                 )
             )
         }

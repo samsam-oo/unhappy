@@ -143,7 +143,6 @@ let project = Project(
             dependencies: [
                 .target(name: "CoreKit"),
                 .target(name: "FeatureMachine"),
-                .external(name: "TweetNacl"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",

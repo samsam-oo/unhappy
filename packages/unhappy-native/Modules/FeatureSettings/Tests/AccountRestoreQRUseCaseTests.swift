@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import CoreKit
-import TweetNacl
+import CryptoKit
 @testable import FeatureSettings
 
 struct AccountRestoreQRUseCaseTests {
@@ -39,15 +39,16 @@ struct AccountRestoreQRUseCaseTests {
     @Test
     func pollStatusDecryptsEncryptedSecretAndToken() async throws {
         let session = try makeSession(secretSeed: Data(repeating: 5, count: 32))
-        let keyPair = try NaclBox.keyPair(fromSecretKey: session.secretKey)
+        let privateKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: session.secretKey)
+        let publicKey = privateKey.publicKey.rawRepresentation
         let restoredSecret = Data(repeating: 0xAA, count: 32)
         let encryptedSecret = try makeEncryptedBundle(
             message: restoredSecret,
-            recipientPublicKey: keyPair.publicKey
+            recipientPublicKey: publicKey
         )
         let encryptedToken = try makeEncryptedBundle(
             message: Data("qr-restored-token".utf8),
-            recipientPublicKey: keyPair.publicKey
+            recipientPublicKey: publicKey
         )
         let service = MockAccountRestoreRequestService(
             status: APIAccountRestoreRequestStatus(
@@ -75,13 +76,14 @@ struct AccountRestoreQRUseCaseTests {
     }
 
     @Test
-    func pollStatusUsesPlainTokenWhenEncryptedTokenMissing() async throws {
+    func pollStatusThrowsWhenEncryptedTokenMissing() async throws {
         let session = try makeSession(secretSeed: Data(repeating: 6, count: 32))
-        let keyPair = try NaclBox.keyPair(fromSecretKey: session.secretKey)
+        let privateKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: session.secretKey)
+        let publicKey = privateKey.publicKey.rawRepresentation
         let restoredSecret = Data(repeating: 0xAB, count: 32)
         let encryptedSecret = try makeEncryptedBundle(
             message: restoredSecret,
-            recipientPublicKey: keyPair.publicKey
+            recipientPublicKey: publicKey
         )
         let service = MockAccountRestoreRequestService(
             status: APIAccountRestoreRequestStatus(
@@ -93,19 +95,12 @@ struct AccountRestoreQRUseCaseTests {
         )
         let useCase = AccountRestoreQRUseCase(requestService: service)
 
-        let result = try await useCase.pollStatus(
-            serverURLString: "https://api.unhappy.im",
-            session: session
-        )
-
-        #expect(
-            result == .authorized(
-                AccountRestoreQRCredentials(
-                    token: "plain-token",
-                    secretBase64URL: Base64URLCodec.encode(restoredSecret)
-                )
+        await #expect(throws: AccountRestoreQRError.missingTokenInResponse) {
+            _ = try await useCase.pollStatus(
+                serverURLString: "https://api.unhappy.im",
+                session: session
             )
-        )
+        }
     }
 }
 
@@ -133,27 +128,15 @@ private actor MockAccountRestoreRequestService: AccountRestoreRequestPolling {
 }
 
 private func makeSession(secretSeed: Data) throws -> AccountRestoreQRSession {
-    let keyPair = try NaclBox.keyPair(fromSecretKey: secretSeed)
+    let privateKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: secretSeed)
+    let publicKey = privateKey.publicKey.rawRepresentation
     return AccountRestoreQRSession(
-        publicKeyBase64: keyPair.publicKey.base64EncodedString(),
-        secretKey: keyPair.secretKey,
-        qrPayload: "unhappy:///account?\(Base64URLCodec.encode(keyPair.publicKey))"
+        publicKeyBase64: publicKey.base64EncodedString(),
+        secretKey: privateKey.rawRepresentation,
+        qrPayload: "unhappy:///account?\(Base64URLCodec.encode(publicKey))"
     )
 }
 
 private func makeEncryptedBundle(message: Data, recipientPublicKey: Data) throws -> Data {
-    let ephemeral = try NaclBox.keyPair()
-    let nonce = Data((0..<24).map { UInt8(($0 * 3) % 255) })
-    let encrypted = try NaclBox.box(
-        message: message,
-        nonce: nonce,
-        publicKey: recipientPublicKey,
-        secretKey: ephemeral.secretKey
-    )
-
-    var bundle = Data()
-    bundle.append(ephemeral.publicKey)
-    bundle.append(nonce)
-    bundle.append(encrypted)
-    return bundle
+    try AuthEnvelopeCrypto.encrypt(message: message, recipientPublicKey: recipientPublicKey)
 }

@@ -76,11 +76,11 @@ struct UnhappyNativeApp: App {
         let terminalConnectUseCase = TerminalConnectUseCase(
             service: terminalAuthService,
             dataKeyStore: terminalDataKeyStore,
-            encryptor: TweetNaclTerminalAuthEncryptor()
+            encryptor: CryptoKitTerminalAuthEncryptor()
         )
         let accountLinkUseCase = AccountLinkUseCase(
             service: accountAuthService,
-            encryptor: TweetNaclTerminalAuthEncryptor()
+            encryptor: CryptoKitTerminalAuthEncryptor()
         )
         let accountRestoreUseCase = AccountRestoreUseCase(authTokenService: authTokenService)
         let accountRestoreQRUseCase = AccountRestoreQRUseCase(
