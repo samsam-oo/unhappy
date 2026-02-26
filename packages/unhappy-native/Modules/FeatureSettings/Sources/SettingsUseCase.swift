@@ -52,6 +52,73 @@ public enum AppVoiceLanguageOption: String, CaseIterable, Sendable {
     }
 }
 
+public struct ChangelogEntry: Sendable, Equatable, Identifiable {
+    public let id: String
+    public let title: String
+    public let publishedAt: String
+    public let highlights: [String]
+
+    public init(
+        id: String,
+        title: String,
+        publishedAt: String,
+        highlights: [String]
+    ) {
+        self.id = id
+        self.title = title
+        self.publishedAt = publishedAt
+        self.highlights = highlights
+    }
+}
+
+public enum SettingsChangelog {
+    public static let entries: [ChangelogEntry] = [
+        ChangelogEntry(
+            id: "2026.02.26",
+            title: "Settings parity update",
+            publishedAt: "Feb 26, 2026",
+            highlights: [
+                "Added a native changelog screen in Settings.",
+                "Added unread indicator support for new changelog entries.",
+                "Persisted last viewed changelog version in app settings."
+            ]
+        ),
+        ChangelogEntry(
+            id: "2026.02.21",
+            title: "Account linking improvements",
+            publishedAt: "Feb 21, 2026",
+            highlights: [
+                "Improved account link flow reliability and error handling.",
+                "Refined restore paths for token and QR onboarding."
+            ]
+        ),
+        ChangelogEntry(
+            id: "2026.02.14",
+            title: "Settings and machine updates",
+            publishedAt: "Feb 14, 2026",
+            highlights: [
+                "Expanded machine management controls in Settings.",
+                "Improved usage and connection settings organization."
+            ]
+        )
+    ]
+
+    public static var latestEntryID: String {
+        entries.first?.id ?? ""
+    }
+
+    public static func hasUnread(lastViewedID: String) -> Bool {
+        let latest = latestEntryID
+        guard !latest.isEmpty else { return false }
+        let normalizedLastViewedID = lastViewedID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedLastViewedID.isEmpty else { return true }
+        if normalizedLastViewedID == latest {
+            return false
+        }
+        return latest.compare(normalizedLastViewedID, options: .numeric) == .orderedDescending
+    }
+}
+
 public struct AppSettingsSnapshot: Sendable, Equatable {
     public let serverURLString: String
     public let apiToken: String
@@ -63,6 +130,7 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
     public let voiceEnabled: Bool
     public let voiceLanguage: AppVoiceLanguageOption
     public let defaultNewSessionAgent: APISessionSpawnAgent
+    public let lastViewedChangelogID: String
 
     public init(
         serverURLString: String,
@@ -74,7 +142,8 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
         useEnhancedSessionWizard: Bool = false,
         voiceEnabled: Bool = false,
         voiceLanguage: AppVoiceLanguageOption = .system,
-        defaultNewSessionAgent: APISessionSpawnAgent = .claude
+        defaultNewSessionAgent: APISessionSpawnAgent = .claude,
+        lastViewedChangelogID: String = ""
     ) {
         self.serverURLString = serverURLString
         self.apiToken = apiToken
@@ -86,6 +155,7 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
         self.voiceEnabled = voiceEnabled
         self.voiceLanguage = voiceLanguage
         self.defaultNewSessionAgent = defaultNewSessionAgent
+        self.lastViewedChangelogID = lastViewedChangelogID
     }
 }
 
@@ -101,7 +171,8 @@ public protocol SettingsManaging: Sendable {
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
         voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent
+        defaultNewSessionAgent: APISessionSpawnAgent,
+        lastViewedChangelogID: String
     ) async
 }
 
@@ -127,7 +198,8 @@ public actor SettingsUseCase: SettingsManaging {
             useEnhancedSessionWizard: await store.useEnhancedSessionWizard(),
             voiceEnabled: await store.voiceEnabled(),
             voiceLanguage: voiceLanguage,
-            defaultNewSessionAgent: defaultNewSessionAgent
+            defaultNewSessionAgent: defaultNewSessionAgent,
+            lastViewedChangelogID: await store.lastViewedChangelogID()
         )
     }
 
@@ -141,7 +213,8 @@ public actor SettingsUseCase: SettingsManaging {
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
         voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent
+        defaultNewSessionAgent: APISessionSpawnAgent,
+        lastViewedChangelogID: String
     ) async {
         await store.setServerURLString(serverURLString)
         await store.setAPIToken(apiToken)
@@ -153,5 +226,6 @@ public actor SettingsUseCase: SettingsManaging {
         await store.setVoiceEnabled(voiceEnabled)
         await store.setVoiceLanguageCode(voiceLanguage.rawValue)
         await store.setDefaultNewSessionAgent(defaultNewSessionAgent.rawValue)
+        await store.setLastViewedChangelogID(lastViewedChangelogID)
     }
 }

@@ -107,6 +107,14 @@ public struct SettingsView: View {
                     } label: {
                         Label("Usage", systemImage: "chart.bar.xaxis")
                     }
+                    NavigationLink {
+                        ChangelogView()
+                            .onAppear {
+                                viewModel.markLatestChangelogViewed()
+                            }
+                    } label: {
+                        ChangelogRow(hasUnread: viewModel.hasUnreadChangelog)
+                    }
                 }
 
                 Section("Machine") {
@@ -195,6 +203,30 @@ private actor PreviewSettingsManager: SettingsManaging {
         useEnhancedSessionWizard: Bool,
         voiceEnabled: Bool,
         voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent
+        defaultNewSessionAgent: APISessionSpawnAgent,
+        lastViewedChangelogID: String
     ) async {}
+}
+
+private struct ChangelogRow: View {
+    let hasUnread: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Label("Changelog", systemImage: "text.book.closed")
+            Spacer()
+            if hasUnread {
+                Text("NEW")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule()
+                            .fill(Color.accentColor)
+                    )
+                    .accessibilityLabel("Unread changelog updates")
+            }
+        }
+    }
 }

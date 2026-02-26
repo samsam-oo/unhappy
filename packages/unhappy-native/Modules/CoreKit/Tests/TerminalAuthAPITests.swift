@@ -14,7 +14,7 @@ struct TerminalAuthAPITests {
         #expect(request.httpMethod == "GET")
         #expect(
             request.url?.absoluteString
-                == "https://api.unhappy.im/v1/auth/request/status?publicKey=abc+/123%3D%3D"
+                == "https://api.unhappy.im/v1/auth/request/status?publicKey=abc%2B%2F123%3D%3D"
         )
     }
 

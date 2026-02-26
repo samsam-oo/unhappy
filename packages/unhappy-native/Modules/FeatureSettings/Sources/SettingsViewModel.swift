@@ -64,6 +64,14 @@ public final class SettingsViewModel: ObservableObject {
             schedulePersistence()
         }
     }
+    @Published public var lastViewedChangelogID: String {
+        didSet {
+            refreshUnreadChangelogState()
+            guard hasLoadedInitialSettings else { return }
+            schedulePersistence()
+        }
+    }
+    @Published public private(set) var hasUnreadChangelog: Bool
 
     private let settingsManager: any SettingsManaging
     private var hasLoadedInitialSettings = false
@@ -81,6 +89,8 @@ public final class SettingsViewModel: ObservableObject {
         self.voiceEnabled = false
         self.voiceLanguage = .system
         self.defaultNewSessionAgent = .claude
+        self.lastViewedChangelogID = ""
+        self.hasUnreadChangelog = SettingsChangelog.hasUnread(lastViewedID: "")
     }
 
     deinit {
@@ -100,7 +110,15 @@ public final class SettingsViewModel: ObservableObject {
         voiceEnabled = settings.voiceEnabled
         voiceLanguage = settings.voiceLanguage
         defaultNewSessionAgent = settings.defaultNewSessionAgent
+        lastViewedChangelogID = settings.lastViewedChangelogID
+        refreshUnreadChangelogState()
         hasLoadedInitialSettings = true
+    }
+
+    public func markLatestChangelogViewed() {
+        let latestID = SettingsChangelog.latestEntryID
+        guard !latestID.isEmpty, lastViewedChangelogID != latestID else { return }
+        lastViewedChangelogID = latestID
     }
 
     func waitForPendingPersistence() async {
@@ -119,6 +137,7 @@ public final class SettingsViewModel: ObservableObject {
         let voiceEnabled = self.voiceEnabled
         let voiceLanguage = self.voiceLanguage
         let defaultNewSessionAgent = self.defaultNewSessionAgent
+        let lastViewedChangelogID = self.lastViewedChangelogID
         persistenceTask?.cancel()
         persistenceTask = Task {
             guard !Task.isCancelled else { return }
@@ -132,8 +151,13 @@ public final class SettingsViewModel: ObservableObject {
                 useEnhancedSessionWizard: useEnhancedSessionWizard,
                 voiceEnabled: voiceEnabled,
                 voiceLanguage: voiceLanguage,
-                defaultNewSessionAgent: defaultNewSessionAgent
+                defaultNewSessionAgent: defaultNewSessionAgent,
+                lastViewedChangelogID: lastViewedChangelogID
             )
         }
+    }
+
+    private func refreshUnreadChangelogState() {
+        hasUnreadChangelog = SettingsChangelog.hasUnread(lastViewedID: lastViewedChangelogID)
     }
 }

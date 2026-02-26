@@ -24,6 +24,10 @@ struct AccountSettingsView: View {
         AccountAuthURLParser.parse(accountAuthURLString)
     }
 
+    private var parsedTerminalRequest: TerminalAuthRequest? {
+        TerminalAuthURLParser.parse(accountAuthURLString)
+    }
+
     var body: some View {
         Form {
             Section("Account") {
@@ -60,6 +64,10 @@ struct AccountSettingsView: View {
                         Text(keyPreview(for: parsedAccountRequest.publicKey))
                             .font(.footnote.monospaced())
                     }
+                } else if parsedTerminalRequest != nil {
+                    Text("This is a terminal auth URL. Use Settings > Terminal to approve terminal requests.")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
                 } else if !accountAuthURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("Invalid account auth URL.")
                         .font(.footnote)
@@ -259,7 +267,13 @@ struct AccountSettingsView: View {
 
     private func applyScannedAccountURL(_ rawValue: String) {
         accountAuthURLString = rawValue
-        statusMessage = "Loaded account URL"
+        if parsedAccountRequest != nil {
+            statusMessage = "Loaded account URL"
+        } else if parsedTerminalRequest != nil {
+            statusMessage = "Loaded terminal URL. Open Settings > Terminal."
+        } else {
+            statusMessage = "Loaded URL"
+        }
         accountLinkViewModel.clearMessages()
     }
 }
