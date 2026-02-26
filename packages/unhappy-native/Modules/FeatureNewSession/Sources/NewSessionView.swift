@@ -631,7 +631,18 @@ public struct NewSessionView: View {
     }
 
     private func directoryEntryFullPath(_ entry: APIMachineDirectoryEntry) -> String {
-        resolvedPath(current: viewModel.directoryPath, entryName: entry.name)
+        let current = viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let path = current.isEmpty ? "~" : current
+        let trimmedName = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedName.isEmpty else { return path }
+        if trimmedName == "." { return path }
+        if trimmedName == ".." { return parentDirectoryPath(from: path) }
+        if trimmedName.hasPrefix("/") { return trimmedName }
+        if path == "/" { return "/" + trimmedName }
+        if path.hasSuffix("/") { return path + trimmedName }
+        if path == "~" { return "~/" + trimmedName }
+        return path + "/" + trimmedName
     }
 
     private func loadDirectoryFromBrowserPath(_ path: String) async {
