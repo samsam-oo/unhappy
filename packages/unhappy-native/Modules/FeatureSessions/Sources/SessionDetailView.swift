@@ -4,6 +4,15 @@ import FeatureSessionTools
 
 @MainActor
 public struct SessionDetailView: View {
+    private enum SessionQuickTool: String, Identifiable {
+        case info
+        case files
+        case review
+        case worktree
+
+        var id: String { rawValue }
+    }
+
     let session: APISession
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
@@ -22,6 +31,7 @@ public struct SessionDetailView: View {
     @State private var claudeResumeDirectoryDraft = ""
     @State private var draftMessage = ""
     @State private var steerMode: APISessionSteerMode = .queue
+    @State private var presentedQuickTool: SessionQuickTool?
 
     public init(
         session: APISession,
@@ -57,52 +67,6 @@ public struct SessionDetailView: View {
                 }
             }
 
-            Section("Tools") {
-                NavigationLink {
-                    SessionInfoView(
-                        session: currentSession,
-                        serverURLString: serverURLString,
-                        token: token,
-                        makeViewModel: makeSessionToolsViewModel
-                    )
-                } label: {
-                    Label("Session Info", systemImage: "info.circle")
-                }
-
-                NavigationLink {
-                    SessionFileView(
-                        session: currentSession,
-                        serverURLString: serverURLString,
-                        token: token,
-                        makeViewModel: makeSessionToolsViewModel
-                    )
-                } label: {
-                    Label("File Viewer", systemImage: "doc.text")
-                }
-
-                NavigationLink {
-                    SessionReviewView(
-                        session: currentSession,
-                        serverURLString: serverURLString,
-                        token: token,
-                        makeViewModel: makeSessionToolsViewModel
-                    )
-                } label: {
-                    Label("Review Diff", systemImage: "doc.text.magnifyingglass")
-                }
-
-                NavigationLink {
-                    SessionFinishView(
-                        session: currentSession,
-                        serverURLString: serverURLString,
-                        token: token,
-                        makeViewModel: makeSessionToolsViewModel
-                    )
-                } label: {
-                    Label("Finish Worktree", systemImage: "checkmark.circle")
-                }
-            }
-
             Section("Messages") {
                 if viewModel.isLoadingSessionMessages {
                     ProgressView("Loading messages…")
@@ -125,7 +89,7 @@ public struct SessionDetailView: View {
                     }
                     .padding(.vertical, 8)
                 } else if viewModel.selectedSessionMessages.isEmpty {
-                    Text("No messages")
+                    Text("No synced messages yet for this session")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(viewModel.selectedSessionMessages) { message in
@@ -140,52 +104,10 @@ public struct SessionDetailView: View {
                 }
             }
 
-            Section("Composer") {
-                TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
-                    .lineLimit(2...6)
-                    .textInputAutocapitalization(.sentences)
-
-                Picker("Send Mode", selection: $steerMode) {
-                    Text("Queue").tag(APISessionSteerMode.queue)
-                    Text("Steer").tag(APISessionSteerMode.immediate)
-                }
-                .pickerStyle(.segmented)
-
-                Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send Message") {
-                    let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { return }
-                    Task {
-                        let sent = await viewModel.sendMessage(
-                            for: session.id,
-                            text: text,
-                            steerMode: steerMode,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                        if sent {
-                            draftMessage = ""
-                            if steerMode == .immediate {
-                                steerMode = .queue
-                            }
-                        }
-                    }
-                }
-                .disabled(
-                    viewModel.isSendingMessage(sessionID: session.id) ||
-                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
-
-                if let status = viewModel.sendMessageStatusMessage {
-                    Text(status)
-                        .font(.footnote)
-                        .foregroundStyle(.green)
-                }
-                if let error = viewModel.sendMessageErrorMessage {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-            }
+        }
+        .listStyle(.plain)
+        .safeAreaInset(edge: .bottom) {
+            bottomDock
         }
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
@@ -291,6 +213,16 @@ public struct SessionDetailView: View {
                 }
             }
             .presentationDetents([.medium])
+        }
+        .sheet(item: $presentedQuickTool) { tool in
+            NavigationStack {
+                quickToolDestinationView(tool)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { presentedQuickTool = nil }
+                        }
+                    }
+            }
         }
         .sheet(isPresented: $showCodexThreadsSheet) {
             NavigationStack {
@@ -544,7 +476,163 @@ public struct SessionDetailView: View {
     }
 
     private var currentSessionTitle: String {
-        currentSessionDisplayTitle ?? "Untitled"
+        if let currentSessionDisplayTitle {
+            return currentSessionDisplayTitle
+        }
+        if let seq = currentSession.seq, seq > 0 {
+            return "Session #\(seq)"
+        }
+        return "Session"
+    }
+
+    private var bottomDock: some View {
+        VStack(spacing: 8) {
+            composerBar
+            quickToolsBar
+        }
+        .padding(.top, 8)
+        .background(.ultraThinMaterial)
+    }
+
+    private var composerBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
+                .lineLimit(2...6)
+                .textInputAutocapitalization(.sentences)
+
+            HStack(spacing: 10) {
+                Picker("Send Mode", selection: $steerMode) {
+                    Text("Queue").tag(APISessionSteerMode.queue)
+                    Text("Steer").tag(APISessionSteerMode.immediate)
+                }
+                .pickerStyle(.segmented)
+
+                Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send") {
+                    let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    Task {
+                        let sent = await viewModel.sendMessage(
+                            for: session.id,
+                            text: text,
+                            steerMode: steerMode,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        if sent {
+                            draftMessage = ""
+                            if steerMode == .immediate {
+                                steerMode = .queue
+                            }
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    viewModel.isSendingMessage(sessionID: session.id) ||
+                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            }
+
+            if let status = viewModel.sendMessageStatusMessage {
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+            if let error = viewModel.sendMessageErrorMessage {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private var quickToolsBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                quickToolButton(
+                    title: "Info",
+                    systemImage: "info.circle",
+                    tool: .info
+                )
+                quickToolButton(
+                    title: "Files",
+                    systemImage: "doc.text",
+                    tool: .files
+                )
+                quickToolButton(
+                    title: "Diff",
+                    systemImage: "doc.text.magnifyingglass",
+                    tool: .review
+                )
+                quickToolButton(
+                    title: "Worktree",
+                    systemImage: "checkmark.circle",
+                    tool: .worktree
+                )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func quickToolButton(
+        title: String,
+        systemImage: String,
+        tool: SessionQuickTool
+    ) -> some View {
+        Button {
+            presentedQuickTool = tool
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.footnote.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.secondary.opacity(0.12), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func quickToolDestinationView(_ tool: SessionQuickTool) -> some View {
+        switch tool {
+        case .info:
+            SessionInfoView(
+                session: currentSession,
+                serverURLString: serverURLString,
+                token: token,
+                makeViewModel: makeSessionToolsViewModel
+            )
+            .navigationTitle("Session Info")
+            .navigationBarTitleDisplayMode(.inline)
+        case .files:
+            SessionFileView(
+                session: currentSession,
+                serverURLString: serverURLString,
+                token: token,
+                makeViewModel: makeSessionToolsViewModel
+            )
+            .navigationTitle("File Viewer")
+            .navigationBarTitleDisplayMode(.inline)
+        case .review:
+            SessionReviewView(
+                session: currentSession,
+                serverURLString: serverURLString,
+                token: token,
+                makeViewModel: makeSessionToolsViewModel
+            )
+            .navigationTitle("Review Diff")
+            .navigationBarTitleDisplayMode(.inline)
+        case .worktree:
+            SessionFinishView(
+                session: currentSession,
+                serverURLString: serverURLString,
+                token: token,
+                makeViewModel: makeSessionToolsViewModel
+            )
+            .navigationTitle("Finish Worktree")
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 
     private func normalizedCWD(from value: String) -> String? {

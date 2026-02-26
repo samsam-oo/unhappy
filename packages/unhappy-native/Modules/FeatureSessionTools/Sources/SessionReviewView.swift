@@ -1,6 +1,13 @@
 import SwiftUI
 import CoreKit
 
+private enum SessionReviewDiffDisplayMode: String, CaseIterable, Identifiable {
+    case rendered = "Rendered"
+    case raw = "Raw"
+
+    var id: Self { self }
+}
+
 @MainActor
 public struct SessionReviewView: View {
     let session: APISession
@@ -15,6 +22,7 @@ public struct SessionReviewView: View {
     @State private var diffOutput: String = ""
     @State private var diffFiles: [SessionReviewDiffFilePresentation] = []
     @State private var selectedDiffFileID: String?
+    @State private var diffDisplayMode: SessionReviewDiffDisplayMode = .rendered
 
     public init(
         session: APISession,
@@ -106,19 +114,21 @@ public struct SessionReviewView: View {
                     Text("No changes")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text(selectedDiffFile?.patch ?? diffOutput)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .lineLimit(nil)
-                }
-            }
+                    Picker("Mode", selection: $diffDisplayMode) {
+                        ForEach(SessionReviewDiffDisplayMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
 
-            if !diffOutput.isEmpty {
-                Section("Raw Diff") {
-                    Text(diffOutput)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .lineLimit(nil)
+                    if diffDisplayMode == .rendered {
+                        renderedDiffView
+                    } else {
+                        Text(selectedDiffFile?.patch ?? diffOutput)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                    }
                 }
             }
         }
@@ -242,6 +252,75 @@ public struct SessionReviewView: View {
             .split(separator: "\n")
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+    }
+
+    @ViewBuilder
+    private var renderedDiffView: some View {
+        if let selectedDiffFile, !selectedDiffFile.hunks.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(selectedDiffFile.hunks) { hunk in
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(hunk.lines) { line in
+                            renderedLineView(for: line)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            .textSelection(.enabled)
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(fallbackRenderedLines) { line in
+                    renderedLineView(for: line)
+                }
+            }
+            .textSelection(.enabled)
+        }
+    }
+
+    private func renderedLineView(for line: SessionReviewDiffLinePresentation) -> some View {
+        Text(line.text.isEmpty ? " " : line.text)
+            .font(.footnote.monospaced())
+            .foregroundStyle(foregroundColor(for: line.kind))
+            .lineLimit(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(backgroundColor(for: line.kind))
+    }
+
+    private var fallbackRenderedLines: [SessionReviewDiffLinePresentation] {
+        let patch = selectedDiffFile?.patch ?? diffOutput
+        let lines = patch.components(separatedBy: .newlines)
+        return lines.enumerated().map { index, line in
+            SessionReviewDiffLinePresentation(
+                id: "fallback-\(index)",
+                kind: SessionReviewDiffPresentationBuilder.classifyLine(line),
+                text: line
+            )
+        }
+    }
+
+    private func foregroundColor(for kind: SessionReviewDiffLineKind) -> Color {
+        switch kind {
+        case .added:
+            return .green
+        case .removed:
+            return .red
+        case .context, .meta:
+            return .primary
+        }
+    }
+
+    private func backgroundColor(for kind: SessionReviewDiffLineKind) -> Color {
+        switch kind {
+        case .added:
+            return .green.opacity(0.14)
+        case .removed:
+            return .red.opacity(0.14)
+        case .context, .meta:
+            return Color.clear
+        }
     }
 
     private var selectedDiffFile: SessionReviewDiffFilePresentation? {
