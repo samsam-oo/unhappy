@@ -1,6 +1,6 @@
 {
   "name": "unhappy-cli",
-  "version": "0.14.13",
+  "version": "0.14.14",
   "description": "Mobile and Web client for Claude Code and Codex",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
