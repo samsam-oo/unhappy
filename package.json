@@ -1,9 +1,13 @@
 {
     "name": "monorepo",
     "private": true,
+    "scripts": {
+        "cli:global:install": "npm run --workspace=packages/unhappy-cli build && npm install -g ./packages/unhappy-cli",
+        "cli:global:reinstall": "npm uninstall -g unhappy-cli || true && npm run cli:global:install",
+        "cli:global:uninstall": "npm uninstall -g unhappy-cli"
+    },
     "workspaces": {
         "packages": [
-            "packages/unhappy-app",
             "packages/unhappy-cli",
             "packages/unhappy-server"
         ]
