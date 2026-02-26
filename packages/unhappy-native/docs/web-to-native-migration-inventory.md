@@ -39,7 +39,7 @@ Last updated: 2026-02-26
 | `session/[id]/review.tsx` | Partial | Session Tools에서 git review diff 조회 + 파일별 요약(파일명/헝크 수/preview) + 선택 상세/Raw Diff 구현(세션 cwd 자동 감지 포함). web `ChangesEditor` 수준 에디팅은 미구현. |
 | `session/[id]/finish.tsx` | Partial | Session Tools에서 finish 액션(commit/merge/PR/delete worktree) 구현 + 세션 cwd 기반 path/branch 자동 감지. web 모달/상세 UX parity는 미구현. |
 | `session/[id]/message/[messageId].tsx` | Partial | 메시지 row 탭 시 metadata + payload preview + JSON top-level parsed fields 렌더링 구현. web tool-specific expanded renderer 완전 parity는 미구현. |
-| `new/index.tsx` | Partial | machine/path/agent 기반 spawn + recent project quick pick + resume thread/session + session token + env vars 입력 구현. profile/worktree 고급 wizard는 미구현. |
+| `new/index.tsx` | Partial | machine/path/agent 기반 spawn + recent project quick pick + **machine 기반 기존 Codex/Claude 세션 목록 조회/선택 시트**(empty/error/retry/refresh 포함) + resume thread/session + session token + env vars 입력 구현. profile/worktree 고급 wizard는 미구현. |
 | `new/pick/machine.tsx` | Partial | machine picker 기본 구현됨. |
 | `new/pick/path.tsx` | Partial | directory browser 기본 구현됨. |
 | `new/pick/profile-edit.tsx` | Partial | New Session에서 local profile 저장/적용/삭제(기본) 구현. web의 full profile edit form/compatibility options는 미구현. |
@@ -81,7 +81,7 @@ Last updated: 2026-02-26
 | Web Sync Area | Native Status | Notes |
 | --- | --- | --- |
 | `sync` sessions list/messages/delete/title | Partial | list/messages/delete/title + follow-up send(message command, queue/immediate) 구현. websocket reducer parity는 미구현. |
-| codex/claude history list + resume (`/codex/threads`, `/claude/sessions`, spawn resume params) | Partial | 구현됨. UI polish 및 error/empty handling 보강 필요. |
+| codex/claude history list + resume (`/codex/threads`, `/claude/sessions`, spawn resume params) | Partial | session 기반 + machine 기반 목록 조회 API 모두 native 이관됨. `New Session`에서 기존 Codex/Claude 세션 선택 시트(loading/error/empty/retry/refresh)로 resume ID 적용 가능. web 전체 wizard/CLI 상태 배너 parity는 미구현. |
 | `ops` permission controls (`sessionAllow`, `sessionDeny`, `sessionAbort`, mode switch) | Partial | 서버 브릿지 + native 수동 action UI(allow/deny/abort/switch) 구현. `session/[id]` composer에서 queue/immediate steer 전송 가능. |
 | `ops` file/dir/ripgrep/bash session tools | Partial | 서버 `commands/*` + 네이티브 file viewer/kill/bash/ripgrep/difftastic 실행 기본 UI 구현. review/finish 전용 UI는 미이관. |
 | `ops` machine RPC (`spawn`, `stop-daemon`, `update-daemon`, metadata) | Partial | `spawn`(resume IDs/session token/env vars 포함), `stop-daemon`, `update-daemon`, `list-directory` 브릿지 및 native 호출 이관 완료. metadata 편집은 미구현. |
