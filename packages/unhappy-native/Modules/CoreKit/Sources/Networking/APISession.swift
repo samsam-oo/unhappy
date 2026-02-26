@@ -65,7 +65,9 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
         id = (try? container.decode(String.self, forKey: .id)) ?? ""
-        displayName = try? container.decodeIfPresent(String.self, forKey: .displayName)
+        displayName = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .displayName)
+        )
         seq = container.decodeFlexibleIntIfPresent(forKey: .seq)
         active = (try? container.decode(Bool.self, forKey: .active)) ?? false
         activeAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .activeAt) ?? 0
@@ -224,6 +226,27 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         self.updatedAt = updatedAt
         self.createdAt = createdAt
         self.archived = archived
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case cwd
+        case updatedAt
+        case createdAt
+        case archived
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        name = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .name)
+        )
+        cwd = try? container.decodeIfPresent(String.self, forKey: .cwd)
+        updatedAt = try? container.decodeIfPresent(String.self, forKey: .updatedAt)
+        createdAt = try? container.decodeIfPresent(String.self, forKey: .createdAt)
+        archived = try? container.decodeIfPresent(Bool.self, forKey: .archived)
     }
 }
 

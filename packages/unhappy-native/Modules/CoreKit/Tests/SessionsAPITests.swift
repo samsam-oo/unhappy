@@ -24,6 +24,7 @@ struct SessionsAPITests {
           "sessions": [
             {
               "id": "s1",
+              "displayName": "Session One",
               "active": true,
               "activeAt": 1700000000,
               "createdAt": 1699999900,
@@ -39,8 +40,32 @@ struct SessionsAPITests {
 
         #expect(sessions.count == 1)
         #expect(sessions.first?.id == "s1")
+        #expect(sessions.first?.displayName == "Session One")
         #expect(sessions.first?.active == true)
         #expect(sessions.first?.metadataVersion == 1)
+    }
+
+    @Test
+    func decodeListResponseRepairsMojibakeDisplayName() throws {
+        let json = """
+        {
+          "sessions": [
+            {
+              "id": "s1",
+              "displayName": "ìë",
+              "active": true,
+              "activeAt": 1700000000,
+              "createdAt": 1699999900,
+              "updatedAt": 1700000010,
+              "metadataVersion": 1,
+              "metadata": "ZW5jcnlwdGVk"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let sessions = try SessionsAPI.decodeListResponse(json)
+        #expect(sessions.first?.displayName == "안녕")
     }
 
     @Test
@@ -367,6 +392,28 @@ struct SessionsAPITests {
         #expect(threads.first?.id == "thread_1")
         #expect(threads.first?.name == "Feature Work")
         #expect(threads.first?.cwd == "/tmp/work")
+    }
+
+    @Test
+    func decodeCodexThreadsResponseRepairsMojibakeName() throws {
+        let json = """
+        {
+          "success": true,
+          "threads": [
+            {
+              "id": "thread_1",
+              "name": "ìë",
+              "cwd": "/tmp/work",
+              "updatedAt": "2026-02-24T10:00:00.000Z",
+              "createdAt": "2026-02-24T09:00:00.000Z",
+              "archived": false
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let threads = try SessionsAPI.decodeCodexThreadsResponse(json)
+        #expect(threads.first?.name == "안녕")
     }
 
     @Test
