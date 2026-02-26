@@ -278,9 +278,8 @@ describe('Codex turn/steer and collab forwarding', () => {
         cwd: '/repo',
         limit: 20,
         sortKey: 'updated_at',
-        archived: false,
       }),
-      expect.any(Object),
+      expect.objectContaining({ timeout: 30000 }),
     );
   });
 
