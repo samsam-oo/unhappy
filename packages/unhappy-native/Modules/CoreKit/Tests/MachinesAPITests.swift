@@ -69,6 +69,39 @@ struct MachinesAPITests {
     }
 
     @Test
+    func codexThreadsRequestUsesExpectedPathAndQuery() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeCodexThreadsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            machineID: "machine-1",
+            limit: 33,
+            cwd: nil
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/machines/machine-1/codex/threads?limit=33")
+    }
+
+    @Test
+    func claudeSessionsRequestIncludesCWDWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeClaudeSessionsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            machineID: "machine-1",
+            limit: 12,
+            cwd: "/tmp/workspace"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/machines/machine-1/claude/sessions?limit=12&cwd=/tmp/workspace"
+        )
+    }
+
+    @Test
     func decodeListResponseParsesMachineRows() throws {
         let json = """
         [
@@ -109,5 +142,53 @@ struct MachinesAPITests {
 
         #expect(result.success == true)
         #expect(result.message == "Daemon update requested")
+    }
+
+    @Test
+    func decodeCodexThreadsResponseParsesRows() throws {
+        let json = """
+        {
+          "success": true,
+          "threads": [
+            {
+              "id": "thread-1",
+              "name": "Bugfix",
+              "cwd": "/repo",
+              "updatedAt": "2026-02-26T01:23:45.000Z",
+              "createdAt": "2026-02-26T01:00:00.000Z",
+              "archived": false
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let rows = try MachinesAPI.decodeCodexThreadsResponse(json)
+
+        #expect(rows.count == 1)
+        #expect(rows.first?.id == "thread-1")
+        #expect(rows.first?.name == "Bugfix")
+    }
+
+    @Test
+    func decodeClaudeSessionsResponseParsesRows() throws {
+        let json = """
+        {
+          "success": true,
+          "sessions": [
+            {
+              "id": "c7a2f5d1-1111-2222-3333-444444444444",
+              "cwd": "/repo",
+              "updatedAt": "2026-02-26T01:23:45.000Z",
+              "createdAt": "2026-02-26T01:00:00.000Z"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let rows = try MachinesAPI.decodeClaudeSessionsResponse(json)
+
+        #expect(rows.count == 1)
+        #expect(rows.first?.id == "c7a2f5d1-1111-2222-3333-444444444444")
+        #expect(rows.first?.cwd == "/repo")
     }
 }
