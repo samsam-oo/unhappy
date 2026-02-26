@@ -154,6 +154,126 @@ struct NewSessionViewModelTests {
         let cursors = await loader.recordedCursors
         #expect(cursors == [nil, "cursor-12"])
     }
+
+    @Test
+    func loadDirectoryRecoversFromMissingMachineByRefreshingMachines() async throws {
+        let machine1 = makeMachine(id: "machine-1")
+        let machine2 = makeMachine(id: "machine-2")
+        let machinesLoader = SequenceMachinesLoader(pages: [[machine1], [machine2]])
+        let lister = SequenceDirectoryLister(results: [
+            .success([]),
+            .failure(MachinesAPIError.invalidHTTPStatus(404)),
+            .success([
+                APIMachineDirectoryEntry(name: "Sources", type: "directory", size: nil, modified: nil)
+            ]),
+        ])
+
+        let model = NewSessionViewModel(
+            machinesLoader: machinesLoader,
+            directoryLister: lister,
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        #expect(model.selectedMachineID == "machine-1")
+
+        await model.loadDirectory(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.selectedMachineID == "machine-2")
+        #expect(model.directoryEntries.map(\.name) == ["Sources"])
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test
+    func loadDirectory404ShowsHelpfulMessageWhenRecoveryFails() async throws {
+        let machine1 = makeMachine(id: "machine-1")
+        let machinesLoader = SequenceMachinesLoader(
+            pages: [[machine1]],
+            fallbackError: NewSessionError.failed(message: "refresh failed")
+        )
+        let lister = SequenceDirectoryLister(results: [
+            .success([]),
+            .failure(MachinesAPIError.invalidHTTPStatus(404)),
+        ])
+
+        let model = NewSessionViewModel(
+            machinesLoader: machinesLoader,
+            directoryLister: lister,
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.loadDirectory(serverURLString: "https://api.unhappy.im", token: "token")
+
+        let message = model.errorMessage ?? ""
+        #expect(message.contains("Folder list failed (404)"))
+        #expect(model.directoryEntries.isEmpty)
+    }
+
+    @Test
+    func loadDirectoryRecoversWhen404ComesAsNewSessionErrorMessage() async throws {
+        let machine1 = makeMachine(id: "machine-1")
+        let machine2 = makeMachine(id: "machine-2")
+        let machinesLoader = SequenceMachinesLoader(pages: [[machine1], [machine2]])
+        let lister = SequenceDirectoryLister(results: [
+            .success([]),
+            .failure(NewSessionError.failed(message: "Request failed with status 404")),
+            .success([
+                APIMachineDirectoryEntry(name: "App", type: "directory", size: nil, modified: nil)
+            ]),
+        ])
+
+        let model = NewSessionViewModel(
+            machinesLoader: machinesLoader,
+            directoryLister: lister,
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.loadDirectory(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.selectedMachineID == "machine-2")
+        #expect(model.directoryEntries.map(\.name) == ["App"])
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test
+    func loadDirectoryShowsBackendUpdateMessageWhenEndpointMissing() async throws {
+        let machine1 = makeMachine(id: "machine-1")
+        let lister = SequenceDirectoryLister(results: [
+            .success([]),
+            .failure(MachinesAPIError.endpointUnavailable("/v1/machines/:id/commands/list-directory")),
+        ])
+
+        let model = NewSessionViewModel(
+            machinesLoader: SequenceMachinesLoader(pages: [[machine1]]),
+            directoryLister: lister,
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.loadDirectory(serverURLString: "https://api.unhappy.im", token: "token")
+
+        let message = model.errorMessage ?? ""
+        #expect(message.contains("Folder browse API is not deployed"))
+        #expect(model.directoryEntries.isEmpty)
+    }
 }
 
 private func makeMachine(id: String) -> APIMachine {
@@ -179,6 +299,26 @@ private struct ViewModelMachinesLoader: NewSessionMachinesLoadingAction {
     }
 }
 
+private actor SequenceMachinesLoader: NewSessionMachinesLoadingAction {
+    private var pages: [[APIMachine]]
+    private let fallbackError: Error?
+
+    init(pages: [[APIMachine]], fallbackError: Error? = nil) {
+        self.pages = pages
+        self.fallbackError = fallbackError
+    }
+
+    func loadMachines(serverURLString: String, token: String) async throws -> [APIMachine] {
+        if !pages.isEmpty {
+            return pages.removeFirst()
+        }
+        if let fallbackError {
+            throw fallbackError
+        }
+        return []
+    }
+}
+
 private struct ViewModelDirectoryLister: NewSessionDirectoryListingAction {
     func listDirectory(
         serverURLString: String,
@@ -187,6 +327,30 @@ private struct ViewModelDirectoryLister: NewSessionDirectoryListingAction {
         path: String
     ) async throws -> [APIMachineDirectoryEntry] {
         []
+    }
+}
+
+private actor SequenceDirectoryLister: NewSessionDirectoryListingAction {
+    private var results: [Result<[APIMachineDirectoryEntry], Error>]
+
+    init(results: [Result<[APIMachineDirectoryEntry], Error>]) {
+        self.results = results
+    }
+
+    func listDirectory(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> [APIMachineDirectoryEntry] {
+        guard !results.isEmpty else { return [] }
+        let next = results.removeFirst()
+        switch next {
+        case .success(let rows):
+            return rows
+        case .failure(let error):
+            throw error
+        }
     }
 }
 

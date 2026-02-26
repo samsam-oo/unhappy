@@ -114,7 +114,11 @@ public final class NewSessionViewModel: ObservableObject {
         await loadDirectory(serverURLString: serverURLString, token: token)
     }
 
-    public func loadDirectory(serverURLString: String, token: String) async {
+    public func loadDirectory(
+        serverURLString: String,
+        token: String,
+        attemptRecoveryOnMissingMachine: Bool = true
+    ) async {
         guard let machineID = selectedMachineID else {
             directoryEntries = []
             return
@@ -133,9 +137,44 @@ public final class NewSessionViewModel: ObservableObject {
                 machineID: machineID,
                 path: path
             )
-        } catch {
+            errorMessage = nil
+        } catch let apiError as MachinesAPIError {
+            if case .endpointUnavailable(let endpoint) = apiError {
+                directoryEntries = []
+                errorMessage = "Folder browse API is not deployed on this server (\(endpoint)). Backend update is required."
+                return
+            }
+            if case .invalidHTTPStatus(404) = apiError, attemptRecoveryOnMissingMachine {
+                await recoverFromMissingMachine(
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                return
+            }
             directoryEntries = []
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            errorMessage = apiError.errorDescription ?? apiError.localizedDescription
+        } catch let sessionError as NewSessionError {
+            let description = sessionError.errorDescription ?? sessionError.localizedDescription
+            if attemptRecoveryOnMissingMachine && isHTTP404Message(description) {
+                await recoverFromMissingMachine(
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                return
+            }
+            directoryEntries = []
+            errorMessage = description
+        } catch {
+            let description = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            if attemptRecoveryOnMissingMachine && isHTTP404Message(description) {
+                await recoverFromMissingMachine(
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                return
+            }
+            directoryEntries = []
+            errorMessage = description
         }
     }
 
@@ -465,6 +504,57 @@ public final class NewSessionViewModel: ObservableObject {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
         }
+    }
+
+    private func recoverFromMissingMachine(serverURLString: String, token: String) async {
+        do {
+            let loaded = try await machinesLoader.loadMachines(
+                serverURLString: serverURLString,
+                token: token
+            )
+            machines = loaded
+
+            guard !loaded.isEmpty else {
+                selectedMachineID = nil
+                directoryEntries = []
+                errorMessage = "No machines available. Connect or refresh your daemon first."
+                return
+            }
+
+            if let selectedMachineID, loaded.contains(where: { $0.id == selectedMachineID }) {
+                await loadDirectory(
+                    serverURLString: serverURLString,
+                    token: token,
+                    attemptRecoveryOnMissingMachine: false
+                )
+                return
+            }
+
+            selectedMachineID = loaded.first?.id
+            await loadDirectory(
+                serverURLString: serverURLString,
+                token: token,
+                attemptRecoveryOnMissingMachine: false
+            )
+        } catch {
+            directoryEntries = []
+            errorMessage = "Folder list failed (404). Machine list refresh also failed: \((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+        }
+    }
+
+    private func isHTTP404Message(_ message: String) -> Bool {
+        let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return false }
+        if normalized.contains("status 404") {
+            return true
+        }
+        if normalized.contains("http 404") {
+            return true
+        }
+        if normalized == "404" {
+            return true
+        }
+        return false
     }
 }
 

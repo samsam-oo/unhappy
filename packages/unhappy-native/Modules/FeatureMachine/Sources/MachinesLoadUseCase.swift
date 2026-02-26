@@ -56,15 +56,14 @@ public actor MachinesLoadUseCase: MachinesLoadingAction {
         let service = self.service
         let task = Task<[APIMachine], Error> {
             let rows = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
-            return rows.sorted { lhs, rhs in
-                if lhs.active != rhs.active {
-                    return lhs.active && !rhs.active
-                }
+            return rows
+                .filter(\.active)
+                .sorted { lhs, rhs in
                 if lhs.activeAt != rhs.activeAt {
                     return lhs.activeAt > rhs.activeAt
                 }
                 return lhs.updatedAt > rhs.updatedAt
-            }
+                }
         }
 
         inFlightTasks[key] = task

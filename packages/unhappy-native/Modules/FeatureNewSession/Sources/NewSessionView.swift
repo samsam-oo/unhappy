@@ -14,7 +14,9 @@ public struct NewSessionView: View {
     @State private var draftProfileName = ""
     @State private var showCodexThreadsSheet = false
     @State private var showClaudeSessionsSheet = false
-    @State private var directoryFilterText = ""
+    @State private var showDirectoryBrowserSheet = false
+    @State private var directoryBrowserFilterText = ""
+    @State private var directoryBrowserPathDraft = ""
 
     public init(
         serverURLString: String,
@@ -62,10 +64,6 @@ public struct NewSessionView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
 
-                    TextField("Filter current directory entries", text: $directoryFilterText)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
                     if !viewModel.recentProjects.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Recent Projects")
@@ -95,13 +93,10 @@ public struct NewSessionView: View {
                         }
                     }
 
-                    Button("Browse Directory") {
-                        Task {
-                            await viewModel.loadDirectory(
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        }
+                    Button("Choose Folder") {
+                        directoryBrowserPathDraft = viewModel.directoryPath
+                        directoryBrowserFilterText = ""
+                        showDirectoryBrowserSheet = true
                     }
                     .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingDirectory)
 
@@ -110,43 +105,6 @@ public struct NewSessionView: View {
                             ProgressView()
                             Text("Loading directory…")
                                 .foregroundStyle(.secondary)
-                        }
-                    } else if !viewModel.directoryEntries.isEmpty {
-                        if filteredDirectoryEntries.isEmpty {
-                            Text("No entries match the current filter")
-                                .foregroundStyle(.secondary)
-                        }
-
-                        ForEach(filteredDirectoryEntries) { entry in
-                            Button {
-                                Task {
-                                    await viewModel.selectDirectoryEntry(
-                                        entry,
-                                        serverURLString: serverURLString,
-                                        token: token
-                                    )
-                                }
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Image(systemName: entry.type == "directory" ? "folder" : "doc.text")
-                                        .foregroundStyle(entry.type == "directory" ? Color.accentColor : Color.secondary)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(entry.name)
-                                            .lineLimit(1)
-                                        Text(entry.type.capitalized)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    if entry.type == "directory" {
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(entry.type != "directory")
                         }
                     }
                 }
@@ -429,6 +387,120 @@ public struct NewSessionView: View {
                 }
                 .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showDirectoryBrowserSheet) {
+                NavigationStack {
+                    VStack(spacing: 0) {
+                        Form {
+                            Section("Current Path") {
+                                Text(viewModel.directoryPath)
+                                    .font(.footnote.monospaced())
+                                    .lineLimit(2)
+                                    .textSelection(.enabled)
+
+                                HStack(spacing: 8) {
+                                    TextField("Go to path", text: $directoryBrowserPathDraft)
+                                        .textInputAutocapitalization(.never)
+                                        .autocorrectionDisabled()
+
+                                    Button("Go") {
+                                        Task {
+                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(
+                                        viewModel.selectedMachineID == nil ||
+                                        viewModel.isLoadingDirectory
+                                    )
+                                }
+
+                                Button {
+                                    Task {
+                                        await goToParentDirectoryFromBrowser()
+                                    }
+                                } label: {
+                                    Label("Up One Level", systemImage: "arrow.up.backward.folder")
+                                }
+                                .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingDirectory)
+                            }
+
+                            Section("Folders") {
+                                TextField("Filter folders", text: $directoryBrowserFilterText)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+
+                                if viewModel.isLoadingDirectory {
+                                    HStack {
+                                        ProgressView()
+                                        Text("Loading folders…")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else if let error = viewModel.errorMessage,
+                                          !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text(error)
+                                        .font(.footnote)
+                                        .foregroundStyle(.red)
+                                    Button("Retry") {
+                                        Task {
+                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
+                                        }
+                                    }
+                                } else if filteredDirectoryBrowserEntries.isEmpty {
+                                    ContentUnavailableView(
+                                        "No folders found",
+                                        systemImage: "folder.badge.questionmark",
+                                        description: Text("Try a different path or clear the filter.")
+                                    )
+                                } else {
+                                    ForEach(filteredDirectoryBrowserEntries) { entry in
+                                        Button {
+                                            Task {
+                                                await viewModel.selectDirectoryEntry(
+                                                    entry,
+                                                    serverURLString: serverURLString,
+                                                    token: token
+                                                )
+                                                directoryBrowserPathDraft = viewModel.directoryPath
+                                            }
+                                        } label: {
+                                            HStack(spacing: 10) {
+                                                Image(systemName: "folder")
+                                                    .foregroundStyle(Color.accentColor)
+                                                Text(entry.name)
+                                                    .lineLimit(1)
+                                                Spacer()
+                                                Image(systemName: "chevron.right")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.tertiary)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .navigationTitle("Choose Folder")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Close") { showDirectoryBrowserSheet = false }
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Use This Folder") {
+                                showDirectoryBrowserSheet = false
+                            }
+                        }
+                    }
+                    .task {
+                        if directoryBrowserPathDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            directoryBrowserPathDraft = viewModel.directoryPath
+                        }
+                        await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
+                    }
+                }
+                .presentationDetents([.large])
+            }
             .sheet(isPresented: $showClaudeSessionsSheet) {
                 NavigationStack {
                     List {
@@ -531,14 +603,49 @@ public struct NewSessionView: View {
         }
     }
 
-    private var filteredDirectoryEntries: [APIMachineDirectoryEntry] {
-        let trimmedFilter = directoryFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var filteredDirectoryBrowserEntries: [APIMachineDirectoryEntry] {
+        let folders = viewModel.directoryEntries.filter { $0.type == "directory" }
+        let trimmedFilter = directoryBrowserFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedFilter.isEmpty else {
-            return viewModel.directoryEntries
+            return folders
         }
-        return viewModel.directoryEntries.filter { entry in
+        return folders.filter { entry in
             entry.name.localizedCaseInsensitiveContains(trimmedFilter)
         }
+    }
+
+    private func loadDirectoryFromBrowserPath(_ path: String) async {
+        viewModel.directoryPath = path
+        await viewModel.loadDirectory(
+            serverURLString: serverURLString,
+            token: token
+        )
+        directoryBrowserPathDraft = viewModel.directoryPath
+    }
+
+    private func goToParentDirectoryFromBrowser() async {
+        let current = viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parent = parentDirectoryPath(from: current.isEmpty ? "~" : current)
+        await loadDirectoryFromBrowserPath(parent)
+    }
+
+    private func parentDirectoryPath(from path: String) -> String {
+        if path == "~" || path == "/" {
+            return path
+        }
+        if path.hasPrefix("~/") {
+            let suffix = String(path.dropFirst(2))
+            let components = suffix.split(separator: "/").dropLast()
+            if components.isEmpty {
+                return "~"
+            }
+            return "~/" + components.joined(separator: "/")
+        }
+        let components = path.split(separator: "/").dropLast()
+        if components.isEmpty {
+            return "/"
+        }
+        return "/" + components.joined(separator: "/")
     }
 
     private var machineSelectionBinding: Binding<String> {
