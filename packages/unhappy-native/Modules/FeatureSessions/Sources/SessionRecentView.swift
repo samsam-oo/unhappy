@@ -52,8 +52,9 @@ private struct RecentSessionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(session.displayName ?? session.id)
-                .font(session.displayName == nil ? .footnote.monospaced() : .subheadline.weight(.semibold))
+            Text(sessionDisplayTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(hasDisplayTitle ? .primary : .secondary)
                 .lineLimit(1)
 
             HStack(spacing: 8) {
@@ -63,12 +64,10 @@ private struct RecentSessionRow: View {
                 Text(session.active ? "Active" : "Inactive")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if session.displayName != nil {
-                    Text(session.id)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
+                Text(session.id)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
                 Spacer(minLength: 0)
                 Text(Date(timeIntervalSince1970: session.updatedAt), style: .time)
                     .font(.caption)
@@ -76,5 +75,22 @@ private struct RecentSessionRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+
+    private var normalizedDisplayTitle: String? {
+        guard let raw = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              raw != session.id else {
+            return nil
+        }
+        return raw
+    }
+
+    private var hasDisplayTitle: Bool {
+        normalizedDisplayTitle != nil
+    }
+
+    private var sessionDisplayTitle: String {
+        normalizedDisplayTitle ?? "Untitled"
     }
 }

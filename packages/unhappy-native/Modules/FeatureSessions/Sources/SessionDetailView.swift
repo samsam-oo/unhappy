@@ -41,8 +41,8 @@ public struct SessionDetailView: View {
         List {
             Section("Session") {
                 LabeledContent("Title") {
-                    Text(currentSession.displayName ?? "Untitled")
-                        .foregroundStyle(currentSession.displayName == nil ? .secondary : .primary)
+                    Text(currentSessionTitle)
+                        .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
                 }
                 LabeledContent("ID") {
                     Text(currentSession.id)
@@ -528,6 +528,23 @@ public struct SessionDetailView: View {
 
     private var currentSession: APISession {
         viewModel.sessions.first(where: { $0.id == session.id }) ?? session
+    }
+
+    private var currentSessionDisplayTitle: String? {
+        guard let raw = currentSession.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty,
+              raw != currentSession.id else {
+            return nil
+        }
+        return raw
+    }
+
+    private var currentSessionHasDisplayTitle: Bool {
+        currentSessionDisplayTitle != nil
+    }
+
+    private var currentSessionTitle: String {
+        currentSessionDisplayTitle ?? "Untitled"
     }
 
     private func normalizedCWD(from value: String) -> String? {
