@@ -173,6 +173,8 @@ async function waitForAuthentication(
   process.stdout.write('Waiting for authentication');
   let dots = 0;
   let cancelled = false;
+  let transientErrorCount = 0;
+  let pendingHintShownAt = 0;
 
   // Handle Ctrl-C during waiting
   const handleInterrupt = () => {
@@ -261,13 +263,55 @@ async function waitForAuthentication(
           }
         }
       } catch (error) {
-        console.log(
-          '\n\nFailed to check authentication status. Please try again.',
+        if (axios.isAxiosError(error)) {
+          const statusCode = error.response?.status;
+          const errorMessage =
+            (error.response?.data as { error?: string } | undefined)?.error ??
+            error.message;
+
+          // Permanent client-side failures should stop and ask the user to restart auth.
+          if (statusCode !== undefined && statusCode >= 400 && statusCode < 500 && statusCode !== 429) {
+            console.log(
+              `\n\nFailed to check authentication status (${statusCode}). ${errorMessage ?? 'Please try again.'}`,
+            );
+            return null;
+          }
+
+          transientErrorCount += 1;
+          if (transientErrorCount === 1 || transientErrorCount % 10 === 0) {
+            logger.warn(
+              `[AUTH] Temporary auth status check failure (#${transientErrorCount})`,
+              {
+                statusCode,
+                errorMessage,
+              },
+            );
+          }
+        } else {
+          transientErrorCount += 1;
+          if (transientErrorCount === 1 || transientErrorCount % 10 === 0) {
+            logger.warn(
+              `[AUTH] Temporary auth status check failure (#${transientErrorCount})`,
+              error,
+            );
+          }
+        }
+
+        process.stdout.write(
+          '\rWaiting for authentication (temporary server issue, retrying)...   ',
         );
-        return null;
+        await delay(1500);
+        continue;
       }
 
       // Animate waiting dots
+      if (dots - pendingHintShownAt >= 30) {
+        pendingHintShownAt = dots;
+        process.stdout.write(
+          '\nStill waiting for approval. In mobile app use Settings > Terminal and tap "Approve Terminal".\n',
+        );
+      }
+
       process.stdout.write(
         '\rWaiting for authentication' + '.'.repeat((dots % 3) + 1) + '   ',
       );
