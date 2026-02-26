@@ -14,6 +14,7 @@ public struct NewSessionView: View {
     @State private var draftProfileName = ""
     @State private var showCodexThreadsSheet = false
     @State private var showClaudeSessionsSheet = false
+    @State private var directoryFilterText = ""
 
     public init(
         serverURLString: String,
@@ -54,6 +55,14 @@ public struct NewSessionView: View {
 
                 Section("Directory") {
                     TextField("Path", text: $viewModel.directoryPath)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    Text("Selected directory: \(viewModel.directoryPath)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Filter current directory entries", text: $directoryFilterText)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
@@ -103,7 +112,12 @@ public struct NewSessionView: View {
                                 .foregroundStyle(.secondary)
                         }
                     } else if !viewModel.directoryEntries.isEmpty {
-                        ForEach(viewModel.directoryEntries) { entry in
+                        if filteredDirectoryEntries.isEmpty {
+                            Text("No entries match the current filter")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(filteredDirectoryEntries) { entry in
                             Button {
                                 Task {
                                     await viewModel.selectDirectoryEntry(
@@ -514,6 +528,16 @@ public struct NewSessionView: View {
                 viewModel.selectedAgent = defaultAgent
                 await viewModel.loadMachines(serverURLString: serverURLString, token: token)
             }
+        }
+    }
+
+    private var filteredDirectoryEntries: [APIMachineDirectoryEntry] {
+        let trimmedFilter = directoryFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedFilter.isEmpty else {
+            return viewModel.directoryEntries
+        }
+        return viewModel.directoryEntries.filter { entry in
+            entry.name.localizedCaseInsensitiveContains(trimmedFilter)
         }
     }
 
