@@ -6,12 +6,12 @@
  * Simple argument parsing without any CLI framework dependencies
  */
 
-import { runClaude, StartOptions } from '@/claude/runClaude';
 import chalk from 'chalk';
 import { execFileSync } from 'node:child_process';
 import { z } from 'zod';
 import packageJson from '../package.json';
 import { ApiClient } from './api/api';
+import { runClaude, StartOptions } from './claude/runClaude';
 import { claudeCliPath } from './claude/claudeLocal';
 import { handleAuthCommand } from './commands/auth';
 import { handleConnectCommand } from './commands/connect';
@@ -91,6 +91,43 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
     }
     return;
   } else if (subcommand === 'codex') {
+    const codexArgs = args.slice(1);
+    const showCodexHelp =
+      codexArgs.includes('-h') ||
+      codexArgs.includes('--help') ||
+      codexArgs[0] === 'help';
+    const showCodexVersion =
+      codexArgs.includes('-v') || codexArgs.includes('--version');
+
+    if (showCodexHelp) {
+      console.log(`
+${chalk.bold('unhappy codex')} - Codex mode
+
+${chalk.bold('Usage:')}
+  unhappy codex [options]
+
+${chalk.bold('Options:')}
+  --started-by <daemon|terminal>  Set starter context
+  --resume                        Resume previous Codex session for cwd
+  --no-resume                     Disable automatic resume
+  --clear-resume                  Clear stored resume pointer for cwd
+  --resume-thread-id <id>         Resume explicit Codex thread id
+
+${chalk.bold('Examples:')}
+  unhappy codex
+  unhappy codex --resume
+  unhappy codex --resume-thread-id <thread-id>
+`);
+      process.exit(0);
+    }
+
+    if (showCodexVersion) {
+      console.log(`unhappy version: ${packageJson.version}`);
+      if (codexArgs.length === 1) {
+        process.exit(0);
+      }
+    }
+
     // Handle codex command
     try {
       const { runCodex } = await import('@/codex/runCodex');
@@ -137,7 +174,199 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
       process.exit(1);
     }
     return;
+  } else if (subcommand === 'claude') {
+    const options: StartOptions = {};
+    let showHelp = false;
+    let showVersion = false;
+    let chromeOverride: boolean | undefined = undefined;
+    const unknownArgs: string[] = [];
+
+    for (let i = 1; i < args.length; i++) {
+      const arg = args[i];
+
+      if (arg === '-h' || arg === '--help') {
+        showHelp = true;
+        unknownArgs.push(arg);
+      } else if (arg === '-v' || arg === '--version') {
+        showVersion = true;
+        unknownArgs.push(arg);
+      } else if (
+        arg === '--happy-starting-mode' ||
+        arg === '--unhappy-starting-mode'
+      ) {
+        options.startingMode = z.enum(['local', 'remote']).parse(args[++i]);
+      } else if (arg === '--yolo') {
+        unknownArgs.push('--dangerously-skip-permissions');
+      } else if (arg === '--started-by') {
+        options.startedBy = args[++i] as 'daemon' | 'terminal';
+      } else if (arg === '--js-runtime') {
+        const runtime = args[++i];
+        if (runtime !== 'node' && runtime !== 'bun') {
+          console.error(
+            chalk.red(
+              `Invalid --js-runtime value: ${runtime}. Must be 'node' or 'bun'`,
+            ),
+          );
+          process.exit(1);
+        }
+        options.jsRuntime = runtime;
+      } else if (arg === '--claude-env') {
+        const envArg = args[++i];
+        if (envArg && envArg.includes('=')) {
+          const eqIndex = envArg.indexOf('=');
+          const key = envArg.substring(0, eqIndex);
+          const value = envArg.substring(eqIndex + 1);
+          options.claudeEnvVars = options.claudeEnvVars || {};
+          options.claudeEnvVars[key] = value;
+        } else {
+          console.error(
+            chalk.red(
+              `Invalid --claude-env format: ${envArg}. Expected KEY=VALUE`,
+            ),
+          );
+          process.exit(1);
+        }
+      } else if (arg === '--chrome') {
+        chromeOverride = true;
+      } else if (arg === '--no-chrome') {
+        chromeOverride = false;
+      } else if (arg === '--settings') {
+        const settingsValue = args[++i];
+        console.warn(
+          chalk.yellow(
+            `⚠️  Warning: --settings is used internally by Unhappy for session tracking.`,
+          ),
+        );
+        console.warn(
+          chalk.yellow(
+            `   Your settings file "${settingsValue}" will be ignored.`,
+          ),
+        );
+        console.warn(
+          chalk.yellow(
+            `   To configure Claude, edit ~/.claude/settings.json instead.`,
+          ),
+        );
+      } else {
+        unknownArgs.push(arg);
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          unknownArgs.push(args[++i]);
+        }
+      }
+    }
+
+    if (unknownArgs.length > 0) {
+      options.claudeArgs = [...(options.claudeArgs || []), ...unknownArgs];
+    }
+
+    const settings = await readSettings();
+    const chromeEnabled = chromeOverride ?? settings.chromeMode ?? false;
+    if (chromeEnabled) {
+      options.claudeArgs = [...(options.claudeArgs || []), '--chrome'];
+    }
+
+    if (showHelp) {
+      console.log(`
+${chalk.bold('unhappy claude')} - Claude mode
+
+${chalk.bold('Usage:')}
+  unhappy claude [options]
+
+${chalk.bold('Examples:')}
+  unhappy claude
+  unhappy claude --resume
+  unhappy claude --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+
+${chalk.gray('─'.repeat(60))}
+${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
+`);
+
+      try {
+        const claudeHelp = execFileSync(claudeCliPath, ['--help'], {
+          encoding: 'utf8',
+        });
+        console.log(claudeHelp);
+      } catch {
+        console.log(
+          chalk.yellow(
+            'Could not retrieve claude help. Make sure claude is installed.',
+          ),
+        );
+      }
+      process.exit(0);
+    }
+
+    if (showVersion) {
+      console.log(`unhappy version: ${packageJson.version}`);
+    }
+
+    try {
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      logger.debug(
+        'Ensuring Unhappy background service is running & matches our version...',
+      );
+
+      if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+        logger.debug('Starting Unhappy background service...');
+        const daemonProcess = spawnUnhappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore',
+          env: process.env,
+        });
+        daemonProcess.unref();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+
+      await runClaude(credentials, options);
+    } catch (error) {
+      console.error(
+        chalk.red('Error:'),
+        error instanceof Error ? error.message : 'Unknown error',
+      );
+      if (process.env.DEBUG) {
+        console.error(error);
+      }
+      process.exit(1);
+    }
+    return;
   } else if (subcommand === 'gemini') {
+    const geminiArgs = args.slice(1);
+    const showGeminiHelp =
+      geminiArgs.includes('-h') ||
+      geminiArgs.includes('--help') ||
+      geminiArgs[0] === 'help';
+    const showGeminiVersion =
+      geminiArgs.includes('-v') || geminiArgs.includes('--version');
+
+    if (showGeminiHelp) {
+      console.log(`
+${chalk.bold('unhappy gemini')} - Gemini mode (ACP)
+
+${chalk.bold('Usage:')}
+  unhappy gemini [options]
+  unhappy gemini model <set|get> [value]
+  unhappy gemini project <set|get> [value]
+
+${chalk.bold('Options:')}
+  --started-by <daemon|terminal>  Set starter context
+
+${chalk.bold('Examples:')}
+  unhappy gemini
+  unhappy gemini model set gemini-2.5-pro
+  unhappy gemini model get
+  unhappy gemini project set <gcp-project-id>
+  unhappy gemini project get
+`);
+      process.exit(0);
+    }
+
+    if (showGeminiVersion) {
+      console.log(`unhappy version: ${packageJson.version}`);
+      if (geminiArgs.length === 1) {
+        process.exit(0);
+      }
+    }
+
     // Handle gemini subcommands
     const geminiSubcommand = args[1];
 
@@ -555,215 +784,54 @@ ${chalk.bold('Usage:')}
   If you want to kill all unhappy related processes run
   ${chalk.cyan('unhappy doctor clean')}
 
-${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
+${chalk.bold('Note:')} The daemon runs in the background and manages agent sessions.
 
 ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('unhappy doctor clean')}
 `);
     }
     return;
   } else {
-    // If the first argument is claude, remove it
-    if (args.length > 0 && args[0] === 'claude') {
-      args.shift();
-    }
+    const showHelp = args.length === 0 || args.includes('-h') || args.includes('--help');
+    const showVersion = args.includes('-v') || args.includes('--version');
 
-    // Parse command line arguments for main command
-    const options: StartOptions = {};
-    let showHelp = false;
-    let showVersion = false;
-    let chromeOverride: boolean | undefined = undefined; // Track explicit --chrome or --no-chrome
-    const unknownArgs: string[] = []; // Collect unknown args to pass through to claude
-
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-
-      if (arg === '-h' || arg === '--help') {
-        showHelp = true;
-        // Also pass through to claude
-        unknownArgs.push(arg);
-      } else if (arg === '-v' || arg === '--version') {
-        showVersion = true;
-        // Also pass through to claude (will show after our version)
-        unknownArgs.push(arg);
-      } else if (arg === '--happy-starting-mode' || arg === '--unhappy-starting-mode') {
-        options.startingMode = z.enum(['local', 'remote']).parse(args[++i]);
-      } else if (arg === '--yolo') {
-        // Shortcut for --dangerously-skip-permissions
-        unknownArgs.push('--dangerously-skip-permissions');
-      } else if (arg === '--started-by') {
-        options.startedBy = args[++i] as 'daemon' | 'terminal';
-      } else if (arg === '--js-runtime') {
-        const runtime = args[++i];
-        if (runtime !== 'node' && runtime !== 'bun') {
-          console.error(
-            chalk.red(
-              `Invalid --js-runtime value: ${runtime}. Must be 'node' or 'bun'`,
-            ),
-          );
-          process.exit(1);
-        }
-        options.jsRuntime = runtime;
-      } else if (arg === '--claude-env') {
-        // Parse KEY=VALUE environment variable to pass to Claude
-        const envArg = args[++i];
-        if (envArg && envArg.includes('=')) {
-          const eqIndex = envArg.indexOf('=');
-          const key = envArg.substring(0, eqIndex);
-          const value = envArg.substring(eqIndex + 1);
-          options.claudeEnvVars = options.claudeEnvVars || {};
-          options.claudeEnvVars[key] = value;
-        } else {
-          console.error(
-            chalk.red(
-              `Invalid --claude-env format: ${envArg}. Expected KEY=VALUE`,
-            ),
-          );
-          process.exit(1);
-        }
-      } else if (arg === '--chrome') {
-        chromeOverride = true;
-        // We'll add --chrome to claudeArgs after resolving settings default
-      } else if (arg === '--no-chrome') {
-        chromeOverride = false;
-        // Unhappy-specific flag to disable chrome even if default is on
-      } else if (arg === '--settings') {
-        // Intercept --settings flag - Unhappy uses this internally for session hooks
-        const settingsValue = args[++i]; // consume the value
-        console.warn(
-          chalk.yellow(
-            `⚠️  Warning: --settings is used internally by Unhappy for session tracking.`,
-          ),
-        );
-        console.warn(
-          chalk.yellow(
-            `   Your settings file "${settingsValue}" will be ignored.`,
-          ),
-        );
-        console.warn(
-          chalk.yellow(
-            `   To configure Claude, edit ~/.claude/settings.json instead.`,
-          ),
-        );
-        // Don't pass through to claudeArgs
-      } else {
-        // Pass unknown arguments through to claude
-        unknownArgs.push(arg);
-        // Check if this arg expects a value (simplified check for common patterns)
-        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
-          unknownArgs.push(args[++i]);
-        }
+    if (showVersion) {
+      console.log(`unhappy version: ${packageJson.version}`);
+      if (!showHelp && args.length === 1) {
+        process.exit(0);
       }
     }
 
-    // Add unknown args to claudeArgs
-    if (unknownArgs.length > 0) {
-      options.claudeArgs = [...(options.claudeArgs || []), ...unknownArgs];
-    }
-
-    // Resolve Chrome mode: explicit flag > settings > false
-    const settings = await readSettings();
-    const chromeEnabled = chromeOverride ?? settings.chromeMode ?? false;
-    if (chromeEnabled) {
-      options.claudeArgs = [...(options.claudeArgs || []), '--chrome'];
-    }
-
-    // Show help
-    if (showHelp) {
+    if (showHelp || args.length === 0) {
       console.log(`
-${chalk.bold('unhappy')} - Claude Code On the Go
+${chalk.bold('unhappy')} - Multi-agent mobile daemon client
 
 ${chalk.bold('Usage:')}
-  unhappy [options]         Start Claude with mobile control
-  unhappy auth              Manage authentication
-  unhappy codex             Start Codex mode
-  unhappy gemini            Start Gemini mode (ACP)
-  unhappy connect           Connect AI vendor API keys
-  unhappy notify            Send push notification
-  unhappy daemon            Manage background service that allows
-                            to spawn new sessions away from your computer
-  unhappy doctor            System diagnostics & troubleshooting
+  unhappy <agent> [options]  Start an agent with mobile control
+  unhappy auth               Manage authentication
+  unhappy connect            Connect AI vendor API keys
+  unhappy notify             Send push notification
+  unhappy daemon             Manage background service that allows
+                             spawning sessions away from your computer
+  unhappy doctor             System diagnostics & troubleshooting
+
+${chalk.bold('Agents:')}
+  unhappy claude             Start Claude mode
+  unhappy codex              Start Codex mode
+  unhappy gemini             Start Gemini mode (ACP)
 
 ${chalk.bold('Examples:')}
-  unhappy                    Start session
-  unhappy --yolo             Start with bypassing permissions
-                            unhappy sugar for --dangerously-skip-permissions
-  unhappy --chrome           Enable Chrome browser access for this session
-  unhappy --no-chrome        Disable Chrome even if default is on
-  unhappy --js-runtime bun   Use bun instead of node to spawn Claude Code
-  unhappy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
-                           Use a custom API endpoint (e.g., claude-code-router)
-  unhappy auth login --force Authenticate
-  unhappy doctor             Run diagnostics
-
-${chalk.bold('Unhappy supports ALL Claude options!')}
-  Use any claude flag with unhappy as you would with claude. Our favorite:
-
-  unhappy --resume
-
-${chalk.gray('─'.repeat(60))}
-${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
+  unhappy claude
+  unhappy codex
+  unhappy gemini
+  unhappy auth login --force
+  unhappy doctor
 `);
-
-      // Run claude --help and display its output
-      // Use execFileSync directly with claude CLI for runtime-agnostic compatibility
-      try {
-        const claudeHelp = execFileSync(claudeCliPath, ['--help'], {
-          encoding: 'utf8',
-        });
-        console.log(claudeHelp);
-      } catch (e) {
-        console.log(
-          chalk.yellow(
-            'Could not retrieve claude help. Make sure claude is installed.',
-          ),
-        );
-      }
-
       process.exit(0);
     }
 
-    // Show version
-    if (showVersion) {
-      console.log(`unhappy version: ${packageJson.version}`);
-      // Don't exit - continue to pass --version to Claude Code
-    }
-
-    // Normal flow - auth and machine setup
-    const { credentials } = await authAndSetupMachineIfNeeded();
-
-    // Always auto-start daemon for simplicity
-    logger.debug(
-      'Ensuring Unhappy background service is running & matches our version...',
-    );
-
-    if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
-      logger.debug('Starting Unhappy background service...');
-
-      // Use the built binary to spawn daemon
-      const daemonProcess = spawnUnhappyCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env,
-      });
-      daemonProcess.unref();
-
-      // Give daemon a moment to write PID & port file
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-
-    // Start the CLI
-    try {
-      await runClaude(credentials, options);
-    } catch (error) {
-      console.error(
-        chalk.red('Error:'),
-        error instanceof Error ? error.message : 'Unknown error',
-      );
-      if (process.env.DEBUG) {
-        console.error(error);
-      }
-      process.exit(1);
-    }
+    console.error(chalk.red(`Unknown command: ${args[0]}`));
+    console.log(chalk.gray('Run "unhappy --help" for usage information.'));
+    process.exit(1);
   }
 })();
 

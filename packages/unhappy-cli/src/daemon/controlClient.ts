@@ -112,15 +112,18 @@ export async function spawnDaemonSession(
   codexResumeThreadId?: string,
   options?: {
     claudeResumeSessionId?: string;
-    agent?: 'claude' | 'codex' | 'gemini';
+    agent: 'claude' | 'codex' | 'gemini';
   },
 ): Promise<any> {
+  if (!options?.agent) {
+    throw new Error("Agent is required. Choose one of: 'claude', 'codex', 'gemini'.");
+  }
   const result = await daemonPost('/spawn-session', {
     directory,
     sessionId,
     codexResumeThreadId,
     claudeResumeSessionId: options?.claudeResumeSessionId,
-    agent: options?.agent,
+    agent: options.agent,
   });
   return result;
 }

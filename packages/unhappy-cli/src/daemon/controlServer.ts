@@ -113,7 +113,7 @@ export function startDaemonControlServer({
           sessionId: z.string().optional(),
           codexResumeThreadId: z.string().optional(),
           claudeResumeSessionId: z.string().optional(),
-          agent: z.enum(['claude', 'codex', 'gemini']).optional(),
+          agent: z.enum(['claude', 'codex', 'gemini']),
         }),
         response: {
           200: z.object({
