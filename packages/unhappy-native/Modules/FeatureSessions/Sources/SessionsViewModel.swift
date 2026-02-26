@@ -45,6 +45,7 @@ public final class SessionsViewModel: ObservableObject {
     private let claudeSessionsLoader: (any SessionClaudeSessionsLoading)?
     private let spawnUseCase: (any SessionSpawningAction)?
     private let messageSender: (any SessionMessageSendingAction)?
+    private let preDeleteKiller: (any SessionPreDeleteKillingAction)?
     private let deleteUseCase: any SessionDeletingAction
     private let titleUseCase: any SessionTitleUpdatingAction
     private var messagesBySessionID: [String: [APISessionMessage]] = [:]
@@ -62,6 +63,7 @@ public final class SessionsViewModel: ObservableObject {
         claudeSessionsLoader: (any SessionClaudeSessionsLoading)? = nil,
         spawnUseCase: (any SessionSpawningAction)? = nil,
         messageSender: (any SessionMessageSendingAction)? = nil,
+        preDeleteKiller: (any SessionPreDeleteKillingAction)? = nil,
         deleteUseCase: any SessionDeletingAction,
         titleUseCase: any SessionTitleUpdatingAction
     ) {
@@ -73,6 +75,7 @@ public final class SessionsViewModel: ObservableObject {
         self.claudeSessionsLoader = claudeSessionsLoader
         self.spawnUseCase = spawnUseCase
         self.messageSender = messageSender
+        self.preDeleteKiller = preDeleteKiller
         self.deleteUseCase = deleteUseCase
         self.titleUseCase = titleUseCase
     }
@@ -87,6 +90,12 @@ public final class SessionsViewModel: ObservableObject {
         } else {
             messageSenderUseCase = nil
         }
+        let preDeleteKillUseCase: (any SessionPreDeleteKillingAction)?
+        if let killingService = service as? any SessionKilling {
+            preDeleteKillUseCase = SessionPreDeleteKillUseCase(service: killingService)
+        } else {
+            preDeleteKillUseCase = nil
+        }
         self.init(
             loader: loader,
             pageLoader: SessionsPageLoadUseCase(service: service),
@@ -96,6 +105,7 @@ public final class SessionsViewModel: ObservableObject {
             claudeSessionsLoader: SessionClaudeSessionsLoadUseCase(service: service),
             spawnUseCase: SessionSpawnUseCase(service: service),
             messageSender: messageSenderUseCase,
+            preDeleteKiller: preDeleteKillUseCase,
             deleteUseCase: SessionDeleteUseCase(service: service),
             titleUseCase: SessionTitleUpdateUseCase(service: service)
         )
@@ -525,6 +535,19 @@ public final class SessionsViewModel: ObservableObject {
         deletingSessionIDs.insert(sessionID)
         defer { deletingSessionIDs.remove(sessionID) }
 
+        var killFailureMessage: String?
+        if let preDeleteKiller {
+            do {
+                try await preDeleteKiller.killSession(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID
+                )
+            } catch {
+                killFailureMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+        }
+
         do {
             try await deleteUseCase.deleteSession(
                 serverURLString: serverURLString,
@@ -541,8 +564,18 @@ public final class SessionsViewModel: ObservableObject {
                 selectedSessionErrorMessage = nil
             }
             messageCacheLRU.removeAll { $0 == sessionID }
+            if let killFailureMessage {
+                errorMessage = "Deleted session record, but failed to terminate local session process: \(killFailureMessage)"
+            } else {
+                errorMessage = nil
+            }
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let deleteFailureMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            if let killFailureMessage {
+                errorMessage = "Failed to terminate local session process: \(killFailureMessage). Session record delete also failed: \(deleteFailureMessage)"
+            } else {
+                errorMessage = deleteFailureMessage
+            }
         }
     }
 

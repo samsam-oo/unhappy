@@ -298,6 +298,47 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func deleteSessionRunsKillBeforeDeleteWhenKillerIsProvided() async throws {
+        let sessions = [
+            APISession(
+                id: "s1",
+                active: false,
+                activeAt: 10,
+                createdAt: 1,
+                updatedAt: 11,
+                metadataVersion: 2,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let recorder = CallOrderRecorder()
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success(sessions)),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: sessions, nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            preDeleteKiller: RecordingSessionPreDeleteKillUseCase(recorder: recorder),
+            deleteUseCase: RecordingSessionDeleteUseCase(recorder: recorder),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        await model.deleteSession(
+            sessionID: "s1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        let calls = await recorder.snapshot()
+        #expect(calls == ["kill:s1", "delete:s1"])
+        #expect(model.sessions.isEmpty)
+    }
+
+    @Test
     func messageCacheIsBoundedToPreventUnboundedGrowth() async throws {
         let model = SessionsViewModel(
             loader: MockSessionsLoader(result: .success([])),
@@ -810,6 +851,34 @@ private struct SessionAwareMessagesLoader: SessionsMessagesLoading {
                 updatedAt: 1
             )
         ]
+    }
+}
+
+private actor CallOrderRecorder {
+    private var calls: [String] = []
+
+    func append(_ call: String) {
+        calls.append(call)
+    }
+
+    func snapshot() -> [String] {
+        calls
+    }
+}
+
+private struct RecordingSessionPreDeleteKillUseCase: SessionPreDeleteKillingAction {
+    let recorder: CallOrderRecorder
+
+    func killSession(serverURLString: String, token: String, sessionID: String) async throws {
+        await recorder.append("kill:\(sessionID)")
+    }
+}
+
+private struct RecordingSessionDeleteUseCase: SessionDeletingAction {
+    let recorder: CallOrderRecorder
+
+    func deleteSession(serverURLString: String, token: String, sessionID: String) async throws {
+        await recorder.append("delete:\(sessionID)")
     }
 }
 
