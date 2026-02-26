@@ -10,6 +10,9 @@ import type { PermissionResult } from '@/utils/BasePermissionHandler';
 import { randomUUID } from 'crypto';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import { open, readdir, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { ToolCallIdCanonicalizer } from './utils/toolCallIdCanonicalizer';
 
@@ -385,12 +388,186 @@ export class CodexAppServerClient {
         },
         { timeout: THREAD_META_TIMEOUT_MS },
       );
-
-      return this.extractThreadSummariesFromListResponse(response);
+      const summaries = this.extractThreadSummariesFromListResponse(response);
+      if (summaries.length > 0) {
+        return summaries;
+      }
+      logger.debug(
+        '[CodexAppServer] thread/list returned no rows; trying local session-file fallback',
+      );
     } catch (error) {
       logger.debug('[CodexAppServer] thread/list lookup failed', error);
-      return [];
     }
+
+    const fallbackSummaries = await this.listRecentThreadsByCwdFromLocalSessions(
+      normalizedCwd,
+      limit,
+    );
+    if (fallbackSummaries.length > 0) {
+      logger.debug(
+        `[CodexAppServer] Loaded ${fallbackSummaries.length} thread summaries from local session files`,
+      );
+    }
+    return fallbackSummaries;
+  }
+
+  private getEffectiveCodexHomeDir(): string {
+    const fromOverrides =
+      typeof this.envOverrides.CODEX_HOME === 'string'
+        ? this.envOverrides.CODEX_HOME.trim()
+        : '';
+    if (fromOverrides) return fromOverrides;
+
+    const fromEnv =
+      typeof process.env.CODEX_HOME === 'string'
+        ? process.env.CODEX_HOME.trim()
+        : '';
+    if (fromEnv) return fromEnv;
+
+    return join(homedir(), '.codex');
+  }
+
+  private normalizeCwdForCompare(value: string): string {
+    return value.trim().replace(/\/+$/, '');
+  }
+
+  private async listRecentThreadsByCwdFromLocalSessions(
+    cwd: string,
+    limit: number,
+  ): Promise<CodexThreadSummary[]> {
+    const targetCwd = this.normalizeCwdForCompare(cwd);
+    if (!targetCwd) return [];
+
+    const sessionsRoot = join(this.getEffectiveCodexHomeDir(), 'sessions');
+    const files = await this.collectSessionTranscriptFiles(sessionsRoot);
+    if (files.length === 0) return [];
+
+    const withStats = await Promise.all(
+      files.map(async (filePath) => {
+        try {
+          const metadata = await stat(filePath);
+          return { filePath, mtimeMs: metadata.mtimeMs };
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const sortedFiles = withStats
+      .filter(
+        (item): item is { filePath: string; mtimeMs: number } => item !== null,
+      )
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    const summaries: CodexThreadSummary[] = [];
+    const seenIds = new Set<string>();
+
+    for (const item of sortedFiles) {
+      if (summaries.length >= limit) break;
+
+      const meta = await this.readSessionMetaFromTranscript(item.filePath);
+      if (!meta) continue;
+
+      const sessionId =
+        typeof meta.id === 'string' ? meta.id.trim() : '';
+      if (!sessionId || seenIds.has(sessionId)) continue;
+
+      const sessionCwd =
+        typeof meta.cwd === 'string' ? meta.cwd.trim() : '';
+      if (this.normalizeCwdForCompare(sessionCwd) !== targetCwd) continue;
+
+      seenIds.add(sessionId);
+      summaries.push({
+        id: sessionId,
+        cwd: sessionCwd || undefined,
+        updatedAt: new Date(item.mtimeMs).toISOString(),
+        createdAt: this.normalizeThreadTimestamp(meta.timestamp) ?? undefined,
+      });
+    }
+
+    return summaries;
+  }
+
+  private async collectSessionTranscriptFiles(rootDir: string): Promise<string[]> {
+    const files: string[] = [];
+    const queue: string[] = [rootDir];
+
+    while (queue.length > 0) {
+      const currentDir = queue.pop();
+      if (!currentDir) continue;
+
+      let entries;
+      try {
+        entries = await readdir(currentDir, {
+          withFileTypes: true,
+          encoding: 'utf8',
+        });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        const fullPath = join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          queue.push(fullPath);
+          continue;
+        }
+        if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+          files.push(fullPath);
+        }
+      }
+    }
+
+    return files;
+  }
+
+  private async readSessionMetaFromTranscript(
+    filePath: string,
+  ): Promise<{ id?: unknown; cwd?: unknown; timestamp?: unknown } | null> {
+    let handle: Awaited<ReturnType<typeof open>> | null = null;
+
+    try {
+      handle = await open(filePath, 'r');
+      const chunkSize = 64 * 1024;
+      const maxBytes = 2 * 1024 * 1024;
+      let offset = 0;
+      let content = '';
+
+      while (offset < maxBytes) {
+        const buffer = Buffer.alloc(chunkSize);
+        const { bytesRead } = await handle.read(buffer, 0, chunkSize, offset);
+        if (bytesRead <= 0) break;
+
+        content += buffer.toString('utf8', 0, bytesRead);
+        offset += bytesRead;
+
+        const newlineIndex = content.indexOf('\n');
+        if (newlineIndex < 0) continue;
+
+        const firstLine = content.slice(0, newlineIndex).trim();
+        if (!firstLine) return null;
+
+        const parsed = JSON.parse(firstLine);
+        if (!isRecord(parsed) || parsed.type !== 'session_meta') return null;
+        if (!isRecord(parsed.payload)) return null;
+
+        return {
+          id: parsed.payload.id,
+          cwd: parsed.payload.cwd,
+          timestamp: parsed.payload.timestamp,
+        };
+      }
+    } catch {
+      return null;
+    } finally {
+      if (handle) {
+        try {
+          await handle.close();
+        } catch {}
+      }
+    }
+
+    return null;
   }
 
   private async ensureThread(config: CodexSessionConfig, signal?: AbortSignal): Promise<void> {
