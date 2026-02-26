@@ -112,6 +112,9 @@ public struct InboxView: View {
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .refreshable {
+                        await viewModel.load()
+                    }
                 }
             }
             .navigationTitle("Inbox")

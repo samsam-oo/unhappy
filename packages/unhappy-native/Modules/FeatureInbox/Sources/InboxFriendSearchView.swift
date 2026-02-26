@@ -8,6 +8,7 @@ struct InboxFriendSearchView: View {
     @State private var results: [InboxUserProfile] = []
     @State private var isSearching = false
     @State private var isPerformingAction = false
+    @State private var hasSearched = false
     @State private var errorMessage: String?
 
     var body: some View {
@@ -66,6 +67,16 @@ struct InboxFriendSearchView: View {
                     }
                 }
             }
+
+            if hasSearched && !isSearching && errorMessage == nil && results.isEmpty {
+                Section {
+                    ContentUnavailableView(
+                        "No users found",
+                        systemImage: "person.crop.circle.badge.xmark",
+                        description: Text("Try a different username prefix.")
+                    )
+                }
+            }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Find Friends")
@@ -104,11 +115,13 @@ struct InboxFriendSearchView: View {
         guard !normalized.isEmpty else {
             results = []
             errorMessage = nil
+            hasSearched = false
             return
         }
 
         isSearching = true
         errorMessage = nil
+        hasSearched = true
         defer { isSearching = false }
 
         do {
