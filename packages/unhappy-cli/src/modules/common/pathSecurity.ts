@@ -2,6 +2,7 @@ import { resolve, sep } from 'path';
 
 export interface PathValidationResult {
     valid: boolean;
+    resolvedPath?: string;
     error?: string;
 }
 
@@ -12,9 +13,11 @@ export interface PathValidationResult {
  * @returns Validation result
  */
 export function validatePath(targetPath: string, workingDirectory: string): PathValidationResult {
-    // Resolve both paths to absolute paths to handle path traversal attempts
-    const resolvedTarget = resolve(workingDirectory, targetPath);
     const resolvedWorkingDir = resolve(workingDirectory);
+    const normalizedTargetPath = normalizeTargetPath(targetPath, resolvedWorkingDir);
+
+    // Resolve both paths to absolute paths to handle path traversal attempts
+    const resolvedTarget = resolve(resolvedWorkingDir, normalizedTargetPath);
 
     // Check if the resolved target path is within the working directory.
     // Note: `resolvedWorkingDir + '/'` breaks for root paths (e.g. "/" -> "//"), so build a safe prefix.
@@ -26,5 +29,25 @@ export function validatePath(targetPath: string, workingDirectory: string): Path
         };
     }
 
-    return { valid: true };
+    return {
+        valid: true,
+        resolvedPath: resolvedTarget
+    };
+}
+
+function normalizeTargetPath(targetPath: string, workingDirectory: string): string {
+    const trimmed = targetPath.trim();
+    if (!trimmed || trimmed === '.') {
+        return workingDirectory;
+    }
+
+    // Treat "~" as the root of the allowed workspace for this RPC scope.
+    if (trimmed === '~' || trimmed === '~/') {
+        return workingDirectory;
+    }
+    if (trimmed.startsWith('~/')) {
+        return resolve(workingDirectory, trimmed.slice(2));
+    }
+
+    return trimmed;
 }
