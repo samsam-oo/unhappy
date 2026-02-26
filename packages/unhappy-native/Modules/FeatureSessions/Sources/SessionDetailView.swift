@@ -30,7 +30,6 @@ public struct SessionDetailView: View {
     @State private var claudeCwdFilterDraft = ""
     @State private var claudeResumeDirectoryDraft = ""
     @State private var draftMessage = ""
-    @State private var steerMode: APISessionSteerMode = .queue
     @State private var presentedQuickTool: SessionQuickTool?
 
     public init(
@@ -93,13 +92,13 @@ public struct SessionDetailView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(viewModel.selectedSessionMessages) { message in
-                        NavigationLink {
-                            SessionMessageDetailView(
-                                presentation: SessionMessageDetailPresentationBuilder.make(from: message)
-                            )
-                        } label: {
-                            SessionMessageRow(message: message)
-                        }
+                        SessionTranscriptMessageRow(
+                            presentation: transcriptPresentation(for: message)
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(
+                            EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+                        )
                     }
                 }
             }
@@ -501,32 +500,21 @@ public struct SessionDetailView: View {
                 .textInputAutocapitalization(.sentences)
 
             HStack(spacing: 10) {
-                Picker("Send Mode", selection: $steerMode) {
-                    Text("Queue").tag(APISessionSteerMode.queue)
-                    Text("Steer").tag(APISessionSteerMode.immediate)
-                }
-                .pickerStyle(.segmented)
-
                 Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send") {
-                    let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { return }
-                    Task {
-                        let sent = await viewModel.sendMessage(
-                            for: session.id,
-                            text: text,
-                            steerMode: steerMode,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                        if sent {
-                            draftMessage = ""
-                            if steerMode == .immediate {
-                                steerMode = .queue
-                            }
-                        }
-                    }
+                    submitDraftMessage(with: .queue)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(
+                    viewModel.isSendingMessage(sessionID: session.id) ||
+                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+
+                Button {
+                    submitDraftMessage(with: .immediate)
+                } label: {
+                    Label("Now", systemImage: "bolt.fill")
+                }
+                .buttonStyle(.bordered)
                 .disabled(
                     viewModel.isSendingMessage(sessionID: session.id) ||
                     draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -545,6 +533,24 @@ public struct SessionDetailView: View {
             }
         }
         .padding(.horizontal, 12)
+    }
+
+    private func submitDraftMessage(with steerMode: APISessionSteerMode) {
+        let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+
+        Task {
+            let sent = await viewModel.sendMessage(
+                for: session.id,
+                text: text,
+                steerMode: steerMode,
+                serverURLString: serverURLString,
+                token: token
+            )
+            if sent {
+                draftMessage = ""
+            }
+        }
     }
 
     private var quickToolsBar: some View {
@@ -638,6 +644,15 @@ public struct SessionDetailView: View {
     private func normalizedCWD(from value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func transcriptPresentation(
+        for message: APISessionMessage
+    ) -> SessionTranscriptMessagePresentation {
+        SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: currentSession.dataEncryptionKey
+        )
     }
 }
 
@@ -759,35 +774,74 @@ private struct ClaudeSessionRow: View {
     }
 }
 
-private struct SessionMessageRow: View {
-    let message: APISessionMessage
+private struct SessionTranscriptMessageRow: View {
+    let presentation: SessionTranscriptMessagePresentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("#\(message.seq)")
+                Text(presentation.sequenceText)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(Date(timeIntervalSince1970: message.createdAt), style: .time)
+                Text(presentation.createdAtText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Text(message.id)
-                .font(.footnote.monospaced())
-                .lineLimit(1)
 
-            if let content = message.content {
-                Text("Content: \(content.t) • \(content.c.count) chars")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Content: empty")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(presentation.entries) { entry in
+                    SessionTranscriptLogLine(entry: entry)
+                }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+            )
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
+    }
+}
+
+private struct SessionTranscriptLogLine: View {
+    let entry: SessionTranscriptEntry
+
+    private var roleColor: Color {
+        switch entry.role {
+        case .user:
+            return .blue
+        case .agent:
+            return .primary
+        case .system:
+            return .orange
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(entry.role.badgeTitle.uppercased())
+                    .font(.caption2.monospaced().weight(.semibold))
+                    .foregroundStyle(roleColor)
+                Text("[\(entry.kind.rawValue)]")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                if let title = entry.title, !title.isEmpty {
+                    Text("• \(title)")
+                        .font(.caption2.monospaced())
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text(entry.body)
+                .font(.subheadline.monospaced())
+                .foregroundStyle(.primary)
+                .textSelection(.enabled)
+                .lineLimit(nil)
+        }
     }
 }
 
