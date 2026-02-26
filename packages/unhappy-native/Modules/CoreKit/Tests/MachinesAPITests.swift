@@ -168,6 +168,34 @@ struct MachinesAPITests {
     }
 
     @Test
+    func decodeListResponseNormalizesMillisecondTimestampsToSeconds() throws {
+        let json = """
+        [
+          {
+            "id": "machine-1",
+            "seq": 10,
+            "active": true,
+            "activeAt": 1700000000000,
+            "createdAt": 1699999900000,
+            "updatedAt": 1700000010000,
+            "metadataVersion": 1,
+            "metadata": "encrypted",
+            "daemonStateVersion": 1,
+            "daemonState": "encrypted-state",
+            "dataEncryptionKey": null
+          }
+        ]
+        """.data(using: .utf8)!
+
+        let machines = try MachinesAPI.decodeListResponse(json)
+        let machine = try #require(machines.first)
+
+        #expect(machine.activeAt == 1_700_000_000)
+        #expect(machine.createdAt == 1_699_999_900)
+        #expect(machine.updatedAt == 1_700_000_010)
+    }
+
+    @Test
     func decodeCommandResponseParsesPayload() throws {
         let json = """
         {

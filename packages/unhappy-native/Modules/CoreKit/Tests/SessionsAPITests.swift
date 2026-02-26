@@ -44,6 +44,32 @@ struct SessionsAPITests {
     }
 
     @Test
+    func decodeListResponseNormalizesMillisecondTimestampsToSeconds() throws {
+        let json = """
+        {
+          "sessions": [
+            {
+              "id": "s1",
+              "active": true,
+              "activeAt": 1700000000000,
+              "createdAt": 1699999900000,
+              "updatedAt": 1700000010000,
+              "metadataVersion": 1,
+              "metadata": "ZW5jcnlwdGVk"
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let sessions = try SessionsAPI.decodeListResponse(json)
+        let row = try #require(sessions.first)
+
+        #expect(row.activeAt == 1_700_000_000)
+        #expect(row.createdAt == 1_699_999_900)
+        #expect(row.updatedAt == 1_700_000_010)
+    }
+
+    @Test
     func messagesRequestIncludesExpectedHeadersAndPath() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try SessionsAPI.makeMessagesRequest(
@@ -132,6 +158,57 @@ struct SessionsAPITests {
         #expect(messages.first?.seq == 7)
         #expect(messages.first?.localId == "l-1")
         #expect(messages.first?.content?.t == "encrypted")
+    }
+
+    @Test
+    func decodeMessagesResponseNormalizesMillisecondsAndStringContent() throws {
+        let json = """
+        {
+          "messages": [
+            {
+              "id": "m1",
+              "seq": "7",
+              "localId": "l-1",
+              "content": "ZW5jcnlwdGVk",
+              "createdAt": 1700000001000,
+              "updatedAt": 1700000002000
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let messages = try SessionsAPI.decodeMessagesResponse(json)
+        let first = try #require(messages.first)
+
+        #expect(first.seq == 7)
+        #expect(first.content?.t == "encrypted")
+        #expect(first.content?.c == "ZW5jcnlwdGVk")
+        #expect(first.createdAt == 1_700_000_001)
+        #expect(first.updatedAt == 1_700_000_002)
+    }
+
+    @Test
+    func decodeMessagesResponseSupportsItemsContainer() throws {
+        let json = """
+        {
+          "items": [
+            {
+              "id": "m1",
+              "seq": 1,
+              "content": {
+                "t": "encrypted",
+                "c": "ZW5jcnlwdGVk"
+              },
+              "createdAt": 1700000001,
+              "updatedAt": 1700000002
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let messages = try SessionsAPI.decodeMessagesResponse(json)
+        #expect(messages.count == 1)
+        #expect(messages.first?.id == "m1")
     }
 
     @Test

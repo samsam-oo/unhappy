@@ -44,6 +44,40 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         self.dataEncryptionKey = dataEncryptionKey
         self.lastMessage = lastMessage
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case seq
+        case active
+        case activeAt
+        case createdAt
+        case updatedAt
+        case metadataVersion
+        case metadata
+        case agentState
+        case agentStateVersion
+        case dataEncryptionKey
+        case lastMessage
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        displayName = try? container.decodeIfPresent(String.self, forKey: .displayName)
+        seq = container.decodeFlexibleIntIfPresent(forKey: .seq)
+        active = (try? container.decode(Bool.self, forKey: .active)) ?? false
+        activeAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .activeAt) ?? 0
+        createdAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .createdAt) ?? 0
+        updatedAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .updatedAt) ?? 0
+        metadataVersion = container.decodeFlexibleIntIfPresent(forKey: .metadataVersion) ?? 0
+        metadata = (try? container.decode(String.self, forKey: .metadata)) ?? ""
+        agentState = try? container.decodeIfPresent(String.self, forKey: .agentState)
+        agentStateVersion = container.decodeFlexibleIntIfPresent(forKey: .agentStateVersion)
+        dataEncryptionKey = try? container.decodeIfPresent(String.self, forKey: .dataEncryptionKey)
+        lastMessage = try? container.decodeIfPresent(APIMessage.self, forKey: .lastMessage)
+    }
 }
 
 public struct APISessionsPage: Decodable, Equatable, Sendable {
@@ -70,6 +104,21 @@ public struct APIMessage: Decodable, Equatable, Sendable {
         self.content = content
         self.createdAt = createdAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case seq
+        case content
+        case createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        seq = container.decodeFlexibleIntIfPresent(forKey: .seq) ?? 0
+        content = try? container.decodeIfPresent(APIEncryptedMessageContent.self, forKey: .content)
+        createdAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .createdAt) ?? 0
+    }
 }
 
 public struct APISessionMessage: Decodable, Equatable, Identifiable, Sendable {
@@ -95,6 +144,25 @@ public struct APISessionMessage: Decodable, Equatable, Identifiable, Sendable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case seq
+        case localId
+        case content
+        case createdAt
+        case updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        seq = container.decodeFlexibleIntIfPresent(forKey: .seq) ?? 0
+        localId = try? container.decodeIfPresent(String.self, forKey: .localId)
+        content = try? container.decodeIfPresent(APIEncryptedMessageContent.self, forKey: .content)
+        createdAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .createdAt) ?? 0
+        updatedAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .updatedAt) ?? 0
+    }
 }
 
 public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
@@ -104,6 +172,33 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     public init(t: String, c: String) {
         self.t = t
         self.c = c
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case t
+        case c
+        case type
+        case text
+        case payload
+    }
+
+    public init(from decoder: Decoder) throws {
+        if let container = try? decoder.singleValueContainer(),
+           let encoded = try? container.decode(String.self) {
+            self = APIEncryptedMessageContent(t: "encrypted", c: encoded)
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let decodedType = (try? container.decodeIfPresent(String.self, forKey: .t))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .type))
+            ?? "encrypted"
+        let decodedPayload = (try? container.decodeIfPresent(String.self, forKey: .c))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .payload))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .text))
+            ?? ""
+
+        self = APIEncryptedMessageContent(t: decodedType, c: decodedPayload)
     }
 }
 

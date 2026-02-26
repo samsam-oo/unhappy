@@ -581,8 +581,27 @@ public enum SessionsAPI {
 
     public static func decodeMessagesResponse(_ data: Data) throws -> [APISessionMessage] {
         let decoder = JSONDecoder()
-        let response = try decoder.decode(SessionsMessagesResponse.self, from: data)
-        return response.messages
+        if let response = try? decoder.decode(SessionsMessagesResponse.self, from: data) {
+            if let messages = response.messages {
+                return messages
+            }
+            if let items = response.items {
+                return items
+            }
+            if let rows = response.rows {
+                return rows
+            }
+            if let dataRows = response.data {
+                return dataRows
+            }
+        }
+
+        if let array = try? decoder.decode([APISessionMessage].self, from: data) {
+            return array
+        }
+
+        let strictResponse = try decoder.decode(SessionsMessagesResponse.self, from: data)
+        return strictResponse.messages ?? []
     }
 
     public static func decodeCodexThreadsResponse(_ data: Data) throws -> [APICodexThreadSummary] {
@@ -731,7 +750,10 @@ private struct SessionsListResponse: Decodable {
 }
 
 private struct SessionsMessagesResponse: Decodable {
-    let messages: [APISessionMessage]
+    let messages: [APISessionMessage]?
+    let items: [APISessionMessage]?
+    let rows: [APISessionMessage]?
+    let data: [APISessionMessage]?
 }
 
 private struct SessionsPagedListResponse: Decodable {

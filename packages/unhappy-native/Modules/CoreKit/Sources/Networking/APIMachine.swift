@@ -38,6 +38,36 @@ public struct APIMachine: Decodable, Equatable, Identifiable, Sendable {
         self.daemonState = daemonState
         self.dataEncryptionKey = dataEncryptionKey
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case seq
+        case active
+        case activeAt
+        case createdAt
+        case updatedAt
+        case metadataVersion
+        case metadata
+        case daemonStateVersion
+        case daemonState
+        case dataEncryptionKey
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        seq = container.decodeFlexibleIntIfPresent(forKey: .seq)
+        active = (try? container.decode(Bool.self, forKey: .active)) ?? false
+        activeAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .activeAt) ?? 0
+        createdAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .createdAt) ?? 0
+        updatedAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .updatedAt) ?? 0
+        metadataVersion = container.decodeFlexibleIntIfPresent(forKey: .metadataVersion) ?? 0
+        metadata = (try? container.decode(String.self, forKey: .metadata)) ?? ""
+        daemonStateVersion = container.decodeFlexibleIntIfPresent(forKey: .daemonStateVersion) ?? 0
+        daemonState = try? container.decodeIfPresent(String.self, forKey: .daemonState)
+        dataEncryptionKey = try? container.decodeIfPresent(String.self, forKey: .dataEncryptionKey)
+    }
 }
 
 public struct APIMachineCommandResult: Decodable, Equatable, Sendable {
