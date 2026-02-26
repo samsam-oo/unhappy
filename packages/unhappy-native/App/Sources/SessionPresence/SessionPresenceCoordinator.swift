@@ -1,0 +1,626 @@
+import Foundation
+import UserNotifications
+import ActivityKit
+import CryptoKit
+import CoreKit
+
+@MainActor
+protocol SessionPresenceCoordinating {
+    func start() async
+    func handleSessionsChanged(_ sessions: [APISession]) async
+}
+
+struct SessionRuntimeSnapshot: Equatable, Sendable {
+    let sessionID: String
+    let isActive: Bool
+    let title: String
+    let agent: UnhappySessionAgentKind
+    let directory: String
+    let statusText: String
+    let requiresApproval: Bool
+    let updatedAt: Date
+
+    init(session: APISession) {
+        let metadata = SessionPayloadDecoder.decodeJSONObject(
+            payload: session.metadata,
+            dataEncryptionKey: session.dataEncryptionKey
+        )
+        let agentState = SessionPayloadDecoder.decodeJSONObject(
+            payload: session.agentState,
+            dataEncryptionKey: session.dataEncryptionKey
+        )
+
+        self.sessionID = session.id
+        self.isActive = session.active
+        self.title = Self.resolveTitle(session)
+        self.agent = Self.resolveAgent(metadata: metadata, agentState: agentState)
+        self.directory = Self.resolveDirectory(metadata: metadata, agentState: agentState)
+        self.requiresApproval = Self.resolveRequiresApproval(metadata: metadata, agentState: agentState)
+        self.statusText = Self.resolveStatusText(
+            isActive: session.active,
+            requiresApproval: requiresApproval,
+            metadata: metadata,
+            agentState: agentState
+        )
+        self.updatedAt = Date(timeIntervalSince1970: session.updatedAt)
+    }
+
+    private static func resolveTitle(_ session: APISession) -> String {
+        if let raw = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty,
+           raw != session.id {
+            return raw
+        }
+        if let seq = session.seq, seq > 0 {
+            return "Session #\(seq)"
+        }
+        return "Session"
+    }
+
+    private static func resolveAgent(
+        metadata: [String: Any],
+        agentState: [String: Any]
+    ) -> UnhappySessionAgentKind {
+        let raw = SessionPayloadDecoder.firstString(
+            in: [agentState, metadata],
+            keys: [
+                "agent",
+                "agentType",
+                "backend",
+                "provider",
+                "flavor",
+                "startedBy",
+            ]
+        )
+        let normalized = raw?.lowercased() ?? ""
+        if normalized.contains("claude") {
+            return .claude
+        }
+        if normalized.contains("gemini") {
+            return .gemini
+        }
+        if normalized.contains("codex") || normalized.contains("gpt") || normalized.contains("openai") {
+            return .codex
+        }
+        return .unknown
+    }
+
+    private static func resolveDirectory(
+        metadata: [String: Any],
+        agentState: [String: Any]
+    ) -> String {
+        let path = SessionPayloadDecoder.firstString(
+            in: [agentState, metadata],
+            keys: [
+                "cwd",
+                "path",
+                "directory",
+                "workDir",
+                "workingDirectory",
+                "projectPath",
+            ]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let path, !path.isEmpty {
+            return path
+        }
+        return "Directory unavailable"
+    }
+
+    private static func resolveRequiresApproval(
+        metadata: [String: Any],
+        agentState: [String: Any]
+    ) -> Bool {
+        if let explicit = SessionPayloadDecoder.firstBool(
+            in: [agentState, metadata],
+            keys: [
+                "requiresUserApproval",
+                "needsApproval",
+                "approvalRequired",
+                "approvalPending",
+                "permissionPending",
+                "waitingApproval",
+                "awaitingApproval",
+            ]
+        ) {
+            return explicit
+        }
+
+        if SessionPayloadDecoder.hasNonEmptyArray(
+            in: [agentState, metadata],
+            keys: [
+                "pendingPermissions",
+                "approvalRequests",
+                "permissionRequests",
+                "pendingApprovalRequests",
+            ]
+        ) {
+            return true
+        }
+
+        if let status = SessionPayloadDecoder.firstString(
+            in: [agentState, metadata],
+            keys: ["status", "state", "phase"]
+        )?.lowercased(),
+           status.contains("approval") || status.contains("permission") {
+            return true
+        }
+        return false
+    }
+
+    private static func resolveStatusText(
+        isActive: Bool,
+        requiresApproval: Bool,
+        metadata: [String: Any],
+        agentState: [String: Any]
+    ) -> String {
+        if requiresApproval {
+            return "Approval needed"
+        }
+
+        if let statusRaw = SessionPayloadDecoder.firstString(
+            in: [agentState, metadata],
+            keys: ["status", "state", "phase", "activity", "mode"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !statusRaw.isEmpty {
+            let clipped = String(statusRaw.prefix(64))
+            return clipped.prefix(1).uppercased() + clipped.dropFirst()
+        }
+
+        if let isThinking = SessionPayloadDecoder.firstBool(
+            in: [agentState, metadata],
+            keys: ["thinking", "busy", "working", "running", "processing"]
+        ), isThinking {
+            return "Working"
+        }
+
+        return isActive ? "Running" : "Completed"
+    }
+}
+
+protocol SessionNotificationsHandling: Sendable {
+    func requestAuthorizationIfNeeded() async
+    func notifySessionsCompleted(_ sessions: [SessionRuntimeSnapshot]) async
+    func notifySessionsRequiringApproval(_ sessions: [SessionRuntimeSnapshot]) async
+}
+
+protocol SessionsLiveActivityHandling: Sendable {
+    func startIfNeeded() async
+    func syncSessions(_ activeSessions: [SessionRuntimeSnapshot]) async
+}
+
+@MainActor
+final class SessionPresenceCoordinator: SessionPresenceCoordinating {
+    private let notifications: any SessionNotificationsHandling
+    private let liveActivity: any SessionsLiveActivityHandling
+    private var started = false
+    private var previousBySessionID: [String: SessionRuntimeSnapshot] = [:]
+
+    init(
+        notifications: any SessionNotificationsHandling,
+        liveActivity: any SessionsLiveActivityHandling
+    ) {
+        self.notifications = notifications
+        self.liveActivity = liveActivity
+    }
+
+    func start() async {
+        guard !started else { return }
+        started = true
+        await notifications.requestAuthorizationIfNeeded()
+        await liveActivity.startIfNeeded()
+    }
+
+    func handleSessionsChanged(_ sessions: [APISession]) async {
+        let snapshots = sessions.map(SessionRuntimeSnapshot.init(session:))
+        let activeSnapshots = snapshots.filter(\.isActive)
+        await liveActivity.syncSessions(activeSnapshots)
+
+        let currentBySessionID = Self.indexBySessionID(snapshots)
+        defer { previousBySessionID = currentBySessionID }
+
+        guard !previousBySessionID.isEmpty else { return }
+
+        var completedSessions: [SessionRuntimeSnapshot] = []
+        for (sessionID, previous) in previousBySessionID {
+            guard previous.isActive else { continue }
+            guard let current = currentBySessionID[sessionID], !current.isActive else { continue }
+            completedSessions.append(current)
+        }
+        if !completedSessions.isEmpty {
+            await notifications.notifySessionsCompleted(completedSessions)
+        }
+
+        var approvalSessions: [SessionRuntimeSnapshot] = []
+        for (sessionID, current) in currentBySessionID {
+            guard current.isActive else { continue }
+            guard current.requiresApproval else { continue }
+            let previousRequiresApproval = previousBySessionID[sessionID]?.requiresApproval ?? false
+            if !previousRequiresApproval {
+                approvalSessions.append(current)
+            }
+        }
+        if !approvalSessions.isEmpty {
+            await notifications.notifySessionsRequiringApproval(approvalSessions)
+        }
+    }
+
+    private static func indexBySessionID(
+        _ snapshots: [SessionRuntimeSnapshot]
+    ) -> [String: SessionRuntimeSnapshot] {
+        snapshots.reduce(into: [:]) { partial, snapshot in
+            partial[snapshot.sessionID] = snapshot
+        }
+    }
+}
+
+actor UserNotificationsSessionNotifier: SessionNotificationsHandling {
+    private let center: UNUserNotificationCenter
+    private var requestedAuthorization = false
+    private var lastNotificationAtByKey: [String: Date] = [:]
+    private let minimumDeduplicationInterval: TimeInterval = 12
+
+    init(center: UNUserNotificationCenter = .current()) {
+        self.center = center
+    }
+
+    func requestAuthorizationIfNeeded() async {
+        guard !requestedAuthorization else { return }
+        requestedAuthorization = true
+
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .notDetermined else { return }
+        _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+    }
+
+    func notifySessionsCompleted(_ sessions: [SessionRuntimeSnapshot]) async {
+        guard !sessions.isEmpty else { return }
+        let sorted = sessions.sorted { $0.updatedAt > $1.updatedAt }
+
+        if sorted.count == 1, let session = sorted.first {
+            let key = "done:\(session.sessionID)"
+            guard shouldSendNotification(for: key) else { return }
+            let body = "\(session.title) finished."
+            await sendNotification(
+                identifierPrefix: "im.unhappy.session.completed",
+                title: "Session completed",
+                body: body
+            )
+            return
+        }
+
+        let key = "done-group:\(sorted.map(\.sessionID).joined(separator: ","))"
+        guard shouldSendNotification(for: key) else { return }
+        await sendNotification(
+            identifierPrefix: "im.unhappy.session.completed.group",
+            title: "Sessions completed",
+            body: "\(sorted.count) sessions finished."
+        )
+    }
+
+    func notifySessionsRequiringApproval(_ sessions: [SessionRuntimeSnapshot]) async {
+        guard !sessions.isEmpty else { return }
+        let sorted = sessions.sorted { $0.updatedAt > $1.updatedAt }
+
+        if sorted.count == 1, let session = sorted.first {
+            let key = "approval:\(session.sessionID)"
+            guard shouldSendNotification(for: key) else { return }
+            let body = "\(session.title) needs approval in \(session.directory)."
+            await sendNotification(
+                identifierPrefix: "im.unhappy.session.approval",
+                title: "Approval needed",
+                body: body
+            )
+            return
+        }
+
+        let key = "approval-group:\(sorted.map(\.sessionID).joined(separator: ","))"
+        guard shouldSendNotification(for: key) else { return }
+        await sendNotification(
+            identifierPrefix: "im.unhappy.session.approval.group",
+            title: "Approvals needed",
+            body: "\(sorted.count) sessions are waiting for approval."
+        )
+    }
+
+    private func sendNotification(
+        identifierPrefix: String,
+        title: String,
+        body: String
+    ) async {
+        let settings = await center.notificationSettings()
+        let status = settings.authorizationStatus
+        guard status == .authorized || status == .provisional || status == .ephemeral else {
+            return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "\(identifierPrefix).\(UUID().uuidString)",
+            content: content,
+            trigger: trigger
+        )
+        try? await center.add(request)
+    }
+
+    private func shouldSendNotification(for key: String) -> Bool {
+        let now = Date()
+        if let lastSent = lastNotificationAtByKey[key],
+           now.timeIntervalSince(lastSent) < minimumDeduplicationInterval {
+            return false
+        }
+        lastNotificationAtByKey[key] = now
+        return true
+    }
+}
+
+actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
+    private var activitiesBySessionID: [String: Activity<UnhappySessionsActivityAttributes>] = [:]
+    private var didLoadExistingActivities = false
+
+    func startIfNeeded() async {
+        guard !didLoadExistingActivities else { return }
+        didLoadExistingActivities = true
+        var mapped: [String: Activity<UnhappySessionsActivityAttributes>] = [:]
+        for activity in Activity<UnhappySessionsActivityAttributes>.activities {
+            mapped[activity.attributes.sessionID] = activity
+        }
+        activitiesBySessionID = mapped
+    }
+
+    func syncSessions(_ activeSessions: [SessionRuntimeSnapshot]) async {
+        await startIfNeeded()
+
+        if !ActivityAuthorizationInfo().areActivitiesEnabled {
+            await endAllActivities(dismissalPolicy: .immediate)
+            return
+        }
+
+        let activeBySessionID = activeSessions.reduce(into: [String: SessionRuntimeSnapshot]()) { partial, session in
+            partial[session.sessionID] = session
+        }
+        let activeSessionIDs = Set(activeBySessionID.keys)
+        let staleSessionIDs = Set(activitiesBySessionID.keys).subtracting(activeSessionIDs)
+
+        for sessionID in staleSessionIDs {
+            await endActivity(for: sessionID, dismissalPolicy: .immediate)
+        }
+
+        for activeSession in activeSessions {
+            let content = ActivityContent(
+                state: contentState(for: activeSession),
+                staleDate: Date().addingTimeInterval(60)
+            )
+
+            if let activity = activitiesBySessionID[activeSession.sessionID] {
+                await activity.update(content)
+                continue
+            }
+
+            let attributes = UnhappySessionsActivityAttributes(sessionID: activeSession.sessionID)
+            do {
+                let activity = try Activity.request(attributes: attributes, content: content)
+                activitiesBySessionID[activeSession.sessionID] = activity
+            } catch {
+                // Keep silent to avoid interrupting session UX when Live Activity is unavailable.
+            }
+        }
+    }
+
+    private func contentState(
+        for session: SessionRuntimeSnapshot
+    ) -> UnhappySessionsActivityAttributes.ContentState {
+        UnhappySessionsActivityAttributes.ContentState(
+            title: session.title,
+            agent: session.agent,
+            directory: session.directory,
+            statusText: session.statusText,
+            requiresApproval: session.requiresApproval,
+            updatedAt: session.updatedAt
+        )
+    }
+
+    private func endAllActivities(dismissalPolicy: ActivityUIDismissalPolicy) async {
+        let sessionIDs = Array(activitiesBySessionID.keys)
+        for sessionID in sessionIDs {
+            await endActivity(for: sessionID, dismissalPolicy: dismissalPolicy)
+        }
+    }
+
+    private func endActivity(
+        for sessionID: String,
+        dismissalPolicy: ActivityUIDismissalPolicy
+    ) async {
+        guard let activity = activitiesBySessionID[sessionID] else { return }
+        let endState = UnhappySessionsActivityAttributes.ContentState(
+            title: "Session",
+            agent: .unknown,
+            directory: "Directory unavailable",
+            statusText: "Completed",
+            requiresApproval: false,
+            updatedAt: Date()
+        )
+        let endContent = ActivityContent(state: endState, staleDate: nil)
+        await activity.end(endContent, dismissalPolicy: dismissalPolicy)
+        activitiesBySessionID[sessionID] = nil
+    }
+}
+
+private enum SessionPayloadDecoder {
+    static func decodeJSONObject(
+        payload: String?,
+        dataEncryptionKey: String?
+    ) -> [String: Any] {
+        guard let payload = payload?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !payload.isEmpty else {
+            return [:]
+        }
+
+        if let parsed = parseJSONObject(fromUTF8String: payload) {
+            return parsed
+        }
+
+        if let decrypted = decryptDataKeyPayload(payload: payload, dataEncryptionKey: dataEncryptionKey),
+           let parsed = parseJSONObject(fromData: decrypted) {
+            return parsed
+        }
+
+        if let decoded = decodeBase64(payload),
+           let parsed = parseJSONObject(fromData: decoded) {
+            return parsed
+        }
+
+        return [:]
+    }
+
+    static func firstString(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> String? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let string = value as? String {
+                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            } else if let number = value as? NSNumber {
+                return number.stringValue
+            }
+        }
+        return nil
+    }
+
+    static func firstBool(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> Bool? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let bool = value as? Bool {
+                return bool
+            }
+            if let number = value as? NSNumber {
+                return number.boolValue
+            }
+            if let string = value as? String {
+                let normalized = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if normalized == "true" || normalized == "1" || normalized == "yes" {
+                    return true
+                }
+                if normalized == "false" || normalized == "0" || normalized == "no" {
+                    return false
+                }
+            }
+        }
+        return nil
+    }
+
+    static func hasNonEmptyArray(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> Bool {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let array = value as? [Any], !array.isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func firstValue(in object: Any, matching keys: Set<String>) -> Any? {
+        if let dictionary = object as? [String: Any] {
+            for (rawKey, value) in dictionary {
+                if keys.contains(normalizeKey(rawKey)) {
+                    return value
+                }
+            }
+            for (_, value) in dictionary {
+                if let nested = firstValue(in: value, matching: keys) {
+                    return nested
+                }
+            }
+            return nil
+        }
+
+        if let array = object as? [Any] {
+            for item in array {
+                if let nested = firstValue(in: item, matching: keys) {
+                    return nested
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func parseJSONObject(fromUTF8String string: String) -> [String: Any]? {
+        guard let data = string.data(using: .utf8) else { return nil }
+        return parseJSONObject(fromData: data)
+    }
+
+    private static func parseJSONObject(fromData data: Data) -> [String: Any]? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            return nil
+        }
+        return object as? [String: Any]
+    }
+
+    private static func decryptDataKeyPayload(
+        payload: String,
+        dataEncryptionKey: String?
+    ) -> Data? {
+        guard let dataEncryptionKey else { return nil }
+        guard let keyData = decodeBase64(dataEncryptionKey), keyData.count == 32 else {
+            return nil
+        }
+        guard let bundle = decodeBase64(payload) else {
+            return nil
+        }
+        guard bundle.count >= (1 + 12 + 16), bundle.first == 0 else {
+            return nil
+        }
+
+        let nonceData = bundle.subdata(in: 1..<13)
+        let tagData = bundle.suffix(16)
+        let ciphertextData = bundle.subdata(in: 13..<(bundle.count - 16))
+
+        do {
+            let nonce = try AES.GCM.Nonce(data: nonceData)
+            let sealed = try AES.GCM.SealedBox(
+                nonce: nonce,
+                ciphertext: ciphertextData,
+                tag: tagData
+            )
+            let key = SymmetricKey(data: keyData)
+            let decrypted = try AES.GCM.open(sealed, using: key)
+            return decrypted
+        } catch {
+            return nil
+        }
+    }
+
+    private static func decodeBase64(_ raw: String) -> Data? {
+        if let direct = Data(base64Encoded: raw) {
+            return direct
+        }
+        let replaced = raw
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let paddingCount = (4 - (replaced.count % 4)) % 4
+        let padded = replaced + String(repeating: "=", count: paddingCount)
+        return Data(base64Encoded: padded)
+    }
+
+    private static func normalizeKey(_ key: String) -> String {
+        String(key.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+}

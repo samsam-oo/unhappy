@@ -10,6 +10,7 @@ public struct SessionsView: View {
     private let token: String
     private let hideInactiveSessions: Bool
     private let defaultNewSessionAgent: APISessionSpawnAgent
+    private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     @State private var pendingDeleteSession: APISession?
@@ -20,6 +21,7 @@ public struct SessionsView: View {
         token: String,
         hideInactiveSessions: Bool = false,
         defaultNewSessionAgent: APISessionSpawnAgent = .claude,
+        onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void = { _ in },
         makeViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
@@ -28,6 +30,7 @@ public struct SessionsView: View {
         self.token = token
         self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
+        self.onSessionsChanged = onSessionsChanged
         _viewModel = StateObject(wrappedValue: makeViewModel())
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
@@ -140,6 +143,9 @@ public struct SessionsView: View {
                     token: token
                 )
             }
+            .task(id: sessionsChangeTaskID) {
+                await onSessionsChanged(viewModel.sessions)
+            }
             .refreshable {
                 await viewModel.load(serverURLString: serverURLString, token: token)
             }
@@ -197,6 +203,14 @@ public struct SessionsView: View {
             return viewModel.sessions.filter(\.active)
         }
         return viewModel.sessions
+    }
+
+    private var sessionsChangeTaskID: String {
+        viewModel.sessions
+            .map { session in
+                "\(session.id)|\(session.active ? 1 : 0)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
+            }
+            .joined(separator: ",")
     }
 }
 

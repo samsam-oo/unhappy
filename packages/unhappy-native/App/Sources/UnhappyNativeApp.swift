@@ -16,6 +16,7 @@ struct UnhappyNativeApp: App {
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    private let sessionPresenceCoordinator: any SessionPresenceCoordinating
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
@@ -89,7 +90,14 @@ struct UnhappyNativeApp: App {
             authTokenService: authTokenService,
             secretStore: accountSecretStore
         )
+        let sessionsNotifier = UserNotificationsSessionNotifier()
+        let sessionsLiveActivity = ActivityKitSessionsLiveActivityService()
+        let sessionPresenceCoordinator = SessionPresenceCoordinator(
+            notifications: sessionsNotifier,
+            liveActivity: sessionsLiveActivity
+        )
         self.onboarding = onboardingUseCase
+        self.sessionPresenceCoordinator = sessionPresenceCoordinator
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
         self.makeInboxViewModel = {
             InboxViewModel(
@@ -165,6 +173,9 @@ struct UnhappyNativeApp: App {
                 makeSessionsViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel,
+                onSessionsChanged: { sessions in
+                    await sessionPresenceCoordinator.handleSessionsChanged(sessions)
+                },
                 makeMachinesViewModel: makeMachinesViewModel,
                 makeUsageViewModel: makeUsageViewModel,
                 makeDaemonStatusViewModel: makeDaemonStatusViewModel,
@@ -172,6 +183,9 @@ struct UnhappyNativeApp: App {
                 makeAccountLinkViewModel: makeAccountLinkViewModel,
                 makeServerStatusViewModel: makeServerStatusViewModel
             )
+            .task {
+                await sessionPresenceCoordinator.start()
+            }
         }
     }
 }
