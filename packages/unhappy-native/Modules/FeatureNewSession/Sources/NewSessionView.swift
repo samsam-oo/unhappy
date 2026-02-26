@@ -166,9 +166,6 @@ public struct NewSessionView: View {
                 }
 
                 Section("Advanced") {
-                    TextField("Codex resume thread ID (optional)", text: $viewModel.codexResumeThreadID)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
                     Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : "Choose Existing Codex Session") {
                         showCodexThreadsSheet = true
                         Task {
