@@ -7,18 +7,22 @@ public final class InboxViewModel: ObservableObject {
     @Published public private(set) var requestedFriends: [InboxFriend] = []
     @Published public private(set) var friends: [InboxFriend] = []
     @Published public private(set) var isLoading = false
+    @Published public private(set) var isApplyingFriendAction = false
     @Published public private(set) var errorMessage: String?
 
     private let loader: any InboxLoadingAction
+    private let friendAction: any InboxFriendActionPerforming
     private var serverURLString: String
     private var token: String
 
     public init(
         loader: any InboxLoadingAction,
+        friendAction: any InboxFriendActionPerforming = InboxNoopFriendActionUseCase(),
         serverURLString: String = "",
         token: String = ""
     ) {
         self.loader = loader
+        self.friendAction = friendAction
         self.serverURLString = serverURLString
         self.token = token
     }
@@ -55,6 +59,58 @@ public final class InboxViewModel: ObservableObject {
             friendRequests = []
             requestedFriends = []
             friends = []
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func acceptFriendRequest(userID: String) async {
+        await performFriendAction {
+            try await friendAction.acceptFriendRequest(
+                serverURLString: serverURLString,
+                token: token,
+                userID: userID
+            )
+        }
+    }
+
+    public func rejectFriendRequest(userID: String) async {
+        await performFriendAction {
+            try await friendAction.rejectFriendRequest(
+                serverURLString: serverURLString,
+                token: token,
+                userID: userID
+            )
+        }
+    }
+
+    public func cancelFriendRequest(userID: String) async {
+        await performFriendAction {
+            try await friendAction.cancelFriendRequest(
+                serverURLString: serverURLString,
+                token: token,
+                userID: userID
+            )
+        }
+    }
+
+    public func removeFriend(userID: String) async {
+        await performFriendAction {
+            try await friendAction.removeFriend(
+                serverURLString: serverURLString,
+                token: token,
+                userID: userID
+            )
+        }
+    }
+
+    private func performFriendAction(_ action: () async throws -> Void) async {
+        isApplyingFriendAction = true
+        defer { isApplyingFriendAction = false }
+
+        do {
+            try await action()
+            await load()
+        } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }

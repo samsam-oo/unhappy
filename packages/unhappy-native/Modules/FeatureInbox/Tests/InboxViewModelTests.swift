@@ -61,6 +61,33 @@ struct InboxViewModelTests {
         #expect(viewModel.errorMessage == "failed")
         #expect(viewModel.isLoading == false)
     }
+
+    @Test
+    func acceptFriendRequestRunsActionAndReloads() async {
+        let loader = MockInboxLoader(
+            result: .success(
+                InboxSnapshot(
+                    feedItems: [],
+                    friendRequests: [],
+                    requestedFriends: [],
+                    friends: []
+                )
+            )
+        )
+        let friendAction = MockInboxFriendAction()
+        let viewModel = InboxViewModel(
+            loader: loader,
+            friendAction: friendAction,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        await viewModel.acceptFriendRequest(userID: "user-1")
+
+        #expect(await friendAction.acceptCallCount() == 1)
+        #expect(await loader.callCount() == 1)
+        #expect(viewModel.isApplyingFriendAction == false)
+    }
 }
 
 private enum InboxTestError: LocalizedError {
@@ -84,5 +111,27 @@ private actor MockInboxLoader: InboxLoadingAction {
 
     func firstCall() -> (serverURLString: String, token: String)? {
         calls.first
+    }
+
+    func callCount() -> Int {
+        calls.count
+    }
+}
+
+private actor MockInboxFriendAction: InboxFriendActionPerforming {
+    private var acceptCalls: Int = 0
+
+    func acceptFriendRequest(serverURLString: String, token: String, userID: String) async throws {
+        acceptCalls += 1
+    }
+
+    func rejectFriendRequest(serverURLString: String, token: String, userID: String) async throws {}
+
+    func cancelFriendRequest(serverURLString: String, token: String, userID: String) async throws {}
+
+    func removeFriend(serverURLString: String, token: String, userID: String) async throws {}
+
+    func acceptCallCount() -> Int {
+        acceptCalls
     }
 }

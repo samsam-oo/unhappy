@@ -47,6 +47,18 @@ public struct InboxView: View {
                             Section("Pending Requests") {
                                 ForEach(viewModel.friendRequests) { friend in
                                     friendRow(friend: friend)
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                            Button("Reject", role: .destructive) {
+                                                Task { await viewModel.rejectFriendRequest(userID: friend.id) }
+                                            }
+                                            .disabled(viewModel.isApplyingFriendAction)
+
+                                            Button("Accept") {
+                                                Task { await viewModel.acceptFriendRequest(userID: friend.id) }
+                                            }
+                                            .tint(.green)
+                                            .disabled(viewModel.isApplyingFriendAction)
+                                        }
                                 }
                             }
                         }
@@ -55,6 +67,12 @@ public struct InboxView: View {
                             Section("Sent Requests") {
                                 ForEach(viewModel.requestedFriends) { friend in
                                     friendRow(friend: friend)
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            Button("Cancel", role: .destructive) {
+                                                Task { await viewModel.cancelFriendRequest(userID: friend.id) }
+                                            }
+                                            .disabled(viewModel.isApplyingFriendAction)
+                                        }
                                 }
                             }
                         }
@@ -63,6 +81,12 @@ public struct InboxView: View {
                             Section("Friends") {
                                 ForEach(viewModel.friends) { friend in
                                     friendRow(friend: friend)
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                            Button("Remove", role: .destructive) {
+                                                Task { await viewModel.removeFriend(userID: friend.id) }
+                                            }
+                                            .disabled(viewModel.isApplyingFriendAction)
+                                        }
                                 }
                             }
                         }

@@ -56,6 +56,10 @@ struct UnhappyNativeApp: App {
             service: feedService,
             friendsService: friendsService
         )
+        let inboxFriendAction = InboxFriendActionUseCase(
+            adder: friendsService,
+            remover: friendsService
+        )
         let homeServerStatusLoader = HomeServerConnectionStatusLoadUseCase()
         let terminalAuthService = URLSessionTerminalAuthService()
         let accountAuthService = URLSessionAccountAuthService()
@@ -82,7 +86,12 @@ struct UnhappyNativeApp: App {
         )
         self.onboarding = onboardingUseCase
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
-        self.makeInboxViewModel = { InboxViewModel(loader: inboxLoader) }
+        self.makeInboxViewModel = {
+            InboxViewModel(
+                loader: inboxLoader,
+                friendAction: inboxFriendAction
+            )
+        }
         self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
         self.makeNewSessionViewModel = {
             NewSessionViewModel(
