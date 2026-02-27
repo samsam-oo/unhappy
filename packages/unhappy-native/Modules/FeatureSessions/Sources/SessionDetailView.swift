@@ -25,11 +25,9 @@ public struct SessionDetailView: View {
     }
 
     private static let customModelOverrideOption = "__custom_model_override__"
-    private static let modelPickerInheritOption = "__model_inherit__"
-    private static let modelPickerResetOption = "__model_reset__"
+    private static let modelPickerDefaultOption = "__model_default__"
     private static let modelPickerCustomOption = "__model_custom__"
     private static let modelPickerPresetPrefix = "__model_preset__:"
-    private static let effortPickerInheritOption = "__effort_inherit__"
     private static let effortPickerPresetPrefix = "__effort_preset__:"
 
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
@@ -798,20 +796,18 @@ public struct SessionDetailView: View {
     }
 
     private var selectedModelOverrideLabel: String {
-        guard applyModelOverride else { return "Inherit" }
+        guard applyModelOverride else { return "Default" }
         switch selectedModelOverrideOption {
         case Self.customModelOverrideOption:
             let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             return normalized.isEmpty ? "Custom" : normalized
-        case "":
-            return "Default"
         default:
             return selectedModelOverrideOption
         }
     }
 
     private var selectedReasoningOverrideLabel: String {
-        guard applyEffortOverride else { return "Inherit" }
+        guard applyEffortOverride else { return "Auto" }
         return selectedEffortOverride.label
     }
 
@@ -823,12 +819,8 @@ public struct SessionDetailView: View {
     private var modelPickerOptions: [PickerOption] {
         var options: [PickerOption] = [
             PickerOption(
-                id: Self.modelPickerInheritOption,
-                label: "Inherit session model"
-            ),
-            PickerOption(
-                id: Self.modelPickerResetOption,
-                label: "Reset to default model"
+                id: Self.modelPickerDefaultOption,
+                label: "Default"
             ),
         ]
         options.append(
@@ -849,45 +841,29 @@ public struct SessionDetailView: View {
     }
 
     private var effortPickerOptions: [PickerOption] {
-        var options: [PickerOption] = [
+        availableEffortSelections.map { effort in
             PickerOption(
-                id: Self.effortPickerInheritOption,
-                label: "Inherit session reasoning"
+                id: Self.effortPickerPresetPrefix + effort.rawValue,
+                label: effort.label
             )
-        ]
-        options.append(
-            contentsOf: availableEffortSelections.map { effort in
-                PickerOption(
-                    id: Self.effortPickerPresetPrefix + effort.rawValue,
-                    label: effort == .auto ? "Auto" : effort.label
-                )
-            }
-        )
-        return options
+        }
     }
 
     private var modelPickerSelection: Binding<String> {
         Binding(
             get: {
                 if !applyModelOverride {
-                    return Self.modelPickerInheritOption
+                    return Self.modelPickerDefaultOption
                 }
                 if selectedModelOverrideOption == Self.customModelOverrideOption {
                     return Self.modelPickerCustomOption
-                }
-                if selectedModelOverrideOption.isEmpty {
-                    return Self.modelPickerResetOption
                 }
                 return Self.modelPickerPresetPrefix + selectedModelOverrideOption
             },
             set: { value in
                 switch value {
-                case Self.modelPickerInheritOption:
+                case Self.modelPickerDefaultOption:
                     applyModelOverride = false
-                    selectedModelOverrideOption = ""
-                    focusedComposerField = nil
-                case Self.modelPickerResetOption:
-                    applyModelOverride = true
                     selectedModelOverrideOption = ""
                     focusedComposerField = nil
                 case Self.modelPickerCustomOption:
@@ -909,17 +885,12 @@ public struct SessionDetailView: View {
     private var effortPickerSelection: Binding<String> {
         Binding(
             get: {
-                guard applyEffortOverride else {
-                    return Self.effortPickerInheritOption
+                if applyEffortOverride {
+                    return Self.effortPickerPresetPrefix + selectedEffortOverride.rawValue
                 }
-                return Self.effortPickerPresetPrefix + selectedEffortOverride.rawValue
+                return Self.effortPickerPresetPrefix + SessionComposerEffortSelection.auto.rawValue
             },
             set: { value in
-                if value == Self.effortPickerInheritOption {
-                    applyEffortOverride = false
-                    selectedEffortOverride = .auto
-                    return
-                }
                 guard value.hasPrefix(Self.effortPickerPresetPrefix) else { return }
                 let raw = String(value.dropFirst(Self.effortPickerPresetPrefix.count))
                 guard let selected = SessionComposerEffortSelection(rawValue: raw) else { return }
