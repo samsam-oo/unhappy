@@ -130,6 +130,7 @@ export class ApiSessionClient extends EventEmitter {
                     'switch',
                     'sendMessage',
                     'listMessages',
+                    'list-models',
                     'bash',
                     'readFile',
                     'writeFile',
