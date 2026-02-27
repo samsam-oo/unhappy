@@ -11,10 +11,10 @@ import {
 } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { logger } from '@/ui/logger';
+import { resolveMachineHost } from '@/utils/machineHost';
 import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import chalk from 'chalk';
 import { existsSync, rmSync } from 'node:fs';
-import os from 'node:os';
 import { createInterface } from 'node:readline';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
@@ -106,7 +106,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     if (existingCreds && settings?.machineId) {
       console.log(chalk.green('✓ Already authenticated'));
       console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
-      console.log(chalk.gray(`  Host: ${os.hostname()}`));
+      console.log(chalk.gray(`  Host: ${resolveMachineHost()}`));
       console.log(
         chalk.gray(`  Use 'unhappy auth login --force' to re-authenticate`),
       );
@@ -290,7 +290,7 @@ async function handleAuthStatus(): Promise<void> {
   if (settings?.machineId) {
     console.log(chalk.green('✓ Machine registered'));
     console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
-    console.log(chalk.gray(`  Host: ${os.hostname()}`));
+    console.log(chalk.gray(`  Host: ${resolveMachineHost()}`));
   } else {
     console.log(chalk.yellow('⚠️  Machine not registered'));
     console.log(chalk.gray('  Run "unhappy auth login --force" to fix this'));

@@ -24,6 +24,7 @@ import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { hashObject } from '@/utils/deterministicJson';
+import { resolveMachineHost } from '@/utils/machineHost';
 import {
   connectionState,
   startOfflineReconnection,
@@ -105,7 +106,7 @@ export async function runClaude(
 
   let metadata: Metadata = {
     path: workingDirectory,
-    host: os.hostname(),
+    host: resolveMachineHost(),
     version: packageJson.version,
     os: os.platform(),
     machineId: machineId,
