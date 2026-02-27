@@ -98,6 +98,7 @@ public struct SessionDetailView: View {
     @State private var selectedModelOverrideOption = ""
     @State private var applyEffortOverride = false
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
+    @State private var serverModelOverrideOptions: [String] = []
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
@@ -235,6 +236,11 @@ public struct SessionDetailView: View {
             if !availableEffortSelections.contains(selectedEffortOverride),
                let first = availableEffortSelections.first {
                 selectedEffortOverride = first
+            }
+            if serverModelOverrideOptions.isEmpty {
+                Task {
+                    await loadServerModelOptions()
+                }
             }
             viewModel.startSelectedSessionMessagesPolling(
                 for: session.id,
@@ -693,6 +699,9 @@ public struct SessionDetailView: View {
     }
 
     private var availableModelOverrideOptions: [String] {
+        if !serverModelOverrideOptions.isEmpty {
+            return serverModelOverrideOptions
+        }
         guard let flavor = parsedSessionFlavor else { return [] }
         switch flavor {
         case .codex:
@@ -966,6 +975,19 @@ public struct SessionDetailView: View {
         return nil
     }
 
+    private var parsedSessionAgent: APISessionSpawnAgent? {
+        switch parsedSessionFlavor {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claude
+        case .gemini:
+            return .gemini
+        case .none:
+            return nil
+        }
+    }
+
     private var decodedSessionMetadata: [String: Any] {
         SessionPayloadValueResolver.decodeJSONObject(
             payload: currentSession.metadata,
@@ -1006,6 +1028,27 @@ public struct SessionDetailView: View {
         }
         let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? nil : normalized
+    }
+
+    private func loadServerModelOptions() async {
+        let loaded = await viewModel.loadSessionModelOptions(
+            for: currentSession.id,
+            serverURLString: serverURLString,
+            token: token,
+            agent: parsedSessionAgent
+        ) ?? []
+        let normalized = loaded.compactMap { raw -> String? in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        var deduped: [String] = []
+        deduped.reserveCapacity(normalized.count)
+        for model in normalized where !deduped.contains(model) {
+            deduped.append(model)
+        }
+        if !deduped.isEmpty {
+            serverModelOverrideOptions = deduped
+        }
     }
 
     private func transcriptPresentation(

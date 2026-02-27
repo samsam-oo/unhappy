@@ -43,6 +43,7 @@ public final class SessionsViewModel: ObservableObject {
     private let messageLoader: any SessionsMessagesLoading
     private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
     private let claudeSessionsLoader: (any SessionClaudeSessionsLoading)?
+    private let sessionModelsLoader: (any SessionModelsLoadingAction)?
     private let spawnUseCase: (any SessionSpawningAction)?
     private let messageSender: (any SessionMessageSendingAction)?
     private let preDeleteKiller: (any SessionPreDeleteKillingAction)?
@@ -61,6 +62,7 @@ public final class SessionsViewModel: ObservableObject {
         messageLoader: any SessionsMessagesLoading,
         codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
         claudeSessionsLoader: (any SessionClaudeSessionsLoading)? = nil,
+        sessionModelsLoader: (any SessionModelsLoadingAction)? = nil,
         spawnUseCase: (any SessionSpawningAction)? = nil,
         messageSender: (any SessionMessageSendingAction)? = nil,
         preDeleteKiller: (any SessionPreDeleteKillingAction)? = nil,
@@ -73,6 +75,7 @@ public final class SessionsViewModel: ObservableObject {
         self.messageLoader = messageLoader
         self.codexThreadsLoader = codexThreadsLoader
         self.claudeSessionsLoader = claudeSessionsLoader
+        self.sessionModelsLoader = sessionModelsLoader
         self.spawnUseCase = spawnUseCase
         self.messageSender = messageSender
         self.preDeleteKiller = preDeleteKiller
@@ -103,6 +106,9 @@ public final class SessionsViewModel: ObservableObject {
             messageLoader: SessionMessagesLoadUseCase(service: service),
             codexThreadsLoader: SessionCodexThreadsLoadUseCase(service: service),
             claudeSessionsLoader: SessionClaudeSessionsLoadUseCase(service: service),
+            sessionModelsLoader: (service as? any SessionModelsListing).map {
+                SessionModelsLoadUseCase(service: $0)
+            },
             spawnUseCase: SessionSpawnUseCase(service: service),
             messageSender: messageSenderUseCase,
             preDeleteKiller: preDeleteKillUseCase,
@@ -532,6 +538,26 @@ public final class SessionsViewModel: ObservableObject {
             sendMessageStatusMessage = nil
             sendMessageErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
+        }
+    }
+
+    public func loadSessionModelOptions(
+        for sessionID: String,
+        serverURLString: String,
+        token: String,
+        agent: APISessionSpawnAgent?
+    ) async -> [String]? {
+        guard let sessionModelsLoader else { return nil }
+        do {
+            let capabilities = try await sessionModelsLoader.loadSessionModels(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                agent: agent
+            )
+            return capabilities.models
+        } catch {
+            return nil
         }
     }
 
