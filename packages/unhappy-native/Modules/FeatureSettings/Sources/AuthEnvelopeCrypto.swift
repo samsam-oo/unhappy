@@ -18,14 +18,14 @@ struct AuthEnvelopeKeyPair: Sendable {
 }
 
 enum AuthEnvelopeCrypto {
-    static let version: UInt8 = 1
+    static let version: UInt8 = 2
     static let publicKeyLength = 32
     static let nonceLength = 12
     static let tagLength = 16
     static let minimumBundleLength = 1 + publicKeyLength + nonceLength + tagLength
 
-    private static let kdfSalt = Data("unhappy.auth.envelope.salt.v1".utf8)
-    private static let kdfInfo = Data("unhappy.auth.envelope.info.v1".utf8)
+    private static let kdfSalt = Data("unhappy.auth.envelope.salt.v2".utf8)
+    private static let kdfInfo = Data("unhappy.auth.envelope.info.v2".utf8)
 
     static func generateKeyPair() throws -> AuthEnvelopeKeyPair {
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
@@ -46,8 +46,8 @@ enum AuthEnvelopeCrypto {
             let sharedSecret = try ephemeralPrivateKey.sharedSecretFromKeyAgreement(with: recipientKey)
             let symmetricKey = deriveSymmetricKey(from: sharedSecret)
             let nonceData = try randomBytes(count: nonceLength)
-            let nonce = try ChaChaPoly.Nonce(data: nonceData)
-            let sealedBox = try ChaChaPoly.seal(message, using: symmetricKey, nonce: nonce)
+            let nonce = try AES.GCM.Nonce(data: nonceData)
+            let sealedBox = try AES.GCM.seal(message, using: symmetricKey, nonce: nonce)
 
             var bundle = Data()
             bundle.append(version)
@@ -95,13 +95,13 @@ enum AuthEnvelopeCrypto {
             let ephemeralKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: ephemeralPublicKeyData)
             let sharedSecret = try recipientKey.sharedSecretFromKeyAgreement(with: ephemeralKey)
             let symmetricKey = deriveSymmetricKey(from: sharedSecret)
-            let nonce = try ChaChaPoly.Nonce(data: nonceData)
-            let sealedBox = try ChaChaPoly.SealedBox(
+            let nonce = try AES.GCM.Nonce(data: nonceData)
+            let sealedBox = try AES.GCM.SealedBox(
                 nonce: nonce,
                 ciphertext: Data(ciphertext),
                 tag: Data(tag)
             )
-            return try ChaChaPoly.open(sealedBox, using: symmetricKey)
+            return try AES.GCM.open(sealedBox, using: symmetricKey)
         } catch let error as AuthEnvelopeCryptoError {
             throw error
         } catch {
