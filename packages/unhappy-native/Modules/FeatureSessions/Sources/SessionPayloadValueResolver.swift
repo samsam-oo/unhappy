@@ -1,8 +1,7 @@
 import Foundation
 import CryptoKit
-import CoreKit
 
-enum MachineDisplayNameResolver {
+enum SessionPayloadValueResolver {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
     private static let payloadBundleVersion: UInt8 = 2
     private static let wrappedDataKeyBundleVersion: UInt8 = 2
@@ -17,88 +16,52 @@ enum MachineDisplayNameResolver {
     private static let wrappedDataKeyKDFInfo =
         Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
 
-    static func displayName(for machine: APIMachine) -> String {
-        guard let metadata = parseJSONObject(
-            raw: machine.metadata,
-            dataEncryptionKey: machine.dataEncryptionKey
-        ) else {
-            return machine.id
-        }
-
-        if let name = firstString(in: metadata, keys: ["displayName", "name", "machineName"]) {
-            return name
-        }
-        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
-            return host
-        }
-        return machine.id
-    }
-
-    private static func parseJSONObject(
-        raw: String,
+    static func decodeJSONObject(
+        payload: String?,
         dataEncryptionKey: String?
-    ) -> [String: Any]? {
-        let payload = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !payload.isEmpty else { return nil }
+    ) -> [String: Any] {
+        guard let payload = payload?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !payload.isEmpty else {
+            return [:]
+        }
 
-        if let data = payload.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data),
-           let dictionary = object as? [String: Any] {
-            return dictionary
+        if let parsed = parseJSONObject(fromUTF8String: payload) {
+            return parsed
+        }
+
+        if let decrypted = decryptDataKeyPayload(payload: payload, dataEncryptionKey: dataEncryptionKey),
+           let parsed = parseJSONObject(fromData: decrypted) {
+            return parsed
         }
 
         if let decoded = decodeBase64(payload),
-           let object = try? JSONSerialization.jsonObject(with: decoded),
-           let dictionary = object as? [String: Any] {
-            return dictionary
+           let parsed = parseJSONObject(fromData: decoded) {
+            return parsed
         }
 
-        if let decrypted = decryptDataKeyPayload(
-            payload: payload,
-            dataEncryptionKey: dataEncryptionKey
-        ),
-           let object = try? JSONSerialization.jsonObject(with: decrypted),
-           let dictionary = object as? [String: Any] {
-            return dictionary
-        }
-
-        return nil
+        return [:]
     }
 
-    private static func firstString(in object: Any?, keys: [String]) -> String? {
+    static func firstString(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> String? {
         let normalizedKeys = Set(keys.map(normalizeKey))
-        guard let value = firstValue(in: object, matching: normalizedKeys) else {
-            return nil
-        }
-        if let string = value as? String {
-            return normalizeDisplayValue(string)
-        }
-        if let number = value as? NSNumber {
-            return normalizeDisplayValue(number.stringValue)
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let string = value as? String {
+                let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            } else if let number = value as? NSNumber {
+                return number.stringValue
+            }
         }
         return nil
     }
 
-    private static func normalizeDisplayValue(_ raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let withoutLocalSuffix = trimmed.replacingOccurrences(
-            of: #"\.local$"#,
-            with: "",
-            options: .regularExpression
-        )
-        let lowered = withoutLocalSuffix.lowercased()
-        let blockedValues: Set<String> = [
-            "mac",
-            "localhost",
-            "unknown-host",
-        ]
-        guard !blockedValues.contains(lowered) else { return nil }
-        return withoutLocalSuffix
-    }
-
-    private static func firstValue(in object: Any?, matching keys: Set<String>) -> Any? {
+    private static func firstValue(in object: Any, matching keys: Set<String>) -> Any? {
         if let dictionary = object as? [String: Any] {
             for (rawKey, value) in dictionary {
                 if keys.contains(normalizeKey(rawKey)) {
@@ -123,20 +86,16 @@ enum MachineDisplayNameResolver {
         return nil
     }
 
-    private static func normalizeKey(_ value: String) -> String {
-        value.lowercased().filter { $0.isLetter || $0.isNumber }
+    private static func parseJSONObject(fromUTF8String string: String) -> [String: Any]? {
+        guard let data = string.data(using: .utf8) else { return nil }
+        return parseJSONObject(fromData: data)
     }
 
-    private static func decodeBase64(_ raw: String) -> Data? {
-        if let direct = Data(base64Encoded: raw) {
-            return direct
+    private static func parseJSONObject(fromData data: Data) -> [String: Any]? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            return nil
         }
-        let replaced = raw
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let paddingCount = (4 - (replaced.count % 4)) % 4
-        let padded = replaced + String(repeating: "=", count: paddingCount)
-        return Data(base64Encoded: padded)
+        return object as? [String: Any]
     }
 
     private static func decryptDataKeyPayload(
@@ -174,7 +133,8 @@ enum MachineDisplayNameResolver {
                 tag: Data(tagData)
             )
             let key = SymmetricKey(data: keyData)
-            return try AES.GCM.open(sealed, using: key)
+            let decrypted = try AES.GCM.open(sealed, using: key)
+            return decrypted
         } catch {
             return nil
         }
@@ -303,5 +263,21 @@ enum MachineDisplayNameResolver {
         scalar[31] &= 127
         scalar[31] |= 64
         return Data(scalar)
+    }
+
+    private static func decodeBase64(_ raw: String) -> Data? {
+        if let direct = Data(base64Encoded: raw) {
+            return direct
+        }
+        let replaced = raw
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let paddingCount = (4 - (replaced.count % 4)) % 4
+        let padded = replaced + String(repeating: "=", count: paddingCount)
+        return Data(base64Encoded: padded)
+    }
+
+    private static func normalizeKey(_ key: String) -> String {
+        String(key.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 }

@@ -154,6 +154,52 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func sendMessageSuccessSkipsReloadAndAppendsOptimisticMessage() async throws {
+        let existingMessage = APISessionMessage(
+            id: "m1",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(t: "encrypted", c: "first"),
+            createdAt: 1,
+            updatedAt: 1
+        )
+        let messageLoader = SequenceMessagesLoader(messagesByCall: [[existingMessage], [existingMessage]])
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: messageLoader,
+            messageSender: MockSessionMessageSender(result: .success(APISessionSendMessageResult(success: true, error: nil))),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.loadMessages(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        #expect(await messageLoader.loadCallCount() == 1)
+
+        let sent = await model.sendMessage(
+            for: "session-1",
+            text: "hello optimistic",
+            steerMode: .queue,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(sent == true)
+        #expect(await messageLoader.loadCallCount() == 1)
+        #expect(model.selectedSessionMessages.count == 2)
+        #expect(model.selectedSessionMessages.last?.id.hasPrefix("optimistic-") == true)
+        #expect(model.selectedSessionMessages.last?.localId == model.selectedSessionMessages.last?.id)
+        #expect(model.selectedSessionMessages.last?.content?.t == "optimistic-user")
+        #expect(model.selectedSessionMessages.last?.content?.c.contains("\"role\":\"user\"") == true)
+        #expect(model.selectedSessionMessages.last?.content?.c.contains("hello optimistic") == true)
+    }
+
+    @Test
     func selectedSessionMessagePollingUpdatesWhenMessagesChange() async throws {
         let message1 = APISessionMessage(
             id: "m1",
@@ -390,6 +436,54 @@ struct SessionsViewModelTests {
         #expect(model.selectedSessionMessages.count == 150)
         #expect(model.selectedSessionMessages.first?.seq == 51)
         #expect(model.selectedSessionMessages.last?.seq == 200)
+    }
+
+    @Test
+    func loadMessagesIncrementalRefreshStillRespectsPerSessionMessageLimit() async throws {
+        let firstBatch = (1...150).map { idx in
+            APISessionMessage(
+                id: "m\(idx)",
+                seq: idx,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "encrypted", c: "\(idx)"),
+                createdAt: TimeInterval(idx),
+                updatedAt: TimeInterval(idx)
+            )
+        }
+        let secondBatch = (1...151).map { idx in
+            APISessionMessage(
+                id: "m\(idx)",
+                seq: idx,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "encrypted", c: "\(idx)"),
+                createdAt: TimeInterval(idx),
+                updatedAt: TimeInterval(idx)
+            )
+        }
+
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: SequenceMessagesLoader(messagesByCall: [firstBatch, secondBatch]),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.loadMessages(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        await model.loadMessages(
+            for: "session-1",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.selectedSessionMessages.count == 150)
+        #expect(model.selectedSessionMessages.first?.seq == 2)
+        #expect(model.selectedSessionMessages.last?.seq == 151)
     }
 
     @Test
@@ -823,12 +917,14 @@ private struct MockSessionsMessagesLoader: SessionsMessagesLoading {
 
 private actor SequenceMessagesLoader: SessionsMessagesLoading {
     private var messagesByCall: [[APISessionMessage]]
+    private var loadCalls = 0
 
     init(messagesByCall: [[APISessionMessage]]) {
         self.messagesByCall = messagesByCall
     }
 
     func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
+        loadCalls += 1
         if messagesByCall.isEmpty {
             return []
         }
@@ -836,6 +932,10 @@ private actor SequenceMessagesLoader: SessionsMessagesLoading {
             return messagesByCall[0]
         }
         return messagesByCall.removeFirst()
+    }
+
+    func loadCallCount() -> Int {
+        loadCalls
     }
 }
 
@@ -967,6 +1067,31 @@ private struct MockSessionSpawnUseCase: SessionSpawningAction {
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?
     ) async throws -> APISessionSpawnResult {
+        switch result {
+        case .success(let response):
+            return response
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+private enum MockSessionMessageSenderError: Error, Sendable {
+    case failed
+}
+
+private struct MockSessionMessageSender: SessionMessageSendingAction {
+    let result: Result<APISessionSendMessageResult, MockSessionMessageSenderError>
+
+    func sendMessage(
+        serverURLString: String,
+        token: String,
+        sessionID: String,
+        text: String,
+        steerMode: APISessionSteerMode,
+        modelOverride: SessionMessageModelOverride,
+        effortOverride: SessionMessageEffortOverride
+    ) async throws -> APISessionSendMessageResult {
         switch result {
         case .success(let response):
             return response

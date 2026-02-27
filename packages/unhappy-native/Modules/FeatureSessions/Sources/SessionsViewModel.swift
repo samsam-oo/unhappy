@@ -43,6 +43,7 @@ public final class SessionsViewModel: ObservableObject {
     private let messageLoader: any SessionsMessagesLoading
     private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
     private let claudeSessionsLoader: (any SessionClaudeSessionsLoading)?
+    private let sessionModelsLoader: (any SessionModelsLoadingAction)?
     private let spawnUseCase: (any SessionSpawningAction)?
     private let messageSender: (any SessionMessageSendingAction)?
     private let preDeleteKiller: (any SessionPreDeleteKillingAction)?
@@ -61,6 +62,7 @@ public final class SessionsViewModel: ObservableObject {
         messageLoader: any SessionsMessagesLoading,
         codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
         claudeSessionsLoader: (any SessionClaudeSessionsLoading)? = nil,
+        sessionModelsLoader: (any SessionModelsLoadingAction)? = nil,
         spawnUseCase: (any SessionSpawningAction)? = nil,
         messageSender: (any SessionMessageSendingAction)? = nil,
         preDeleteKiller: (any SessionPreDeleteKillingAction)? = nil,
@@ -73,6 +75,7 @@ public final class SessionsViewModel: ObservableObject {
         self.messageLoader = messageLoader
         self.codexThreadsLoader = codexThreadsLoader
         self.claudeSessionsLoader = claudeSessionsLoader
+        self.sessionModelsLoader = sessionModelsLoader
         self.spawnUseCase = spawnUseCase
         self.messageSender = messageSender
         self.preDeleteKiller = preDeleteKiller
@@ -103,6 +106,9 @@ public final class SessionsViewModel: ObservableObject {
             messageLoader: SessionMessagesLoadUseCase(service: service),
             codexThreadsLoader: SessionCodexThreadsLoadUseCase(service: service),
             claudeSessionsLoader: SessionClaudeSessionsLoadUseCase(service: service),
+            sessionModelsLoader: (service as? any SessionModelsListing).map {
+                SessionModelsLoadUseCase(service: $0)
+            },
             spawnUseCase: SessionSpawnUseCase(service: service),
             messageSender: messageSenderUseCase,
             preDeleteKiller: preDeleteKillUseCase,
@@ -286,12 +292,13 @@ public final class SessionsViewModel: ObservableObject {
         }
 
         do {
-            let messages = try await messageLoader.loadMessages(
+            let fetchedMessages = try await messageLoader.loadMessages(
                 serverURLString: serverURLString,
                 token: token,
                 sessionID: sessionID
             )
-            let normalizedMessages = cacheMessages(messages, for: sessionID)
+            let mergedMessages = mergeFetchedMessages(fetchedMessages, for: sessionID)
+            let normalizedMessages = cacheMessages(mergedMessages, for: sessionID)
             if selectedSessionID == sessionID {
                 setSelectedSessionMessagesIfNeeded(normalizedMessages)
                 selectedSessionErrorMessage = nil
@@ -524,14 +531,34 @@ public final class SessionsViewModel: ObservableObject {
                 modelOverride: modelOverride,
                 effortOverride: effortOverride
             )
-            sendMessageStatusMessage = steerMode == .immediate ? "Steer sent" : "Queued message sent"
+            sendMessageStatusMessage = nil
             sendMessageErrorMessage = nil
-            await loadMessages(for: sessionID, serverURLString: serverURLString, token: token)
+            appendOptimisticUserMessageIfPossible(for: sessionID, text: text)
             return true
         } catch {
             sendMessageStatusMessage = nil
             sendMessageErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
+        }
+    }
+
+    public func loadSessionModelOptions(
+        for sessionID: String,
+        serverURLString: String,
+        token: String,
+        agent: APISessionSpawnAgent?
+    ) async -> [String]? {
+        guard let sessionModelsLoader else { return nil }
+        do {
+            let capabilities = try await sessionModelsLoader.loadSessionModels(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID,
+                agent: agent
+            )
+            return capabilities.models
+        } catch {
+            return nil
         }
     }
 
@@ -668,6 +695,64 @@ public final class SessionsViewModel: ObservableObject {
         touchCache(sessionID: sessionID)
         evictCacheIfNeeded(preserving: selectedSessionID)
         return normalizedMessages
+    }
+
+    private func mergeFetchedMessages(_ fetchedMessages: [APISessionMessage], for sessionID: String) -> [APISessionMessage] {
+        guard let cachedMessages = messagesBySessionID[sessionID], !cachedMessages.isEmpty else {
+            return fetchedMessages
+        }
+        guard fetchedMessages.count >= cachedMessages.count else {
+            return fetchedMessages
+        }
+
+        for index in cachedMessages.indices where cachedMessages[index] != fetchedMessages[index] {
+            return fetchedMessages
+        }
+
+        if fetchedMessages.count == cachedMessages.count {
+            return cachedMessages
+        }
+        return cachedMessages + Array(fetchedMessages.dropFirst(cachedMessages.count))
+    }
+
+    private func appendOptimisticUserMessageIfPossible(for sessionID: String, text: String) {
+        guard selectedSessionID == sessionID else { return }
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else { return }
+
+        let currentMessages = messagesBySessionID[sessionID] ?? selectedSessionMessages
+        let timestamp = Date().timeIntervalSince1970
+        let optimisticID = "optimistic-\(UUID().uuidString.lowercased())"
+        let optimisticMessage = APISessionMessage(
+            id: optimisticID,
+            seq: (currentMessages.last?.seq ?? 0) + 1,
+            localId: optimisticID,
+            content: APIEncryptedMessageContent(
+                t: "optimistic-user",
+                c: makeOptimisticUserPayload(text: normalizedText)
+            ),
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+
+        let normalizedMessages = cacheMessages(currentMessages + [optimisticMessage], for: sessionID)
+        setSelectedSessionMessagesIfNeeded(normalizedMessages)
+    }
+
+    private func makeOptimisticUserPayload(text: String) -> String {
+        let payload: [String: Any] = [
+            "role": "user",
+            "content": [
+                "type": "text",
+                "text": text,
+            ],
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload),
+              let encodedPayload = String(data: data, encoding: .utf8) else {
+            return text
+        }
+        return encodedPayload
     }
 
     private func setSelectedSessionMessagesIfNeeded(_ messages: [APISessionMessage]) {

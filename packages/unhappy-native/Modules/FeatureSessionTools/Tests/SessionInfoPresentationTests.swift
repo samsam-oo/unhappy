@@ -28,7 +28,7 @@ struct SessionInfoPresentationTests {
 
         #expect(presentation.sessionID == "session-1")
         #expect(presentation.title == "Main")
-        #expect(presentation.sequenceText == "#9")
+        #expect(presentation.sequenceText == "9")
         #expect(presentation.createdAtText == "ts:100")
         #expect(presentation.activeAtText == "ts:200")
         #expect(presentation.updatedAtText == "ts:300")

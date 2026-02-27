@@ -30,10 +30,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import React from 'react';
-import {
-  CodexAppServerClient,
-  type CodexThreadSummary,
-} from './codexAppServerClient';
+import { CodexAppServerClient } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
 import { DiffProcessor } from './utils/diffProcessor';
 import {
@@ -179,30 +176,6 @@ function isExecOutputStreamEvent(msg: any): boolean {
   );
 }
 
-function formatThreadDateLabel(value: string | undefined): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString();
-}
-
-function buildCodexThreadListMessage(threads: CodexThreadSummary[]): string {
-  const lines = ['Existing Codex sessions for this project:'];
-  for (let i = 0; i < threads.length; i += 1) {
-    const thread = threads[i];
-    const title =
-      typeof thread.name === 'string' && thread.name.trim()
-        ? thread.name.trim()
-        : '(untitled)';
-    const when = formatThreadDateLabel(thread.updatedAt ?? thread.createdAt);
-    const parts = [`${i + 1}. ${title}`];
-    if (when) parts.push(when);
-    parts.push(thread.id);
-    lines.push(parts.join(' • '));
-  }
-  return lines.join('\n');
-}
-
 function extractExecOutputChunk(msg: any): string | null {
   const candidates = [
     msg?.data,
@@ -327,6 +300,11 @@ export async function runCodex(opts: {
     ...currentState,
     controlledByUser: opts.startedBy !== 'daemon',
     collab: undefined,
+    mode: {
+      ...(currentState?.mode ?? {}),
+      model: opts.model,
+      effort: opts.reasoningEffort,
+    },
   }));
 
   // Always report to daemon if it exists (skip if offline)
@@ -367,6 +345,16 @@ export async function runCodex(opts: {
     undefined;
   let currentModel: string | undefined = opts.model;
   let currentEffort: ReasoningEffortMode | undefined = opts.reasoningEffort;
+  const syncAgentModeState = (model: string | undefined, effort: ReasoningEffortMode | undefined) => {
+    session.updateAgentState((currentState) => ({
+      ...currentState,
+      mode: {
+        ...(currentState?.mode ?? {}),
+        model,
+        effort,
+      },
+    }));
+  };
   // System prompt overrides (sent by mobile/web as message.meta.*)
   // Claude applies these per turn; Codex MCP currently only supports instructions at session start.
   // We still track them so we can inject them into startSession config.
@@ -435,6 +423,7 @@ export async function runCodex(opts: {
         `[Codex] User message received with no effort override, using current: ${currentEffort || 'default'}`,
       );
     }
+    syncAgentModeState(currentModel, currentEffort);
 
     // Resolve custom system prompt; explicit null resets to default (undefined)
     let messageCustomSystemPrompt = currentCustomSystemPrompt;
@@ -757,7 +746,6 @@ export async function runCodex(opts: {
         return { success: false, error: 'Thread name cannot be empty' };
       }
       try {
-        await client.setThreadName(name);
         const now = Date.now();
         await session.updateMetadata((currentMetadata) => ({
           ...currentMetadata,
@@ -767,6 +755,19 @@ export async function runCodex(opts: {
             updatedAt: now,
           },
         }));
+        try {
+          await client.setThreadName(name);
+        } catch (error) {
+          logger.debug(
+            '[codex] thread/name/set failed during codex-set-thread-name; keeping local title update',
+            error,
+          );
+          return {
+            success: true,
+            warning:
+              error instanceof Error ? error.message : 'Failed to set Codex thread name remotely',
+          };
+        }
         return { success: true };
       } catch (error) {
         return {
@@ -1453,7 +1454,14 @@ export async function runCodex(opts: {
           updatedAt: now,
         },
       }));
-      await client.setThreadName(normalized);
+      try {
+        await client.setThreadName(normalized);
+      } catch (error) {
+        logger.debug(
+          '[codex] thread/name/set failed during change_title; keeping local title update',
+          error,
+        );
+      }
     },
   });
   const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');
@@ -1476,10 +1484,6 @@ export async function runCodex(opts: {
         `Loaded ${recentThreads.length} existing Codex sessions.`,
         'status',
       );
-      session.sendCodexMessage({
-        type: 'message',
-        message: buildCodexThreadListMessage(recentThreads),
-      });
     }
 
     let wasCreated = false;

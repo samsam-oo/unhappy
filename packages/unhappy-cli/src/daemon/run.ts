@@ -23,6 +23,7 @@ import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { logger } from '@/ui/logger';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
+import { resolveMachineHost } from '@/utils/machineHost';
 import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import packageJson from '../../package.json';
 import { TrackedSession } from './types';
@@ -43,7 +44,7 @@ import { startDaemonControlServer } from './controlServer';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
-  host: os.hostname(),
+  host: resolveMachineHost(),
   platform: os.platform(),
   happyCliVersion: packageJson.version,
   homeDir: os.homedir(),

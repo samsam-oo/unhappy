@@ -1030,7 +1030,16 @@ public protocol SessionKilling: Sendable {
     ) async throws -> APISessionKillResult
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionRipgrepRunning, SessionDifftasticRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling {
+public protocol SessionModelsListing: Sendable {
+    func fetchAgentCapabilities(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        agent: APISessionSpawnAgent?
+    ) async throws -> APIMachineAgentCapabilities
+}
+
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionRipgrepRunning, SessionDifftasticRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling, SessionModelsListing {
     private let rpcCommandService: any SessionRPCCommandDispatching
 
     public init(
@@ -1074,14 +1083,20 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
     }
 
     public func fetchSessionMessages(serverURL: URL, token: String, sessionID: String) async throws -> [APISessionMessage] {
-        let data = try await rpcCommandService.invokeCommand(
+        let request = try SessionsAPI.makeMessagesRequest(
             serverURL: serverURL,
             token: token,
-            sessionID: sessionID,
-            command: "listMessages",
-            params: [:],
-            allowMachineFallback: true
+            sessionID: sessionID
         )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
         return try SessionsAPI.decodeMessagesResponse(data)
     }
 
@@ -1123,11 +1138,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
             if (200..<300).contains(codexHTTP.statusCode) {
                 return
             }
-            // Older servers or non-codex sessions may not support codex rename RPC.
-            // Fall back to legacy session title endpoint in these cases.
-            if codexHTTP.statusCode != 404 && codexHTTP.statusCode != 409 && codexHTTP.statusCode != 502 {
-                throw SessionsAPIError.invalidHTTPStatus(codexHTTP.statusCode)
-            }
+            throw SessionsAPIError.invalidHTTPStatus(codexHTTP.statusCode)
         }
 
         let legacyRequest = try SessionsAPI.makeSetTitleRequest(
@@ -1624,5 +1635,26 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
             allowMachineFallback: false
         )
         return try SessionsAPI.decodeSessionKillResponse(data)
+    }
+
+    public func fetchAgentCapabilities(
+        serverURL: URL,
+        token: String,
+        sessionID: String,
+        agent: APISessionSpawnAgent?
+    ) async throws -> APIMachineAgentCapabilities {
+        var params: [String: Any] = [:]
+        if let agent {
+            params["agent"] = agent.rawValue
+        }
+        let data = try await rpcCommandService.invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            sessionID: sessionID,
+            command: "list-models",
+            params: params,
+            allowMachineFallback: false
+        )
+        return try MachinesAPI.decodeAgentCapabilitiesResponse(data)
     }
 }

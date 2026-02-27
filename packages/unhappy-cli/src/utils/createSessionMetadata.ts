@@ -13,6 +13,7 @@ import { resolve } from 'node:path';
 import type { AgentState, Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
 import { projectPath } from '@/projectPath';
+import { resolveMachineHost } from '@/utils/machineHost';
 import packageJson from '../../package.json';
 
 /**
@@ -69,7 +70,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
 
     const metadata: Metadata = {
         path: process.cwd(),
-        host: os.hostname(),
+        host: resolveMachineHost(),
         version: packageJson.version,
         os: os.platform(),
         machineId: opts.machineId,

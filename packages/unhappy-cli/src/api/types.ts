@@ -336,6 +336,11 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  mode?: {
+    model?: string
+    effort?: string
+    fallbackModel?: string
+  }
   collab?: {
     state: 'in_progress' | 'completed',
     updatedAt: number,

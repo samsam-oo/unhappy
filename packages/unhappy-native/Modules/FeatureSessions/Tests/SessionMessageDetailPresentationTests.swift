@@ -20,7 +20,7 @@ struct SessionMessageDetailPresentationTests {
         }
 
         #expect(presentation.id == "message-1")
-        #expect(presentation.sequenceText == "#42")
+        #expect(presentation.sequenceText == "42")
         #expect(presentation.localID == "local-1")
         #expect(presentation.createdAtText == "ts:100")
         #expect(presentation.updatedAtText == "ts:200")

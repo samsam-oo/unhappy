@@ -24,6 +24,7 @@ import { logger } from '@/ui/logger';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { hashObject } from '@/utils/deterministicJson';
+import { resolveMachineHost } from '@/utils/machineHost';
 import {
   connectionState,
   startOfflineReconnection,
@@ -105,7 +106,7 @@ export async function runClaude(
 
   let metadata: Metadata = {
     path: workingDirectory,
-    host: os.hostname(),
+    host: resolveMachineHost(),
     version: packageJson.version,
     os: os.platform(),
     machineId: machineId,
@@ -260,6 +261,11 @@ export async function runClaude(
   session.updateAgentState((currentState) => ({
     ...currentState,
     controlledByUser: options.startingMode !== 'remote',
+    mode: {
+      ...(currentState?.mode ?? {}),
+      model: options.model,
+      effort: options.reasoningEffort,
+    },
   }));
 
   // Start caffeinate to prevent sleep on macOS
@@ -294,6 +300,21 @@ export async function runClaude(
   let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
   let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
   let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
+  const syncAgentModeState = (
+    model: string | undefined,
+    effort: 'low' | 'medium' | 'high' | 'max' | undefined,
+    fallbackModel: string | undefined,
+  ) => {
+    session.updateAgentState((currentState) => ({
+      ...currentState,
+      mode: {
+        ...(currentState?.mode ?? {}),
+        model,
+        effort,
+        fallbackModel,
+      },
+    }));
+  };
   session.onUserMessage((message) => {
     // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
     let messagePermissionMode: PermissionMode | undefined =
@@ -412,6 +433,7 @@ export async function runClaude(
         `[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`,
       );
     }
+    syncAgentModeState(currentModel, currentEffort, currentFallbackModel);
 
     // Check for special commands before processing
     const specialCommand = parseSpecialCommand(message.content.text);

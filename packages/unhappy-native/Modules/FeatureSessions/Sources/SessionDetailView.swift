@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreKit
 import FeatureSessionTools
+import UIKit
 
 @MainActor
 public struct SessionDetailView: View {
@@ -24,7 +25,32 @@ public struct SessionDetailView: View {
         case customModel
     }
 
+    private enum SessionQuickToolsAnchor: String {
+        case model
+        case effort
+        case info
+        case files
+        case review
+        case worktree
+    }
+
+    private struct QueuedComposerMessage: Identifiable, Equatable {
+        let id: UUID
+        let text: String
+    }
+
+    private struct CachedTranscriptPresentation: Equatable {
+        let sourceMessage: APISessionMessage
+        let dataEncryptionKey: String?
+        let presentation: SessionTranscriptMessagePresentation
+    }
+
     private static let customModelOverrideOption = "__custom_model_override__"
+    private static let modelPickerDefaultOption = "__model_default__"
+    private static let modelPickerCustomOption = "__model_custom__"
+    private static let modelPickerPresetPrefix = "__model_preset__:"
+    private static let effortPickerPresetPrefix = "__effort_preset__:"
+    private static let transcriptBottomAnchorID = "__session_transcript_bottom__"
 
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
@@ -89,12 +115,21 @@ public struct SessionDetailView: View {
     @State private var claudeResumeDirectoryDraft = ""
     @State private var draftMessage = ""
     @State private var presentedQuickTool: SessionQuickTool?
-    @State private var showComposerOverrides = false
     @State private var applyModelOverride = false
     @State private var modelOverrideDraft = ""
     @State private var selectedModelOverrideOption = ""
     @State private var applyEffortOverride = false
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
+    @State private var serverModelOverrideOptions: [String] = []
+    @State private var queuedComposerMessages: [QueuedComposerMessage] = []
+    @State private var shouldFollowTranscript = true
+    @State private var scrollToBottomRequestID = UUID()
+    @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
+    @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
+    @State private var subAgentInProgressCount = 0
+    @State private var keyboardOverlap: CGFloat = 0
+    @State private var quickToolsScrollPositionID: String? = SessionQuickToolsAnchor.model.rawValue
+    @GestureState private var isInteractingWithBottomDock = false
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
@@ -112,76 +147,101 @@ public struct SessionDetailView: View {
     }
 
     public var body: some View {
-        List {
-            Section("Session") {
-                LabeledContent("Title") {
-                    Text(currentSessionTitle)
-                        .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
+        ScrollViewReader { scrollProxy in
+            List {
+                Section("Session") {
+                    LabeledContent("Title") {
+                        Text(currentSessionTitle)
+                            .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
+                    }
+                    LabeledContent("ID") {
+                        Text(currentSession.id)
+                            .font(.footnote.monospaced())
+                    }
+                    LabeledContent("Status") {
+                        Text(currentSession.active ? "Active" : "Inactive")
+                            .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
+                    }
+                    LabeledContent("Updated") {
+                        Text(SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt))
+                    }
                 }
-                LabeledContent("ID") {
-                    Text(currentSession.id)
-                        .font(.footnote.monospaced())
-                }
-                LabeledContent("Status") {
-                    Text(currentSession.active ? "Active" : "Inactive")
-                        .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
-                }
-                LabeledContent("Updated") {
-                    Text(SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt))
-                }
-            }
 
-            Section("Messages") {
-                if viewModel.isLoadingSessionMessages {
-                    ProgressView("Loading messages…")
-                } else if let error = viewModel.selectedSessionErrorMessage {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Unable to load messages")
-                            .font(.headline)
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Retry") {
-                            Task {
-                                await viewModel.loadMessages(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token
-                                )
+                Section("Messages") {
+                    if viewModel.isLoadingSessionMessages {
+                        ProgressView("Loading messages…")
+                    } else if let error = viewModel.selectedSessionErrorMessage {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Unable to load messages")
+                                .font(.headline)
+                            Text(error)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Button("Retry") {
+                                Task {
+                                    await viewModel.loadMessages(
+                                        for: session.id,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
                             }
                         }
+                        .padding(.vertical, 8)
+                    } else if visibleTranscriptPresentations.isEmpty {
+                        Text("No synced messages yet for this session")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
+                            SessionTranscriptMessageRow(
+                                presentation: presentation
+                            )
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(
+                                EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12)
+                            )
+                        }
                     }
-                    .padding(.vertical, 8)
-                } else if viewModel.selectedSessionMessages.isEmpty {
-                    Text("No synced messages yet for this session")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.selectedSessionMessages) { message in
-                        SessionTranscriptMessageRow(
-                            presentation: transcriptPresentation(for: message)
-                        )
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(
-                            EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
-                        )
-                    }
-                }
-            }
 
-        }
-        .listStyle(.plain)
-        .scrollDismissesKeyboard(.immediately)
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                focusedComposerField = nil
+                    Color.clear
+                        .frame(height: 1)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .id(Self.transcriptBottomAnchorID)
+                }
+
             }
-        )
-        .safeAreaInset(edge: .bottom) {
-            bottomDock
-        }
-        .navigationTitle("Session")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
+            .listStyle(.plain)
+            .scrollDismissesKeyboard(.immediately)
+            .scrollDisabled(isInteractingWithBottomDock)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    focusedComposerField = nil
+                }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8).onChanged { value in
+                    // Only treat mostly-vertical drags as transcript scrolling.
+                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                    focusedComposerField = nil
+                    guard shouldFollowTranscript else { return }
+                    shouldFollowTranscript = false
+                }
+            )
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 8) {
+                    if subAgentInProgressCount > 0 {
+                        subAgentLiveBar
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    bottomDock
+                }
+                .padding(.bottom, keyboardOverlap)
+                .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+            }
+            .navigationTitle("Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
                     ProgressView()
@@ -227,41 +287,73 @@ public struct SessionDetailView: View {
                     }
                 }
             }
-        }
-        .onAppear {
-            if !availableEffortSelections.contains(selectedEffortOverride),
-               let first = availableEffortSelections.first {
-                selectedEffortOverride = first
             }
-            if selectedModelOverrideOption.isEmpty,
-               let first = availableModelOverrideOptions.first {
-                selectedModelOverrideOption = first
+            .onAppear {
+                if !availableEffortSelections.contains(selectedEffortOverride),
+                   let first = availableEffortSelections.first {
+                    selectedEffortOverride = first
+                }
+                if serverModelOverrideOptions.isEmpty {
+                    Task {
+                        await loadServerModelOptions()
+                    }
+                }
+                viewModel.startSelectedSessionMessagesPolling(
+                    for: session.id,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                refreshTranscriptPresentationCache(
+                    messages: viewModel.selectedSessionMessages,
+                    dataEncryptionKey: currentSession.dataEncryptionKey
+                )
+                scrollTranscriptToBottom(using: scrollProxy, animated: false)
             }
-            viewModel.startSelectedSessionMessagesPolling(
-                for: session.id,
-                serverURLString: serverURLString,
-                token: token
-            )
-        }
-        .onChange(of: applyModelOverride) { _, isEnabled in
-            guard isEnabled else { return }
-            if selectedModelOverrideOption.isEmpty,
-               let first = availableModelOverrideOptions.first {
-                selectedModelOverrideOption = first
+            .onChange(of: viewModel.selectedSessionMessages) { _, messages in
+                refreshTranscriptPresentationCache(
+                    messages: messages,
+                    dataEncryptionKey: currentSession.dataEncryptionKey
+                )
             }
-        }
-        .refreshable {
-            await viewModel.loadMessages(
-                for: session.id,
-                serverURLString: serverURLString,
-                token: token
-            )
-        }
-        .onDisappear {
-            viewModel.stopSelectedSessionMessagesPolling()
-            viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
-        }
-        .sheet(isPresented: $showRenameSheet) {
+            .onChange(of: currentSession.dataEncryptionKey) { _, dataEncryptionKey in
+                refreshTranscriptPresentationCache(
+                    messages: viewModel.selectedSessionMessages,
+                    dataEncryptionKey: dataEncryptionKey
+                )
+            }
+            .onChange(of: visibleTranscriptMessageIDs) { oldIDs, newIDs in
+                guard shouldFollowTranscript else { return }
+                // Avoid List/UICollectionView out-of-bounds assertions during shrink updates.
+                guard newIDs.count >= oldIDs.count else { return }
+                scrollTranscriptToBottom(using: scrollProxy)
+            }
+            .onChange(of: scrollToBottomRequestID) { _, _ in
+                scrollTranscriptToBottom(using: scrollProxy)
+            }
+            .onChange(of: focusedComposerField) { _, focusedField in
+                guard focusedField != nil else { return }
+                shouldFollowTranscript = true
+                scrollTranscriptToBottom(using: scrollProxy)
+            }
+            .onChange(of: keyboardOverlap) { _, overlap in
+                guard overlap > 0 else { return }
+                shouldFollowTranscript = true
+                scrollTranscriptToBottom(using: scrollProxy)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
+                updateKeyboardOverlap(from: notification)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    keyboardOverlap = 0
+                }
+            }
+            .onDisappear {
+                keyboardOverlap = 0
+                viewModel.stopSelectedSessionMessagesPolling()
+                viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
+            }
+            .sheet(isPresented: $showRenameSheet) {
             NavigationStack {
                 Form {
                     Section("Session Title") {
@@ -298,8 +390,8 @@ public struct SessionDetailView: View {
                 }
             }
             .presentationDetents([.medium])
-        }
-        .sheet(item: $presentedQuickTool) { tool in
+            }
+            .sheet(item: $presentedQuickTool) { tool in
             NavigationStack {
                 quickToolDestinationView(tool)
                     .toolbar {
@@ -308,8 +400,8 @@ public struct SessionDetailView: View {
                         }
                     }
             }
-        }
-        .sheet(isPresented: $showCodexThreadsSheet) {
+            }
+            .sheet(isPresented: $showCodexThreadsSheet) {
             NavigationStack {
                 List {
                     Section("Path Filter") {
@@ -413,8 +505,8 @@ public struct SessionDetailView: View {
                 }
             }
             .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $showClaudeSessionsSheet) {
+            }
+            .sheet(isPresented: $showClaudeSessionsSheet) {
             NavigationStack {
                 List {
                     Section("Path Filter") {
@@ -518,8 +610,8 @@ public struct SessionDetailView: View {
                 }
             }
             .presentationDetents([.medium, .large])
-        }
-        .alert(
+            }
+            .alert(
             "Delete session?",
             isPresented: $showDeleteConfirmation,
             actions: {
@@ -540,7 +632,8 @@ public struct SessionDetailView: View {
             message: {
                 Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
             }
-        )
+            )
+        }
     }
 
     private var currentSession: APISession {
@@ -565,7 +658,7 @@ public struct SessionDetailView: View {
             return currentSessionDisplayTitle
         }
         if let seq = currentSession.seq, seq > 0 {
-            return "Session #\(seq)"
+            return "Session \(seq)"
         }
         return "Session"
     }
@@ -577,80 +670,103 @@ public struct SessionDetailView: View {
         }
         .padding(.top, 8)
         .background(.ultraThinMaterial)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
+                state = true
+            }
+        )
+    }
+
+    private var subAgentLiveBar: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.green)
+                .frame(width: 8, height: 8)
+            Text("\(subAgentInProgressCount) sub-agents")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.green)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.green.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
     }
 
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let liveStatusText {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(liveStatusText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+
+            if !queuedComposerMessages.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(queuedComposerMessages) { item in
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(item.text)
+                                .font(.footnote)
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                    }
+                }
+            }
+
             TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
                 .lineLimit(2...6)
                 .textInputAutocapitalization(.sentences)
                 .focused($focusedComposerField, equals: .message)
 
-            DisclosureGroup("Model & Reasoning", isExpanded: $showComposerOverrides) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Override model", isOn: $applyModelOverride)
-                    if applyModelOverride {
-                        Picker("Model", selection: $selectedModelOverrideOption) {
-                            ForEach(availableModelOverrideOptions, id: \.self) { model in
-                                Text(model).tag(model)
-                            }
-                            Text("Custom…").tag(Self.customModelOverrideOption)
-                            Text("Reset to default").tag("")
-                        }
-                        .pickerStyle(.navigationLink)
-
-                        if selectedModelOverrideOption == Self.customModelOverrideOption {
-                            TextField("Custom model id", text: $modelOverrideDraft)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .font(.footnote.monospaced())
-                                .focused($focusedComposerField, equals: .customModel)
-                        }
-                    }
-
-                    if supportsReasoningEffortOverride {
-                        Toggle("Override reasoning effort", isOn: $applyEffortOverride)
-                        if applyEffortOverride {
-                            Picker("Reasoning", selection: $selectedEffortOverride) {
-                                ForEach(availableEffortSelections, id: \.self) { option in
-                                    Text(option.label).tag(option)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                    }
-                }
-                .padding(.top, 4)
+            if applyModelOverride && selectedModelOverrideOption == Self.customModelOverrideOption {
+                TextField("Custom model id", text: $modelOverrideDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.footnote.monospaced())
+                    .focused($focusedComposerField, equals: .customModel)
             }
-            .font(.footnote)
 
             HStack(spacing: 10) {
-                Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send") {
+                Spacer(minLength: 0)
+
+                dockChipButton(
+                    title: "Queue",
+                    systemImage: "clock",
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
+                ) {
                     submitDraftMessage(with: .queue)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    viewModel.isSendingMessage(sessionID: session.id) ||
-                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
 
-                Button {
+                dockChipButton(
+                    title: viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
+                    systemImage: "paperplane.fill",
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
+                ) {
                     submitDraftMessage(with: .immediate)
-                } label: {
-                    Label("Now", systemImage: "bolt.fill")
                 }
-                .buttonStyle(.bordered)
-                .disabled(
-                    viewModel.isSendingMessage(sessionID: session.id) ||
-                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
             }
 
-            if let status = viewModel.sendMessageStatusMessage {
-                Text(status)
-                    .font(.footnote)
-                    .foregroundStyle(.green)
-            }
             if let error = viewModel.sendMessageErrorMessage {
                 Text(error)
                     .font(.footnote)
@@ -698,6 +814,13 @@ public struct SessionDetailView: View {
                 token: token
             )
             if sent {
+                shouldFollowTranscript = true
+                scrollToBottomRequestID = UUID()
+                if steerMode == .queue {
+                    queuedComposerMessages.append(
+                        QueuedComposerMessage(id: UUID(), text: text)
+                    )
+                }
                 draftMessage = ""
             }
         }
@@ -728,10 +851,15 @@ public struct SessionDetailView: View {
     }
 
     private var availableModelOverrideOptions: [String] {
+        if !serverModelOverrideOptions.isEmpty {
+            return serverModelOverrideOptions
+        }
         guard let flavor = parsedSessionFlavor else { return [] }
         switch flavor {
         case .codex:
             return [
+                "gpt-5.3-codex",
+                "gpt-5.2-codex",
                 "gpt-5-codex",
                 "gpt-5",
             ]
@@ -753,83 +881,50 @@ public struct SessionDetailView: View {
     private var quickToolsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                modelMenuButton
+                    .id(SessionQuickToolsAnchor.model.rawValue)
+
+                if supportsReasoningEffortOverride {
+                    effortMenuButton
+                        .id(SessionQuickToolsAnchor.effort.rawValue)
+                }
+
                 quickToolButton(
                     title: "Info",
                     systemImage: "info.circle",
                     tool: .info
                 )
+                .id(SessionQuickToolsAnchor.info.rawValue)
                 quickToolButton(
                     title: "Files",
                     systemImage: "doc.text",
                     tool: .files
                 )
+                .id(SessionQuickToolsAnchor.files.rawValue)
                 quickToolButton(
                     title: "Diff",
                     systemImage: "doc.text.magnifyingglass",
                     tool: .review
                 )
+                .id(SessionQuickToolsAnchor.review.rawValue)
                 quickToolButton(
                     title: "Worktree",
                     systemImage: "checkmark.circle",
                     tool: .worktree
                 )
-                Menu {
-                    Button("Inherit session model") {
-                        applyModelOverride = false
-                        selectedModelOverrideOption = ""
-                    }
-                    Button("Reset to default model") {
-                        applyModelOverride = true
-                        selectedModelOverrideOption = ""
-                    }
-                    ForEach(availableModelOverrideOptions, id: \.self) { model in
-                        Button(model) {
-                            applyModelOverride = true
-                            selectedModelOverrideOption = model
-                            modelOverrideDraft = model
-                        }
-                    }
-                    Button("Custom model…") {
-                        applyModelOverride = true
-                        selectedModelOverrideOption = Self.customModelOverrideOption
-                        showComposerOverrides = true
-                        focusedComposerField = .customModel
-                    }
-                } label: {
-                    quickMenuLabel(
-                        title: "Model",
-                        value: selectedModelOverrideLabel,
-                        systemImage: "cpu"
-                    )
-                }
-
-                if supportsReasoningEffortOverride {
-                    Menu {
-                        Button("Inherit session reasoning") {
-                            applyEffortOverride = false
-                            selectedEffortOverride = .auto
-                        }
-                        ForEach(availableEffortSelections, id: \.self) { option in
-                            Button(option.label) {
-                                if option == .auto {
-                                    applyEffortOverride = false
-                                } else {
-                                    applyEffortOverride = true
-                                }
-                                selectedEffortOverride = option
-                            }
-                        }
-                    } label: {
-                        quickMenuLabel(
-                            title: "Reasoning",
-                            value: selectedReasoningOverrideLabel,
-                            systemImage: "brain.head.profile"
-                        )
-                    }
-                }
+                .id(SessionQuickToolsAnchor.worktree.rawValue)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $quickToolsScrollPositionID, anchor: .leading)
+        .onChange(of: supportsReasoningEffortOverride) { _, enabled in
+            guard !enabled else { return }
+            if quickToolsScrollPositionID == SessionQuickToolsAnchor.effort.rawValue {
+                quickToolsScrollPositionID = SessionQuickToolsAnchor.model.rawValue
+            }
         }
     }
 
@@ -838,47 +933,172 @@ public struct SessionDetailView: View {
         systemImage: String,
         tool: SessionQuickTool
     ) -> some View {
-        Button {
+        dockChipButton(
+            title: title,
+            systemImage: systemImage
+        ) {
             focusedComposerField = nil
             presentedQuickTool = tool
-        } label: {
-            Label(title, systemImage: systemImage)
-                .font(.footnote.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.secondary.opacity(0.12), in: Capsule())
         }
-        .buttonStyle(.plain)
     }
 
-    private func quickMenuLabel(
+    private var modelMenuButton: some View {
+        Menu {
+            ForEach(modelPickerOptions, id: \.id) { option in
+                Button {
+                    modelPickerSelection.wrappedValue = option.id
+                } label: {
+                    if modelPickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            Label(selectedModelOverrideLabel, systemImage: "cpu")
+                .modifier(DockChipModifier())
+        }
+        .tint(.primary)
+    }
+
+    private var effortMenuButton: some View {
+        Menu {
+            ForEach(effortPickerOptions, id: \.id) { option in
+                Button {
+                    effortPickerSelection.wrappedValue = option.id
+                } label: {
+                    if effortPickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
+                .modifier(DockChipModifier())
+        }
+        .tint(.primary)
+    }
+
+    private func dockChipButton(
         title: String,
-        value: String,
-        systemImage: String
+        systemImage: String,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
     ) -> some View {
-        Label("\(title): \(value)", systemImage: systemImage)
-            .font(.footnote.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .modifier(DockChipModifier())
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 
     private var selectedModelOverrideLabel: String {
-        guard applyModelOverride else { return "Inherit" }
+        guard applyModelOverride else { return resolvedCurrentModelLabel ?? "Default" }
         switch selectedModelOverrideOption {
         case Self.customModelOverrideOption:
             let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             return normalized.isEmpty ? "Custom" : normalized
-        case "":
-            return "Default"
         default:
             return selectedModelOverrideOption
         }
     }
 
     private var selectedReasoningOverrideLabel: String {
-        guard applyEffortOverride else { return "Inherit" }
+        guard applyEffortOverride else { return resolvedCurrentEffortLabel ?? "Auto" }
         return selectedEffortOverride.label
+    }
+
+    private struct PickerOption: Identifiable {
+        let id: String
+        let label: String
+    }
+
+    private var modelPickerOptions: [PickerOption] {
+        var options: [PickerOption] = [
+            PickerOption(
+                id: Self.modelPickerDefaultOption,
+                label: "Use current model"
+            ),
+        ]
+        options.append(
+            contentsOf: availableModelOverrideOptions.map { model in
+                PickerOption(
+                    id: Self.modelPickerPresetPrefix + model,
+                    label: model
+                )
+            }
+        )
+        options.append(
+            PickerOption(
+                id: Self.modelPickerCustomOption,
+                label: "Custom model…"
+            )
+        )
+        return options
+    }
+
+    private var effortPickerOptions: [PickerOption] {
+        availableEffortSelections.map { effort in
+            PickerOption(
+                id: Self.effortPickerPresetPrefix + effort.rawValue,
+                label: effort.label
+            )
+        }
+    }
+
+    private var modelPickerSelection: Binding<String> {
+        Binding(
+            get: {
+                if !applyModelOverride {
+                    return Self.modelPickerDefaultOption
+                }
+                if selectedModelOverrideOption == Self.customModelOverrideOption {
+                    return Self.modelPickerCustomOption
+                }
+                return Self.modelPickerPresetPrefix + selectedModelOverrideOption
+            },
+            set: { value in
+                switch value {
+                case Self.modelPickerDefaultOption:
+                    applyModelOverride = false
+                    selectedModelOverrideOption = ""
+                    focusedComposerField = nil
+                case Self.modelPickerCustomOption:
+                    applyModelOverride = true
+                    selectedModelOverrideOption = Self.customModelOverrideOption
+                    focusedComposerField = .customModel
+                default:
+                    guard value.hasPrefix(Self.modelPickerPresetPrefix) else { return }
+                    let model = String(value.dropFirst(Self.modelPickerPresetPrefix.count))
+                    applyModelOverride = true
+                    selectedModelOverrideOption = model
+                    modelOverrideDraft = model
+                    focusedComposerField = nil
+                }
+            }
+        )
+    }
+
+    private var effortPickerSelection: Binding<String> {
+        Binding(
+            get: {
+                if applyEffortOverride {
+                    return Self.effortPickerPresetPrefix + selectedEffortOverride.rawValue
+                }
+                return Self.effortPickerPresetPrefix + SessionComposerEffortSelection.auto.rawValue
+            },
+            set: { value in
+                guard value.hasPrefix(Self.effortPickerPresetPrefix) else { return }
+                let raw = String(value.dropFirst(Self.effortPickerPresetPrefix.count))
+                guard let selected = SessionComposerEffortSelection(rawValue: raw) else { return }
+                selectedEffortOverride = selected
+                applyEffortOverride = selected != .auto
+            }
+        )
     }
 
     @ViewBuilder
@@ -928,22 +1148,391 @@ public struct SessionDetailView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private var parsedSessionFlavor: SessionComposerFlavor? {
-        guard let data = currentSession.metadata.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let raw = json["flavor"] as? String else {
-            return nil
+    private func updateKeyboardOverlap(from notification: Notification) {
+        guard
+            let userInfo = notification.userInfo,
+            let keyboardFrameValue = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue
+        else {
+            return
         }
-        return SessionComposerFlavor(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+
+        let keyboardFrame = keyboardFrameValue.cgRectValue
+        let screenBounds = UIScreen.main.bounds
+        let rawOverlap = max(0, screenBounds.maxY - keyboardFrame.minY)
+        let overlap = max(0, rawOverlap - bottomSafeAreaInset())
+
+        let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
+        withAnimation(.easeOut(duration: duration)) {
+            keyboardOverlap = overlap
+        }
     }
 
-    private func transcriptPresentation(
-        for message: APISessionMessage
-    ) -> SessionTranscriptMessagePresentation {
-        SessionTranscriptPresentationBuilder.make(
-            from: message,
+    private func bottomSafeAreaInset() -> CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)?
+            .safeAreaInsets.bottom ?? 0
+    }
+
+    private func scrollTranscriptToBottom(
+        using proxy: ScrollViewProxy,
+        animated: Bool = true
+    ) {
+        // Schedule on the next runloop to let List reconcile its backing collection view first.
+        DispatchQueue.main.async {
+            let action = {
+                proxy.scrollTo(Self.transcriptBottomAnchorID, anchor: .bottom)
+            }
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    action()
+                }
+            } else {
+                action()
+            }
+        }
+    }
+
+    private var parsedSessionFlavor: SessionComposerFlavor? {
+        guard let raw = SessionPayloadValueResolver.firstString(
+            in: [decodedSessionMetadata, decodedSessionAgentState],
+            keys: ["flavor", "agent", "provider"]
+        ) else {
+            return nil
+        }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let flavor = SessionComposerFlavor(rawValue: normalized) {
+            return flavor
+        }
+        if normalized.contains("claude") {
+            return .claude
+        }
+        if normalized.contains("gemini") {
+            return .gemini
+        }
+        if normalized.contains("codex") || normalized.contains("openai") || normalized.contains("gpt") {
+            return .codex
+        }
+        return nil
+    }
+
+    private var parsedSessionAgent: APISessionSpawnAgent? {
+        switch parsedSessionFlavor {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claude
+        case .gemini:
+            return .gemini
+        case .none:
+            return nil
+        }
+    }
+
+    private var decodedSessionMetadata: [String: Any] {
+        SessionPayloadValueResolver.decodeJSONObject(
+            payload: currentSession.metadata,
             dataEncryptionKey: currentSession.dataEncryptionKey
         )
+    }
+
+    private var decodedSessionAgentState: [String: Any] {
+        SessionPayloadValueResolver.decodeJSONObject(
+            payload: currentSession.agentState,
+            dataEncryptionKey: currentSession.dataEncryptionKey
+        )
+    }
+
+    private var resolvedCurrentModelLabel: String? {
+        SessionPayloadValueResolver.firstString(
+            in: [decodedSessionAgentState, decodedSessionMetadata],
+            keys: [
+                "model",
+                "currentModel",
+                "selectedModel",
+                "modelName",
+            ]
+        )
+    }
+
+    private var resolvedCurrentEffortLabel: String? {
+        guard let raw = SessionPayloadValueResolver.firstString(
+            in: [decodedSessionAgentState, decodedSessionMetadata],
+            keys: [
+                "effort",
+                "reasoningEffort",
+                "reasoning_effort",
+                "modelReasoningEffort",
+            ]
+        ) else {
+            return nil
+        }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func loadServerModelOptions() async {
+        let loaded = await viewModel.loadSessionModelOptions(
+            for: currentSession.id,
+            serverURLString: serverURLString,
+            token: token,
+            agent: parsedSessionAgent
+        ) ?? []
+        let normalized = loaded.compactMap { raw -> String? in
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        var deduped: [String] = []
+        deduped.reserveCapacity(normalized.count)
+        for model in normalized where !deduped.contains(model) {
+            deduped.append(model)
+        }
+        if !deduped.isEmpty {
+            serverModelOverrideOptions = deduped
+        }
+    }
+
+    private func refreshTranscriptPresentationCache(
+        messages: [APISessionMessage],
+        dataEncryptionKey: String?
+    ) {
+        var nextCache: [String: CachedTranscriptPresentation] = [:]
+        nextCache.reserveCapacity(messages.count)
+
+        var nextPresentations: [SessionTranscriptMessagePresentation] = []
+        nextPresentations.reserveCapacity(messages.count)
+
+        for message in messages {
+            if let cached = transcriptPresentationCache[message.id],
+               cached.sourceMessage == message,
+               cached.dataEncryptionKey == dataEncryptionKey {
+                nextCache[message.id] = cached
+                if !cached.presentation.entries.isEmpty {
+                    nextPresentations.append(cached.presentation)
+                }
+                continue
+            }
+
+            let presentation = SessionTranscriptPresentationBuilder.make(
+                from: message,
+                dataEncryptionKey: dataEncryptionKey
+            )
+            let cached = CachedTranscriptPresentation(
+                sourceMessage: message,
+                dataEncryptionKey: dataEncryptionKey,
+                presentation: presentation
+            )
+            nextCache[message.id] = cached
+            if !presentation.entries.isEmpty {
+                nextPresentations.append(presentation)
+            }
+        }
+
+        let filtered = filterSubagentEntriesAndCount(in: nextPresentations)
+        transcriptPresentationCache = nextCache
+        if cachedVisibleTranscriptPresentations != filtered.presentations {
+            cachedVisibleTranscriptPresentations = filtered.presentations
+        }
+        if subAgentInProgressCount != filtered.inProgressCount {
+            subAgentInProgressCount = filtered.inProgressCount
+        }
+    }
+
+    private var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {
+        cachedVisibleTranscriptPresentations
+    }
+
+    private var visibleTranscriptMessageIDs: [String] {
+        visibleTranscriptPresentations.map(\.messageID)
+    }
+
+    private var latestAgentThinkingEntry: SessionTranscriptEntry? {
+        for presentation in visibleTranscriptPresentations.reversed() {
+            for entry in presentation.entries.reversed() {
+                guard entry.role == .agent else { continue }
+                if entry.kind == .thinking {
+                    return entry
+                }
+                return nil
+            }
+        }
+        return nil
+    }
+
+    private var liveStatusText: String? {
+        if viewModel.isLoadingSessionMessages {
+            return "Loading messages…"
+        }
+
+        if let latestAgentLiveStatusText {
+            return latestAgentLiveStatusText
+        }
+
+        if viewModel.isSendingMessage(sessionID: session.id) {
+            return "Thinking…"
+        }
+
+        return nil
+    }
+
+    private var latestAgentLiveStatusText: String? {
+        for presentation in visibleTranscriptPresentations.reversed() {
+            for entry in presentation.entries.reversed() {
+                guard entry.role == .agent else { continue }
+                if entry.kind == .thinking {
+                    let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return body.isEmpty ? "Thinking…" : body
+                }
+                if entry.kind == .text {
+                    return nil
+                }
+                if let status = liveStatusText(from: entry) {
+                    return status
+                }
+                return nil
+            }
+        }
+        return nil
+    }
+
+    private func liveStatusText(from entry: SessionTranscriptEntry) -> String? {
+        guard entry.kind == .toolCall || entry.kind == .raw || entry.kind == .event else {
+            return nil
+        }
+
+        let title = (entry.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTitle = title.lowercased()
+        let normalizedBody = body.lowercased()
+        let statusKeywords = [
+            "planning",
+            "explored",
+            "summarizing",
+            "finalizing",
+            "calling",
+            "crafting",
+            "loading",
+            "retry",
+            "updating",
+            "thinking",
+            "image #",
+        ]
+        let isStatusLike = statusKeywords.contains {
+            normalizedTitle.contains($0) || normalizedBody.contains($0)
+        }
+        guard isStatusLike else { return nil }
+
+        if !title.isEmpty {
+            return title
+        }
+        guard !body.isEmpty else { return nil }
+        if body.count > 120 {
+            return String(body.prefix(120)) + "…"
+        }
+        return body
+    }
+
+    private func filterSubagentEntriesAndCount(
+        in presentations: [SessionTranscriptMessagePresentation]
+    ) -> (presentations: [SessionTranscriptMessagePresentation], inProgressCount: Int) {
+        var filteredPresentations: [SessionTranscriptMessagePresentation] = []
+        filteredPresentations.reserveCapacity(presentations.count)
+        var activeSubagentToolUseIDs: Set<String> = []
+        var inProgressCount = 0
+
+        for presentation in presentations {
+            var filteredEntries: [SessionTranscriptEntry] = []
+            filteredEntries.reserveCapacity(presentation.entries.count)
+
+            for entry in presentation.entries {
+                if isSubagentToolCallEntry(entry) {
+                    if let toolUseID = entry.toolUseID {
+                        activeSubagentToolUseIDs.insert(toolUseID)
+                    }
+                    inProgressCount += 1
+                    continue
+                }
+
+                if isSubagentToolResultEntry(entry, activeToolUseIDs: activeSubagentToolUseIDs) {
+                    if let toolUseID = entry.toolUseID {
+                        activeSubagentToolUseIDs.remove(toolUseID)
+                    }
+                    inProgressCount = max(0, inProgressCount - 1)
+                    continue
+                }
+
+                filteredEntries.append(entry)
+            }
+
+            guard !filteredEntries.isEmpty else { continue }
+            if filteredEntries == presentation.entries {
+                filteredPresentations.append(presentation)
+                continue
+            }
+            filteredPresentations.append(
+                SessionTranscriptMessagePresentation(
+                    messageID: presentation.messageID,
+                    sequenceText: presentation.sequenceText,
+                    createdAtText: presentation.createdAtText,
+                    entries: filteredEntries
+                )
+            )
+        }
+
+        return (filteredPresentations, inProgressCount)
+    }
+
+    private func isSubagentToolCallEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        guard entry.kind == .toolCall else { return false }
+        let normalizedTitle = normalizedEntryTitle(entry)
+        if normalizedTitle.contains("run task") ||
+            normalizedTitle.contains("sub-agent") ||
+            normalizedTitle.contains("subagent") {
+            return true
+        }
+
+        let normalizedBody = entry.body.lowercased()
+        return normalizedBody.contains("spawn_agent") ||
+            normalizedBody.contains("subagent_type")
+    }
+
+    private func isSubagentToolResultEntry(
+        _ entry: SessionTranscriptEntry,
+        activeToolUseIDs: Set<String>
+    ) -> Bool {
+        guard entry.kind == .toolResult else { return false }
+        if let toolUseID = entry.toolUseID,
+           activeToolUseIDs.contains(toolUseID) {
+            return true
+        }
+
+        let normalizedTitle = normalizedEntryTitle(entry)
+        if normalizedTitle.contains("run task") ||
+            normalizedTitle.contains("sub-agent") ||
+            normalizedTitle.contains("subagent") {
+            return true
+        }
+
+        let normalizedBody = entry.body.lowercased()
+        return normalizedBody.contains("spawn_agent") ||
+            normalizedBody.contains("subagent_notification")
+    }
+
+    private func normalizedEntryTitle(_ entry: SessionTranscriptEntry) -> String {
+        (entry.title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+}
+
+private struct DockChipModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
     }
 }
 
@@ -1069,35 +1658,36 @@ private struct SessionTranscriptMessageRow: View {
     let presentation: SessionTranscriptMessagePresentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(presentation.sequenceText)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(presentation.createdAtText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: showsTimestamp ? 6 : 2) {
+            if showsTimestamp {
+                HStack {
+                    Spacer()
+                    Text(presentation.createdAtText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 ForEach(presentation.entries) { entry in
                     SessionTranscriptLogLine(entry: entry)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 1)
+    }
+
+    private var showsTimestamp: Bool {
+        presentation.entries.contains { entry in
+            guard entry.role == .user || entry.role == .agent else { return false }
+            return entry.kind == .text || entry.kind == .thinking
+        }
     }
 }
 
 private struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
+    @State private var isExpanded = false
 
     var body: some View {
         if isSystemEvent {
@@ -1112,7 +1702,38 @@ private struct SessionTranscriptLogLine: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
-        } else {
+        } else if isCollapsibleReferenceLogEntry {
+            VStack(alignment: .leading, spacing: 1) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(collapsibleTitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if isExpanded {
+                    Text(entry.body)
+                        .font(bodyFont)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .lineLimit(nil)
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if isMainMessageEntry {
             VStack(alignment: .leading, spacing: 4) {
                 if let title = entry.title, !title.isEmpty {
                     Text(title)
@@ -1135,6 +1756,25 @@ private struct SessionTranscriptLogLine: View {
                 maxWidth: .infinity,
                 alignment: entry.role == .user ? .trailing : .leading
             )
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                if let title = entry.title, !title.isEmpty {
+                    Text(title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(entry.body)
+                    .font(bodyFont)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .lineLimit(nil)
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 1)
+            .frame(
+                maxWidth: .infinity,
+                alignment: .leading
+            )
         }
     }
 
@@ -1154,6 +1794,53 @@ private struct SessionTranscriptLogLine: View {
             return Color.blue.opacity(0.12)
         }
         return Color.primary.opacity(0.04)
+    }
+
+    private var isCollapsibleToolEntry: Bool {
+        entry.kind == .toolCall || entry.kind == .toolResult || isEditFilesEntry
+    }
+
+    private var isCollapsibleReferenceLogEntry: Bool {
+        isCollapsibleToolEntry || entry.kind == .raw
+    }
+
+    private var isMainMessageEntry: Bool {
+        guard entry.role == .user || entry.role == .agent else { return false }
+        switch entry.kind {
+        case .text, .thinking:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var collapsibleTitle: String {
+        if isEditFilesEntry {
+            return "Edit files"
+        }
+        if let title = entry.title, !title.isEmpty {
+            return title
+        }
+        switch entry.kind {
+        case .toolCall:
+            return "Tool call"
+        case .toolResult:
+            return "Tool result"
+        default:
+            return "Details"
+        }
+    }
+
+    private var isEditFilesEntry: Bool {
+        let normalizedTitle = (entry.title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalizedTitle.contains("edit files") {
+            return true
+        }
+
+        let normalizedBody = entry.body.lowercased()
+        return normalizedBody.contains("apply_patch") || normalizedBody.contains("*** begin patch")
     }
 
     private var bodyFont: Font {

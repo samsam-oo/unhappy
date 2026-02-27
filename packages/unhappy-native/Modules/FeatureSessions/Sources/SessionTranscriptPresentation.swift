@@ -34,6 +34,7 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
     let kind: SessionTranscriptEntryKind
     let title: String?
     let body: String
+    let toolUseID: String?
 }
 
 struct SessionTranscriptMessagePresentation: Equatable, Sendable {
@@ -58,6 +59,13 @@ enum SessionTranscriptPresentationBuilder {
         Data("unhappy.data.encryption-key.wrap.salt.v2".utf8)
     private static let wrappedDataKeyKDFInfo =
         Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
+    private static let ansiEscapePattern = "\u{001B}\\[[0-9;?]*[ -/]*[@-~]"
+    private static let ansiEscapeRegex = try? NSRegularExpression(pattern: ansiEscapePattern)
+    private static let removableControlCharacters: CharacterSet = {
+        var set = CharacterSet.controlCharacters
+        set.remove(charactersIn: "\n\t")
+        return set
+    }()
 
     static func make(
         from message: APISessionMessage,
@@ -74,11 +82,13 @@ enum SessionTranscriptPresentationBuilder {
             messageID: message.id
         )
 
+        let visibleEntries = entries.filter { shouldDisplay(entry: $0) }
+
         return SessionTranscriptMessagePresentation(
             messageID: message.id,
-            sequenceText: "#\(message.seq)",
+            sequenceText: "\(message.seq)",
             createdAtText: timestampFormatter(message.createdAt),
-            entries: entries
+            entries: visibleEntries
         )
     }
 
@@ -151,7 +161,25 @@ enum SessionTranscriptPresentationBuilder {
         _ record: [String: Any],
         messageID: String
     ) -> [SessionTranscriptEntry] {
+        if let contentArray = record["content"] as? [Any], !contentArray.isEmpty {
+            let entries = parseUserContentArray(contentArray, messageID: messageID)
+            if !entries.isEmpty {
+                return entries
+            }
+        }
+
         guard let content = record["content"] as? [String: Any] else {
+            if let text = normalizedText(record["content"]) {
+                return [
+                    makeEntry(
+                        id: "\(messageID)-user",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: text
+                    )
+                ]
+            }
             return [
                 makeEntry(
                     id: "\(messageID)-user",
@@ -163,8 +191,49 @@ enum SessionTranscriptPresentationBuilder {
             ]
         }
 
-        if let type = content["type"] as? String, type == "text" {
-            let text = normalizedText(content["text"]) ?? stringify(content)
+        if let nestedContentArray = content["content"] as? [Any], !nestedContentArray.isEmpty {
+            let entries = parseUserContentArray(nestedContentArray, messageID: messageID)
+            if !entries.isEmpty {
+                return entries
+            }
+        }
+
+        if let type = (content["type"] as? String)?.lowercased() {
+            switch type {
+            case "text", "input_text":
+                let text =
+                    normalizedText(content["text"]) ??
+                    normalizedText(content["input_text"]) ??
+                    extractMessageText(from: content["content"]) ??
+                    stringify(content)
+                return [
+                    makeEntry(
+                        id: "\(messageID)-user",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: text
+                    )
+                ]
+            case "image", "input_image", "image_url":
+                return [
+                    makeEntry(
+                        id: "\(messageID)-user-image-0",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: imagePlaceholderText(index: 1)
+                    )
+                ]
+            default:
+                break
+            }
+        }
+
+        if let text =
+            extractMessageText(from: content["text"]) ??
+            extractMessageText(from: content["message"]) ??
+            extractMessageText(from: content["content"]) {
             return [
                 makeEntry(
                     id: "\(messageID)-user",
@@ -329,6 +398,7 @@ enum SessionTranscriptPresentationBuilder {
         }
 
         var entries: [SessionTranscriptEntry] = []
+        var toolNamesByID: [String: String] = [:]
         for (index, item) in contentArray.enumerated() {
             guard let chunk = item as? [String: Any],
                   let type = chunk["type"] as? String else {
@@ -369,25 +439,34 @@ enum SessionTranscriptPresentationBuilder {
                 )
             case "tool_use", "tool-call":
                 let name = normalizedText(chunk["name"]) ?? "Tool"
+                let toolUseID = extractToolUseID(from: chunk)
+                if let toolUseID {
+                    toolNamesByID[toolUseID] = name
+                }
                 let inputText = stringify(chunk["input"])
                 entries.append(
                     makeEntry(
                         id: "\(messageID)-assistant-\(index)",
                         role: .agent,
                         kind: .toolCall,
-                        title: "Tool call: \(name)",
-                        body: inputText
+                        title: toolDisplayName(name),
+                        body: inputText,
+                        toolUseID: toolUseID
                     )
                 )
             case "tool_result", "tool-call-result":
+                let toolUseID = extractToolUseID(from: chunk)
+                let linkedToolName = toolUseID.flatMap { toolNamesByID[$0] }
+                let title = linkedToolName.map { "\(toolDisplayName($0)) Result" } ?? "Tool result"
                 let outputText = stringifyToolResultContent(chunk["content"] ?? chunk["output"])
                 entries.append(
                     makeEntry(
                         id: "\(messageID)-assistant-\(index)",
                         role: .agent,
                         kind: .toolResult,
-                        title: "Tool result",
-                        body: outputText
+                        title: title,
+                        body: outputText,
+                        toolUseID: toolUseID
                     )
                 )
             default:
@@ -433,20 +512,60 @@ enum SessionTranscriptPresentationBuilder {
             ]
         }
 
-        if let contentArray = message["content"] as? [Any], !contentArray.isEmpty {
-            var entries: [SessionTranscriptEntry] = []
-            for (index, item) in contentArray.enumerated() {
-                if let chunk = item as? [String: Any], (chunk["type"] as? String) == "tool_result" {
-                    entries.append(
-                        makeEntry(
-                            id: "\(messageID)-output-user-\(index)",
-                            role: .agent,
-                            kind: .toolResult,
-                            title: "Tool result",
-                            body: stringifyToolResultContent(chunk["content"])
-                        )
-                    )
-                } else {
+            if let contentArray = message["content"] as? [Any], !contentArray.isEmpty {
+                var entries: [SessionTranscriptEntry] = []
+                var imageIndex = 0
+                for (index, item) in contentArray.enumerated() {
+                    if let chunk = item as? [String: Any],
+                       let type = (chunk["type"] as? String)?.lowercased() {
+                        if type == "tool_result" {
+                            let toolUseID = extractToolUseID(from: chunk)
+                            entries.append(
+                                makeEntry(
+                                    id: "\(messageID)-output-user-\(index)",
+                                    role: .agent,
+                                    kind: .toolResult,
+                                    title: "Tool result",
+                                    body: stringifyToolResultContent(chunk["content"]),
+                                    toolUseID: toolUseID
+                                )
+                            )
+                            continue
+                        }
+
+                        if type == "text" || type == "input_text" {
+                            let text =
+                                normalizedText(chunk["text"]) ??
+                                normalizedText(chunk["input_text"]) ??
+                                extractMessageText(from: chunk["content"]) ??
+                                stringify(chunk)
+                            entries.append(
+                                makeEntry(
+                                    id: "\(messageID)-output-user-\(index)",
+                                    role: .user,
+                                    kind: .text,
+                                    title: nil,
+                                    body: text
+                                )
+                            )
+                            continue
+                        }
+
+                        if type == "image" || type == "input_image" || type == "image_url" || type.contains("image") {
+                            imageIndex += 1
+                            entries.append(
+                                makeEntry(
+                                    id: "\(messageID)-output-user-\(index)",
+                                    role: .user,
+                                    kind: .text,
+                                    title: nil,
+                                    body: imagePlaceholderText(index: imageIndex)
+                                )
+                            )
+                            continue
+                        }
+                    }
+
                     entries.append(
                         makeEntry(
                             id: "\(messageID)-output-user-\(index)",
@@ -457,9 +576,8 @@ enum SessionTranscriptPresentationBuilder {
                         )
                     )
                 }
+                return entries
             }
-            return entries
-        }
 
         return [
             makeEntry(
@@ -525,7 +643,15 @@ enum SessionTranscriptPresentationBuilder {
         let type = normalizedText(dictionary["type"]) ?? "unknown"
         switch type {
         case "message", "reasoning":
-            let text = normalizedText(dictionary["message"]) ?? stringify(dictionary)
+            let text =
+                extractMessageText(from: dictionary["message"]) ??
+                extractMessageText(from: dictionary["text"]) ??
+                extractMessageText(from: dictionary["content"]) ??
+                stringify(dictionary)
+            if type == "message",
+               text.hasPrefix("Existing Codex sessions for this project:") {
+                return []
+            }
             return [
                 makeEntry(
                     id: "\(messageID)-acp-\(type)",
@@ -548,33 +674,65 @@ enum SessionTranscriptPresentationBuilder {
             ]
         case "tool-call":
             let name = normalizedText(dictionary["name"]) ?? "Tool"
+            let toolUseID = extractToolUseID(from: dictionary)
+            let reasoningTitle = codexReasoningTitle(from: dictionary["input"])
+            let title = reasoningTitle ?? toolDisplayName(name)
+            let body = reasoningTitle == nil
+                ? stringify(dictionary["input"])
+                : stringify(dictionary["input"])
             return [
                 makeEntry(
                     id: "\(messageID)-acp-tool-call",
                     role: .agent,
                     kind: .toolCall,
-                    title: "Tool call: \(name)",
-                    body: stringify(dictionary["input"])
+                    title: title,
+                    body: body,
+                    toolUseID: toolUseID
                 )
             ]
         case "tool-result", "tool-call-result":
+            if shouldHideToolResult(dictionary["output"] ?? dictionary["content"]) {
+                return []
+            }
+            let toolUseID = extractToolUseID(from: dictionary)
+            let name = normalizedText(dictionary["name"])
+            let title = name.map { "\(toolDisplayName($0)) Result" } ?? "Tool Result"
             return [
                 makeEntry(
                     id: "\(messageID)-acp-tool-result",
                     role: .agent,
                     kind: .toolResult,
-                    title: "Tool result",
-                    body: stringifyToolResultContent(dictionary["output"] ?? dictionary["content"])
+                    title: title,
+                    body: stringifyToolResultContent(dictionary["output"] ?? dictionary["content"]),
+                    toolUseID: toolUseID
                 )
             ]
         case "terminal-output":
+            guard let output = normalizedText(
+                stringifyToolResultContent(dictionary["data"] ?? dictionary["output"])
+            ) else {
+                return []
+            }
             return [
                 makeEntry(
                     id: "\(messageID)-acp-terminal",
                     role: .agent,
-                    kind: .toolResult,
-                    title: "Terminal output",
-                    body: stringifyToolResultContent(dictionary["data"] ?? dictionary["output"])
+                    kind: .raw,
+                    title: nil,
+                    body: output
+                )
+            ]
+        case "tool-stream":
+            guard let output = normalizedText(dictionary["output"] ?? dictionary["text"]) else {
+                return []
+            }
+            return [
+                makeEntry(
+                    id: "\(messageID)-acp-tool-stream",
+                    role: .agent,
+                    kind: .raw,
+                    title: nil,
+                    body: output
                 )
             ]
         case "permission-request":
@@ -589,16 +747,18 @@ enum SessionTranscriptPresentationBuilder {
                     body: description
                 )
             ]
-        case "task_started", "task_complete", "turn_aborted":
+        case "task_started":
             return [
                 makeEntry(
                     id: "\(messageID)-acp-task",
-                    role: .system,
-                    kind: .event,
-                    title: type.replacingOccurrences(of: "_", with: " ").capitalized,
-                    body: stringify(dictionary)
+                    role: .agent,
+                    kind: .thinking,
+                    title: nil,
+                    body: "Thinking…"
                 )
             ]
+        case "task_complete", "turn_aborted":
+            return []
         case "token_count":
             return []
         default:
@@ -619,17 +779,42 @@ enum SessionTranscriptPresentationBuilder {
         role: SessionTranscriptEntryRole,
         kind: SessionTranscriptEntryKind,
         title: String?,
-        body: String
+        body: String,
+        toolUseID: String? = nil
     ) -> SessionTranscriptEntry {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedBody = sanitizeText(body)
+        let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = trimmed.isEmpty ? " " : trimBody(trimmed)
+        let cleanedTitle = title.map(sanitizeText)
         return SessionTranscriptEntry(
             id: id,
             role: role,
             kind: kind,
-            title: title,
-            body: normalized
+            title: cleanedTitle,
+            body: normalized,
+            toolUseID: toolUseID
         )
+    }
+
+    private static func extractToolUseID(from dictionary: [String: Any]) -> String? {
+        let candidates: [Any?] = [
+            dictionary["tool_use_id"],
+            dictionary["toolUseId"],
+            dictionary["callId"],
+            dictionary["id"],
+        ]
+        for candidate in candidates {
+            if let text = normalizedText(candidate) {
+                return text
+            }
+        }
+        return nil
+    }
+
+    private static func shouldDisplay(entry: SessionTranscriptEntry) -> Bool {
+        let hasTitle = !(entry.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasBody = !entry.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasTitle || hasBody
     }
 
     private static func trimBody(_ value: String) -> String {
@@ -640,7 +825,8 @@ enum SessionTranscriptPresentationBuilder {
     private static func normalizedText(_ value: Any?) -> String? {
         guard let value else { return nil }
         if let text = value as? String {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = sanitizeText(text)
+            let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
         if let number = value as? NSNumber {
@@ -650,7 +836,7 @@ enum SessionTranscriptPresentationBuilder {
     }
 
     private static func stringifyToolResultContent(_ value: Any?) -> String {
-        if let string = normalizedText(value) {
+        if let string = extractMessageText(from: value) {
             return string
         }
         if let chunks = value as? [[String: Any]] {
@@ -663,6 +849,239 @@ enum SessionTranscriptPresentationBuilder {
             }
         }
         return stringify(value)
+    }
+
+    private static func shouldHideToolResult(_ value: Any?) -> Bool {
+        guard let object = value as? [String: Any] else { return false }
+        let status = normalizedText(object["status"])?.lowercased()
+        let contentText = extractMessageText(from: object["content"])
+        if status == "completed", contentText == nil {
+            return true
+        }
+        return false
+    }
+
+    private static func codexReasoningTitle(from value: Any?) -> String? {
+        guard let object = value as? [String: Any] else { return nil }
+        guard let title = normalizedText(object["title"]) else { return nil }
+        return title
+    }
+
+    private static func parseUserContentArray(
+        _ contentArray: [Any],
+        messageID: String
+    ) -> [SessionTranscriptEntry] {
+        var entries: [SessionTranscriptEntry] = []
+        entries.reserveCapacity(contentArray.count)
+        var imageIndex = 0
+
+        for (index, item) in contentArray.enumerated() {
+            guard let chunk = item as? [String: Any] else {
+                if let text = normalizedText(item) {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .text,
+                            title: nil,
+                            body: text
+                        )
+                    )
+                } else {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .raw,
+                            title: "Chunk",
+                            body: stringify(item)
+                        )
+                    )
+                }
+                continue
+            }
+
+            let type = (normalizedText(chunk["type"]) ?? "").lowercased()
+            switch type {
+            case "text", "input_text":
+                let text =
+                    normalizedText(chunk["text"]) ??
+                    normalizedText(chunk["input_text"]) ??
+                    extractMessageText(from: chunk["content"]) ??
+                    stringify(chunk)
+                entries.append(
+                    makeEntry(
+                        id: "\(messageID)-user-\(index)",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: text
+                    )
+                )
+            case "image", "input_image", "image_url":
+                imageIndex += 1
+                entries.append(
+                    makeEntry(
+                        id: "\(messageID)-user-\(index)",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: imagePlaceholderText(index: imageIndex)
+                    )
+                )
+            default:
+                if type.contains("image") {
+                    imageIndex += 1
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .text,
+                            title: nil,
+                            body: imagePlaceholderText(index: imageIndex)
+                        )
+                    )
+                    continue
+                }
+
+                if let text =
+                    extractMessageText(from: chunk["text"]) ??
+                    extractMessageText(from: chunk["message"]) ??
+                    extractMessageText(from: chunk["content"]) {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .text,
+                            title: nil,
+                            body: text
+                        )
+                    )
+                } else {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .raw,
+                            title: type.isEmpty ? "Chunk" : "Chunk \(type)",
+                            body: stringify(chunk)
+                        )
+                    )
+                }
+            }
+        }
+
+        return entries
+    }
+
+    private static func imagePlaceholderText(index: Int) -> String {
+        "[Image #\(max(1, index))]"
+    }
+
+    private static func sanitizeText(_ value: String) -> String {
+        var cleaned = value
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+
+        if let regex = ansiEscapeRegex {
+            let range = NSRange(cleaned.startIndex..., in: cleaned)
+            cleaned = regex.stringByReplacingMatches(
+                in: cleaned,
+                options: [],
+                range: range,
+                withTemplate: ""
+            )
+        }
+
+        let scalars = cleaned.unicodeScalars.filter { scalar in
+            !removableControlCharacters.contains(scalar)
+        }
+        return String(String.UnicodeScalarView(scalars))
+    }
+
+    private static func extractMessageText(from value: Any?) -> String? {
+        guard let value else { return nil }
+        if let text = normalizedText(value) {
+            return text
+        }
+        if let dictionary = value as? [String: Any] {
+            let directCandidates: [Any?] = [
+                dictionary["text"],
+                dictionary["message"],
+                dictionary["delta"],
+                dictionary["content"],
+                dictionary["output"],
+            ]
+            for candidate in directCandidates {
+                if let extracted = extractMessageText(from: candidate) {
+                    return extracted
+                }
+            }
+            return nil
+        }
+        if let array = value as? [Any] {
+            let parts = array.compactMap { extractMessageText(from: $0) }
+            if !parts.isEmpty {
+                return parts.joined(separator: "\n")
+            }
+        }
+        return nil
+    }
+
+    private static func toolDisplayName(_ rawName: String) -> String {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Tool" }
+        let key = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: " ", with: "")
+
+        switch key {
+        case "read", "readfile", "readfiles":
+            return "Read Files"
+        case "write", "writefile", "writefiles", "edit", "applypatch", "codexpatch", "patch":
+            return "Edit Files"
+        case "bash", "codexbash", "execcommand", "terminal", "shell":
+            return "Run Command"
+        case "listdirectory", "getdirectorytree", "ls":
+            return "List Files"
+        case "ripgrep", "rg", "grep", "search":
+            return "Search Files"
+        case "difftastic", "diff":
+            return "View Diff"
+        case "task":
+            return "Run Task"
+        case "webfetch":
+            return "Fetch Web"
+        case "codexreasoning":
+            return "Reasoning"
+        default:
+            return humanizedIdentifier(trimmed)
+        }
+    }
+
+    private static func humanizedIdentifier(_ value: String) -> String {
+        let separatorsNormalized = value
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        let withCamelSpacing = separatorsNormalized.replacingOccurrences(
+            of: "([a-z0-9])([A-Z])",
+            with: "$1 $2",
+            options: .regularExpression
+        )
+        let collapsed = withCamelSpacing
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !collapsed.isEmpty else { return "Tool" }
+        return collapsed
+            .split(separator: " ")
+            .map { token in
+                let lower = token.lowercased()
+                return lower.prefix(1).uppercased() + String(lower.dropFirst())
+            }
+            .joined(separator: " ")
     }
 
     private static func stringify(_ value: Any?) -> String {

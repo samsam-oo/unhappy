@@ -48,6 +48,264 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries[0].body.contains("unsupported model"))
     }
 
+    @Test
+    func codexToolCallUsesReadableToolName() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "tool-call",
+                    "name": "Read",
+                    "input": [
+                        "path": "/tmp/test.txt",
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].title == "Read Files")
+    }
+
+    @Test
+    func assistantToolResultKeepsToolUseIDAndReadableResultTitle() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "assistant",
+                    "message": [
+                        "content": [
+                            [
+                                "type": "tool_use",
+                                "id": "toolu_task_1",
+                                "name": "Task",
+                                "input": [
+                                    "prompt": "Check logs",
+                                ],
+                            ],
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_task_1",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 2)
+        #expect(presentation.entries[0].title == "Run Task")
+        #expect(presentation.entries[0].toolUseID == "toolu_task_1")
+        #expect(presentation.entries[1].title == "Run Task Result")
+        #expect(presentation.entries[1].toolUseID == "toolu_task_1")
+    }
+
+    @Test
+    func outputUserToolResultKeepsToolUseID() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_subagent_1",
+                                "content": [
+                                    [
+                                        "type": "text",
+                                        "text": "Sub-agent finished.",
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].toolUseID == "toolu_subagent_1")
+    }
+
+    @Test
+    func codexMessageNestedTextIsExtracted() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "message",
+                    "message": [
+                        "content": [
+                            [
+                                "type": "text",
+                                "text": "nested response",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].body.contains("nested response"))
+    }
+
+    @Test
+    func codexBootstrapThreadListMessageIsHidden() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "message",
+                    "message": "Existing Codex sessions for this project:\n1. (untitled)",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.isEmpty)
+    }
+
+    @Test
+    func codexTaskStartedShowsThinkingEntry() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "task_started",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .thinking)
+    }
+
+    @Test
+    func userInputImageChunkShowsImagePlaceholder() {
+        let payload: [String: Any] = [
+            "role": "user",
+            "content": [
+                [
+                    "type": "input_image",
+                    "image_url": "data:image/png;base64,AAAA",
+                ],
+                [
+                    "type": "input_text",
+                    "text": "Please inspect this screenshot.",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 2)
+        #expect(presentation.entries[0].role == .user)
+        #expect(presentation.entries[0].kind == .text)
+        #expect(presentation.entries[0].body == "[Image #1]")
+        #expect(presentation.entries[1].body == "Please inspect this screenshot.")
+    }
+
+    @Test
+    func emptyCompletedToolResultIsHidden() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "tool-result",
+                    "name": "CodexReasoning",
+                    "output": [
+                        "content": "",
+                        "status": "completed",
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.isEmpty)
+    }
+
+    @Test
+    func terminalOutputStripsAnsiEscapes() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "terminal-output",
+                    "data": "\u{001B}[32mExplored\u{001B}[0m path",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].body == "Explored path")
+    }
+
     private func makeAgentEventMessage(eventType: String, message: String?) -> APISessionMessage {
         var eventData: [String: Any] = ["type": eventType]
         if let message {
@@ -60,6 +318,10 @@ struct SessionTranscriptPresentationTests {
                 "data": eventData,
             ],
         ]
+        return makeMessage(from: payload)
+    }
+
+    private func makeMessage(from payload: [String: Any]) -> APISessionMessage {
         let data = (try? JSONSerialization.data(withJSONObject: payload, options: [])) ?? Data()
         let text = String(data: data, encoding: .utf8) ?? "{}"
         return APISessionMessage(

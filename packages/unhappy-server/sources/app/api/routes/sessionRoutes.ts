@@ -333,6 +333,7 @@ export function sessionRoutes(app: Fastify) {
             const session = await db.session.create({
                 data: {
                     accountId: userId,
+                    seq: updSeq,
                     tag: tag,
                     metadata: metadata,
                     dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
@@ -459,25 +460,41 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
         const normalizedTitle = request.body.title?.trim() || null;
+        try {
+            const updated = await db.session.updateMany({
+                where: {
+                    id: sessionId,
+                    accountId: userId
+                },
+                data: {
+                    displayName: normalizedTitle
+                }
+            });
 
-        const updated = await db.session.updateMany({
-            where: {
-                id: sessionId,
-                accountId: userId
-            },
-            data: {
-                displayName: normalizedTitle
+            if (updated.count === 0) {
+                return reply.code(404).send({ error: 'Session not found' });
             }
-        });
 
-        if (updated.count === 0) {
-            return reply.code(404).send({ error: 'Session not found' });
+            return reply.send({
+                success: true,
+                title: normalizedTitle
+            });
+        } catch (error) {
+            log(
+                {
+                    module: 'session-title',
+                    level: 'error',
+                    userId,
+                    sessionId,
+                    error: error instanceof Error ? error.message : String(error)
+                },
+                'Failed to update session title'
+            );
+            return reply.code(500).send({
+                success: false,
+                error: 'Failed to update session title'
+            });
         }
-
-        return reply.send({
-            success: true,
-            title: normalizedTitle
-        });
     });
 
     app.post('/v1/sessions/:sessionId/commands/abort', {
@@ -1160,48 +1177,69 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(400).send({ error: 'Session title cannot be empty' });
         }
 
-        const session = await db.session.findFirst({
-            where: {
-                id: sessionId,
-                accountId: userId
-            },
-            select: { id: true }
-        });
+        try {
+            const session = await db.session.findFirst({
+                where: {
+                    id: sessionId,
+                    accountId: userId
+                },
+                select: { id: true }
+            });
 
-        if (!session) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
+            if (!session) {
+                return reply.code(404).send({ error: 'Session not found' });
+            }
 
-        const target = findConnectedSession(userId, sessionId);
-        if (!target) {
-            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
-        }
+            const target = findConnectedSession(userId, sessionId);
+            if (!target) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+            }
 
-        const result = await invokePublicCommand(target, {
-            command: 'codex-set-thread-name',
-            params: { name: normalizedName }
-        });
+            const result = await invokePublicCommand(target, {
+                command: 'codex-set-thread-name',
+                params: { name: normalizedName }
+            });
 
-        if (!result?.success) {
-            return reply.code(502).send({
+            if (!result?.success) {
+                return reply.code(502).send({
+                    success: false,
+                    error: typeof result?.error === 'string' ? result.error : 'Failed to rename Codex thread'
+                });
+            }
+
+            const updated = await db.session.updateMany({
+                where: {
+                    id: sessionId,
+                    accountId: userId
+                },
+                data: {
+                    displayName: normalizedName
+                }
+            });
+
+            if (updated.count === 0) {
+                return reply.code(404).send({ error: 'Session not found' });
+            }
+
+            return reply.send({
+                success: true,
+                title: normalizedName
+            });
+        } catch (error) {
+            log(
+                {
+                    module: 'codex-title',
+                    level: 'error',
+                    userId,
+                    sessionId,
+                    error: error instanceof Error ? error.message : String(error)
+                },
+                'Failed to update codex session title'
+            );
+            return reply.code(500).send({
                 success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to rename Codex thread'
+                error: 'Failed to rename Codex session title'
             });
         }
-
-        await db.session.updateMany({
-            where: {
-                id: sessionId,
-                accountId: userId
-            },
-            data: {
-                displayName: normalizedName
-            }
-        });
-
-        return reply.send({
-            success: true,
-            title: normalizedName
-        });
     });
 }
