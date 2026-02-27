@@ -292,12 +292,13 @@ public final class SessionsViewModel: ObservableObject {
         }
 
         do {
-            let messages = try await messageLoader.loadMessages(
+            let fetchedMessages = try await messageLoader.loadMessages(
                 serverURLString: serverURLString,
                 token: token,
                 sessionID: sessionID
             )
-            let normalizedMessages = cacheMessages(messages, for: sessionID)
+            let mergedMessages = mergeFetchedMessages(fetchedMessages, for: sessionID)
+            let normalizedMessages = cacheMessages(mergedMessages, for: sessionID)
             if selectedSessionID == sessionID {
                 setSelectedSessionMessagesIfNeeded(normalizedMessages)
                 selectedSessionErrorMessage = nil
@@ -532,7 +533,7 @@ public final class SessionsViewModel: ObservableObject {
             )
             sendMessageStatusMessage = nil
             sendMessageErrorMessage = nil
-            await loadMessages(for: sessionID, serverURLString: serverURLString, token: token)
+            appendOptimisticUserMessageIfPossible(for: sessionID, text: text)
             return true
         } catch {
             sendMessageStatusMessage = nil
@@ -694,6 +695,64 @@ public final class SessionsViewModel: ObservableObject {
         touchCache(sessionID: sessionID)
         evictCacheIfNeeded(preserving: selectedSessionID)
         return normalizedMessages
+    }
+
+    private func mergeFetchedMessages(_ fetchedMessages: [APISessionMessage], for sessionID: String) -> [APISessionMessage] {
+        guard let cachedMessages = messagesBySessionID[sessionID], !cachedMessages.isEmpty else {
+            return fetchedMessages
+        }
+        guard fetchedMessages.count >= cachedMessages.count else {
+            return fetchedMessages
+        }
+
+        for index in cachedMessages.indices where cachedMessages[index] != fetchedMessages[index] {
+            return fetchedMessages
+        }
+
+        if fetchedMessages.count == cachedMessages.count {
+            return cachedMessages
+        }
+        return cachedMessages + Array(fetchedMessages.dropFirst(cachedMessages.count))
+    }
+
+    private func appendOptimisticUserMessageIfPossible(for sessionID: String, text: String) {
+        guard selectedSessionID == sessionID else { return }
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else { return }
+
+        let currentMessages = messagesBySessionID[sessionID] ?? selectedSessionMessages
+        let timestamp = Date().timeIntervalSince1970
+        let optimisticID = "optimistic-\(UUID().uuidString.lowercased())"
+        let optimisticMessage = APISessionMessage(
+            id: optimisticID,
+            seq: (currentMessages.last?.seq ?? 0) + 1,
+            localId: optimisticID,
+            content: APIEncryptedMessageContent(
+                t: "optimistic-user",
+                c: makeOptimisticUserPayload(text: normalizedText)
+            ),
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+
+        let normalizedMessages = cacheMessages(currentMessages + [optimisticMessage], for: sessionID)
+        setSelectedSessionMessagesIfNeeded(normalizedMessages)
+    }
+
+    private func makeOptimisticUserPayload(text: String) -> String {
+        let payload: [String: Any] = [
+            "role": "user",
+            "content": [
+                "type": "text",
+                "text": text,
+            ],
+        ]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload),
+              let encodedPayload = String(data: data, encoding: .utf8) else {
+            return text
+        }
+        return encodedPayload
     }
 
     private func setSelectedSessionMessagesIfNeeded(_ messages: [APISessionMessage]) {
