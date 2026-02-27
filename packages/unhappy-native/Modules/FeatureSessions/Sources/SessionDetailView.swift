@@ -787,6 +787,7 @@ public struct SessionDetailView: View {
             Label(selectedModelOverrideLabel, systemImage: "cpu")
                 .modifier(DockChipModifier())
         }
+        .tint(.primary)
     }
 
     private var effortMenuButton: some View {
@@ -806,6 +807,7 @@ public struct SessionDetailView: View {
             Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
                 .modifier(DockChipModifier())
         }
+        .tint(.primary)
     }
 
     private func dockChipButton(
