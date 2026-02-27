@@ -318,8 +318,10 @@ public struct SessionDetailView: View {
                     dataEncryptionKey: dataEncryptionKey
                 )
             }
-            .onChange(of: visibleTranscriptMessageIDs) { _, _ in
+            .onChange(of: visibleTranscriptMessageIDs) { oldIDs, newIDs in
                 guard shouldFollowTranscript else { return }
+                // Avoid List/UICollectionView out-of-bounds assertions during shrink updates.
+                guard newIDs.count >= oldIDs.count else { return }
                 scrollTranscriptToBottom(using: scrollProxy)
             }
             .onChange(of: scrollToBottomRequestID) { _, _ in
@@ -1128,15 +1130,18 @@ public struct SessionDetailView: View {
         using proxy: ScrollViewProxy,
         animated: Bool = true
     ) {
-        let action = {
-            proxy.scrollTo(Self.transcriptBottomAnchorID, anchor: .bottom)
-        }
-        if animated {
-            withAnimation(.easeOut(duration: 0.2)) {
+        // Schedule on the next runloop to let List reconcile its backing collection view first.
+        DispatchQueue.main.async {
+            let action = {
+                proxy.scrollTo(Self.transcriptBottomAnchorID, anchor: .bottom)
+            }
+            if animated {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    action()
+                }
+            } else {
                 action()
             }
-        } else {
-            action()
         }
     }
 
