@@ -126,6 +126,77 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries.isEmpty)
     }
 
+    @Test
+    func codexTaskStartedShowsThinkingEntry() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "task_started",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .thinking)
+    }
+
+    @Test
+    func emptyCompletedToolResultIsHidden() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "tool-result",
+                    "name": "CodexReasoning",
+                    "output": [
+                        "content": "",
+                        "status": "completed",
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.isEmpty)
+    }
+
+    @Test
+    func terminalOutputStripsAnsiEscapes() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "terminal-output",
+                    "data": "\u{001B}[32mExplored\u{001B}[0m path",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].body == "Explored path")
+    }
+
     private func makeAgentEventMessage(eventType: String, message: String?) -> APISessionMessage {
         var eventData: [String: Any] = ["type": eventType]
         if let message {

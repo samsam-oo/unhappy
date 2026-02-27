@@ -58,6 +58,13 @@ enum SessionTranscriptPresentationBuilder {
         Data("unhappy.data.encryption-key.wrap.salt.v2".utf8)
     private static let wrappedDataKeyKDFInfo =
         Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
+    private static let ansiEscapePattern = "\u{001B}\\[[0-9;?]*[ -/]*[@-~]"
+    private static let ansiEscapeRegex = try? NSRegularExpression(pattern: ansiEscapePattern)
+    private static let removableControlCharacters: CharacterSet = {
+        var set = CharacterSet.controlCharacters
+        set.remove(charactersIn: "\n\t")
+        return set
+    }()
 
     static func make(
         from message: APISessionMessage,
@@ -74,11 +81,13 @@ enum SessionTranscriptPresentationBuilder {
             messageID: message.id
         )
 
+        let visibleEntries = entries.filter { shouldDisplay(entry: $0) }
+
         return SessionTranscriptMessagePresentation(
             messageID: message.id,
             sequenceText: "#\(message.seq)",
             createdAtText: timestampFormatter(message.createdAt),
-            entries: entries
+            entries: visibleEntries
         )
     }
 
@@ -556,16 +565,24 @@ enum SessionTranscriptPresentationBuilder {
             ]
         case "tool-call":
             let name = normalizedText(dictionary["name"]) ?? "Tool"
+            let reasoningTitle = codexReasoningTitle(from: dictionary["input"])
+            let title = reasoningTitle ?? toolDisplayName(name)
+            let body = reasoningTitle == nil
+                ? stringify(dictionary["input"])
+                : stringify(dictionary["input"])
             return [
                 makeEntry(
                     id: "\(messageID)-acp-tool-call",
                     role: .agent,
                     kind: .toolCall,
-                    title: toolDisplayName(name),
-                    body: stringify(dictionary["input"])
+                    title: title,
+                    body: body
                 )
             ]
         case "tool-result", "tool-call-result":
+            if shouldHideToolResult(dictionary["output"] ?? dictionary["content"]) {
+                return []
+            }
             let name = normalizedText(dictionary["name"])
             let title = name.map { "\(toolDisplayName($0)) Result" } ?? "Tool Result"
             return [
@@ -578,13 +595,31 @@ enum SessionTranscriptPresentationBuilder {
                 )
             ]
         case "terminal-output":
+            guard let output = normalizedText(
+                stringifyToolResultContent(dictionary["data"] ?? dictionary["output"])
+            ) else {
+                return []
+            }
             return [
                 makeEntry(
                     id: "\(messageID)-acp-terminal",
                     role: .agent,
-                    kind: .toolResult,
-                    title: "Run Command Output",
-                    body: stringifyToolResultContent(dictionary["data"] ?? dictionary["output"])
+                    kind: .raw,
+                    title: nil,
+                    body: output
+                )
+            ]
+        case "tool-stream":
+            guard let output = normalizedText(dictionary["output"] ?? dictionary["text"]) else {
+                return []
+            }
+            return [
+                makeEntry(
+                    id: "\(messageID)-acp-tool-stream",
+                    role: .agent,
+                    kind: .raw,
+                    title: nil,
+                    body: output
                 )
             ]
         case "permission-request":
@@ -599,16 +634,18 @@ enum SessionTranscriptPresentationBuilder {
                     body: description
                 )
             ]
-        case "task_started", "task_complete", "turn_aborted":
+        case "task_started":
             return [
                 makeEntry(
                     id: "\(messageID)-acp-task",
-                    role: .system,
-                    kind: .event,
-                    title: type.replacingOccurrences(of: "_", with: " ").capitalized,
-                    body: stringify(dictionary)
+                    role: .agent,
+                    kind: .thinking,
+                    title: nil,
+                    body: "Thinking…"
                 )
             ]
+        case "task_complete", "turn_aborted":
+            return []
         case "token_count":
             return []
         default:
@@ -631,15 +668,23 @@ enum SessionTranscriptPresentationBuilder {
         title: String?,
         body: String
     ) -> SessionTranscriptEntry {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedBody = sanitizeText(body)
+        let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = trimmed.isEmpty ? " " : trimBody(trimmed)
+        let cleanedTitle = title.map(sanitizeText)
         return SessionTranscriptEntry(
             id: id,
             role: role,
             kind: kind,
-            title: title,
+            title: cleanedTitle,
             body: normalized
         )
+    }
+
+    private static func shouldDisplay(entry: SessionTranscriptEntry) -> Bool {
+        let hasTitle = !(entry.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let hasBody = !entry.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasTitle || hasBody
     }
 
     private static func trimBody(_ value: String) -> String {
@@ -650,7 +695,8 @@ enum SessionTranscriptPresentationBuilder {
     private static func normalizedText(_ value: Any?) -> String? {
         guard let value else { return nil }
         if let text = value as? String {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = sanitizeText(text)
+            let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
         if let number = value as? NSNumber {
@@ -673,6 +719,43 @@ enum SessionTranscriptPresentationBuilder {
             }
         }
         return stringify(value)
+    }
+
+    private static func shouldHideToolResult(_ value: Any?) -> Bool {
+        guard let object = value as? [String: Any] else { return false }
+        let status = normalizedText(object["status"])?.lowercased()
+        let contentText = extractMessageText(from: object["content"])
+        if status == "completed", contentText == nil {
+            return true
+        }
+        return false
+    }
+
+    private static func codexReasoningTitle(from value: Any?) -> String? {
+        guard let object = value as? [String: Any] else { return nil }
+        guard let title = normalizedText(object["title"]) else { return nil }
+        return title
+    }
+
+    private static func sanitizeText(_ value: String) -> String {
+        var cleaned = value
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+
+        if let regex = ansiEscapeRegex {
+            let range = NSRange(cleaned.startIndex..., in: cleaned)
+            cleaned = regex.stringByReplacingMatches(
+                in: cleaned,
+                options: [],
+                range: range,
+                withTemplate: ""
+            )
+        }
+
+        let scalars = cleaned.unicodeScalars.filter { scalar in
+            !removableControlCharacters.contains(scalar)
+        }
+        return String(String.UnicodeScalarView(scalars))
     }
 
     private static func extractMessageText(from value: Any?) -> String? {
