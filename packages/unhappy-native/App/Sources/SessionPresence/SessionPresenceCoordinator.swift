@@ -52,7 +52,7 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
             return raw
         }
         if let seq = session.seq, seq > 0 {
-            return "Session #\(seq)"
+            return "Session \(seq)"
         }
         return "Session"
     }

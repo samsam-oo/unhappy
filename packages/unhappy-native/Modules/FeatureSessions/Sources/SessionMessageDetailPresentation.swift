@@ -47,7 +47,7 @@ enum SessionMessageDetailPresentationBuilder {
 
         return SessionMessageDetailPresentation(
             id: message.id,
-            sequenceText: "#\(message.seq)",
+            sequenceText: "\(message.seq)",
             localID: message.localId,
             createdAtText: timestampFormatter(message.createdAt),
             updatedAtText: timestampFormatter(message.updatedAt),

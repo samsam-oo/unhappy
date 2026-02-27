@@ -85,7 +85,7 @@ enum SessionTranscriptPresentationBuilder {
 
         return SessionTranscriptMessagePresentation(
             messageID: message.id,
-            sequenceText: "#\(message.seq)",
+            sequenceText: "\(message.seq)",
             createdAtText: timestampFormatter(message.createdAt),
             entries: visibleEntries
         )

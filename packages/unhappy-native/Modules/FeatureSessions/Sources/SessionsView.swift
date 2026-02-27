@@ -273,7 +273,7 @@ private struct SessionsRow: View {
             return normalizedDisplayTitle
         }
         if let seq = session.seq, seq > 0 {
-            return "Session #\(seq)"
+            return "Session \(seq)"
         }
         return "Session"
     }

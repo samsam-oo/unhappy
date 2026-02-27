@@ -34,6 +34,7 @@ public struct SessionDetailView: View {
     private static let modelPickerCustomOption = "__model_custom__"
     private static let modelPickerPresetPrefix = "__model_preset__:"
     private static let effortPickerPresetPrefix = "__effort_preset__:"
+    private static let transcriptBottomAnchorID = "__session_transcript_bottom__"
 
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
@@ -105,6 +106,8 @@ public struct SessionDetailView: View {
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
     @State private var serverModelOverrideOptions: [String] = []
     @State private var queuedComposerMessages: [QueuedComposerMessage] = []
+    @State private var shouldFollowTranscript = true
+    @State private var scrollToBottomRequestID = UUID()
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
@@ -122,76 +125,90 @@ public struct SessionDetailView: View {
     }
 
     public var body: some View {
-        List {
-            Section("Session") {
-                LabeledContent("Title") {
-                    Text(currentSessionTitle)
-                        .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
+        ScrollViewReader { scrollProxy in
+            List {
+                Section("Session") {
+                    LabeledContent("Title") {
+                        Text(currentSessionTitle)
+                            .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
+                    }
+                    LabeledContent("ID") {
+                        Text(currentSession.id)
+                            .font(.footnote.monospaced())
+                    }
+                    LabeledContent("Status") {
+                        Text(currentSession.active ? "Active" : "Inactive")
+                            .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
+                    }
+                    LabeledContent("Updated") {
+                        Text(SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt))
+                    }
                 }
-                LabeledContent("ID") {
-                    Text(currentSession.id)
-                        .font(.footnote.monospaced())
-                }
-                LabeledContent("Status") {
-                    Text(currentSession.active ? "Active" : "Inactive")
-                        .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
-                }
-                LabeledContent("Updated") {
-                    Text(SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt))
-                }
-            }
 
-            Section("Messages") {
-                if viewModel.isLoadingSessionMessages {
-                    ProgressView("Loading messages…")
-                } else if let error = viewModel.selectedSessionErrorMessage {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Unable to load messages")
-                            .font(.headline)
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Retry") {
-                            Task {
-                                await viewModel.loadMessages(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token
-                                )
+                Section("Messages") {
+                    if viewModel.isLoadingSessionMessages {
+                        ProgressView("Loading messages…")
+                    } else if let error = viewModel.selectedSessionErrorMessage {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Unable to load messages")
+                                .font(.headline)
+                            Text(error)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Button("Retry") {
+                                Task {
+                                    await viewModel.loadMessages(
+                                        for: session.id,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
                             }
                         }
+                        .padding(.vertical, 8)
+                    } else if visibleTranscriptPresentations.isEmpty {
+                        Text("No synced messages yet for this session")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
+                            SessionTranscriptMessageRow(
+                                presentation: presentation
+                            )
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(
+                                EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+                            )
+                        }
                     }
-                    .padding(.vertical, 8)
-                } else if visibleTranscriptPresentations.isEmpty {
-                    Text("No synced messages yet for this session")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
-                        SessionTranscriptMessageRow(
-                            presentation: presentation
-                        )
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(
-                            EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
-                        )
-                    }
-                }
-            }
 
-        }
-        .listStyle(.plain)
-        .scrollDismissesKeyboard(.immediately)
-        .simultaneousGesture(
-            TapGesture().onEnded {
-                focusedComposerField = nil
+                    Color.clear
+                        .frame(height: 1)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .id(Self.transcriptBottomAnchorID)
+                }
+
             }
-        )
-        .safeAreaInset(edge: .bottom) {
-            bottomDock
-        }
-        .navigationTitle("Session")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
+            .listStyle(.plain)
+            .scrollDismissesKeyboard(.immediately)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    focusedComposerField = nil
+                }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8).onChanged { _ in
+                    focusedComposerField = nil
+                    guard shouldFollowTranscript else { return }
+                    shouldFollowTranscript = false
+                }
+            )
+            .safeAreaInset(edge: .bottom) {
+                bottomDock
+            }
+            .navigationTitle("Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
                     ProgressView()
@@ -237,35 +254,43 @@ public struct SessionDetailView: View {
                     }
                 }
             }
-        }
-        .onAppear {
-            if !availableEffortSelections.contains(selectedEffortOverride),
-               let first = availableEffortSelections.first {
-                selectedEffortOverride = first
             }
-            if serverModelOverrideOptions.isEmpty {
-                Task {
-                    await loadServerModelOptions()
+            .onAppear {
+                if !availableEffortSelections.contains(selectedEffortOverride),
+                   let first = availableEffortSelections.first {
+                    selectedEffortOverride = first
                 }
+                if serverModelOverrideOptions.isEmpty {
+                    Task {
+                        await loadServerModelOptions()
+                    }
+                }
+                viewModel.startSelectedSessionMessagesPolling(
+                    for: session.id,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                scrollTranscriptToBottom(using: scrollProxy, animated: false)
             }
-            viewModel.startSelectedSessionMessagesPolling(
-                for: session.id,
-                serverURLString: serverURLString,
-                token: token
-            )
-        }
-        .refreshable {
-            await viewModel.loadMessages(
-                for: session.id,
-                serverURLString: serverURLString,
-                token: token
-            )
-        }
-        .onDisappear {
-            viewModel.stopSelectedSessionMessagesPolling()
-            viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
-        }
-        .sheet(isPresented: $showRenameSheet) {
+            .onChange(of: visibleTranscriptMessageIDs) { _, _ in
+                guard shouldFollowTranscript else { return }
+                scrollTranscriptToBottom(using: scrollProxy)
+            }
+            .onChange(of: scrollToBottomRequestID) { _, _ in
+                scrollTranscriptToBottom(using: scrollProxy)
+            }
+            .refreshable {
+                await viewModel.loadMessages(
+                    for: session.id,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+            }
+            .onDisappear {
+                viewModel.stopSelectedSessionMessagesPolling()
+                viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
+            }
+            .sheet(isPresented: $showRenameSheet) {
             NavigationStack {
                 Form {
                     Section("Session Title") {
@@ -302,8 +327,8 @@ public struct SessionDetailView: View {
                 }
             }
             .presentationDetents([.medium])
-        }
-        .sheet(item: $presentedQuickTool) { tool in
+            }
+            .sheet(item: $presentedQuickTool) { tool in
             NavigationStack {
                 quickToolDestinationView(tool)
                     .toolbar {
@@ -312,8 +337,8 @@ public struct SessionDetailView: View {
                         }
                     }
             }
-        }
-        .sheet(isPresented: $showCodexThreadsSheet) {
+            }
+            .sheet(isPresented: $showCodexThreadsSheet) {
             NavigationStack {
                 List {
                     Section("Path Filter") {
@@ -417,8 +442,8 @@ public struct SessionDetailView: View {
                 }
             }
             .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $showClaudeSessionsSheet) {
+            }
+            .sheet(isPresented: $showClaudeSessionsSheet) {
             NavigationStack {
                 List {
                     Section("Path Filter") {
@@ -522,8 +547,8 @@ public struct SessionDetailView: View {
                 }
             }
             .presentationDetents([.medium, .large])
-        }
-        .alert(
+            }
+            .alert(
             "Delete session?",
             isPresented: $showDeleteConfirmation,
             actions: {
@@ -544,7 +569,8 @@ public struct SessionDetailView: View {
             message: {
                 Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
             }
-        )
+            )
+        }
     }
 
     private var currentSession: APISession {
@@ -569,7 +595,7 @@ public struct SessionDetailView: View {
             return currentSessionDisplayTitle
         }
         if let seq = currentSession.seq, seq > 0 {
-            return "Session #\(seq)"
+            return "Session \(seq)"
         }
         return "Session"
     }
@@ -698,6 +724,8 @@ public struct SessionDetailView: View {
                 token: token
             )
             if sent {
+                shouldFollowTranscript = true
+                scrollToBottomRequestID = UUID()
                 if steerMode == .queue {
                     queuedComposerMessages.append(
                         QueuedComposerMessage(id: UUID(), text: text)
@@ -1015,6 +1043,22 @@ public struct SessionDetailView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private func scrollTranscriptToBottom(
+        using proxy: ScrollViewProxy,
+        animated: Bool = true
+    ) {
+        let action = {
+            proxy.scrollTo(Self.transcriptBottomAnchorID, anchor: .bottom)
+        }
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                action()
+            }
+        } else {
+            action()
+        }
+    }
+
     private var parsedSessionFlavor: SessionComposerFlavor? {
         guard let raw = SessionPayloadValueResolver.firstString(
             in: [decodedSessionMetadata, decodedSessionAgentState],
@@ -1128,6 +1172,10 @@ public struct SessionDetailView: View {
             let presentation = transcriptPresentation(for: message)
             return presentation.entries.isEmpty ? nil : presentation
         }
+    }
+
+    private var visibleTranscriptMessageIDs: [String] {
+        visibleTranscriptPresentations.map(\.messageID)
     }
 
     private var latestAgentThinkingEntry: SessionTranscriptEntry? {

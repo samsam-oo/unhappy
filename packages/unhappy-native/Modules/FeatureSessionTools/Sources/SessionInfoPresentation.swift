@@ -54,7 +54,7 @@ enum SessionInfoPresentationBuilder {
                 "machineId", "machineID", "machine_id",
             ]),
             active: session.active,
-            sequenceText: session.seq.map { "#\($0)" },
+            sequenceText: session.seq.map(String.init),
             createdAtText: timestampFormatter(session.createdAt),
             activeAtText: timestampFormatter(session.activeAt),
             updatedAtText: timestampFormatter(session.updatedAt),
