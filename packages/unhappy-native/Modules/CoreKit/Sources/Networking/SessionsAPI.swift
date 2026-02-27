@@ -954,7 +954,11 @@ public protocol SessionMessaging: Sendable {
         token: String,
         sessionID: String,
         text: String,
-        steerMode: APISessionSteerMode?
+        steerMode: APISessionSteerMode?,
+        model: String?,
+        resetModel: Bool,
+        reasoningEffort: APISessionReasoningEffort?,
+        resetReasoningEffort: Bool
     ) async throws -> APISessionSendMessageResult
 }
 
@@ -1377,7 +1381,11 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         token: String,
         sessionID: String,
         text: String,
-        steerMode: APISessionSteerMode?
+        steerMode: APISessionSteerMode?,
+        model: String?,
+        resetModel: Bool,
+        reasoningEffort: APISessionReasoningEffort?,
+        resetReasoningEffort: Bool
     ) async throws -> APISessionSendMessageResult {
         let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedText.isEmpty else {
@@ -1387,6 +1395,19 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         var params: [String: Any] = ["text": normalizedText]
         if let steerMode {
             params["steerMode"] = steerMode.rawValue
+        }
+        if resetModel {
+            params["model"] = NSNull()
+        } else if let model {
+            let normalizedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalizedModel.isEmpty {
+                params["model"] = normalizedModel
+            }
+        }
+        if resetReasoningEffort {
+            params["effort"] = NSNull()
+        } else if let reasoningEffort {
+            params["effort"] = reasoningEffort.rawValue
         }
 
         let data = try await rpcCommandService.invokeCommand(

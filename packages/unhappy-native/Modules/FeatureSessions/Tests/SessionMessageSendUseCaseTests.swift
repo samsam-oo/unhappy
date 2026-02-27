@@ -47,7 +47,11 @@ private struct MessageService: SessionMessaging {
         token: String,
         sessionID: String,
         text: String,
-        steerMode: APISessionSteerMode?
+        steerMode: APISessionSteerMode?,
+        model: String?,
+        resetModel: Bool,
+        reasoningEffort: APISessionReasoningEffort?,
+        resetReasoningEffort: Bool
     ) async throws -> APISessionSendMessageResult {
         result
     }
