@@ -30,10 +30,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
 import React from 'react';
-import {
-  CodexAppServerClient,
-  type CodexThreadSummary,
-} from './codexAppServerClient';
+import { CodexAppServerClient } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
 import { DiffProcessor } from './utils/diffProcessor';
 import {
@@ -177,30 +174,6 @@ function isExecOutputStreamEvent(msg: any): boolean {
     type === 'exec_command_stderr' ||
     (type.startsWith('exec_command_') && type.includes('output'))
   );
-}
-
-function formatThreadDateLabel(value: string | undefined): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString();
-}
-
-function buildCodexThreadListMessage(threads: CodexThreadSummary[]): string {
-  const lines = ['Existing Codex sessions for this project:'];
-  for (let i = 0; i < threads.length; i += 1) {
-    const thread = threads[i];
-    const title =
-      typeof thread.name === 'string' && thread.name.trim()
-        ? thread.name.trim()
-        : '(untitled)';
-    const when = formatThreadDateLabel(thread.updatedAt ?? thread.createdAt);
-    const parts = [`${i + 1}. ${title}`];
-    if (when) parts.push(when);
-    parts.push(thread.id);
-    lines.push(parts.join(' • '));
-  }
-  return lines.join('\n');
 }
 
 function extractExecOutputChunk(msg: any): string | null {
@@ -1492,10 +1465,6 @@ export async function runCodex(opts: {
         `Loaded ${recentThreads.length} existing Codex sessions.`,
         'status',
       );
-      session.sendCodexMessage({
-        type: 'message',
-        message: buildCodexThreadListMessage(recentThreads),
-      });
     }
 
     let wasCreated = false;
