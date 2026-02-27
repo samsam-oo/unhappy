@@ -24,6 +24,15 @@ public struct SessionDetailView: View {
         case customModel
     }
 
+    private enum SessionQuickToolsAnchor: String {
+        case model
+        case effort
+        case info
+        case files
+        case review
+        case worktree
+    }
+
     private struct QueuedComposerMessage: Identifiable, Equatable {
         let id: UUID
         let text: String
@@ -117,6 +126,8 @@ public struct SessionDetailView: View {
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var subAgentInProgressCount = 0
+    @State private var quickToolsScrollPositionID: String? = SessionQuickToolsAnchor.model.rawValue
+    @GestureState private var isInteractingWithBottomDock = false
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
@@ -200,13 +211,16 @@ public struct SessionDetailView: View {
             }
             .listStyle(.plain)
             .scrollDismissesKeyboard(.immediately)
+            .scrollDisabled(isInteractingWithBottomDock)
             .simultaneousGesture(
                 TapGesture().onEnded {
                     focusedComposerField = nil
                 }
             )
             .simultaneousGesture(
-                DragGesture(minimumDistance: 8).onChanged { _ in
+                DragGesture(minimumDistance: 8).onChanged { value in
+                    // Only treat mostly-vertical drags as transcript scrolling.
+                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
                     focusedComposerField = nil
                     guard shouldFollowTranscript else { return }
                     shouldFollowTranscript = false
@@ -303,13 +317,6 @@ public struct SessionDetailView: View {
             }
             .onChange(of: scrollToBottomRequestID) { _, _ in
                 scrollTranscriptToBottom(using: scrollProxy)
-            }
-            .refreshable {
-                await viewModel.loadMessages(
-                    for: session.id,
-                    serverURLString: serverURLString,
-                    token: token
-                )
             }
             .onDisappear {
                 viewModel.stopSelectedSessionMessagesPolling()
@@ -632,6 +639,11 @@ public struct SessionDetailView: View {
         }
         .padding(.top, 8)
         .background(.ultraThinMaterial)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
+                state = true
+            }
+        )
     }
 
     private var composerBar: some View {
@@ -826,9 +838,11 @@ public struct SessionDetailView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 modelMenuButton
+                    .id(SessionQuickToolsAnchor.model.rawValue)
 
                 if supportsReasoningEffortOverride {
                     effortMenuButton
+                        .id(SessionQuickToolsAnchor.effort.rawValue)
                 }
 
                 quickToolButton(
@@ -836,24 +850,37 @@ public struct SessionDetailView: View {
                     systemImage: "info.circle",
                     tool: .info
                 )
+                .id(SessionQuickToolsAnchor.info.rawValue)
                 quickToolButton(
                     title: "Files",
                     systemImage: "doc.text",
                     tool: .files
                 )
+                .id(SessionQuickToolsAnchor.files.rawValue)
                 quickToolButton(
                     title: "Diff",
                     systemImage: "doc.text.magnifyingglass",
                     tool: .review
                 )
+                .id(SessionQuickToolsAnchor.review.rawValue)
                 quickToolButton(
                     title: "Worktree",
                     systemImage: "checkmark.circle",
                     tool: .worktree
                 )
+                .id(SessionQuickToolsAnchor.worktree.rawValue)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $quickToolsScrollPositionID, anchor: .leading)
+        .onChange(of: supportsReasoningEffortOverride) { _, enabled in
+            guard !enabled else { return }
+            if quickToolsScrollPositionID == SessionQuickToolsAnchor.effort.rawValue {
+                quickToolsScrollPositionID = SessionQuickToolsAnchor.model.rawValue
+            }
         }
     }
 
