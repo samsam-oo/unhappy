@@ -514,6 +514,18 @@ public final class NewSessionViewModel: ObservableObject {
         }
     }
 
+    public func setSelectedModel(_ model: String) {
+        selectedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        selectedModelByAgent[selectedAgent] = selectedModel
+        lastSelectedAgent = selectedAgent
+    }
+
+    public func setSelectedReasoningEffort(_ effort: NewSessionReasoningEffort) {
+        selectedReasoningEffort = effort
+        selectedReasoningEffortByAgent[selectedAgent] = selectedReasoningEffort
+        lastSelectedAgent = selectedAgent
+    }
+
     public func selectDirectoryEntry(
         _ entry: APIMachineDirectoryEntry,
         serverURLString: String,

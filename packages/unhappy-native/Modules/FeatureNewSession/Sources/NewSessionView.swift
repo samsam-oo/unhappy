@@ -141,13 +141,23 @@ public struct NewSessionView: View {
                         }
                     }
 
-                    Picker("Model", selection: $viewModel.selectedModel) {
-                        Text("Default").tag("")
+                    Menu {
+                        Button("Default") {
+                            viewModel.setSelectedModel("")
+                        }
                         ForEach(viewModel.availableModels, id: \.self) { model in
-                            Text(model).tag(model)
+                            Button(model) {
+                                viewModel.setSelectedModel(model)
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text("Model")
+                            Spacer()
+                            Text(selectedModelDisplayValue)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .pickerStyle(.navigationLink)
 
                     if let error = viewModel.modelsErrorMessage {
                         Text(error)
@@ -164,12 +174,20 @@ public struct NewSessionView: View {
                         .font(.footnote)
                     }
 
-                    Picker("Reasoning Effort", selection: $viewModel.selectedReasoningEffort) {
-                        ForEach(viewModel.availableReasoningEfforts, id: \.self) { value in
-                            Text(value.displayName).tag(value)
+                    Menu {
+                        ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
+                            Button(value.displayName) {
+                                viewModel.setSelectedReasoningEffort(value)
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text("Reasoning Effort")
+                            Spacer()
+                            Text(viewModel.selectedReasoningEffort.displayName)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .pickerStyle(.navigationLink)
 
                     Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
                         showCodexThreadsSheet = true
@@ -758,6 +776,11 @@ public struct NewSessionView: View {
 
     private var hasResumeSelection: Bool {
         selectedCodexResumeID != nil || selectedClaudeResumeID != nil
+    }
+
+    private var selectedModelDisplayValue: String {
+        let normalized = viewModel.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? "Default" : normalized
     }
 
     private var selectedCodexResumeID: String? {
