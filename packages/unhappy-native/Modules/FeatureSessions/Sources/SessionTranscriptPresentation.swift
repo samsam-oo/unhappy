@@ -530,6 +530,10 @@ enum SessionTranscriptPresentationBuilder {
                 extractMessageText(from: dictionary["text"]) ??
                 extractMessageText(from: dictionary["content"]) ??
                 stringify(dictionary)
+            if type == "message",
+               text.hasPrefix("Existing Codex sessions for this project:") {
+                return []
+            }
             return [
                 makeEntry(
                     id: "\(messageID)-acp-\(type)",

@@ -104,6 +104,28 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries[0].body.contains("nested response"))
     }
 
+    @Test
+    func codexBootstrapThreadListMessageIsHidden() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "message",
+                    "message": "Existing Codex sessions for this project:\n1. (untitled)",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.isEmpty)
+    }
+
     private func makeAgentEventMessage(eventType: String, message: String?) -> APISessionMessage {
         var eventData: [String: Any] = ["type": eventType]
         if let message {
