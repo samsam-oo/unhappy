@@ -16,6 +16,18 @@ import {
 } from "./codexPublicCommands";
 
 export function machinesRoutes(app: Fastify) {
+    function equalBytes(left: Uint8Array | null, right: Uint8Array | null): boolean {
+        if (!left && !right) return true;
+        if (!left || !right) return false;
+        if (left.length !== right.length) return false;
+        for (let i = 0; i < left.length; i += 1) {
+            if (left[i] !== right[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     async function ensureMachineBelongsToUser(userId: string, machineId: string): Promise<boolean> {
         const machine = await db.machine.findFirst({
             where: {
@@ -72,20 +84,78 @@ export function machinesRoutes(app: Fastify) {
         });
 
         if (machine) {
-            // Machine exists - just return it
-            log({ module: 'machines', machineId: id, userId }, 'Found existing machine');
+            const incomingDataEncryptionKey = dataEncryptionKey
+                ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64'))
+                : null;
+            const metadataChanged = machine.metadata !== metadata;
+            const daemonStateProvided = typeof daemonState === 'string';
+            const daemonStateChanged = daemonStateProvided && machine.daemonState !== daemonState;
+            const dataEncryptionKeyChanged =
+                incomingDataEncryptionKey !== null &&
+                !equalBytes(machine.dataEncryptionKey, incomingDataEncryptionKey);
+
+            let currentMachine = machine;
+            if (metadataChanged || daemonStateChanged || dataEncryptionKeyChanged) {
+                log(
+                    {
+                        module: 'machines',
+                        machineId: id,
+                        userId,
+                        metadataChanged,
+                        daemonStateChanged,
+                        dataEncryptionKeyChanged
+                    },
+                    'Refreshing existing machine metadata/state'
+                );
+
+                currentMachine = await db.machine.update({
+                    where: { id },
+                    data: {
+                        metadata: metadataChanged ? metadata : machine.metadata,
+                        metadataVersion: metadataChanged ? machine.metadataVersion + 1 : machine.metadataVersion,
+                        daemonState: daemonStateChanged ? daemonState : machine.daemonState,
+                        daemonStateVersion: daemonStateChanged ? machine.daemonStateVersion + 1 : machine.daemonStateVersion,
+                        dataEncryptionKey: dataEncryptionKeyChanged ? incomingDataEncryptionKey : machine.dataEncryptionKey
+                    }
+                });
+
+                if (metadataChanged || daemonStateChanged) {
+                    const updSeq = await allocateUserSeq(userId);
+                    const updatePayload = buildUpdateMachineUpdate(
+                        id,
+                        updSeq,
+                        randomKeyNaked(12),
+                        metadataChanged
+                            ? { value: metadata, version: currentMachine.metadataVersion }
+                            : undefined,
+                        daemonStateChanged
+                            ? { value: daemonState!, version: currentMachine.daemonStateVersion }
+                            : undefined
+                    );
+                    eventRouter.emitUpdate({
+                        userId,
+                        payload: updatePayload,
+                        recipientFilter: { type: 'machine-scoped-only', machineId: id }
+                    });
+                }
+            } else {
+                log({ module: 'machines', machineId: id, userId }, 'Found existing machine');
+            }
+
             return reply.send({
                 machine: {
-                    id: machine.id,
-                    metadata: machine.metadata,
-                    metadataVersion: machine.metadataVersion,
-                    daemonState: machine.daemonState,
-                    daemonStateVersion: machine.daemonStateVersion,
-                    dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
-                    active: machine.active,
-                    activeAt: machine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
-                    createdAt: machine.createdAt.getTime(),
-                    updatedAt: machine.updatedAt.getTime()
+                    id: currentMachine.id,
+                    metadata: currentMachine.metadata,
+                    metadataVersion: currentMachine.metadataVersion,
+                    daemonState: currentMachine.daemonState,
+                    daemonStateVersion: currentMachine.daemonStateVersion,
+                    dataEncryptionKey: currentMachine.dataEncryptionKey
+                        ? Buffer.from(currentMachine.dataEncryptionKey).toString('base64')
+                        : null,
+                    active: currentMachine.active,
+                    activeAt: currentMachine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
+                    createdAt: currentMachine.createdAt.getTime(),
+                    updatedAt: currentMachine.updatedAt.getTime()
                 }
             });
         } else {
