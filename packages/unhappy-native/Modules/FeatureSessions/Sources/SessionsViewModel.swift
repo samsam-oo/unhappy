@@ -530,7 +530,7 @@ public final class SessionsViewModel: ObservableObject {
                 modelOverride: modelOverride,
                 effortOverride: effortOverride
             )
-            sendMessageStatusMessage = steerMode == .immediate ? "Steer sent" : "Queued message sent"
+            sendMessageStatusMessage = nil
             sendMessageErrorMessage = nil
             await loadMessages(for: sessionID, serverURLString: serverURLString, token: token)
             return true
