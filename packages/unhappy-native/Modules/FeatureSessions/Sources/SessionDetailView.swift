@@ -162,13 +162,13 @@ public struct SessionDetailView: View {
                         }
                     }
                     .padding(.vertical, 8)
-                } else if viewModel.selectedSessionMessages.isEmpty {
+                } else if visibleTranscriptPresentations.isEmpty {
                     Text("No synced messages yet for this session")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(viewModel.selectedSessionMessages) { message in
+                    ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
                         SessionTranscriptMessageRow(
-                            presentation: transcriptPresentation(for: message)
+                            presentation: presentation
                         )
                         .listRowSeparator(.hidden)
                         .listRowInsets(
@@ -585,6 +585,17 @@ public struct SessionDetailView: View {
 
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let thinkingEntry = latestAgentThinkingEntry {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(thinkingEntry.body)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
             if !queuedComposerMessages.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(queuedComposerMessages) { item in
@@ -1111,6 +1122,26 @@ public struct SessionDetailView: View {
             dataEncryptionKey: currentSession.dataEncryptionKey
         )
     }
+
+    private var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {
+        viewModel.selectedSessionMessages.compactMap { message in
+            let presentation = transcriptPresentation(for: message)
+            return presentation.entries.isEmpty ? nil : presentation
+        }
+    }
+
+    private var latestAgentThinkingEntry: SessionTranscriptEntry? {
+        for presentation in visibleTranscriptPresentations.reversed() {
+            for entry in presentation.entries.reversed() {
+                guard entry.role == .agent else { continue }
+                if entry.kind == .thinking {
+                    return entry
+                }
+                return nil
+            }
+        }
+        return nil
+    }
 }
 
 private struct DockChipModifier: ViewModifier {
@@ -1274,6 +1305,7 @@ private struct SessionTranscriptMessageRow: View {
 
 private struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
+    @State private var isExpanded = false
 
     var body: some View {
         if isSystemEvent {
@@ -1288,6 +1320,45 @@ private struct SessionTranscriptLogLine: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
+        } else if isCollapsibleToolEntry {
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(collapsibleTitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                if isExpanded {
+                    Text(entry.body)
+                        .font(bodyFont)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                        .lineLimit(nil)
+                } else if let preview = collapsedPreview {
+                    Text(preview)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(bubbleColor)
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 if let title = entry.title, !title.isEmpty {
@@ -1330,6 +1401,34 @@ private struct SessionTranscriptLogLine: View {
             return Color.blue.opacity(0.12)
         }
         return Color.primary.opacity(0.04)
+    }
+
+    private var isCollapsibleToolEntry: Bool {
+        entry.kind == .toolCall || entry.kind == .toolResult
+    }
+
+    private var collapsibleTitle: String {
+        if let title = entry.title, !title.isEmpty {
+            return title
+        }
+        switch entry.kind {
+        case .toolCall:
+            return "Tool call"
+        case .toolResult:
+            return "Tool result"
+        default:
+            return "Details"
+        }
+    }
+
+    private var collapsedPreview: String? {
+        let trimmed = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let singleLine = trimmed.replacingOccurrences(of: "\n", with: " ")
+        if singleLine.count > 120 {
+            return String(singleLine.prefix(120)) + "…"
+        }
+        return singleLine
     }
 
     private var bodyFont: Font {
