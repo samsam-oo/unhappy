@@ -1138,11 +1138,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
             if (200..<300).contains(codexHTTP.statusCode) {
                 return
             }
-            // Older servers or non-codex sessions may not support codex rename RPC.
-            // Fall back to legacy session title endpoint in these cases.
-            if codexHTTP.statusCode != 404 && codexHTTP.statusCode != 409 && codexHTTP.statusCode != 502 {
-                throw SessionsAPIError.invalidHTTPStatus(codexHTTP.statusCode)
-            }
+            throw SessionsAPIError.invalidHTTPStatus(codexHTTP.statusCode)
         }
 
         let legacyRequest = try SessionsAPI.makeSetTitleRequest(

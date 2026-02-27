@@ -25,11 +25,11 @@ enum MachineDisplayNameResolver {
             return machine.id
         }
 
-        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
-            return host
-        }
         if let name = firstString(in: metadata, keys: ["displayName", "name", "machineName"]) {
             return name
+        }
+        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
+            return host
         }
         return machine.id
     }
@@ -71,13 +71,31 @@ enum MachineDisplayNameResolver {
             return nil
         }
         if let string = value as? String {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
+            return normalizeDisplayValue(string)
         }
         if let number = value as? NSNumber {
-            return number.stringValue
+            return normalizeDisplayValue(number.stringValue)
         }
         return nil
+    }
+
+    private static func normalizeDisplayValue(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let withoutLocalSuffix = trimmed.replacingOccurrences(
+            of: #"\.local$"#,
+            with: "",
+            options: .regularExpression
+        )
+        let lowered = withoutLocalSuffix.lowercased()
+        let blockedValues: Set<String> = [
+            "mac",
+            "localhost",
+            "unknown-host",
+        ]
+        guard !blockedValues.contains(lowered) else { return nil }
+        return withoutLocalSuffix
     }
 
     private static func firstValue(in object: Any?, matching keys: Set<String>) -> Any? {
