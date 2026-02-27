@@ -587,10 +587,12 @@ public struct SessionDetailView: View {
             }
 
             HStack(spacing: 10) {
-                Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send") {
+                Spacer(minLength: 0)
+
+                Button("Queue") {
                     submitDraftMessage(with: .queue)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered)
                 .disabled(
                     viewModel.isSendingMessage(sessionID: session.id) ||
                     draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -599,9 +601,12 @@ public struct SessionDetailView: View {
                 Button {
                     submitDraftMessage(with: .immediate)
                 } label: {
-                    Label("Now", systemImage: "bolt.fill")
+                    Label(
+                        viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
+                        systemImage: "paperplane.fill"
+                    )
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .disabled(
                     viewModel.isSendingMessage(sessionID: session.id) ||
                     draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
