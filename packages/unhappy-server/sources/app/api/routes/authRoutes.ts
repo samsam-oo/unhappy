@@ -8,21 +8,24 @@ import {
     generateKeyPairSync,
     hkdfSync,
     randomBytes,
+    verify,
 } from "node:crypto";
 import type { KeyObject } from "node:crypto";
-import tweetnacl from "tweetnacl";
 import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
 
 const AUTH_REQUEST_TTL_MS = 5 * 60 * 1000;
-const AUTH_ENVELOPE_VERSION = 1;
+const AUTH_ENVELOPE_VERSION = 2;
 const AUTH_ENVELOPE_PUBLIC_KEY_LENGTH = 32;
 const AUTH_ENVELOPE_NONCE_LENGTH = 12;
 const AUTH_ENVELOPE_TAG_LENGTH = 16;
-const AUTH_ENVELOPE_KDF_SALT = Buffer.from("unhappy.auth.envelope.salt.v1", "utf8");
-const AUTH_ENVELOPE_KDF_INFO = Buffer.from("unhappy.auth.envelope.info.v1", "utf8");
+const AUTH_ENVELOPE_KDF_SALT = Buffer.from("unhappy.auth.envelope.salt.v2", "utf8");
+const AUTH_ENVELOPE_KDF_INFO = Buffer.from("unhappy.auth.envelope.info.v2", "utf8");
 const X25519_SPKI_PREFIX = Buffer.from("302a300506032b656e032100", "hex");
+const ED25519_PUBLIC_KEY_LENGTH = 32;
+const ED25519_SIGNATURE_LENGTH = 64;
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 
 function isAuthRequestExpired(createdAt: Date): boolean {
     return Date.now() - createdAt.getTime() > AUTH_REQUEST_TTL_MS;
@@ -48,9 +51,7 @@ function encryptForPublicKey(data: Uint8Array, recipientPublicKey: Uint8Array): 
         hkdfSync("sha256", sharedSecret, AUTH_ENVELOPE_KDF_SALT, AUTH_ENVELOPE_KDF_INFO, 32),
     );
     const nonce = randomBytes(AUTH_ENVELOPE_NONCE_LENGTH);
-    const cipher = createCipheriv("chacha20-poly1305", symmetricKey, nonce, {
-        authTagLength: AUTH_ENVELOPE_TAG_LENGTH,
-    });
+    const cipher = createCipheriv("aes-256-gcm", symmetricKey, nonce);
     const ciphertext = Buffer.concat([
         cipher.update(Buffer.from(data)),
         cipher.final(),
@@ -63,6 +64,30 @@ function encryptForPublicKey(data: Uint8Array, recipientPublicKey: Uint8Array): 
         ciphertext,
         tag,
     ]));
+}
+
+function isValidAuthSignature(
+    challenge: Uint8Array,
+    signature: Uint8Array,
+    publicKey: Uint8Array,
+): boolean {
+    if (publicKey.length !== ED25519_PUBLIC_KEY_LENGTH) {
+        return false;
+    }
+    if (signature.length !== ED25519_SIGNATURE_LENGTH) {
+        return false;
+    }
+
+    try {
+        const publicKeyObject = createPublicKey({
+            key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(publicKey)]),
+            format: "der",
+            type: "spki",
+        });
+        return verify(null, challenge, publicKeyObject, signature);
+    } catch {
+        return false;
+    }
 }
 
 function isValidAuthPublicKey(publicKey: Uint8Array): boolean {
@@ -108,7 +133,7 @@ export function authRoutes(app: Fastify) {
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const challenge = privacyKit.decodeBase64(request.body.challenge);
         const signature = privacyKit.decodeBase64(request.body.signature);
-        const isValid = tweetnacl.sign.detached.verify(challenge, signature, publicKey);
+        const isValid = isValidAuthSignature(challenge, signature, publicKey);
         if (!isValid) {
             return reply.code(401).send({ error: 'Invalid signature' });
         }

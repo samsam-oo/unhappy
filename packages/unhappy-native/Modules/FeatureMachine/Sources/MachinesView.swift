@@ -66,10 +66,17 @@ private struct MachineRow: View {
     let machine: APIMachine
 
     var body: some View {
+        let displayName = MachineDisplayNameResolver.displayName(for: machine)
         VStack(alignment: .leading, spacing: 6) {
-            Text(machine.id)
-                .font(.footnote.monospaced())
+            Text(displayName)
+                .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
+            if displayName != machine.id {
+                Text(machine.id)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             HStack(spacing: 8) {
                 Circle()
                     .fill(machine.active ? .green : .gray)

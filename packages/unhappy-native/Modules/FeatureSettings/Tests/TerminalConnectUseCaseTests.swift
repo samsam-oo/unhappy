@@ -77,7 +77,7 @@ struct TerminalConnectUseCaseTests {
         #expect(state == .authorized)
 
         let encryptedMessage = try #require(encryptor.lastMessage)
-        #expect(encryptedMessage.first == 0)
+        #expect(encryptedMessage.first == 2)
         #expect(Data(encryptedMessage.dropFirst()) == storedDataKey)
 
         let approveCall = await service.lastApproveCall

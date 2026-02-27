@@ -26,8 +26,13 @@ public struct MachineDetailView: View {
 
     public var body: some View {
         let presentation = MachineDetailPresentationBuilder.make(from: machine)
+        let machineDisplayName = MachineDisplayNameResolver.displayName(for: machine)
         List {
             Section("Machine") {
+                LabeledContent("Name") {
+                    Text(machineDisplayName)
+                        .lineLimit(1)
+                }
                 LabeledContent("ID") {
                     Text(machine.id)
                         .font(.footnote.monospaced())
@@ -186,7 +191,7 @@ public struct MachineDetailView: View {
                 }
             }
         }
-        .navigationTitle("Machine")
+        .navigationTitle(machineDisplayName == machine.id ? "Machine" : machineDisplayName)
         .navigationBarTitleDisplayMode(.inline)
         .alert(
             "Stop daemon?",

@@ -1,10 +1,21 @@
 import Foundation
 import CryptoKit
-import TweetNacl
 import CoreKit
 
 enum NewSessionMachinePresentation {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
+    private static let payloadBundleVersion: UInt8 = 2
+    private static let wrappedDataKeyBundleVersion: UInt8 = 2
+    private static let x25519PublicKeyLength = 32
+    private static let aesGCMNonceLength = 12
+    private static let aesGCMTagLength = 16
+    private static let minimumPayloadBundleLength = 1 + aesGCMNonceLength + aesGCMTagLength
+    private static let minimumWrappedDataKeyBundleLength =
+        1 + x25519PublicKeyLength + aesGCMNonceLength + aesGCMTagLength
+    private static let wrappedDataKeyKDFSalt =
+        Data("unhappy.data.encryption-key.wrap.salt.v2".utf8)
+    private static let wrappedDataKeyKDFInfo =
+        Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
 
     static func displayName(for machine: APIMachine) -> String {
         let metadata = decodeMetadata(machine: machine)
@@ -29,12 +40,6 @@ enum NewSessionMachinePresentation {
 
         if let keyData = resolveDataEncryptionKey(raw: machine.dataEncryptionKey),
            let decrypted = decryptDataKeyPayload(payload: payload, keyData: keyData),
-           let parsed = parseJSONObject(fromData: decrypted) {
-            return parsed
-        }
-
-        if let accountSecret = loadAccountSecret(),
-           let decrypted = decryptLegacyPayload(payload: payload, secretKey: accountSecret),
            let parsed = parseJSONObject(fromData: decrypted) {
             return parsed
         }
@@ -102,36 +107,62 @@ enum NewSessionMachinePresentation {
     private static func resolveDataEncryptionKey(raw: String?) -> Data? {
         guard let raw else { return nil }
         guard let decoded = decodeBase64(raw) else { return nil }
-        if decoded.count == 32 {
-            return decoded
-        }
-        guard decoded.count > 1, decoded.first == 0 else {
-            return nil
-        }
         guard
             let accountSecret = loadAccountSecret(),
             let contentSecret = deriveContentBoxSecretKey(fromAccountSecret: accountSecret)
         else {
             return nil
         }
-        let wrappedKey = decoded.subdata(in: 1..<decoded.count)
-        return decryptWrappedDataKey(bundle: wrappedKey, secretKey: contentSecret)
+        return decryptWrappedDataKey(bundle: decoded, secretKey: contentSecret)
     }
 
     private static func decryptWrappedDataKey(bundle: Data, secretKey: Data) -> Data? {
-        guard secretKey.count == 32, bundle.count > 56 else {
+        guard
+            secretKey.count == x25519PublicKeyLength,
+            bundle.count >= minimumWrappedDataKeyBundleLength,
+            bundle.first == wrappedDataKeyBundleVersion
+        else {
             return nil
         }
-        let ephemeralPublicKey = bundle.prefix(32)
-        let nonce = bundle.dropFirst(32).prefix(24)
-        let encryptedPayload = bundle.dropFirst(56)
+
+        let ephemeralStart = 1
+        let ephemeralEnd = ephemeralStart + x25519PublicKeyLength
+        let nonceStart = ephemeralEnd
+        let nonceEnd = nonceStart + aesGCMNonceLength
+
+        let ephemeralPublicKeyData = bundle.subdata(in: ephemeralStart..<ephemeralEnd)
+        let nonceData = bundle.subdata(in: nonceStart..<nonceEnd)
+        let encryptedAndTag = bundle.suffix(from: nonceEnd)
+        guard encryptedAndTag.count >= aesGCMTagLength else {
+            return nil
+        }
+
+        let ciphertextData = encryptedAndTag.dropLast(aesGCMTagLength)
+        let tagData = encryptedAndTag.suffix(aesGCMTagLength)
+
         do {
-            let opened = try NaclBox.open(
-                message: Data(encryptedPayload),
-                nonce: Data(nonce),
-                publicKey: Data(ephemeralPublicKey),
-                secretKey: secretKey
+            let recipientPrivateKey = try Curve25519.KeyAgreement.PrivateKey(
+                rawRepresentation: secretKey
             )
+            let ephemeralPublicKey = try Curve25519.KeyAgreement.PublicKey(
+                rawRepresentation: ephemeralPublicKeyData
+            )
+            let sharedSecret = try recipientPrivateKey.sharedSecretFromKeyAgreement(
+                with: ephemeralPublicKey
+            )
+            let symmetricKey = sharedSecret.hkdfDerivedSymmetricKey(
+                using: SHA256.self,
+                salt: wrappedDataKeyKDFSalt,
+                sharedInfo: wrappedDataKeyKDFInfo,
+                outputByteCount: 32
+            )
+            let nonce = try AES.GCM.Nonce(data: nonceData)
+            let sealed = try AES.GCM.SealedBox(
+                nonce: nonce,
+                ciphertext: Data(ciphertextData),
+                tag: Data(tagData)
+            )
+            let opened = try AES.GCM.open(sealed, using: symmetricKey)
             return opened.count == 32 ? opened : nil
         } catch {
             return nil
@@ -145,41 +176,33 @@ enum NewSessionMachinePresentation {
         guard let bundle = decodeBase64(payload) else {
             return nil
         }
-        guard bundle.count >= (1 + 12 + 16), bundle.first == 0 else {
+        guard
+            bundle.count >= minimumPayloadBundleLength,
+            bundle.first == payloadBundleVersion
+        else {
             return nil
         }
 
-        let nonceData = bundle.subdata(in: 1..<13)
-        let tagData = bundle.suffix(16)
-        let ciphertextData = bundle.subdata(in: 13..<(bundle.count - 16))
+        let nonceStart = 1
+        let nonceEnd = nonceStart + aesGCMNonceLength
+        let nonceData = bundle.subdata(in: nonceStart..<nonceEnd)
+        let encryptedAndTag = bundle.suffix(from: nonceEnd)
+        guard encryptedAndTag.count >= aesGCMTagLength else {
+            return nil
+        }
+
+        let ciphertextData = encryptedAndTag.dropLast(aesGCMTagLength)
+        let tagData = encryptedAndTag.suffix(aesGCMTagLength)
 
         do {
             let nonce = try AES.GCM.Nonce(data: nonceData)
             let sealed = try AES.GCM.SealedBox(
                 nonce: nonce,
-                ciphertext: ciphertextData,
-                tag: tagData
+                ciphertext: Data(ciphertextData),
+                tag: Data(tagData)
             )
             let key = SymmetricKey(data: keyData)
             return try AES.GCM.open(sealed, using: key)
-        } catch {
-            return nil
-        }
-    }
-
-    private static func decryptLegacyPayload(payload: String, secretKey: Data) -> Data? {
-        guard secretKey.count == 32 else { return nil }
-        guard let bundle = decodeBase64(payload), bundle.count > 24 else {
-            return nil
-        }
-        let nonce = bundle.prefix(24)
-        let box = bundle.dropFirst(24)
-        do {
-            return try NaclSecretBox.open(
-                box: Data(box),
-                nonce: Data(nonce),
-                key: secretKey
-            )
         } catch {
             return nil
         }

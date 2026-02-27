@@ -6,7 +6,6 @@ import {
   readCredentials,
   updateSettings,
   writeCredentialsDataKey,
-  writeCredentialsLegacy,
 } from '@/persistence';
 import { openBrowser } from '@/utils/browser';
 import { delay } from '@/utils/time';
@@ -27,12 +26,13 @@ import { AuthMethod, AuthSelector } from './ink/AuthSelector';
 import { logger } from './logger';
 import { displayQRCode } from './qrcode';
 
-const AUTH_ENVELOPE_VERSION = 1;
+const AUTH_ENVELOPE_VERSION = 2;
 const AUTH_ENVELOPE_PUBLIC_KEY_LENGTH = 32;
 const AUTH_ENVELOPE_NONCE_LENGTH = 12;
 const AUTH_ENVELOPE_TAG_LENGTH = 16;
-const AUTH_ENVELOPE_KDF_SALT = Buffer.from('unhappy.auth.envelope.salt.v1', 'utf8');
-const AUTH_ENVELOPE_KDF_INFO = Buffer.from('unhappy.auth.envelope.info.v1', 'utf8');
+const AUTH_ENVELOPE_KDF_SALT = Buffer.from('unhappy.auth.envelope.salt.v2', 'utf8');
+const AUTH_ENVELOPE_KDF_INFO = Buffer.from('unhappy.auth.envelope.info.v2', 'utf8');
+const AUTH_RESPONSE_VERSION = 2;
 const X25519_SPKI_PREFIX = Buffer.from('302a300506032b656e032100', 'hex');
 const X25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b656e04220420', 'hex');
 
@@ -270,51 +270,38 @@ async function waitForAuthentication(
             return null;
           }
 
-          let r = responseBundle;
-          let decrypted = decryptWithEphemeralKey(r, keypair.secretKey);
-          if (decrypted) {
-            if (decrypted.length === 32) {
-              const credentials = {
-                secret: decrypted,
-                token: token,
-              };
-              await writeCredentialsLegacy(credentials);
-              console.log('\n\n✓ Authentication successful\n');
-              return {
-                encryption: {
-                  type: 'legacy',
-                  secret: decrypted,
-                },
-                token: token,
-              };
-            } else {
-              if (decrypted[0] === 0) {
-                const credentials = {
-                  publicKey: decrypted.slice(1, 33),
-                  machineKey: randomBytes(32),
-                  token: token,
-                };
-                await writeCredentialsDataKey(credentials);
-                console.log('\n\n✓ Authentication successful\n');
-                return {
-                  encryption: {
-                    type: 'dataKey',
-                    publicKey: credentials.publicKey,
-                    machineKey: credentials.machineKey,
-                  },
-                  token: token,
-                };
-              } else {
-                console.log(
-                  '\n\nFailed to decrypt response. Please try again.',
-                );
-                return null;
-              }
-            }
-          } else {
+          const decrypted = decryptWithEphemeralKey(responseBundle, keypair.secretKey);
+          if (!decrypted) {
             console.log('\n\nFailed to decrypt response. Please try again.');
             return null;
           }
+
+          const hasValidShape =
+            decrypted.length === 1 + AUTH_ENVELOPE_PUBLIC_KEY_LENGTH &&
+            decrypted[0] === AUTH_RESPONSE_VERSION;
+          if (!hasValidShape) {
+            logger.warn('[AUTH] Unexpected decrypted auth response payload format', {
+              payloadLength: decrypted.length,
+              payloadVersion: decrypted.length > 0 ? decrypted[0] : null,
+            });
+            console.log('\n\nFailed to decrypt response. Please try again.');
+            return null;
+          }
+
+          const credentials = {
+            publicKey: decrypted.slice(1, 1 + AUTH_ENVELOPE_PUBLIC_KEY_LENGTH),
+            machineKey: randomBytes(32),
+            token,
+          };
+          await writeCredentialsDataKey(credentials);
+          console.log('\n\n✓ Authentication successful\n');
+          return {
+            encryption: {
+              publicKey: credentials.publicKey,
+              machineKey: credentials.machineKey,
+            },
+            token,
+          };
         }
       } catch (error) {
         if (axios.isAxiosError(error)) {
@@ -437,9 +424,7 @@ export function decryptWithEphemeralKey(
     const tag = encryptedWithTag.slice(-AUTH_ENVELOPE_TAG_LENGTH);
 
     const key = deriveAuthSharedKey(recipientSecretKey, ephemeralPublicKey);
-    const decipher = createDecipheriv('chacha20-poly1305', key, Buffer.from(nonce), {
-      authTagLength: AUTH_ENVELOPE_TAG_LENGTH,
-    });
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(nonce));
     decipher.setAuthTag(Buffer.from(tag));
     const decrypted = Buffer.concat([
       decipher.update(Buffer.from(ciphertext)),

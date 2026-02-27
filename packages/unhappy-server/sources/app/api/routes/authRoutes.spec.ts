@@ -60,12 +60,12 @@ vi.mock("@/utils/log", () => ({
 
 import { authRoutes } from "./authRoutes";
 
-const AUTH_ENVELOPE_VERSION = 1;
+const AUTH_ENVELOPE_VERSION = 2;
 const AUTH_ENVELOPE_PUBLIC_KEY_LENGTH = 32;
 const AUTH_ENVELOPE_NONCE_LENGTH = 12;
 const AUTH_ENVELOPE_TAG_LENGTH = 16;
-const AUTH_ENVELOPE_KDF_SALT = Buffer.from("unhappy.auth.envelope.salt.v1", "utf8");
-const AUTH_ENVELOPE_KDF_INFO = Buffer.from("unhappy.auth.envelope.info.v1", "utf8");
+const AUTH_ENVELOPE_KDF_SALT = Buffer.from("unhappy.auth.envelope.salt.v2", "utf8");
+const AUTH_ENVELOPE_KDF_INFO = Buffer.from("unhappy.auth.envelope.info.v2", "utf8");
 const X25519_SPKI_PREFIX = Buffer.from("302a300506032b656e032100", "hex");
 
 function generateAuthKeyPair(): { publicKey: Buffer; secretKey: KeyObject } {
@@ -97,9 +97,7 @@ function decryptEphemeralBundleToText(bundleBase64: string, recipientSecretKey: 
         hkdfSync("sha256", sharedSecret, AUTH_ENVELOPE_KDF_SALT, AUTH_ENVELOPE_KDF_INFO, 32),
     );
 
-    const decipher = createDecipheriv("chacha20-poly1305", symmetricKey, Buffer.from(nonce), {
-        authTagLength: AUTH_ENVELOPE_TAG_LENGTH,
-    });
+    const decipher = createDecipheriv("aes-256-gcm", symmetricKey, Buffer.from(nonce));
     decipher.setAuthTag(Buffer.from(tag));
     const decrypted = Buffer.concat([
         decipher.update(Buffer.from(ciphertext)),

@@ -773,6 +773,60 @@ public struct SessionDetailView: View {
                     systemImage: "checkmark.circle",
                     tool: .worktree
                 )
+                Menu {
+                    Button("Inherit session model") {
+                        applyModelOverride = false
+                        selectedModelOverrideOption = ""
+                    }
+                    Button("Reset to default model") {
+                        applyModelOverride = true
+                        selectedModelOverrideOption = ""
+                    }
+                    ForEach(availableModelOverrideOptions, id: \.self) { model in
+                        Button(model) {
+                            applyModelOverride = true
+                            selectedModelOverrideOption = model
+                            modelOverrideDraft = model
+                        }
+                    }
+                    Button("Custom model…") {
+                        applyModelOverride = true
+                        selectedModelOverrideOption = Self.customModelOverrideOption
+                        showComposerOverrides = true
+                        focusedComposerField = .customModel
+                    }
+                } label: {
+                    quickMenuLabel(
+                        title: "Model",
+                        value: selectedModelOverrideLabel,
+                        systemImage: "cpu"
+                    )
+                }
+
+                if supportsReasoningEffortOverride {
+                    Menu {
+                        Button("Inherit session reasoning") {
+                            applyEffortOverride = false
+                            selectedEffortOverride = .auto
+                        }
+                        ForEach(availableEffortSelections, id: \.self) { option in
+                            Button(option.label) {
+                                if option == .auto {
+                                    applyEffortOverride = false
+                                } else {
+                                    applyEffortOverride = true
+                                }
+                                selectedEffortOverride = option
+                            }
+                        }
+                    } label: {
+                        quickMenuLabel(
+                            title: "Reasoning",
+                            value: selectedReasoningOverrideLabel,
+                            systemImage: "brain.head.profile"
+                        )
+                    }
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -795,6 +849,36 @@ public struct SessionDetailView: View {
                 .background(Color.secondary.opacity(0.12), in: Capsule())
         }
         .buttonStyle(.plain)
+    }
+
+    private func quickMenuLabel(
+        title: String,
+        value: String,
+        systemImage: String
+    ) -> some View {
+        Label("\(title): \(value)", systemImage: systemImage)
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
+    }
+
+    private var selectedModelOverrideLabel: String {
+        guard applyModelOverride else { return "Inherit" }
+        switch selectedModelOverrideOption {
+        case Self.customModelOverrideOption:
+            let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            return normalized.isEmpty ? "Custom" : normalized
+        case "":
+            return "Default"
+        default:
+            return selectedModelOverrideOption
+        }
+    }
+
+    private var selectedReasoningOverrideLabel: String {
+        guard applyEffortOverride else { return "Inherit" }
+        return selectedEffortOverride.label
     }
 
     @ViewBuilder

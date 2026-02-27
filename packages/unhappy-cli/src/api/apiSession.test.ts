@@ -46,8 +46,7 @@ describe('ApiSessionClient connection handling', () => {
             metadataVersion: 0,
             agentState: null,
             agentStateVersion: 0,
-            encryptionKey: new Uint8Array(32),
-            encryptionVariant: 'legacy' as const
+            encryptionKey: new Uint8Array(32)
         };
     });
 

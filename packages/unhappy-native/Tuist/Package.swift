@@ -15,7 +15,6 @@ import PackageDescription
 let package = Package(
     name: "UnhappyNative",
     dependencies: [
-        .package(url: "https://github.com/bitmark-inc/tweetnacl-swiftwrap.git", from: "1.1.0"),
         .package(url: "https://github.com/socketio/socket.io-client-swift", from: "16.1.1"),
     ]
 )
