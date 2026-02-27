@@ -746,7 +746,6 @@ export async function runCodex(opts: {
         return { success: false, error: 'Thread name cannot be empty' };
       }
       try {
-        await client.setThreadName(name);
         const now = Date.now();
         await session.updateMetadata((currentMetadata) => ({
           ...currentMetadata,
@@ -756,6 +755,19 @@ export async function runCodex(opts: {
             updatedAt: now,
           },
         }));
+        try {
+          await client.setThreadName(name);
+        } catch (error) {
+          logger.debug(
+            '[codex] thread/name/set failed during codex-set-thread-name; keeping local title update',
+            error,
+          );
+          return {
+            success: true,
+            warning:
+              error instanceof Error ? error.message : 'Failed to set Codex thread name remotely',
+          };
+        }
         return { success: true };
       } catch (error) {
         return {
@@ -1442,7 +1454,14 @@ export async function runCodex(opts: {
           updatedAt: now,
         },
       }));
-      await client.setThreadName(normalized);
+      try {
+        await client.setThreadName(normalized);
+      } catch (error) {
+        logger.debug(
+          '[codex] thread/name/set failed during change_title; keeping local title update',
+          error,
+        );
+      }
     },
   });
   const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');
