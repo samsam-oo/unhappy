@@ -1757,10 +1757,23 @@ export async function runCodex(opts: {
             continue;
           }
 
-          messageBuffer.addMessage('Process exited unexpectedly', 'status');
+          const normalizedErrorText = errorText
+            .replace(/\s+/g, ' ')
+            .trim();
+          const summarizedErrorText =
+            normalizedErrorText.length > 220
+              ? `${normalizedErrorText.slice(0, 219)}…`
+              : normalizedErrorText;
+          const exitMessage =
+            summarizedErrorText.length > 0 &&
+            summarizedErrorText.toLowerCase() !== 'process exited unexpectedly'
+              ? `Process exited: ${summarizedErrorText}`
+              : 'Process exited unexpectedly';
+
+          messageBuffer.addMessage(exitMessage, 'status');
           session.sendSessionEvent({
             type: 'message',
-            message: 'Process exited unexpectedly',
+            message: exitMessage,
           });
           // For unexpected exits, try to store session for potential recovery
           if (client.hasActiveSession()) {

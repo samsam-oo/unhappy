@@ -47,7 +47,7 @@ export function machinePublicCommandHandler(userId: string, socket: Socket) {
                 }
 
                 if (!ALLOWED_MACHINE_COMMANDS.has(command)) {
-                    callback({ success: false, error: "Unsupported machine command" });
+                    callback({ success: false, error: `Unsupported machine command: ${command}` });
                     return;
                 }
 

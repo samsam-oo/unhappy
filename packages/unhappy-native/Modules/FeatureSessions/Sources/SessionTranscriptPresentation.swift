@@ -466,19 +466,20 @@ enum SessionTranscriptPresentationBuilder {
         messageID: String
     ) -> [SessionTranscriptEntry] {
         if let dictionary = data as? [String: Any] {
-            let type = normalizedText(dictionary["type"]) ?? "event"
-            let body: String
-            if let text = normalizedText(dictionary["message"]) {
-                body = text
-            } else {
-                body = stringify(dictionary)
+            let type = (normalizedText(dictionary["type"]) ?? "event").lowercased()
+            let messageText = normalizedText(dictionary["message"])
+            if type == "ready" {
+                return []
             }
+            let body = messageText ?? stringify(dictionary)
             return [
                 makeEntry(
                     id: "\(messageID)-event",
                     role: .system,
                     kind: .event,
-                    title: type.replacingOccurrences(of: "_", with: " ").capitalized,
+                    title: type == "message"
+                        ? nil
+                        : type.replacingOccurrences(of: "_", with: " ").capitalized,
                     body: body
                 )
             ]
