@@ -1,7 +1,6 @@
 import SwiftUI
 import CoreKit
 import FeatureSessionTools
-import UIKit
 
 @MainActor
 public struct SessionDetailView: View {
@@ -127,7 +126,6 @@ public struct SessionDetailView: View {
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var subAgentInProgressCount = 0
-    @State private var keyboardOverlap: CGFloat = 0
     @State private var quickToolsScrollPositionID: String? = SessionQuickToolsAnchor.model.rawValue
     @GestureState private var isInteractingWithBottomDock = false
     @FocusState private var focusedComposerField: SessionComposerFocusField?
@@ -236,7 +234,6 @@ public struct SessionDetailView: View {
                     }
                     bottomDock
                 }
-                .padding(.bottom, keyboardOverlap)
                 .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
             }
             .navigationTitle("Session")
@@ -335,21 +332,7 @@ public struct SessionDetailView: View {
                 shouldFollowTranscript = true
                 scrollTranscriptToBottom(using: scrollProxy)
             }
-            .onChange(of: keyboardOverlap) { _, overlap in
-                guard overlap > 0 else { return }
-                shouldFollowTranscript = true
-                scrollTranscriptToBottom(using: scrollProxy)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
-                updateKeyboardOverlap(from: notification)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                withAnimation(.easeOut(duration: 0.2)) {
-                    keyboardOverlap = 0
-                }
-            }
             .onDisappear {
-                keyboardOverlap = 0
                 viewModel.stopSelectedSessionMessagesPolling()
                 viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
             }
@@ -1148,33 +1131,6 @@ public struct SessionDetailView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func updateKeyboardOverlap(from notification: Notification) {
-        guard
-            let userInfo = notification.userInfo,
-            let keyboardFrameValue = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue
-        else {
-            return
-        }
-
-        let keyboardFrame = keyboardFrameValue.cgRectValue
-        let screenBounds = UIScreen.main.bounds
-        let rawOverlap = max(0, screenBounds.maxY - keyboardFrame.minY)
-        let overlap = max(0, rawOverlap - bottomSafeAreaInset())
-
-        let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
-        withAnimation(.easeOut(duration: duration)) {
-            keyboardOverlap = overlap
-        }
-    }
-
-    private func bottomSafeAreaInset() -> CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .safeAreaInsets.bottom ?? 0
-    }
-
     private func scrollTranscriptToBottom(
         using proxy: ScrollViewProxy,
         animated: Bool = true
@@ -1705,9 +1661,7 @@ private struct SessionTranscriptLogLine: View {
         } else if isCollapsibleReferenceLogEntry {
             VStack(alignment: .leading, spacing: 1) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isExpanded.toggle()
-                    }
+                    isExpanded.toggle()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -1723,11 +1677,22 @@ private struct SessionTranscriptLogLine: View {
                 .buttonStyle(.plain)
 
                 if isExpanded {
-                    Text(entry.body)
-                        .font(bodyFont)
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                        .lineLimit(nil)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(entry.body)
+                            .font(bodyFont)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.primary.opacity(0.06))
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 16)
                 }
             }
             .padding(.horizontal, 2)
