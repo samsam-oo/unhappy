@@ -52,29 +52,11 @@ export class ApiClient {
     metadata: Metadata;
     state: AgentState | null;
   }): Promise<Session | null> {
-    // Resolve encryption key
-    let dataEncryptionKey: Uint8Array | null = null;
-    let encryptionKey: Uint8Array;
-    let encryptionVariant: 'legacy' | 'dataKey';
-    if (this.credential.encryption.type === 'dataKey') {
-      // Generate new encryption key
-      encryptionKey = getRandomBytes(32);
-      encryptionVariant = 'dataKey';
-
-      // Derive and encrypt data encryption key
-      // const contentDataKey = await deriveKey(this.secret, 'Unhappy EnCoder', ['content']);
-      // const publicKey = libsodiumPublicKeyFromSecretKey(contentDataKey);
-      let encryptedDataKey = libsodiumEncryptForPublicKey(
-        encryptionKey,
-        this.credential.encryption.publicKey,
-      );
-      dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
-      dataEncryptionKey.set([0], 0); // Version byte
-      dataEncryptionKey.set(encryptedDataKey, 1); // Data key
-    } else {
-      encryptionKey = this.credential.encryption.secret;
-      encryptionVariant = 'legacy';
-    }
+    const encryptionKey = getRandomBytes(32);
+    const dataEncryptionKey = libsodiumEncryptForPublicKey(
+      encryptionKey,
+      this.credential.encryption.publicKey,
+    );
 
     // Create session
     try {
@@ -83,16 +65,14 @@ export class ApiClient {
         {
           tag: opts.tag,
           metadata: encodeBase64(
-            encrypt(encryptionKey, encryptionVariant, opts.metadata),
+            encrypt(encryptionKey, opts.metadata),
           ),
           agentState: opts.state
             ? encodeBase64(
-                encrypt(encryptionKey, encryptionVariant, opts.state),
+                encrypt(encryptionKey, opts.state),
               )
             : null,
-          dataEncryptionKey: dataEncryptionKey
-            ? encodeBase64(dataEncryptionKey)
-            : null,
+          dataEncryptionKey: encodeBase64(dataEncryptionKey),
         },
         {
           headers: {
@@ -112,20 +92,17 @@ export class ApiClient {
         seq: raw.seq,
         metadata: decrypt(
           encryptionKey,
-          encryptionVariant,
           decodeBase64(raw.metadata),
         ),
         metadataVersion: raw.metadataVersion,
         agentState: raw.agentState
           ? decrypt(
               encryptionKey,
-              encryptionVariant,
               decodeBase64(raw.agentState),
             )
           : null,
         agentStateVersion: raw.agentStateVersion,
         encryptionKey: encryptionKey,
-        encryptionVariant: encryptionVariant,
       };
       return session;
     } catch (error) {
@@ -190,32 +167,16 @@ export class ApiClient {
     metadata: MachineMetadata;
     daemonState?: DaemonState;
   }): Promise<Machine> {
-    // Resolve encryption key
-    let dataEncryptionKey: Uint8Array | null = null;
-    let encryptionKey: Uint8Array;
-    let encryptionVariant: 'legacy' | 'dataKey';
-    if (this.credential.encryption.type === 'dataKey') {
-      // Encrypt data encryption key
-      encryptionVariant = 'dataKey';
-      encryptionKey = this.credential.encryption.machineKey;
-      let encryptedDataKey = libsodiumEncryptForPublicKey(
-        this.credential.encryption.machineKey,
-        this.credential.encryption.publicKey,
-      );
-      dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
-      dataEncryptionKey.set([0], 0); // Version byte
-      dataEncryptionKey.set(encryptedDataKey, 1); // Data key
-    } else {
-      // Legacy encryption
-      encryptionKey = this.credential.encryption.secret;
-      encryptionVariant = 'legacy';
-    }
+    const encryptionKey = this.credential.encryption.machineKey;
+    const dataEncryptionKey = libsodiumEncryptForPublicKey(
+      encryptionKey,
+      this.credential.encryption.publicKey,
+    );
 
     // Helper to create minimal machine object for offline mode (DRY)
     const createMinimalMachine = (): Machine => ({
       id: opts.machineId,
       encryptionKey: encryptionKey,
-      encryptionVariant: encryptionVariant,
       metadata: opts.metadata,
       metadataVersion: 0,
       daemonState: opts.daemonState || null,
@@ -229,16 +190,14 @@ export class ApiClient {
         {
           id: opts.machineId,
           metadata: encodeBase64(
-            encrypt(encryptionKey, encryptionVariant, opts.metadata),
+            encrypt(encryptionKey, opts.metadata),
           ),
           daemonState: opts.daemonState
             ? encodeBase64(
-                encrypt(encryptionKey, encryptionVariant, opts.daemonState),
+                encrypt(encryptionKey, opts.daemonState),
               )
             : undefined,
-          dataEncryptionKey: dataEncryptionKey
-            ? encodeBase64(dataEncryptionKey)
-            : undefined,
+          dataEncryptionKey: encodeBase64(dataEncryptionKey),
         },
         {
           headers: {
@@ -258,11 +217,9 @@ export class ApiClient {
       const machine: Machine = {
         id: raw.id,
         encryptionKey: encryptionKey,
-        encryptionVariant: encryptionVariant,
         metadata: raw.metadata
           ? decrypt(
               encryptionKey,
-              encryptionVariant,
               decodeBase64(raw.metadata),
             )
           : null,
@@ -270,7 +227,6 @@ export class ApiClient {
         daemonState: raw.daemonState
           ? decrypt(
               encryptionKey,
-              encryptionVariant,
               decodeBase64(raw.daemonState),
             )
           : null,

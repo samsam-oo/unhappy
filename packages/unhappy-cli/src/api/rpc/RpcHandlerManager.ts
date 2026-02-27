@@ -17,14 +17,12 @@ export class RpcHandlerManager {
     private handlers: RpcHandlerMap = new Map();
     private readonly scopePrefix: string;
     private readonly encryptionKey: Uint8Array;
-    private readonly encryptionVariant: 'legacy' | 'dataKey';
     private readonly logger: (message: string, data?: any) => void;
     private socket: Socket | null = null;
 
     constructor(config: RpcHandlerConfig) {
         this.scopePrefix = config.scopePrefix;
         this.encryptionKey = config.encryptionKey;
-        this.encryptionVariant = config.encryptionVariant;
         this.logger = config.logger || ((msg, data) => defaultLogger.debug(msg, data));
     }
 
@@ -61,14 +59,13 @@ export class RpcHandlerManager {
             if (!handler) {
                 this.logger('[RPC] [ERROR] Method not found', { method: request.method });
                 const errorResponse = { error: 'Method not found' };
-                const encryptedError = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, errorResponse));
+                const encryptedError = encodeBase64(encrypt(this.encryptionKey, errorResponse));
                 return encryptedError;
             }
 
             // Decrypt the incoming params
             const decryptedParams = decrypt(
                 this.encryptionKey,
-                this.encryptionVariant,
                 decodeBase64(request.params),
             );
             if (decryptedParams === null) {
@@ -77,7 +74,7 @@ export class RpcHandlerManager {
                 });
                 const errorResponse = { error: 'Failed to decrypt RPC params' };
                 const encryptedError = encodeBase64(
-                    encrypt(this.encryptionKey, this.encryptionVariant, errorResponse),
+                    encrypt(this.encryptionKey, errorResponse),
                 );
                 return encryptedError;
             }
@@ -88,7 +85,7 @@ export class RpcHandlerManager {
             this.logger('[RPC] Handler returned', { method: request.method, hasResult: result !== undefined });
 
             // Encrypt and return the response
-            const encryptedResponse = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, result));
+            const encryptedResponse = encodeBase64(encrypt(this.encryptionKey, result));
             this.logger('[RPC] Sending encrypted response', { method: request.method, responseLength: encryptedResponse.length });
             return encryptedResponse;
         } catch (error) {
@@ -96,7 +93,7 @@ export class RpcHandlerManager {
             const errorResponse = {
                 error: error instanceof Error ? error.message : 'Unknown error'
             };
-            return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, errorResponse));
+            return encodeBase64(encrypt(this.encryptionKey, errorResponse));
         }
     }
 

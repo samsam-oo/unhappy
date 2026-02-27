@@ -123,6 +123,7 @@ public struct CryptoKitTerminalAuthEncryptor: TerminalAuthEncrypting {
 }
 
 public actor TerminalConnectUseCase: TerminalConnectingAction {
+    private let dataKeyPayloadBundleVersion: UInt8 = 2
     private let service: any TerminalAuthStatusChecking & TerminalAuthResponding
     private let dataKeyStore: any TerminalDataKeyStoring
     private let encryptor: any TerminalAuthEncrypting
@@ -178,14 +179,8 @@ public actor TerminalConnectUseCase: TerminalConnectingAction {
             return .authorized
         case .pending:
             let dataKey = try await dataKeyStore.loadOrCreateDataKey()
-            let payload: Data
-            if status.supportsV2 {
-                var bundle = Data([0])
-                bundle.append(dataKey)
-                payload = bundle
-            } else {
-                payload = dataKey
-            }
+            var payload = Data([dataKeyPayloadBundleVersion])
+            payload.append(dataKey)
 
             let encryptedResponse = try encryptor.encrypt(
                 message: payload,

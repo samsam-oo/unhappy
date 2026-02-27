@@ -62,7 +62,6 @@
     "socket.io-adapter": "^2.5.5",
     "tmp": "^0.2.3",
     "tsx": "^4.19.2",
-    "tweetnacl": "^1.0.3",
     "uuid": "^9.0.1",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.2.0",

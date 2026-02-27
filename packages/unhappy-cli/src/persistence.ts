@@ -604,19 +604,16 @@ export async function updateSettings(
 
 const credentialsSchema = z.object({
   token: z.string(),
-  secret: z.string().base64().nullish(), // Legacy
   encryption: z.object({
     publicKey: z.string().base64(),
     machineKey: z.string().base64()
-  }).nullish()
+  })
 })
 
 export type Credentials = {
   token: string,
   encryption: {
-    type: 'legacy', secret: Uint8Array
-  } | {
-    type: 'dataKey', publicKey: Uint8Array, machineKey: Uint8Array
+    publicKey: Uint8Array, machineKey: Uint8Array
   }
 }
 
@@ -627,38 +624,16 @@ export async function readCredentials(): Promise<Credentials | null> {
   try {
     const keyBase64 = (await readFile(configuration.privateKeyFile, 'utf8'));
     const credentials = credentialsSchema.parse(JSON.parse(keyBase64));
-    if (credentials.secret) {
-      return {
-        token: credentials.token,
-        encryption: {
-          type: 'legacy',
-          secret: new Uint8Array(Buffer.from(credentials.secret, 'base64'))
-        }
-      };
-    } else if (credentials.encryption) {
-      return {
-        token: credentials.token,
-        encryption: {
-          type: 'dataKey',
-          publicKey: new Uint8Array(Buffer.from(credentials.encryption.publicKey, 'base64')),
-          machineKey: new Uint8Array(Buffer.from(credentials.encryption.machineKey, 'base64'))
-        }
+    return {
+      token: credentials.token,
+      encryption: {
+        publicKey: new Uint8Array(Buffer.from(credentials.encryption.publicKey, 'base64')),
+        machineKey: new Uint8Array(Buffer.from(credentials.encryption.machineKey, 'base64'))
       }
     }
   } catch {
     return null
   }
-  return null
-}
-
-export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.unhappyHomeDir)) {
-    await mkdir(configuration.unhappyHomeDir, { recursive: true })
-  }
-  await writeFile(configuration.privateKeyFile, JSON.stringify({
-    secret: encodeBase64(credentials.secret),
-    token: credentials.token
-  }, null, 2));
 }
 
 export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Array, machineKey: Uint8Array, token: string }): Promise<void> {

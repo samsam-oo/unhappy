@@ -1,5 +1,38 @@
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
-import tweetnacl from 'tweetnacl';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  diffieHellman,
+  generateKeyPairSync,
+  hkdfSync,
+  randomBytes,
+  sign,
+} from 'node:crypto';
+import type { KeyObject } from 'node:crypto';
+
+const MESSAGE_BUNDLE_VERSION = 2;
+const MESSAGE_BUNDLE_NONCE_LENGTH = 12;
+const MESSAGE_BUNDLE_TAG_LENGTH = 16;
+
+const DATA_KEY_WRAP_VERSION = 2;
+const DATA_KEY_WRAP_PUBLIC_KEY_LENGTH = 32;
+const DATA_KEY_WRAP_NONCE_LENGTH = 12;
+const DATA_KEY_WRAP_TAG_LENGTH = 16;
+const DATA_KEY_WRAP_KDF_SALT = Buffer.from(
+  'unhappy.data.encryption-key.wrap.salt.v2',
+  'utf8',
+);
+const DATA_KEY_WRAP_KDF_INFO = Buffer.from(
+  'unhappy.data.encryption-key.wrap.info.v2',
+  'utf8',
+);
+
+const X25519_SPKI_PREFIX = Buffer.from('302a300506032b656e032100', 'hex');
+const X25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b656e04220420', 'hex');
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+const ED25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
 /**
  * Encode a Uint8Array to base64 string
@@ -43,8 +76,6 @@ export function decodeBase64(base64: string, variant: 'base64' | 'base64url' = '
   return new Uint8Array(Buffer.from(base64, 'base64'));
 }
 
-
-
 /**
  * Generate secure random bytes
  */
@@ -53,88 +84,76 @@ export function getRandomBytes(size: number): Uint8Array {
 }
 
 export function libsodiumPublicKeyFromSecretKey(seed: Uint8Array): Uint8Array {
-  // NOTE: This matches libsodium implementation, tweetnacl doesnt do this by default
+  // Keep libsodium-compatible seed expansion for callsites that still provide a seed.
   const hashedSeed = new Uint8Array(createHash('sha512').update(seed).digest());
-  const secretKey = hashedSeed.slice(0, 32);
-  return new Uint8Array(tweetnacl.box.keyPair.fromSecretKey(secretKey).publicKey);
+  const privateKey = x25519PrivateKeyFromRaw(hashedSeed.slice(0, DATA_KEY_WRAP_PUBLIC_KEY_LENGTH));
+  const publicKey = createPublicKey(privateKey);
+  return new Uint8Array(x25519RawPublicKey(publicKey));
 }
 
 export function libsodiumEncryptForPublicKey(data: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
-  // Generate ephemeral keypair for this encryption
-  const ephemeralKeyPair = tweetnacl.box.keyPair();
-  
-  // Generate random nonce (24 bytes for box encryption)
-  const nonce = getRandomBytes(tweetnacl.box.nonceLength);
-  
-  // Encrypt the data using box (authenticated encryption)
-  const encrypted = tweetnacl.box(data, nonce, recipientPublicKey, ephemeralKeyPair.secretKey);
-  
-  // Bundle format: ephemeral public key (32 bytes) + nonce (24 bytes) + encrypted data
-  const result = new Uint8Array(ephemeralKeyPair.publicKey.length + nonce.length + encrypted.length);
-  result.set(ephemeralKeyPair.publicKey, 0);
-  result.set(nonce, ephemeralKeyPair.publicKey.length);
-  result.set(encrypted, ephemeralKeyPair.publicKey.length + nonce.length);
-  
-  return result;
+  const recipientKeyObject = x25519PublicKeyFromRaw(recipientPublicKey);
+  const { privateKey: ephemeralPrivateKey, publicKey: ephemeralPublicKey } = generateKeyPairSync('x25519');
+  const sharedSecret = diffieHellman({
+    privateKey: ephemeralPrivateKey,
+    publicKey: recipientKeyObject,
+  });
+  const symmetricKey = Buffer.from(
+    hkdfSync(
+      'sha256',
+      sharedSecret,
+      DATA_KEY_WRAP_KDF_SALT,
+      DATA_KEY_WRAP_KDF_INFO,
+      32,
+    ),
+  );
+  const nonce = randomBytes(DATA_KEY_WRAP_NONCE_LENGTH);
+  const cipher = createCipheriv('aes-256-gcm', symmetricKey, nonce);
+  const ciphertext = Buffer.concat([
+    cipher.update(Buffer.from(data)),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return new Uint8Array(
+    Buffer.concat([
+      Buffer.from([DATA_KEY_WRAP_VERSION]),
+      x25519RawPublicKey(ephemeralPublicKey),
+      nonce,
+      ciphertext,
+      tag,
+    ]),
+  );
 }
 
 /**
- * Encrypt data using the secret key
- * @param data - The data to encrypt
- * @param secret - The secret key to use for encryption
- * @returns The encrypted data
- */
-export function encryptLegacy(data: any, secret: Uint8Array): Uint8Array {
-  const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength);
-  const encrypted = tweetnacl.secretbox(new TextEncoder().encode(JSON.stringify(data)), nonce, secret);
-  const result = new Uint8Array(nonce.length + encrypted.length);
-  result.set(nonce);
-  result.set(encrypted, nonce.length);
-  return result;
-}
-
-/**
- * Decrypt data using the secret key
- * @param data - The data to decrypt
- * @param secret - The secret key to use for decryption
- * @returns The decrypted data
- */
-export function decryptLegacy(data: Uint8Array, secret: Uint8Array): any | null {
-  const nonce = data.slice(0, tweetnacl.secretbox.nonceLength);
-  const encrypted = data.slice(tweetnacl.secretbox.nonceLength);
-  const decrypted = tweetnacl.secretbox.open(encrypted, nonce, secret);
-  if (!decrypted) {
-    // Decryption failed - returning null is sufficient for error handling
-    // Callers should handle the null case appropriately
-    return null;
-  }
-  return JSON.parse(new TextDecoder().decode(decrypted));
-}
-
-/**
- * Encrypt data using AES-256-GCM with the data encryption key
+ * Encrypt data using AES-256-GCM.
  * @param data - The data to encrypt
  * @param dataKey - The 32-byte AES-256 key
- * @returns The encrypted data bundle (nonce + ciphertext + auth tag)
+ * @returns The encrypted data
  */
 export function encryptWithDataKey(data: any, dataKey: Uint8Array): Uint8Array {
-  const nonce = getRandomBytes(12); // GCM uses 12-byte nonces
+  const nonce = getRandomBytes(MESSAGE_BUNDLE_NONCE_LENGTH);
   const cipher = createCipheriv('aes-256-gcm', dataKey, nonce);
 
   const plaintext = new TextEncoder().encode(JSON.stringify(data));
-  const encrypted = Buffer.concat([
+  const ciphertext = Buffer.concat([
     cipher.update(plaintext),
     cipher.final()
   ]);
 
   const authTag = cipher.getAuthTag();
 
-  // Bundle: version(1) + nonce (12) + ciphertext + auth tag (16)
-  const bundle = new Uint8Array(12 + encrypted.length + 16 + 1);
-  bundle.set([0], 0);
+  // Bundle: version(1) + nonce(12) + ciphertext + auth tag(16)
+  const bundle = new Uint8Array(
+    1 + MESSAGE_BUNDLE_NONCE_LENGTH + ciphertext.length + MESSAGE_BUNDLE_TAG_LENGTH,
+  );
+  bundle.set([MESSAGE_BUNDLE_VERSION], 0);
   bundle.set(nonce, 1);
-  bundle.set(new Uint8Array(encrypted), 13);
-  bundle.set(new Uint8Array(authTag), 13 + encrypted.length);
+  bundle.set(new Uint8Array(ciphertext), 1 + MESSAGE_BUNDLE_NONCE_LENGTH);
+  bundle.set(
+    new Uint8Array(authTag),
+    1 + MESSAGE_BUNDLE_NONCE_LENGTH + ciphertext.length,
+  );
 
   return bundle;
 }
@@ -149,17 +168,20 @@ export function decryptWithDataKey(bundle: Uint8Array, dataKey: Uint8Array): any
   if (bundle.length < 1) {
     return null;
   }
-  if (bundle[0] !== 0) { // Only verision 0
+  if (bundle[0] !== MESSAGE_BUNDLE_VERSION) {
     return null;
   }
-  if (bundle.length < 12 + 16 + 1) { // Minimum: version nonce + auth tag
+  if (bundle.length < 1 + MESSAGE_BUNDLE_NONCE_LENGTH + MESSAGE_BUNDLE_TAG_LENGTH) {
     return null;
   }
 
 
-  const nonce = bundle.slice(1, 13);
-  const authTag = bundle.slice(bundle.length - 16);
-  const ciphertext = bundle.slice(13, bundle.length - 16);
+  const nonce = bundle.slice(1, 1 + MESSAGE_BUNDLE_NONCE_LENGTH);
+  const authTag = bundle.slice(bundle.length - MESSAGE_BUNDLE_TAG_LENGTH);
+  const ciphertext = bundle.slice(
+    1 + MESSAGE_BUNDLE_NONCE_LENGTH,
+    bundle.length - MESSAGE_BUNDLE_TAG_LENGTH,
+  );
 
   try {
     const decipher = createDecipheriv('aes-256-gcm', dataKey, nonce);
@@ -171,26 +193,17 @@ export function decryptWithDataKey(bundle: Uint8Array, dataKey: Uint8Array): any
     ]);
 
     return JSON.parse(new TextDecoder().decode(decrypted));
-  } catch (error) {
-    // Decryption failed
+  } catch {
     return null;
   }
 }
 
-export function encrypt(key: Uint8Array, variant: 'legacy' | 'dataKey', data: any): Uint8Array {
-  if (variant === 'legacy') {
-    return encryptLegacy(data, key);
-  } else {
-    return encryptWithDataKey(data, key);
-  }
+export function encrypt(key: Uint8Array, data: any): Uint8Array {
+  return encryptWithDataKey(data, key);
 }
 
-export function decrypt(key: Uint8Array, variant: 'legacy' | 'dataKey', data: Uint8Array): any | null {
-  if (variant === 'legacy') {
-    return decryptLegacy(data, key);
-  } else {
-    return decryptWithDataKey(data, key);
-  }
+export function decrypt(key: Uint8Array, data: Uint8Array): any | null {
+  return decryptWithDataKey(data, key);
 }
 
 /**
@@ -201,13 +214,64 @@ export function authChallenge(secret: Uint8Array): {
   publicKey: Uint8Array
   signature: Uint8Array
 } {
-  const keypair = tweetnacl.sign.keyPair.fromSeed(secret);
+  if (secret.length !== 32) {
+    throw new Error('authChallenge secret must be 32 bytes');
+  }
+  const privateKey = createPrivateKey({
+    key: Buffer.concat([ED25519_PKCS8_PREFIX, Buffer.from(secret)]),
+    format: 'der',
+    type: 'pkcs8',
+  });
+  const publicKey = createPublicKey(privateKey);
   const challenge = getRandomBytes(32);
-  const signature = tweetnacl.sign.detached(challenge, keypair.secretKey);
+  const signature = sign(null, challenge, privateKey);
 
   return {
     challenge,
-    publicKey: keypair.publicKey,
-    signature
+    publicKey: new Uint8Array(ed25519RawPublicKey(publicKey)),
+    signature: new Uint8Array(signature),
   };
+}
+
+function x25519PublicKeyFromRaw(raw: Uint8Array): KeyObject {
+  if (raw.length !== DATA_KEY_WRAP_PUBLIC_KEY_LENGTH) {
+    throw new Error('Invalid X25519 public key length');
+  }
+  return createPublicKey({
+    key: Buffer.concat([X25519_SPKI_PREFIX, Buffer.from(raw)]),
+    format: 'der',
+    type: 'spki',
+  });
+}
+
+function x25519PrivateKeyFromRaw(raw: Uint8Array): KeyObject {
+  if (raw.length !== DATA_KEY_WRAP_PUBLIC_KEY_LENGTH) {
+    throw new Error('Invalid X25519 private key length');
+  }
+  return createPrivateKey({
+    key: Buffer.concat([X25519_PKCS8_PREFIX, Buffer.from(raw)]),
+    format: 'der',
+    type: 'pkcs8',
+  });
+}
+
+function x25519RawPublicKey(publicKey: KeyObject): Buffer {
+  const spkiDer = publicKey.export({
+    format: 'der',
+    type: 'spki',
+  });
+  const bytes = Buffer.isBuffer(spkiDer) ? spkiDer : Buffer.from(spkiDer);
+  return bytes.subarray(bytes.length - DATA_KEY_WRAP_PUBLIC_KEY_LENGTH);
+}
+
+function ed25519RawPublicKey(publicKey: KeyObject): Buffer {
+  const spkiDer = publicKey.export({
+    format: 'der',
+    type: 'spki',
+  });
+  const bytes = Buffer.isBuffer(spkiDer) ? spkiDer : Buffer.from(spkiDer);
+  if (bytes.subarray(0, ED25519_SPKI_PREFIX.length).compare(ED25519_SPKI_PREFIX) !== 0) {
+    throw new Error('Invalid Ed25519 public key');
+  }
+  return bytes.subarray(bytes.length - 32);
 }

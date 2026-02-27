@@ -77,7 +77,6 @@ async function callMachineRpc<TResponse>(opts: {
   token: string;
   machineId: string;
   encryptionKey: Uint8Array;
-  encryptionVariant: 'legacy' | 'dataKey';
   method: string;
   params: unknown;
 }): Promise<TResponse> {
@@ -99,7 +98,7 @@ async function callMachineRpc<TResponse>(opts: {
 
   try {
     const encryptedParams = encodeBase64(
-      encrypt(opts.encryptionKey, opts.encryptionVariant, opts.params),
+      encrypt(opts.encryptionKey, opts.params),
     );
     const result: any = await socket.timeout(30_000).emitWithAck('rpc-call', {
       method: `${opts.machineId}:${opts.method}`,
@@ -116,7 +115,6 @@ async function callMachineRpc<TResponse>(opts: {
 
     const decrypted = decrypt(
       opts.encryptionKey,
-      opts.encryptionVariant,
       decodeBase64(result.result),
     );
     if (
@@ -444,7 +442,6 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       token: credentials!.token,
       machineId: machine.id,
       encryptionKey: machine.encryptionKey,
-      encryptionVariant: machine.encryptionVariant,
       method: 'update-daemon',
       params: {},
     });

@@ -190,7 +190,6 @@ export class ApiMachineClient {
     this.rpcHandlerManager = new RpcHandlerManager({
       scopePrefix: this.machine.id,
       encryptionKey: this.machine.encryptionKey,
-      encryptionVariant: this.machine.encryptionVariant,
       logger: (msg, data) => logger.debug(msg, data),
     });
 
@@ -583,7 +582,6 @@ export class ApiMachineClient {
         metadata: encodeBase64(
           encrypt(
             this.machine.encryptionKey,
-            this.machine.encryptionVariant,
             updated,
           ),
         ),
@@ -593,7 +591,6 @@ export class ApiMachineClient {
       if (answer.result === 'success') {
         this.machine.metadata = decrypt(
           this.machine.encryptionKey,
-          this.machine.encryptionVariant,
           decodeBase64(answer.metadata),
         );
         this.machine.metadataVersion = answer.version;
@@ -602,9 +599,8 @@ export class ApiMachineClient {
         if (answer.version > this.machine.metadataVersion) {
           this.machine.metadataVersion = answer.version;
           this.machine.metadata = decrypt(
-            this.machine.encryptionKey,
-            this.machine.encryptionVariant,
-            decodeBase64(answer.metadata),
+          this.machine.encryptionKey,
+          decodeBase64(answer.metadata),
           );
         }
         throw new Error('Metadata version mismatch'); // Triggers retry
@@ -627,7 +623,6 @@ export class ApiMachineClient {
         daemonState: encodeBase64(
           encrypt(
             this.machine.encryptionKey,
-            this.machine.encryptionVariant,
             updated,
           ),
         ),
@@ -637,7 +632,6 @@ export class ApiMachineClient {
       if (answer.result === 'success') {
         this.machine.daemonState = decrypt(
           this.machine.encryptionKey,
-          this.machine.encryptionVariant,
           decodeBase64(answer.daemonState),
         );
         this.machine.daemonStateVersion = answer.version;
@@ -646,9 +640,8 @@ export class ApiMachineClient {
         if (answer.version > this.machine.daemonStateVersion) {
           this.machine.daemonStateVersion = answer.version;
           this.machine.daemonState = decrypt(
-            this.machine.encryptionKey,
-            this.machine.encryptionVariant,
-            decodeBase64(answer.daemonState),
+          this.machine.encryptionKey,
+          decodeBase64(answer.daemonState),
           );
         }
         throw new Error('Daemon state version mismatch'); // Triggers retry
@@ -675,7 +668,6 @@ export class ApiMachineClient {
         daemonState: encodeBase64(
           encrypt(
             this.machine.encryptionKey,
-            this.machine.encryptionVariant,
             updated,
           ),
         ),
@@ -699,7 +691,6 @@ export class ApiMachineClient {
       if (answer.result === 'success') {
         this.machine.daemonState = decrypt(
           this.machine.encryptionKey,
-          this.machine.encryptionVariant,
           decodeBase64(answer.daemonState),
         );
         this.machine.daemonStateVersion = answer.version;
@@ -711,9 +702,8 @@ export class ApiMachineClient {
         if (answer.version > this.machine.daemonStateVersion) {
           this.machine.daemonStateVersion = answer.version;
           this.machine.daemonState = decrypt(
-            this.machine.encryptionKey,
-            this.machine.encryptionVariant,
-            decodeBase64(answer.daemonState),
+          this.machine.encryptionKey,
+          decodeBase64(answer.daemonState),
           );
         }
         logger.debug(
@@ -853,9 +843,8 @@ export class ApiMachineClient {
         if (update.metadata) {
           logger.debug('[API MACHINE] Received external metadata update');
           this.machine.metadata = decrypt(
-            this.machine.encryptionKey,
-            this.machine.encryptionVariant,
-            decodeBase64(update.metadata.value),
+          this.machine.encryptionKey,
+          decodeBase64(update.metadata.value),
           );
           this.machine.metadataVersion = update.metadata.version;
         }
@@ -863,9 +852,8 @@ export class ApiMachineClient {
         if (update.daemonState) {
           logger.debug('[API MACHINE] Received external daemon state update');
           this.machine.daemonState = decrypt(
-            this.machine.encryptionKey,
-            this.machine.encryptionVariant,
-            decodeBase64(update.daemonState.value),
+          this.machine.encryptionKey,
+          decodeBase64(update.daemonState.value),
           );
           this.machine.daemonStateVersion = update.daemonState.version;
         }

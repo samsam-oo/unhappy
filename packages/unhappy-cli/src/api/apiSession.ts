@@ -54,7 +54,6 @@ export class ApiSessionClient extends EventEmitter {
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
     private encryptionKey: Uint8Array;
-    private encryptionVariant: 'legacy' | 'dataKey';
     private pendingSummaryMetadataUpdate: { text: string; updatedAt: number } | null = null;
     private summaryMetadataSyncInFlight = false;
     // Local keys for optimistic user messages dispatched directly from public-command.
@@ -70,13 +69,11 @@ export class ApiSessionClient extends EventEmitter {
         this.agentState = session.agentState;
         this.agentStateVersion = session.agentStateVersion;
         this.encryptionKey = session.encryptionKey;
-        this.encryptionVariant = session.encryptionVariant;
 
         // Initialize RPC handler manager
         this.rpcHandlerManager = new RpcHandlerManager({
             scopePrefix: this.sessionId,
             encryptionKey: this.encryptionKey,
-            encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
         });
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
@@ -195,7 +192,7 @@ export class ApiSessionClient extends EventEmitter {
                         this.pendingMessages.push(content);
                     }
                     const encrypted = encodeBase64(
-                        encrypt(this.encryptionKey, this.encryptionVariant, content)
+                        encrypt(this.encryptionKey, content)
                     );
                     this.socket.emit('message', {
                         sid: this.sessionId,
@@ -254,7 +251,7 @@ export class ApiSessionClient extends EventEmitter {
                 }
 
                 if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
-                    const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
+                    const body = decrypt(this.encryptionKey, decodeBase64(data.body.message.content.c));
 
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
 
@@ -280,11 +277,11 @@ export class ApiSessionClient extends EventEmitter {
                     }
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.metadata.value));
+                        this.metadata = decrypt(this.encryptionKey, decodeBase64(data.body.metadata.value));
                         this.metadataVersion = data.body.metadata.version;
                     }
                     if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
-                        this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.agentState.value)) : null;
+                        this.agentState = data.body.agentState.value ? decrypt(this.encryptionKey, decodeBase64(data.body.agentState.value)) : null;
                         this.agentStateVersion = data.body.agentState.version;
                     }
                 } else if (data.body.t === 'update-machine') {
@@ -381,7 +378,7 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
@@ -408,7 +405,7 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
 
         // Check if socket is connected before sending
         if (!this.socket.connected) {
@@ -444,7 +441,7 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
@@ -468,7 +465,7 @@ export class ApiSessionClient extends EventEmitter {
                 data: event
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
@@ -535,14 +532,14 @@ export class ApiSessionClient extends EventEmitter {
         return this.metadataLock.inLock(async () => {
             await backoff(async () => {
                 let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
-                const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
+                const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, updated)) });
                 if (answer.result === 'success') {
-                    this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                    this.metadata = decrypt(this.encryptionKey, decodeBase64(answer.metadata));
                     this.metadataVersion = answer.version;
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.metadataVersion) {
                         this.metadataVersion = answer.version;
-                        this.metadata = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.metadata));
+                        this.metadata = decrypt(this.encryptionKey, decodeBase64(answer.metadata));
                     }
                     throw new Error('Metadata version mismatch');
                 } else if (answer.result === 'error') {
@@ -618,15 +615,15 @@ export class ApiSessionClient extends EventEmitter {
         this.agentStateLock.inLock(async () => {
             await backoff(async () => {
                 let updated = handler(this.agentState || {});
-                const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) : null });
+                const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(this.encryptionKey, updated)) : null });
                 if (answer.result === 'success') {
-                    this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
+                    this.agentState = answer.agentState ? decrypt(this.encryptionKey, decodeBase64(answer.agentState)) : null;
                     this.agentStateVersion = answer.version;
                     logger.debug('Agent state updated', this.agentState);
                 } else if (answer.result === 'version-mismatch') {
                     if (answer.version > this.agentStateVersion) {
                         this.agentStateVersion = answer.version;
-                        this.agentState = answer.agentState ? decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(answer.agentState)) : null;
+                        this.agentState = answer.agentState ? decrypt(this.encryptionKey, decodeBase64(answer.agentState)) : null;
                     }
                     throw new Error('Agent state version mismatch');
                 } else if (answer.result === 'error') {

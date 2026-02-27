@@ -10,11 +10,11 @@ import type { KeyObject } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { decryptWithEphemeralKey } from './auth';
 
-const AUTH_ENVELOPE_VERSION = 1;
+const AUTH_ENVELOPE_VERSION = 2;
 const AUTH_ENVELOPE_NONCE_LENGTH = 12;
 const AUTH_ENVELOPE_TAG_LENGTH = 16;
-const AUTH_ENVELOPE_KDF_SALT = Buffer.from('unhappy.auth.envelope.salt.v1', 'utf8');
-const AUTH_ENVELOPE_KDF_INFO = Buffer.from('unhappy.auth.envelope.info.v1', 'utf8');
+const AUTH_ENVELOPE_KDF_SALT = Buffer.from('unhappy.auth.envelope.salt.v2', 'utf8');
+const AUTH_ENVELOPE_KDF_INFO = Buffer.from('unhappy.auth.envelope.info.v2', 'utf8');
 const X25519_SPKI_PREFIX = Buffer.from('302a300506032b656e032100', 'hex');
 const X25519_PKCS8_PREFIX = Buffer.from('302e020100300506032b656e04220420', 'hex');
 
@@ -40,9 +40,7 @@ function encryptForPublicKey(data: Uint8Array, recipientPublicKey: Uint8Array): 
     hkdfSync('sha256', sharedSecret, AUTH_ENVELOPE_KDF_SALT, AUTH_ENVELOPE_KDF_INFO, 32),
   );
   const nonce = randomBytes(AUTH_ENVELOPE_NONCE_LENGTH);
-  const cipher = createCipheriv('chacha20-poly1305', symmetricKey, nonce, {
-    authTagLength: AUTH_ENVELOPE_TAG_LENGTH,
-  });
+  const cipher = createCipheriv('aes-256-gcm', symmetricKey, nonce);
   const ciphertext = Buffer.concat([
     cipher.update(Buffer.from(data)),
     cipher.final(),

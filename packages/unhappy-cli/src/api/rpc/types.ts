@@ -35,7 +35,6 @@ export type RpcResponseCallback = (response: string) => void;
 export interface RpcHandlerConfig {
     scopePrefix: string;
     encryptionKey: Uint8Array;
-    encryptionVariant: 'legacy' | 'dataKey';
     logger?: (message: string, data?: any) => void;
 }
 

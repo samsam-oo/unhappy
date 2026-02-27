@@ -26,8 +26,10 @@ vi.mock('@/ui/logger', () => ({
 vi.mock('./encryption', () => ({
   decodeBase64: vi.fn((data: string) => data),
   encodeBase64: vi.fn((data: any) => data),
-  decrypt: vi.fn((data: any) => data),
-  encrypt: vi.fn((data: any) => data),
+  decrypt: vi.fn((_: Uint8Array, data: any) => data),
+  encrypt: vi.fn((_: Uint8Array, data: any) => data),
+  getRandomBytes: vi.fn((size: number) => new Uint8Array(size)),
+  libsodiumEncryptForPublicKey: vi.fn((data: Uint8Array) => data),
 }));
 
 // Mock configuration
@@ -35,11 +37,6 @@ vi.mock('./configuration', () => ({
   configuration: {
     serverUrl: 'https://api.example.com',
   },
-}));
-
-// Mock libsodium encryption
-vi.mock('./libsodiumEncryption', () => ({
-  libsodiumEncryptForPublicKey: vi.fn((data: any) => new Uint8Array(32)),
 }));
 
 // Global test metadata
@@ -72,8 +69,8 @@ describe('Api server error handling', () => {
     const mockCredential = {
       token: 'fake-token',
       encryption: {
-        type: 'legacy' as const,
-        secret: new Uint8Array(32),
+        publicKey: new Uint8Array(32),
+        machineKey: new Uint8Array(32),
       },
     };
 
@@ -260,7 +257,6 @@ describe('Api server error handling', () => {
       expect(result).toEqual({
         id: 'test-machine',
         encryptionKey: expect.any(Uint8Array),
-        encryptionVariant: 'legacy',
         metadata: testMachineMetadata,
         metadataVersion: 0,
         daemonState: {
@@ -295,7 +291,6 @@ describe('Api server error handling', () => {
       expect(result).toEqual({
         id: 'test-machine',
         encryptionKey: expect.any(Uint8Array),
-        encryptionVariant: 'legacy',
         metadata: testMachineMetadata,
         metadataVersion: 0,
         daemonState: null,

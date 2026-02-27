@@ -173,7 +173,6 @@ export type Session = {
   id: string,
   seq: number,
   encryptionKey: Uint8Array;
-  encryptionVariant: 'legacy' | 'dataKey';
   metadata: Metadata,
   metadataVersion: number,
   agentState: AgentState | null,
@@ -218,7 +217,6 @@ export type DaemonState = z.infer<typeof DaemonStateSchema>
 export type Machine = {
   id: string,
   encryptionKey: Uint8Array;
-  encryptionVariant: 'legacy' | 'dataKey';
   metadata: MachineMetadata,
   metadataVersion: number,
   daemonState: DaemonState | null,
