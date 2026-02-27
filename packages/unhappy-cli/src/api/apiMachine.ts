@@ -800,6 +800,7 @@ export class ApiMachineClient {
         }
         const supportedCommands = new Set([
           'spawn-unhappy-session',
+          'list-models',
           'stop-daemon',
           'update-daemon',
           'bash',
@@ -812,7 +813,7 @@ export class ApiMachineClient {
           'claude-list-sessions',
         ]);
         if (!supportedCommands.has(command)) {
-          callback({ success: false, error: 'Unsupported command' });
+          callback({ success: false, error: `Unsupported command: ${command}` });
           return;
         }
         if (!this.rpcHandlerManager.hasHandler(command)) {
