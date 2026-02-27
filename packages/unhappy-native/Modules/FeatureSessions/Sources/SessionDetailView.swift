@@ -701,14 +701,14 @@ public struct SessionDetailView: View {
 
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let thinkingEntry = latestAgentThinkingEntry {
+            if let liveStatusText {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text(thinkingEntry.body)
+                    Text(liveStatusText)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
             }
 
@@ -1358,6 +1358,79 @@ public struct SessionDetailView: View {
             }
         }
         return nil
+    }
+
+    private var liveStatusText: String? {
+        if viewModel.isLoadingSessionMessages {
+            return "Loading messages…"
+        }
+
+        if let latestAgentLiveStatusText {
+            return latestAgentLiveStatusText
+        }
+
+        if viewModel.isSendingMessage(sessionID: session.id) {
+            return "Thinking…"
+        }
+
+        return nil
+    }
+
+    private var latestAgentLiveStatusText: String? {
+        for presentation in visibleTranscriptPresentations.reversed() {
+            for entry in presentation.entries.reversed() {
+                guard entry.role == .agent else { continue }
+                if entry.kind == .thinking {
+                    let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return body.isEmpty ? "Thinking…" : body
+                }
+                if entry.kind == .text {
+                    return nil
+                }
+                if let status = liveStatusText(from: entry) {
+                    return status
+                }
+                return nil
+            }
+        }
+        return nil
+    }
+
+    private func liveStatusText(from entry: SessionTranscriptEntry) -> String? {
+        guard entry.kind == .toolCall || entry.kind == .raw || entry.kind == .event else {
+            return nil
+        }
+
+        let title = (entry.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTitle = title.lowercased()
+        let normalizedBody = body.lowercased()
+        let statusKeywords = [
+            "planning",
+            "explored",
+            "summarizing",
+            "finalizing",
+            "calling",
+            "crafting",
+            "loading",
+            "retry",
+            "updating",
+            "thinking",
+            "image #",
+        ]
+        let isStatusLike = statusKeywords.contains {
+            normalizedTitle.contains($0) || normalizedBody.contains($0)
+        }
+        guard isStatusLike else { return nil }
+
+        if !title.isEmpty {
+            return title
+        }
+        guard !body.isEmpty else { return nil }
+        if body.count > 120 {
+            return String(body.prefix(120)) + "…"
+        }
+        return body
     }
 
     private func filterSubagentEntriesAndCount(

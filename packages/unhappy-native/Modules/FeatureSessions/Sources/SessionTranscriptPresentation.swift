@@ -161,7 +161,25 @@ enum SessionTranscriptPresentationBuilder {
         _ record: [String: Any],
         messageID: String
     ) -> [SessionTranscriptEntry] {
+        if let contentArray = record["content"] as? [Any], !contentArray.isEmpty {
+            let entries = parseUserContentArray(contentArray, messageID: messageID)
+            if !entries.isEmpty {
+                return entries
+            }
+        }
+
         guard let content = record["content"] as? [String: Any] else {
+            if let text = normalizedText(record["content"]) {
+                return [
+                    makeEntry(
+                        id: "\(messageID)-user",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: text
+                    )
+                ]
+            }
             return [
                 makeEntry(
                     id: "\(messageID)-user",
@@ -173,8 +191,49 @@ enum SessionTranscriptPresentationBuilder {
             ]
         }
 
-        if let type = content["type"] as? String, type == "text" {
-            let text = normalizedText(content["text"]) ?? stringify(content)
+        if let nestedContentArray = content["content"] as? [Any], !nestedContentArray.isEmpty {
+            let entries = parseUserContentArray(nestedContentArray, messageID: messageID)
+            if !entries.isEmpty {
+                return entries
+            }
+        }
+
+        if let type = (content["type"] as? String)?.lowercased() {
+            switch type {
+            case "text", "input_text":
+                let text =
+                    normalizedText(content["text"]) ??
+                    normalizedText(content["input_text"]) ??
+                    extractMessageText(from: content["content"]) ??
+                    stringify(content)
+                return [
+                    makeEntry(
+                        id: "\(messageID)-user",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: text
+                    )
+                ]
+            case "image", "input_image", "image_url":
+                return [
+                    makeEntry(
+                        id: "\(messageID)-user-image-0",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: imagePlaceholderText(index: 1)
+                    )
+                ]
+            default:
+                break
+            }
+        }
+
+        if let text =
+            extractMessageText(from: content["text"]) ??
+            extractMessageText(from: content["message"]) ??
+            extractMessageText(from: content["content"]) {
             return [
                 makeEntry(
                     id: "\(messageID)-user",
@@ -453,22 +512,60 @@ enum SessionTranscriptPresentationBuilder {
             ]
         }
 
-        if let contentArray = message["content"] as? [Any], !contentArray.isEmpty {
-            var entries: [SessionTranscriptEntry] = []
-            for (index, item) in contentArray.enumerated() {
-                if let chunk = item as? [String: Any], (chunk["type"] as? String) == "tool_result" {
-                    let toolUseID = extractToolUseID(from: chunk)
-                    entries.append(
-                        makeEntry(
-                            id: "\(messageID)-output-user-\(index)",
-                            role: .agent,
-                            kind: .toolResult,
-                            title: "Tool result",
-                            body: stringifyToolResultContent(chunk["content"]),
-                            toolUseID: toolUseID
-                        )
-                    )
-                } else {
+            if let contentArray = message["content"] as? [Any], !contentArray.isEmpty {
+                var entries: [SessionTranscriptEntry] = []
+                var imageIndex = 0
+                for (index, item) in contentArray.enumerated() {
+                    if let chunk = item as? [String: Any],
+                       let type = (chunk["type"] as? String)?.lowercased() {
+                        if type == "tool_result" {
+                            let toolUseID = extractToolUseID(from: chunk)
+                            entries.append(
+                                makeEntry(
+                                    id: "\(messageID)-output-user-\(index)",
+                                    role: .agent,
+                                    kind: .toolResult,
+                                    title: "Tool result",
+                                    body: stringifyToolResultContent(chunk["content"]),
+                                    toolUseID: toolUseID
+                                )
+                            )
+                            continue
+                        }
+
+                        if type == "text" || type == "input_text" {
+                            let text =
+                                normalizedText(chunk["text"]) ??
+                                normalizedText(chunk["input_text"]) ??
+                                extractMessageText(from: chunk["content"]) ??
+                                stringify(chunk)
+                            entries.append(
+                                makeEntry(
+                                    id: "\(messageID)-output-user-\(index)",
+                                    role: .user,
+                                    kind: .text,
+                                    title: nil,
+                                    body: text
+                                )
+                            )
+                            continue
+                        }
+
+                        if type == "image" || type == "input_image" || type == "image_url" || type.contains("image") {
+                            imageIndex += 1
+                            entries.append(
+                                makeEntry(
+                                    id: "\(messageID)-output-user-\(index)",
+                                    role: .user,
+                                    kind: .text,
+                                    title: nil,
+                                    body: imagePlaceholderText(index: imageIndex)
+                                )
+                            )
+                            continue
+                        }
+                    }
+
                     entries.append(
                         makeEntry(
                             id: "\(messageID)-output-user-\(index)",
@@ -479,9 +576,8 @@ enum SessionTranscriptPresentationBuilder {
                         )
                     )
                 }
+                return entries
             }
-            return entries
-        }
 
         return [
             makeEntry(
@@ -769,6 +865,117 @@ enum SessionTranscriptPresentationBuilder {
         guard let object = value as? [String: Any] else { return nil }
         guard let title = normalizedText(object["title"]) else { return nil }
         return title
+    }
+
+    private static func parseUserContentArray(
+        _ contentArray: [Any],
+        messageID: String
+    ) -> [SessionTranscriptEntry] {
+        var entries: [SessionTranscriptEntry] = []
+        entries.reserveCapacity(contentArray.count)
+        var imageIndex = 0
+
+        for (index, item) in contentArray.enumerated() {
+            guard let chunk = item as? [String: Any] else {
+                if let text = normalizedText(item) {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .text,
+                            title: nil,
+                            body: text
+                        )
+                    )
+                } else {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .raw,
+                            title: "Chunk",
+                            body: stringify(item)
+                        )
+                    )
+                }
+                continue
+            }
+
+            let type = (normalizedText(chunk["type"]) ?? "").lowercased()
+            switch type {
+            case "text", "input_text":
+                let text =
+                    normalizedText(chunk["text"]) ??
+                    normalizedText(chunk["input_text"]) ??
+                    extractMessageText(from: chunk["content"]) ??
+                    stringify(chunk)
+                entries.append(
+                    makeEntry(
+                        id: "\(messageID)-user-\(index)",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: text
+                    )
+                )
+            case "image", "input_image", "image_url":
+                imageIndex += 1
+                entries.append(
+                    makeEntry(
+                        id: "\(messageID)-user-\(index)",
+                        role: .user,
+                        kind: .text,
+                        title: nil,
+                        body: imagePlaceholderText(index: imageIndex)
+                    )
+                )
+            default:
+                if type.contains("image") {
+                    imageIndex += 1
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .text,
+                            title: nil,
+                            body: imagePlaceholderText(index: imageIndex)
+                        )
+                    )
+                    continue
+                }
+
+                if let text =
+                    extractMessageText(from: chunk["text"]) ??
+                    extractMessageText(from: chunk["message"]) ??
+                    extractMessageText(from: chunk["content"]) {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .text,
+                            title: nil,
+                            body: text
+                        )
+                    )
+                } else {
+                    entries.append(
+                        makeEntry(
+                            id: "\(messageID)-user-\(index)",
+                            role: .user,
+                            kind: .raw,
+                            title: type.isEmpty ? "Chunk" : "Chunk \(type)",
+                            body: stringify(chunk)
+                        )
+                    )
+                }
+            }
+        }
+
+        return entries
+    }
+
+    private static func imagePlaceholderText(index: Int) -> String {
+        "[Image #\(max(1, index))]"
     }
 
     private static func sanitizeText(_ value: String) -> String {

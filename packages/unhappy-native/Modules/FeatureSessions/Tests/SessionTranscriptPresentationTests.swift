@@ -229,6 +229,35 @@ struct SessionTranscriptPresentationTests {
     }
 
     @Test
+    func userInputImageChunkShowsImagePlaceholder() {
+        let payload: [String: Any] = [
+            "role": "user",
+            "content": [
+                [
+                    "type": "input_image",
+                    "image_url": "data:image/png;base64,AAAA",
+                ],
+                [
+                    "type": "input_text",
+                    "text": "Please inspect this screenshot.",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 2)
+        #expect(presentation.entries[0].role == .user)
+        #expect(presentation.entries[0].kind == .text)
+        #expect(presentation.entries[0].body == "[Image #1]")
+        #expect(presentation.entries[1].body == "Please inspect this screenshot.")
+    }
+
+    @Test
     func emptyCompletedToolResultIsHidden() {
         let payload: [String: Any] = [
             "role": "agent",
