@@ -1526,13 +1526,23 @@ private struct SessionTranscriptLogLine: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(collapsibleTitle)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
+                        if isEditFilesEntry {
+                            Text(collapsibleTitle)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(collapsibleTitle)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -1543,7 +1553,7 @@ private struct SessionTranscriptLogLine: View {
                         .foregroundStyle(.primary)
                         .textSelection(.enabled)
                         .lineLimit(nil)
-                } else if let preview = collapsedPreview {
+                } else if !isEditFilesEntry, let preview = collapsedPreview {
                     Text(preview)
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
@@ -1606,11 +1616,11 @@ private struct SessionTranscriptLogLine: View {
     }
 
     private var collapsibleTitle: String {
+        if isEditFilesEntry {
+            return "Edit files"
+        }
         if let title = entry.title, !title.isEmpty {
             return title
-        }
-        if isEditFilesEntry {
-            return "Edit Files"
         }
         switch entry.kind {
         case .toolCall:
