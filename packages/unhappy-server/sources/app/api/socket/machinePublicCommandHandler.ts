@@ -6,6 +6,7 @@ import { Socket } from "socket.io";
 
 const ALLOWED_MACHINE_COMMANDS = new Set<string>([
     "listDirectory",
+    "list-models",
     "codex-list-threads",
     "claude-list-sessions",
     "spawn-unhappy-session",

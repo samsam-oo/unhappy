@@ -1,5 +1,5 @@
 import Foundation
-import Security
+import CryptoKit
 import CoreKit
 
 public enum TerminalConnectRequestState: Equatable, Sendable {
@@ -9,6 +9,8 @@ public enum TerminalConnectRequestState: Equatable, Sendable {
 
 public enum TerminalConnectError: LocalizedError, Equatable {
     case missingToken
+    case missingAccountSecret
+    case invalidAccountSecret
     case invalidServerURL
     case invalidPublicKey
     case requestNotFound
@@ -20,6 +22,10 @@ public enum TerminalConnectError: LocalizedError, Equatable {
         switch self {
         case .missingToken:
             return "API token is required"
+        case .missingAccountSecret:
+            return "Account secret key is required"
+        case .invalidAccountSecret:
+            return "Invalid account secret key"
         case .invalidServerURL:
             return "Invalid server URL"
         case .invalidPublicKey:
@@ -27,7 +33,7 @@ public enum TerminalConnectError: LocalizedError, Equatable {
         case .requestNotFound:
             return "Terminal auth request not found or expired"
         case .keyGenerationFailed:
-            return "Failed to generate terminal data key"
+            return "Failed to derive terminal content key"
         case .encryptionFailed:
             return "Failed to encrypt terminal approval payload"
         case .failed(let message):
@@ -58,29 +64,38 @@ public protocol TerminalConnectingAction: Sendable {
 }
 
 public actor UserDefaultsTerminalDataKeyStore: TerminalDataKeyStoring {
-    private let defaults: UserDefaults
-    private let contentDataKeyStorageKey: String
+    private let accountSecretStore: any AccountSecretStoring
 
     public init(
         defaults: UserDefaults = .standard,
-        contentDataKeyStorageKey: String = "unhappy.native.terminal.contentDataKey"
+        contentDataKeyStorageKey: String = "unhappy.native.terminal.contentDataKey",
+        accountSecretStore: (any AccountSecretStoring)? = nil
     ) {
-        self.defaults = defaults
-        self.contentDataKeyStorageKey = contentDataKeyStorageKey
+        _ = contentDataKeyStorageKey
+        self.accountSecretStore = accountSecretStore ?? UserDefaultsAccountSecretStore(defaults: defaults)
     }
 
     public func loadOrCreateDataKey() async throws -> Data {
-        if let encoded = defaults.string(forKey: contentDataKeyStorageKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !encoded.isEmpty,
-           let existing = Data(base64Encoded: encoded),
-           existing.count == 32 {
-            return existing
-        }
+        let rawSecret = await accountSecretStore.loadSecretBase64URL()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let generated = try randomBytes(count: 32)
-        defaults.set(generated.base64EncodedString(), forKey: contentDataKeyStorageKey)
-        return generated
+        guard !rawSecret.isEmpty else {
+            throw TerminalConnectError.missingAccountSecret
+        }
+        guard let accountSecret = AccountSecretCodec.decode(rawSecret), accountSecret.count == 32 else {
+            throw TerminalConnectError.invalidAccountSecret
+        }
+        guard
+            let contentSeed = deriveKey(
+                master: accountSecret,
+                usage: "Unhappy EnCoder",
+                path: ["content"]
+            ),
+            let contentPublicKey = deriveCurve25519PublicKey(fromSeed: contentSeed)
+        else {
+            throw TerminalConnectError.keyGenerationFailed
+        }
+        return contentPublicKey
     }
 }
 
@@ -235,11 +250,61 @@ public actor TerminalConnectUseCase: TerminalConnectingAction {
     }
 }
 
-private func randomBytes(count: Int) throws -> Data {
-    var bytes = [UInt8](repeating: 0, count: count)
-    let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-    guard status == errSecSuccess else {
-        throw TerminalConnectError.keyGenerationFailed
+private struct KeyTreeState {
+    let key: Data
+    let chainCode: Data
+}
+
+private func deriveKey(master: Data, usage: String, path: [String]) -> Data? {
+    let rootInput = Data("\(usage) Master Seed".utf8)
+    let rootDigest = hmacSHA512(key: master, data: rootInput)
+    guard rootDigest.count == 64 else { return nil }
+
+    var state = KeyTreeState(
+        key: Data(rootDigest.prefix(32)),
+        chainCode: Data(rootDigest.suffix(32))
+    )
+
+    for index in path {
+        var childInput = Data([0x00])
+        childInput.append(Data(index.utf8))
+        let childDigest = hmacSHA512(key: state.chainCode, data: childInput)
+        guard childDigest.count == 64 else { return nil }
+        state = KeyTreeState(
+            key: Data(childDigest.prefix(32)),
+            chainCode: Data(childDigest.suffix(32))
+        )
     }
-    return Data(bytes)
+
+    return state.key
+}
+
+private func hmacSHA512(key: Data, data: Data) -> Data {
+    let mac = HMAC<SHA512>.authenticationCode(
+        for: data,
+        using: SymmetricKey(data: key)
+    )
+    return Data(mac)
+}
+
+private func deriveCurve25519PublicKey(fromSeed seed: Data) -> Data? {
+    guard let secretKey = deriveCurve25519SecretKey(fromSeed: seed) else {
+        return nil
+    }
+    guard let privateKey = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: secretKey) else {
+        return nil
+    }
+    return privateKey.publicKey.rawRepresentation
+}
+
+private func deriveCurve25519SecretKey(fromSeed seed: Data) -> Data? {
+    guard seed.count == 32 else { return nil }
+    let digest = SHA512.hash(data: seed)
+    var scalar = Array(digest.prefix(32))
+    guard scalar.count == 32 else { return nil }
+
+    scalar[0] &= 248
+    scalar[31] &= 127
+    scalar[31] |= 64
+    return Data(scalar)
 }

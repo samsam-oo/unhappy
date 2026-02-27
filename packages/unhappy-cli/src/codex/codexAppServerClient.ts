@@ -53,6 +53,7 @@ type ContinueSessionOptions = {
 
 type AppServerReasoningEffort =
   NonNullable<ContinueSessionOptions['overrides']>['effort'];
+type CodexThreadSummaryEffort = Exclude<AppServerReasoningEffort, null>;
 
 type CodexToolCallLike = {
   id: RequestId;
@@ -69,6 +70,8 @@ export type CodexThreadSummary = {
   updatedAt?: string;
   createdAt?: string;
   archived?: boolean;
+  model?: string;
+  effort?: CodexThreadSummaryEffort;
 };
 
 export type CodexPermissionHandlerLike = {
@@ -92,15 +95,18 @@ function createAbortError(): Error {
 function mapEffortFromLegacyConfig(value: unknown): AppServerReasoningEffort | undefined {
   if (value === null) return null;
   if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === 'max') return 'xhigh';
   if (
-    value === 'none' ||
-    value === 'minimal' ||
-    value === 'low' ||
-    value === 'medium' ||
-    value === 'high' ||
-    value === 'xhigh'
+    normalized === 'none' ||
+    normalized === 'minimal' ||
+    normalized === 'low' ||
+    normalized === 'medium' ||
+    normalized === 'high' ||
+    normalized === 'xhigh'
   ) {
-    return value;
+    return normalized;
   }
   return undefined;
 }
@@ -1586,6 +1592,17 @@ export class CodexAppServerClient {
     for (const row of rows) {
       if (!isRecord(row)) continue;
       const nestedThread = isRecord(row.thread) ? row.thread : null;
+      const rowReasoning = isRecord(row.reasoning) ? row.reasoning : null;
+      const nestedReasoning =
+        nestedThread && isRecord(nestedThread.reasoning) ? nestedThread.reasoning : null;
+      const configRecords: Array<Record<string, unknown>> = [
+        row.config,
+        row.threadConfig,
+        row.thread_config,
+        nestedThread?.config,
+        nestedThread?.threadConfig,
+        nestedThread?.thread_config,
+      ].filter((candidate): candidate is Record<string, unknown> => isRecord(candidate));
       const directId = typeof row.id === 'string' ? row.id.trim() : '';
       const nestedId =
         nestedThread && typeof nestedThread.id === 'string' && nestedThread.id.trim()
@@ -1593,6 +1610,73 @@ export class CodexAppServerClient {
           : '';
       const id = directId || nestedId;
       if (!id || seen.has(id)) continue;
+
+      const model = getFirstNonEmptyString([
+        row.model,
+        row.modelName,
+        row.model_name,
+        row.assistantModel,
+        row.assistant_model,
+        nestedThread?.model,
+        nestedThread?.modelName,
+        nestedThread?.model_name,
+        nestedThread?.assistantModel,
+        nestedThread?.assistant_model,
+        ...configRecords.flatMap((config) => [
+          config.model,
+          config.modelName,
+          config.model_name,
+          config.assistantModel,
+          config.assistant_model,
+        ]),
+      ]) ?? undefined;
+
+      const effortCandidates: unknown[] = [
+        row.effort,
+        row.reasoningEffort,
+        row.reasoning_effort,
+        row.modelReasoningEffort,
+        row.model_reasoning_effort,
+        rowReasoning?.effort,
+        rowReasoning?.reasoningEffort,
+        rowReasoning?.reasoning_effort,
+        rowReasoning?.modelReasoningEffort,
+        rowReasoning?.model_reasoning_effort,
+        nestedThread?.effort,
+        nestedThread?.reasoningEffort,
+        nestedThread?.reasoning_effort,
+        nestedThread?.modelReasoningEffort,
+        nestedThread?.model_reasoning_effort,
+        nestedReasoning?.effort,
+        nestedReasoning?.reasoningEffort,
+        nestedReasoning?.reasoning_effort,
+        nestedReasoning?.modelReasoningEffort,
+        nestedReasoning?.model_reasoning_effort,
+      ];
+      for (const config of configRecords) {
+        const configReasoning = isRecord(config.reasoning) ? config.reasoning : null;
+        effortCandidates.push(
+          config.effort,
+          config.reasoningEffort,
+          config.reasoning_effort,
+          config.modelReasoningEffort,
+          config.model_reasoning_effort,
+          configReasoning?.effort,
+          configReasoning?.reasoningEffort,
+          configReasoning?.reasoning_effort,
+          configReasoning?.modelReasoningEffort,
+          configReasoning?.model_reasoning_effort,
+        );
+      }
+
+      let effort: CodexThreadSummaryEffort | undefined;
+      for (const candidate of effortCandidates) {
+        const mappedEffort = mapEffortFromLegacyConfig(candidate);
+        if (mappedEffort !== undefined && mappedEffort !== null) {
+          effort = mappedEffort;
+          break;
+        }
+      }
 
       seen.add(id);
       summaries.push({
@@ -1629,6 +1713,8 @@ export class CodexAppServerClient {
             : typeof nestedThread?.archived === 'boolean'
               ? nestedThread.archived
               : undefined,
+        model,
+        effort,
       });
     }
 

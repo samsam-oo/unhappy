@@ -13,6 +13,57 @@ public struct SessionDetailView: View {
         var id: String { rawValue }
     }
 
+    private enum SessionComposerFlavor: String {
+        case codex
+        case claude
+        case gemini
+    }
+
+    private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
+        case auto
+        case low
+        case medium
+        case high
+        case max
+        case xhigh
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .auto:
+                return "Auto"
+            case .low:
+                return "Low"
+            case .medium:
+                return "Medium"
+            case .high:
+                return "High"
+            case .max:
+                return "Max"
+            case .xhigh:
+                return "XHigh"
+            }
+        }
+
+        var overrideValue: SessionMessageEffortOverride {
+            switch self {
+            case .auto:
+                return .auto
+            case .low:
+                return .low
+            case .medium:
+                return .medium
+            case .high:
+                return .high
+            case .max:
+                return .max
+            case .xhigh:
+                return .xhigh
+            }
+        }
+    }
+
     let session: APISession
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
@@ -31,6 +82,11 @@ public struct SessionDetailView: View {
     @State private var claudeResumeDirectoryDraft = ""
     @State private var draftMessage = ""
     @State private var presentedQuickTool: SessionQuickTool?
+    @State private var showComposerOverrides = false
+    @State private var applyModelOverride = false
+    @State private var modelOverrideDraft = ""
+    @State private var applyEffortOverride = false
+    @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
 
     public init(
         session: APISession,
@@ -62,7 +118,7 @@ public struct SessionDetailView: View {
                         .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
                 }
                 LabeledContent("Updated") {
-                    Text(Date(timeIntervalSince1970: currentSession.updatedAt), style: .relative)
+                    Text(SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt))
                 }
             }
 
@@ -158,6 +214,10 @@ public struct SessionDetailView: View {
             }
         }
         .onAppear {
+            if !availableEffortSelections.contains(selectedEffortOverride),
+               let first = availableEffortSelections.first {
+                selectedEffortOverride = first
+            }
             viewModel.startSelectedSessionMessagesPolling(
                 for: session.id,
                 serverURLString: serverURLString,
@@ -499,6 +559,32 @@ public struct SessionDetailView: View {
                 .lineLimit(2...6)
                 .textInputAutocapitalization(.sentences)
 
+            DisclosureGroup("Model & Reasoning", isExpanded: $showComposerOverrides) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("Override model", isOn: $applyModelOverride)
+                    if applyModelOverride {
+                        TextField("Model name (empty = reset to default)", text: $modelOverrideDraft)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.footnote.monospaced())
+                    }
+
+                    if supportsReasoningEffortOverride {
+                        Toggle("Override reasoning effort", isOn: $applyEffortOverride)
+                        if applyEffortOverride {
+                            Picker("Reasoning", selection: $selectedEffortOverride) {
+                                ForEach(availableEffortSelections, id: \.self) { option in
+                                    Text(option.label).tag(option)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+            .font(.footnote)
+
             HStack(spacing: 10) {
                 Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send") {
                     submitDraftMessage(with: .queue)
@@ -539,17 +625,58 @@ public struct SessionDetailView: View {
         let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
+        let modelOverride: SessionMessageModelOverride
+        if applyModelOverride {
+            let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            modelOverride = normalized.isEmpty ? .reset : .set(normalized)
+        } else {
+            modelOverride = .inherit
+        }
+
+        let effortOverride: SessionMessageEffortOverride
+        if applyEffortOverride && supportsReasoningEffortOverride {
+            effortOverride = selectedEffortOverride.overrideValue
+        } else {
+            effortOverride = .inherit
+        }
+
         Task {
             let sent = await viewModel.sendMessage(
                 for: session.id,
                 text: text,
                 steerMode: steerMode,
+                modelOverride: modelOverride,
+                effortOverride: effortOverride,
                 serverURLString: serverURLString,
                 token: token
             )
             if sent {
                 draftMessage = ""
             }
+        }
+    }
+
+    private var supportsReasoningEffortOverride: Bool {
+        guard let flavor = parsedSessionFlavor else { return false }
+        switch flavor {
+        case .codex, .claude:
+            return true
+        case .gemini:
+            return false
+        }
+    }
+
+    private var availableEffortSelections: [SessionComposerEffortSelection] {
+        guard let flavor = parsedSessionFlavor else {
+            return [.auto, .low, .medium, .high]
+        }
+        switch flavor {
+        case .codex:
+            return [.auto, .low, .medium, .high, .xhigh]
+        case .claude:
+            return [.auto, .low, .medium, .high, .max]
+        case .gemini:
+            return [.auto]
         }
     }
 
@@ -644,6 +771,15 @@ public struct SessionDetailView: View {
     private func normalizedCWD(from value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var parsedSessionFlavor: SessionComposerFlavor? {
+        guard let data = currentSession.metadata.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = json["flavor"] as? String else {
+            return nil
+        }
+        return SessionComposerFlavor(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 
     private func transcriptPresentation(

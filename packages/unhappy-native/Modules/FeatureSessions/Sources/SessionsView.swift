@@ -241,7 +241,7 @@ private struct SessionsRow: View {
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-                Text("Updated \(Date(timeIntervalSince1970: session.updatedAt), style: .relative)")
+                Text("Updated \(SessionTimestampPresentation.updatedLabel(for: session.updatedAt))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -286,6 +286,7 @@ private struct SessionsRow: View {
                 spawner: NewSessionSpawnUseCase(service: service),
                 recentProjectsManager: NewSessionNoopRecentProjectsManager(),
                 profilesManager: NewSessionNoopProfilesManager(),
+                modelsLoader: NewSessionModelsLoadUseCase(service: service),
                 codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
                 claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
             )

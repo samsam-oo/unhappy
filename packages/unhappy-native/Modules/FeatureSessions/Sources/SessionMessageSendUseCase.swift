@@ -7,7 +7,9 @@ public protocol SessionMessageSendingAction: Sendable {
         token: String,
         sessionID: String,
         text: String,
-        steerMode: APISessionSteerMode
+        steerMode: APISessionSteerMode,
+        modelOverride: SessionMessageModelOverride,
+        effortOverride: SessionMessageEffortOverride
     ) async throws -> APISessionSendMessageResult
 }
 
@@ -41,6 +43,8 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
         let sessionID: String
         let text: String
         let steerMode: APISessionSteerMode
+        let modelOverride: SessionMessageModelOverride
+        let effortOverride: SessionMessageEffortOverride
     }
 
     private let service: any SessionMessaging
@@ -55,7 +59,9 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
         token: String,
         sessionID: String,
         text: String,
-        steerMode: APISessionSteerMode
+        steerMode: APISessionSteerMode,
+        modelOverride: SessionMessageModelOverride = .inherit,
+        effortOverride: SessionMessageEffortOverride = .inherit
     ) async throws -> APISessionSendMessageResult {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -87,7 +93,9 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
             token: normalizedToken,
             sessionID: normalizedSessionID,
             text: normalizedText,
-            steerMode: steerMode
+            steerMode: steerMode,
+            modelOverride: modelOverride,
+            effortOverride: effortOverride
         )
         if let inFlightTask = inFlightTasks[key] {
             return try await inFlightTask.value
@@ -95,12 +103,39 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
 
         let service = self.service
         let task = Task<APISessionSendMessageResult, Error> {
+            let modelValue: String?
+            let resetModel: Bool
+            switch modelOverride {
+            case .inherit:
+                modelValue = nil
+                resetModel = false
+            case .reset:
+                modelValue = nil
+                resetModel = true
+            case .set(let raw):
+                let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if normalized.isEmpty {
+                    modelValue = nil
+                    resetModel = true
+                } else {
+                    modelValue = normalized
+                    resetModel = false
+                }
+            }
+
+            let effortValue = effortOverride.apiEffort
+            let resetEffort = effortOverride == .auto
+
             let result = try await service.sendMessage(
                 serverURL: serverURL,
                 token: normalizedToken,
                 sessionID: normalizedSessionID,
                 text: normalizedText,
-                steerMode: steerMode
+                steerMode: steerMode,
+                model: modelValue,
+                resetModel: resetModel,
+                reasoningEffort: effortValue,
+                resetReasoningEffort: resetEffort
             )
             if result.success {
                 return result

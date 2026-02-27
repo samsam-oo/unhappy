@@ -20,7 +20,9 @@ public enum MachinesAPI {
         claudeResumeSessionID: String? = nil,
         approvedNewDirectoryCreation: Bool? = nil,
         sessionToken: String? = nil,
-        environmentVariables: [String: String]? = nil
+        environmentVariables: [String: String]? = nil,
+        model: String? = nil,
+        reasoningEffort: APISessionReasoningEffort? = nil
     ) throws -> URLRequest {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -44,7 +46,9 @@ public enum MachinesAPI {
             claudeResumeSessionId: claudeResumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
             approvedNewDirectoryCreation: approvedNewDirectoryCreation,
             token: sessionToken?.trimmingCharacters(in: .whitespacesAndNewlines),
-            environmentVariables: environmentVariables
+            environmentVariables: environmentVariables,
+            model: model?.trimmingCharacters(in: .whitespacesAndNewlines),
+            reasoningEffort: reasoningEffort
         )
         request.httpBody = try JSONEncoder().encode(payload)
         return request
@@ -339,6 +343,8 @@ private struct MachineSpawnPayload: Encodable {
     let approvedNewDirectoryCreation: Bool?
     let token: String?
     let environmentVariables: [String: String]?
+    let model: String?
+    let reasoningEffort: APISessionReasoningEffort?
 }
 
 private struct MachineListDirectoryPayload: Encodable {
@@ -364,7 +370,9 @@ public protocol MachineSessionSpawning: Sendable {
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?,
         sessionToken: String?,
-        environmentVariables: [String: String]?
+        environmentVariables: [String: String]?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult
 }
 
@@ -423,7 +431,26 @@ public protocol MachineClaudeSessionsFetching: Sendable {
     ) async throws -> [APIClaudeSessionSummary]
 }
 
-public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching {
+public protocol MachineModelsListing: Sendable {
+    func fetchAgentCapabilities(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        agent: APISessionSpawnAgent
+    ) async throws -> APIMachineAgentCapabilities
+}
+
+public struct APIMachineAgentCapabilities: Equatable, Sendable {
+    public let models: [String]
+    public let reasoningEfforts: [String]
+
+    public init(models: [String], reasoningEfforts: [String]) {
+        self.models = models
+        self.reasoningEfforts = reasoningEfforts
+    }
+}
+
+public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing {
     private let rpcDirectoryService: any MachineRPCDirectoryListing
 
     public init(
@@ -456,7 +483,9 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?,
         sessionToken: String?,
-        environmentVariables: [String: String]?
+        environmentVariables: [String: String]?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -491,6 +520,13 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         }
         if let environmentVariables {
             params["environmentVariables"] = environmentVariables
+        }
+        let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedModel, !normalizedModel.isEmpty {
+            params["model"] = normalizedModel
+        }
+        if let reasoningEffort {
+            params["reasoningEffort"] = reasoningEffort.rawValue
         }
 
         let data = try await rpcDirectoryService.invokeCommand(
@@ -546,6 +582,63 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
             actionRequired: nil,
             directory: nil,
             error: (payload["error"] as? String) ?? (payload["errorMessage"] as? String) ?? "Failed to spawn session"
+        )
+    }
+
+    public func fetchAgentCapabilities(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        agent: APISessionSpawnAgent
+    ) async throws -> APIMachineAgentCapabilities {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let data = try await rpcDirectoryService.invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "list-models",
+            params: ["agent": agent.rawValue]
+        )
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MachinesAPIError.invalidRPCPayload
+        }
+        if payload["success"] as? Bool == false {
+            let normalizedError = (payload["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to list models"
+            )
+        }
+
+        guard let rawModels = payload["models"] as? [String] else {
+            throw MachinesAPIError.invalidRPCPayload
+        }
+        let rawReasoningEfforts = payload["reasoningEfforts"] as? [String] ?? []
+
+        var models: [String] = []
+        var seen = Set<String>()
+        for raw in rawModels {
+            let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty else { continue }
+            if seen.insert(normalized).inserted {
+                models.append(normalized)
+            }
+        }
+        var reasoningEfforts: [String] = []
+        var seenEfforts = Set<String>()
+        for raw in rawReasoningEfforts {
+            let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty else { continue }
+            if seenEfforts.insert(normalized).inserted {
+                reasoningEfforts.append(normalized)
+            }
+        }
+        return APIMachineAgentCapabilities(
+            models: models,
+            reasoningEfforts: reasoningEfforts
         )
     }
 

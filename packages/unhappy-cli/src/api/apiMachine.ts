@@ -222,6 +222,8 @@ export class ApiMachineClient {
           agent,
           token,
           environmentVariables,
+          model,
+          reasoningEffort,
         } = params || {};
         logger.debug(
           `[API MACHINE] Spawning session with params: ${JSON.stringify(params)}`,
@@ -235,6 +237,18 @@ export class ApiMachineClient {
             "Agent is required. Choose one of: 'claude', 'codex', 'gemini'.",
           );
         }
+        const normalizedModel =
+          typeof model === 'string' && model.trim().length > 0
+            ? model.trim()
+            : undefined;
+        const normalizedReasoningEffort =
+          reasoningEffort === 'low' ||
+          reasoningEffort === 'medium' ||
+          reasoningEffort === 'high' ||
+          reasoningEffort === 'max' ||
+          reasoningEffort === 'xhigh'
+            ? reasoningEffort
+            : undefined;
         const homeDir =
           (this.machine?.metadata?.homeDir || os.homedir()).trim() ||
           os.homedir();
@@ -250,6 +264,8 @@ export class ApiMachineClient {
           agent,
           token,
           environmentVariables,
+          model: normalizedModel,
+          reasoningEffort: normalizedReasoningEffort,
         });
 
         switch (result.type) {
@@ -320,7 +336,7 @@ export class ApiMachineClient {
     const LIST_CODEX_MODELS_TTL_MS = 5 * 60 * 1000;
     const LIST_CODEX_MODELS_ERROR_TTL_MS = 15 * 1000;
     type ListModelsResponse =
-      | { success: true; models: string[] }
+      | { success: true; models: string[]; reasoningEfforts: string[] }
       | { success: false; error: string };
     const listModelsCache = new Map<
       string,
@@ -345,13 +361,30 @@ export class ApiMachineClient {
             'gemini-2.5-flash',
             'gemini-2.5-flash-lite',
           ],
+          reasoningEfforts: ['auto'],
         };
       }
       if (agent === 'codex') {
-        return await listCodexModels();
+        const resp = await listCodexModels();
+        if (!resp.success) {
+          return resp;
+        }
+        return {
+          success: true as const,
+          models: resp.models,
+          reasoningEfforts: ['auto', 'low', 'medium', 'high', 'xhigh'],
+        };
       }
       // Claude model list is static and does not need process spawning.
-      return await listClaudeModels();
+      const resp = await listClaudeModels();
+      if (!resp.success) {
+        return resp;
+      }
+      return {
+        success: true as const,
+        models: resp.models,
+        reasoningEfforts: ['auto', 'low', 'medium', 'high', 'max'],
+      };
     };
 
     const listModelsCached = async (

@@ -17,6 +17,7 @@ public struct NewSessionView: View {
     @State private var showDirectoryBrowserSheet = false
     @State private var directoryBrowserFilterText = ""
     @State private var directoryBrowserPathDraft = ""
+    @FocusState private var focusedField: FocusedField?
 
     public init(
         serverURLString: String,
@@ -48,7 +49,7 @@ public struct NewSessionView: View {
                     } else {
                         Picker("Machine", selection: machineSelectionBinding) {
                             ForEach(viewModel.machines) { machine in
-                                Text(machine.id).tag(machine.id)
+                                Text(NewSessionMachinePresentation.displayName(for: machine)).tag(machine.id)
                             }
                         }
                         .pickerStyle(.navigationLink)
@@ -65,36 +66,6 @@ public struct NewSessionView: View {
                             .textSelection(.enabled)
                             .lineLimit(nil)
                             .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    if !viewModel.recentProjects.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Recent Projects")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            ForEach(viewModel.recentProjects, id: \.self) { projectPath in
-                                Button {
-                                    Task {
-                                        await viewModel.selectRecentProject(
-                                            projectPath,
-                                            serverURLString: serverURLString,
-                                            token: token
-                                        )
-                                    }
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Image(systemName: "folder")
-                                            .foregroundStyle(.secondary)
-                                        Text(projectPath)
-                                            .font(.footnote.monospaced())
-                                            .lineLimit(2)
-                                            .truncationMode(.middle)
-                                        Spacer()
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
                     }
 
                     Button("Choose Folder") {
@@ -154,7 +125,7 @@ public struct NewSessionView: View {
                 }
 
                 Section("Agent") {
-                    Picker("Agent", selection: $viewModel.selectedAgent) {
+                    Picker("Agent", selection: agentSelectionBinding) {
                         Text("Claude").tag(APISessionSpawnAgent.claude)
                         Text("Codex").tag(APISessionSpawnAgent.codex)
                         Text("Gemini").tag(APISessionSpawnAgent.gemini)
@@ -162,6 +133,45 @@ public struct NewSessionView: View {
                 }
 
                 Section("Advanced") {
+                    if viewModel.isLoadingModels {
+                        HStack {
+                            ProgressView()
+                            Text("Loading models…")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Picker("Model", selection: $viewModel.selectedModel) {
+                        Text("Default").tag("")
+                        ForEach(viewModel.availableModels, id: \.self) { model in
+                            Text(model).tag(model)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    .disabled(viewModel.availableModels.isEmpty && viewModel.isLoadingModels)
+
+                    if let error = viewModel.modelsErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                        Button("Retry Models") {
+                            Task {
+                                await viewModel.loadModels(
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                            }
+                        }
+                        .font(.footnote)
+                    }
+
+                    Picker("Reasoning Effort", selection: $viewModel.selectedReasoningEffort) {
+                        ForEach(viewModel.availableReasoningEfforts, id: \.self) { value in
+                            Text(value.displayName).tag(value)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+
                     Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
                         showCodexThreadsSheet = true
                         Task {
@@ -233,6 +243,7 @@ public struct NewSessionView: View {
                     TextField("Session token (optional)", text: $viewModel.sessionToken)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($focusedField, equals: .sessionToken)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Environment Variables (KEY=VALUE)")
                             .font(.footnote.weight(.semibold))
@@ -240,6 +251,7 @@ public struct NewSessionView: View {
                         TextEditor(text: $viewModel.environmentVariablesText)
                             .font(.footnote.monospaced())
                             .frame(minHeight: 96)
+                            .focused($focusedField, equals: .environmentVariables)
                         Text("One variable per line. Empty lines and # comments are ignored.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -300,6 +312,12 @@ public struct NewSessionView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    focusedField = nil
+                }
+            )
             .navigationTitle("New Session")
             .navigationBarTitleDisplayMode(.inline)
             .alert("Save Profile", isPresented: $showSaveProfilePrompt) {
@@ -432,6 +450,7 @@ public struct NewSessionView: View {
                                         viewModel.selectedMachineID == nil ||
                                         viewModel.isLoadingDirectory
                                     )
+                                    .focused($focusedField, equals: .directoryPath)
                                     .onSubmit {
                                         Task {
                                             await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
@@ -452,6 +471,7 @@ public struct NewSessionView: View {
                                 TextField("Filter folders", text: $directoryBrowserFilterText)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
+                                    .focused($focusedField, equals: .directoryFilter)
 
                                 if viewModel.isLoadingDirectory {
                                     HStack {
@@ -511,6 +531,12 @@ public struct NewSessionView: View {
                             }
                         }
                     }
+                    .scrollDismissesKeyboard(.interactively)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            focusedField = nil
+                        }
+                    )
                     .navigationTitle("Choose Folder")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -634,7 +660,7 @@ public struct NewSessionView: View {
                 .presentationDetents([.medium, .large])
             }
             .task(id: "\(serverURLString)|\(token)") {
-                viewModel.selectedAgent = defaultAgent
+                viewModel.setInitialSelectedAgent(defaultAgent)
                 await viewModel.loadMachines(serverURLString: serverURLString, token: token)
             }
         }
@@ -717,6 +743,21 @@ public struct NewSessionView: View {
         )
     }
 
+    private var agentSelectionBinding: Binding<APISessionSpawnAgent> {
+        Binding(
+            get: { viewModel.selectedAgent },
+            set: { newValue in
+                Task {
+                    await viewModel.handleSelectedAgentChange(
+                        newValue,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                }
+            }
+        )
+    }
+
     private var primaryActionTitle: String {
         hasResumeSelection ? "Resume Session" : "Start Session"
     }
@@ -775,6 +816,13 @@ private struct CodexThreadSelectionRow: View {
     }
 }
 
+private enum FocusedField: Hashable {
+    case sessionToken
+    case environmentVariables
+    case directoryPath
+    case directoryFilter
+}
+
 private struct ClaudeSessionSelectionRow: View {
     let session: APIClaudeSessionSummary
 
@@ -825,6 +873,7 @@ private func abbreviatedIdentifier(_ value: String) -> String {
                 spawner: NewSessionSpawnUseCase(service: service),
                 recentProjectsManager: NewSessionNoopRecentProjectsManager(),
                 profilesManager: NewSessionNoopProfilesManager(),
+                modelsLoader: NewSessionModelsLoadUseCase(service: service),
                 codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
                 claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
             )

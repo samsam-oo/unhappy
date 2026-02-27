@@ -25,8 +25,19 @@ public protocol NewSessionSpawningAction: Sendable {
         codexResumeThreadID: String?,
         claudeResumeSessionID: String?,
         sessionToken: String?,
-        environmentVariables: [String: String]
+        environmentVariables: [String: String],
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult
+}
+
+public protocol NewSessionModelsLoadingAction: Sendable {
+    func loadModels(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        agent: APISessionSpawnAgent
+    ) async throws -> APIMachineAgentCapabilities
 }
 
 public protocol NewSessionCodexThreadsLoadingAction: Sendable {
@@ -180,7 +191,9 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         codexResumeThreadID: String?,
         claudeResumeSessionID: String?,
         sessionToken: String?,
-        environmentVariables: [String: String]
+        environmentVariables: [String: String],
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult {
         let (serverURL, normalizedToken, normalizedMachineID, normalizedDirectory) = try normalizeInputs(
             serverURLString: serverURLString,
@@ -199,7 +212,9 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
             claudeResumeSessionID: normalizedOptional(claudeResumeSessionID),
             approvedNewDirectoryCreation: approvedNewDirectoryCreation,
             sessionToken: normalizedOptional(sessionToken),
-            environmentVariables: environmentVariables
+            environmentVariables: environmentVariables,
+            model: normalizedOptional(model),
+            reasoningEffort: reasoningEffort
         )
         if response.success {
             return response
@@ -210,6 +225,34 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         let normalizedError = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
         throw NewSessionError.failed(
             message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to spawn session"
+        )
+    }
+}
+
+public actor NewSessionModelsLoadUseCase: NewSessionModelsLoadingAction {
+    private let service: any MachineModelsListing
+
+    public init(service: any MachineModelsListing) {
+        self.service = service
+    }
+
+    public func loadModels(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        agent: APISessionSpawnAgent
+    ) async throws -> APIMachineAgentCapabilities {
+        let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
+            serverURLString: serverURLString,
+            token: token,
+            machineID: machineID,
+            directory: nil
+        )
+        return try await service.fetchAgentCapabilities(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            agent: agent
         )
     }
 }

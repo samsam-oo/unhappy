@@ -406,6 +406,8 @@ export async function startDaemon(): Promise<void> {
         sessionId,
         codexResumeThreadId,
         claudeResumeSessionId,
+        model,
+        reasoningEffort,
         machineId,
         approvedNewDirectoryCreation = true,
       } = options;
@@ -438,6 +440,56 @@ export async function startDaemon(): Promise<void> {
         claudeResumeSessionId.trim().length > 0
           ? claudeResumeSessionId.trim()
           : null;
+      const normalizedModel =
+        typeof model === 'string' && model.trim().length > 0
+          ? model.trim()
+          : null;
+      const parsedReasoningEffort =
+        reasoningEffort === 'low' ||
+        reasoningEffort === 'medium' ||
+        reasoningEffort === 'high' ||
+        reasoningEffort === 'max' ||
+        reasoningEffort === 'xhigh'
+          ? reasoningEffort
+          : null;
+      if (reasoningEffort != null && parsedReasoningEffort == null) {
+        return {
+          type: 'error',
+          errorMessage: `Invalid reasoning effort '${reasoningEffort}'. Use one of: low, medium, high, max, xhigh.`,
+        };
+      }
+      let normalizedReasoningEffort:
+        | 'low'
+        | 'medium'
+        | 'high'
+        | 'max'
+        | 'xhigh'
+        | null = null;
+      if (parsedReasoningEffort) {
+        if (resolvedAgent === 'gemini') {
+          return {
+            type: 'error',
+            errorMessage:
+              "Reasoning effort is not supported for 'gemini'.",
+          };
+        }
+        if (resolvedAgent === 'claude') {
+          if (parsedReasoningEffort === 'xhigh') {
+            return {
+              type: 'error',
+              errorMessage:
+                "Invalid reasoning effort 'xhigh' for 'claude'. Use one of: low, medium, high, max.",
+            };
+          }
+          normalizedReasoningEffort = parsedReasoningEffort;
+        } else {
+          // Backward compatibility: allow legacy 'max' and map it to codex 'xhigh'.
+          normalizedReasoningEffort =
+            parsedReasoningEffort === 'max'
+              ? 'xhigh'
+              : parsedReasoningEffort;
+        }
+      }
       let directoryCreated = false;
 
       try {
@@ -689,6 +741,15 @@ export async function startDaemon(): Promise<void> {
           if (agent === 'claude' && normalizedClaudeResumeSessionId) {
             fullCommand += ` --resume ${JSON.stringify(normalizedClaudeResumeSessionId)}`;
           }
+          if (normalizedModel) {
+            fullCommand += ` --model ${JSON.stringify(normalizedModel)}`;
+          }
+          if (
+            normalizedReasoningEffort &&
+            (agent === 'codex' || agent === 'claude')
+          ) {
+            fullCommand += ` --reasoning-effort ${JSON.stringify(normalizedReasoningEffort)}`;
+          }
 
           // Spawn in tmux with environment variables
           // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
@@ -821,6 +882,15 @@ export async function startDaemon(): Promise<void> {
             normalizedClaudeResumeSessionId
           ) {
             args.push('--resume', normalizedClaudeResumeSessionId);
+          }
+          if (normalizedModel) {
+            args.push('--model', normalizedModel);
+          }
+          if (
+            normalizedReasoningEffort &&
+            (agentCommand === 'codex' || agentCommand === 'claude')
+          ) {
+            args.push('--reasoning-effort', normalizedReasoningEffort);
           }
 
           // TODO: sessionId is still reserved for future generic resume semantics.

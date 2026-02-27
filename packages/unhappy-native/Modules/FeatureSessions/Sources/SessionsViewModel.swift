@@ -497,6 +497,8 @@ public final class SessionsViewModel: ObservableObject {
         for sessionID: String,
         text: String,
         steerMode: APISessionSteerMode,
+        modelOverride: SessionMessageModelOverride = .inherit,
+        effortOverride: SessionMessageEffortOverride = .inherit,
         serverURLString: String,
         token: String
     ) async -> Bool {
@@ -518,7 +520,9 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 sessionID: sessionID,
                 text: text,
-                steerMode: steerMode
+                steerMode: steerMode,
+                modelOverride: modelOverride,
+                effortOverride: effortOverride
             )
             sendMessageStatusMessage = steerMode == .immediate ? "Steer sent" : "Queued message sent"
             sendMessageErrorMessage = nil

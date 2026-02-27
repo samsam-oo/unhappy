@@ -151,6 +151,10 @@ export interface SpawnSessionOptions {
     codexResumeThreadId?: string;
     // Optional explicit Claude session id to resume on first turn.
     claudeResumeSessionId?: string;
+    // Optional model override selected in UI.
+    model?: string;
+    // Optional reasoning effort override for Codex.
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh';
     approvedNewDirectoryCreation?: boolean;
     agent: 'claude' | 'codex' | 'gemini';
     token?: string;

@@ -40,6 +40,7 @@ export type JsRuntime = 'node' | 'bun';
 
 export interface StartOptions {
   model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'max';
   permissionMode?: PermissionMode;
   startingMode?: 'local' | 'remote';
   shouldStartDaemon?: boolean;
@@ -287,7 +288,8 @@ export async function runClaude(
     options.permissionMode;
   let currentModel = options.model; // Track current model state
   let currentFallbackModel: string | undefined = undefined; // Track current fallback model
-  let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined = undefined; // Track current effort
+  let currentEffort: 'low' | 'medium' | 'high' | 'max' | undefined =
+    options.reasoningEffort; // Track current effort
   let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
   let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
   let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools

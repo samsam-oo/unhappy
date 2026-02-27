@@ -35,7 +35,9 @@ struct MachinesAPITests {
             claudeResumeSessionID: nil,
             approvedNewDirectoryCreation: true,
             sessionToken: "session-token",
-            environmentVariables: ["FOO": "BAR"]
+            environmentVariables: ["FOO": "BAR"],
+            model: "gpt-5-codex",
+            reasoningEffort: .high
         )
 
         #expect(request.httpMethod == "POST")
@@ -49,6 +51,8 @@ struct MachinesAPITests {
         #expect(payload?["codexResumeThreadId"] as? String == "thread-1")
         #expect(payload?["approvedNewDirectoryCreation"] as? Bool == true)
         #expect(payload?["token"] as? String == "session-token")
+        #expect(payload?["model"] as? String == "gpt-5-codex")
+        #expect(payload?["reasoningEffort"] as? String == "high")
     }
 
     @Test
@@ -231,7 +235,9 @@ struct MachinesAPITests {
               "cwd": "/repo",
               "updatedAt": "2026-02-26T01:23:45.000Z",
               "createdAt": "2026-02-26T01:00:00.000Z",
-              "archived": false
+              "archived": false,
+              "model": "gpt-5-codex",
+              "effort": "xhigh"
             }
           ]
         }
@@ -242,6 +248,8 @@ struct MachinesAPITests {
         #expect(rows.count == 1)
         #expect(rows.first?.id == "thread-1")
         #expect(rows.first?.name == "Bugfix")
+        #expect(rows.first?.model == "gpt-5-codex")
+        #expect(rows.first?.effort == .xhigh)
     }
 
     @Test

@@ -226,11 +226,29 @@ async function waitForAuthentication(
             return null;
           }
 
+          const encryptedTokenBundle = decodeAuthEnvelopeBundle(encryptedToken);
+          if (!encryptedTokenBundle) {
+            logger.warn('[AUTH] Failed to decode encrypted authentication token bundle', {
+              encryptedTokenLength: encryptedToken.length,
+            });
+            console.log(
+              '\n\nFailed to decrypt authentication token. Please try again.',
+            );
+            return null;
+          }
+
           const decryptedToken = decryptWithEphemeralKey(
-            decodeBase64(encryptedToken),
+            encryptedTokenBundle,
             keypair.secretKey,
           );
           if (!decryptedToken) {
+            logger.warn('[AUTH] Failed to decrypt authentication token bundle', {
+              encryptedTokenLength: encryptedToken.length,
+              envelopeLength: encryptedTokenBundle.length,
+              envelopeVersion: encryptedTokenBundle.length > 0 ? encryptedTokenBundle[0] : null,
+              secretKeyLength: keypair.secretKey.length,
+              nodeVersion: process.version,
+            });
             console.log(
               '\n\nFailed to decrypt authentication token. Please try again.',
             );
@@ -243,7 +261,16 @@ async function waitForAuthentication(
             return null;
           }
 
-          let r = decodeBase64(response.data.response);
+          const responseBundle = decodeAuthEnvelopeBundle(response.data.response);
+          if (!responseBundle) {
+            logger.warn('[AUTH] Failed to decode encrypted auth response bundle', {
+              responseLength: response.data.response?.length ?? 0,
+            });
+            console.log('\n\nFailed to decrypt response. Please try again.');
+            return null;
+          }
+
+          let r = responseBundle;
           let decrypted = decryptWithEphemeralKey(r, keypair.secretKey);
           if (decrypted) {
             if (decrypted.length === 32) {
@@ -351,6 +378,34 @@ async function waitForAuthentication(
   }
 
   return null;
+}
+
+function decodeAuthEnvelopeBundle(base64: string): Uint8Array | null {
+  const trimmed = base64.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidates = new Set<string>([trimmed, normalizeBase64UrlToBase64(trimmed)]);
+  for (const candidate of candidates) {
+    try {
+      const decoded = decodeBase64(candidate);
+      if (decoded.length > 0) {
+        return decoded;
+      }
+    } catch {
+      // Try next candidate.
+    }
+  }
+
+  return null;
+}
+
+function normalizeBase64UrlToBase64(value: string): string {
+  const normalized = value
+    .replaceAll('-', '+')
+    .replaceAll('_', '/');
+  return normalized + '='.repeat((4 - normalized.length % 4) % 4);
 }
 
 export function decryptWithEphemeralKey(

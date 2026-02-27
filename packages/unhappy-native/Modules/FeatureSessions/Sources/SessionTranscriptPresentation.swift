@@ -719,11 +719,14 @@ enum SessionTranscriptPresentationBuilder {
         guard decoded.count > 1, decoded.first == 0 else {
             return nil
         }
-        guard let accountSecret = loadAccountSecret() else {
+        guard
+            let accountSecret = loadAccountSecret(),
+            let contentSecret = deriveContentBoxSecretKey(fromAccountSecret: accountSecret)
+        else {
             return nil
         }
         let wrappedKey = decoded.subdata(in: 1..<decoded.count)
-        return decryptWrappedDataKey(bundle: wrappedKey, secretKey: accountSecret)
+        return decryptWrappedDataKey(bundle: wrappedKey, secretKey: contentSecret)
     }
 
     private static func decryptWrappedDataKey(bundle: Data, secretKey: Data) -> Data? {
@@ -811,6 +814,56 @@ enum SessionTranscriptPresentationBuilder {
             return nil
         }
         return decoded
+    }
+
+    private static func deriveContentBoxSecretKey(fromAccountSecret accountSecret: Data) -> Data? {
+        guard accountSecret.count == 32 else { return nil }
+        guard let contentSeed = deriveKey(
+            master: accountSecret,
+            usage: "Unhappy EnCoder",
+            path: ["content"]
+        ) else {
+            return nil
+        }
+        return deriveCurve25519SecretKey(fromSeed: contentSeed)
+    }
+
+    private static func deriveKey(master: Data, usage: String, path: [String]) -> Data? {
+        let rootInput = Data("\(usage) Master Seed".utf8)
+        let rootDigest = hmacSHA512(key: master, data: rootInput)
+        guard rootDigest.count == 64 else { return nil }
+
+        var key = Data(rootDigest.prefix(32))
+        var chainCode = Data(rootDigest.suffix(32))
+        for index in path {
+            var childInput = Data([0x00])
+            childInput.append(Data(index.utf8))
+            let childDigest = hmacSHA512(key: chainCode, data: childInput)
+            guard childDigest.count == 64 else { return nil }
+            key = Data(childDigest.prefix(32))
+            chainCode = Data(childDigest.suffix(32))
+        }
+        return key
+    }
+
+    private static func hmacSHA512(key: Data, data: Data) -> Data {
+        let mac = HMAC<SHA512>.authenticationCode(
+            for: data,
+            using: SymmetricKey(data: key)
+        )
+        return Data(mac)
+    }
+
+    private static func deriveCurve25519SecretKey(fromSeed seed: Data) -> Data? {
+        guard seed.count == 32 else { return nil }
+        let digest = SHA512.hash(data: seed)
+        var scalar = Array(digest.prefix(32))
+        guard scalar.count == 32 else { return nil }
+
+        scalar[0] &= 248
+        scalar[31] &= 127
+        scalar[31] |= 64
+        return Data(scalar)
     }
 
     private static func decodeBase64(_ raw: String) -> Data? {
