@@ -19,6 +19,13 @@ public struct SessionDetailView: View {
         case gemini
     }
 
+    private enum SessionComposerFocusField: Hashable {
+        case message
+        case customModel
+    }
+
+    private static let customModelOverrideOption = "__custom_model_override__"
+
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
         case low
@@ -85,8 +92,10 @@ public struct SessionDetailView: View {
     @State private var showComposerOverrides = false
     @State private var applyModelOverride = false
     @State private var modelOverrideDraft = ""
+    @State private var selectedModelOverrideOption = ""
     @State private var applyEffortOverride = false
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
+    @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
         session: APISession,
@@ -161,6 +170,12 @@ public struct SessionDetailView: View {
 
         }
         .listStyle(.plain)
+        .scrollDismissesKeyboard(.immediately)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                focusedComposerField = nil
+            }
+        )
         .safeAreaInset(edge: .bottom) {
             bottomDock
         }
@@ -218,11 +233,22 @@ public struct SessionDetailView: View {
                let first = availableEffortSelections.first {
                 selectedEffortOverride = first
             }
+            if selectedModelOverrideOption.isEmpty,
+               let first = availableModelOverrideOptions.first {
+                selectedModelOverrideOption = first
+            }
             viewModel.startSelectedSessionMessagesPolling(
                 for: session.id,
                 serverURLString: serverURLString,
                 token: token
             )
+        }
+        .onChange(of: applyModelOverride) { _, isEnabled in
+            guard isEnabled else { return }
+            if selectedModelOverrideOption.isEmpty,
+               let first = availableModelOverrideOptions.first {
+                selectedModelOverrideOption = first
+            }
         }
         .refreshable {
             await viewModel.loadMessages(
@@ -558,15 +584,28 @@ public struct SessionDetailView: View {
             TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
                 .lineLimit(2...6)
                 .textInputAutocapitalization(.sentences)
+                .focused($focusedComposerField, equals: .message)
 
             DisclosureGroup("Model & Reasoning", isExpanded: $showComposerOverrides) {
                 VStack(alignment: .leading, spacing: 10) {
                     Toggle("Override model", isOn: $applyModelOverride)
                     if applyModelOverride {
-                        TextField("Model name (empty = reset to default)", text: $modelOverrideDraft)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .font(.footnote.monospaced())
+                        Picker("Model", selection: $selectedModelOverrideOption) {
+                            ForEach(availableModelOverrideOptions, id: \.self) { model in
+                                Text(model).tag(model)
+                            }
+                            Text("Custom…").tag(Self.customModelOverrideOption)
+                            Text("Reset to default").tag("")
+                        }
+                        .pickerStyle(.navigationLink)
+
+                        if selectedModelOverrideOption == Self.customModelOverrideOption {
+                            TextField("Custom model id", text: $modelOverrideDraft)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .font(.footnote.monospaced())
+                                .focused($focusedComposerField, equals: .customModel)
+                        }
                     }
 
                     if supportsReasoningEffortOverride {
@@ -624,11 +663,19 @@ public struct SessionDetailView: View {
     private func submitDraftMessage(with steerMode: APISessionSteerMode) {
         let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        focusedComposerField = nil
 
         let modelOverride: SessionMessageModelOverride
         if applyModelOverride {
-            let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-            modelOverride = normalized.isEmpty ? .reset : .set(normalized)
+            switch selectedModelOverrideOption {
+            case Self.customModelOverrideOption:
+                let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                modelOverride = normalized.isEmpty ? .reset : .set(normalized)
+            case "":
+                modelOverride = .reset
+            default:
+                modelOverride = .set(selectedModelOverrideOption)
+            }
         } else {
             modelOverride = .inherit
         }
@@ -680,6 +727,29 @@ public struct SessionDetailView: View {
         }
     }
 
+    private var availableModelOverrideOptions: [String] {
+        guard let flavor = parsedSessionFlavor else { return [] }
+        switch flavor {
+        case .codex:
+            return [
+                "gpt-5-codex",
+                "gpt-5",
+            ]
+        case .claude:
+            return [
+                "claude-opus-4-6",
+                "claude-sonnet-4-5",
+                "claude-haiku-4-5",
+            ]
+        case .gemini:
+            return [
+                "gemini-2.5-pro",
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+            ]
+        }
+    }
+
     private var quickToolsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -715,6 +785,7 @@ public struct SessionDetailView: View {
         tool: SessionQuickTool
     ) -> some View {
         Button {
+            focusedComposerField = nil
             presentedQuickTool = tool
         } label: {
             Label(title, systemImage: systemImage)
@@ -944,39 +1015,69 @@ private struct SessionTranscriptMessageRow: View {
 private struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
 
-    private var roleColor: Color {
-        switch entry.role {
-        case .user:
-            return .blue
-        case .agent:
-            return .primary
-        case .system:
-            return .orange
+    var body: some View {
+        if isSystemEvent {
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(systemEventText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 2)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                if let title = entry.title, !title.isEmpty {
+                    Text(title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(entry.body)
+                    .font(bodyFont)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .lineLimit(nil)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(bubbleColor)
+            )
+            .frame(
+                maxWidth: .infinity,
+                alignment: entry.role == .user ? .trailing : .leading
+            )
         }
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(entry.role.badgeTitle.uppercased())
-                    .font(.caption2.monospaced().weight(.semibold))
-                    .foregroundStyle(roleColor)
-                Text("[\(entry.kind.rawValue)]")
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                if let title = entry.title, !title.isEmpty {
-                    Text("• \(title)")
-                        .font(.caption2.monospaced())
-                        .lineLimit(1)
-                        .foregroundStyle(.secondary)
-                }
-            }
+    private var isSystemEvent: Bool {
+        entry.role == .system && entry.kind == .event
+    }
 
-            Text(entry.body)
-                .font(.subheadline.monospaced())
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .lineLimit(nil)
+    private var systemEventText: String {
+        if let title = entry.title, !title.isEmpty {
+            return "\(title): \(entry.body)"
+        }
+        return entry.body
+    }
+
+    private var bubbleColor: Color {
+        if entry.role == .user {
+            return Color.blue.opacity(0.12)
+        }
+        return Color.primary.opacity(0.04)
+    }
+
+    private var bodyFont: Font {
+        switch entry.kind {
+        case .toolCall, .toolResult, .raw:
+            return .footnote.monospaced()
+        default:
+            return .subheadline
         }
     }
 }
