@@ -671,8 +671,22 @@ export function sessionRoutes(app: Fastify) {
                 error: typeof result?.error === 'string' ? result.error : 'Failed to send message'
             });
         }
+        const queuedMessages = Array.isArray(result?.queuedMessages)
+            ? result.queuedMessages
+                .filter((item: unknown): item is string => typeof item === 'string')
+                .map((item: string) => item.trim())
+                .filter((item: string) => item.length > 0)
+            : [];
+        const queueCountRaw = typeof result?.queueCount === 'number' ? result.queueCount : undefined;
+        const queueCount = typeof queueCountRaw === 'number'
+            ? Math.max(0, Math.floor(queueCountRaw))
+            : queuedMessages.length;
 
-        return reply.send({ success: true });
+        return reply.send({
+            success: true,
+            queueCount,
+            queuedMessages
+        });
     });
 
     app.post('/v1/sessions/:sessionId/commands/bash', {

@@ -240,7 +240,21 @@ export function sessionPublicCommandHandler(userId: string, socket: Socket) {
                         callback(failure(502, typeof result?.error === "string" ? result.error : "Failed to send message"));
                         return;
                     }
-                    callback(success({ success: true }));
+                    const queuedMessages = Array.isArray(result?.queuedMessages)
+                        ? result.queuedMessages
+                            .filter((item: unknown): item is string => typeof item === "string")
+                            .map((item: string) => item.trim())
+                            .filter((item: string) => item.length > 0)
+                        : [];
+                    const queueCountRaw = typeof result?.queueCount === "number" ? result.queueCount : undefined;
+                    const queueCount = typeof queueCountRaw === "number"
+                        ? Math.max(0, Math.floor(queueCountRaw))
+                        : queuedMessages.length;
+                    callback(success({
+                        success: true,
+                        queueCount,
+                        queuedMessages,
+                    }));
                     return;
                 }
 

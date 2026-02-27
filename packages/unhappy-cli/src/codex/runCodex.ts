@@ -274,6 +274,7 @@ export async function runCodex(opts: {
 
   // Handle server unreachable case - create offline stub with hot reconnection
   let session: ApiSessionClient;
+  let syncQueueState: (() => void) | null = null;
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later at line ~385 after client setup)
   let permissionHandler: CodexPermissionHandler;
@@ -290,6 +291,7 @@ export async function runCodex(opts: {
         if (permissionHandler) {
           permissionHandler.updateSession(newSession);
         }
+        syncQueueState?.();
       },
     });
   session = initialSession;
@@ -337,7 +339,38 @@ export async function runCodex(opts: {
     }),
   );
   let thinking = false;
+  let hasPendingRetry = false;
   const client = new CodexAppServerClient();
+  const normalizeQueuedText = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed.length <= 400) return trimmed;
+    return `${trimmed.slice(0, 400)}…`;
+  };
+  const queuedMessagesSnapshot = (): string[] => {
+    const rows: string[] = [];
+    for (const item of messageQueue.queue) {
+      const normalized = normalizeQueuedText(item.message);
+      if (!normalized) continue;
+      rows.push(normalized);
+    }
+    return rows;
+  };
+  const applyQueueState = () => {
+    const pendingMessages = queuedMessagesSnapshot();
+    session.updateAgentState((currentState) => ({
+      ...(currentState ?? {}),
+      queue: {
+        ...(currentState?.queue ?? {}),
+        pendingMessages,
+        queuedCount: pendingMessages.length,
+        isProcessing: thinking,
+        hasPendingRetry,
+        updatedAt: Date.now(),
+      },
+    }));
+  };
+  syncQueueState = applyQueueState;
 
   // Track current overrides to apply per message
   // Use shared PermissionMode type from api/types for cross-agent compatibility
@@ -472,12 +505,15 @@ export async function runCodex(opts: {
           error,
         );
         messageQueue.push(userText, enhancedMode);
+        applyQueueState();
       });
       return;
     }
 
     messageQueue.push(userText, enhancedMode);
+    applyQueueState();
   });
+  applyQueueState();
   session.keepAlive(thinking, 'remote');
   // Periodic keep-alive; store handle so we can clear on exit
   const keepAliveInterval = setInterval(() => {
@@ -1260,6 +1296,7 @@ export async function runCodex(opts: {
         logger.debug('thinking started');
         thinking = true;
         session.keepAlive(thinking, 'remote');
+        applyQueueState();
       }
     }
     if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
@@ -1271,6 +1308,7 @@ export async function runCodex(opts: {
         logger.debug('thinking completed');
         thinking = false;
         session.keepAlive(thinking, 'remote');
+        applyQueueState();
       }
       // Reset diff processor on task end or abort
       diffProcessor.reset();
@@ -1494,6 +1532,7 @@ export async function runCodex(opts: {
       // Get next batch; respect mode boundaries like Claude
       let message: QueuedMessage | null = pending;
       pending = null;
+      hasPendingRetry = false;
       if (!message) {
         // Capture the current signal to distinguish idle-abort from queue close
         const waitSignal = abortController.signal;
@@ -1515,6 +1554,7 @@ export async function runCodex(opts: {
           compactRetryCount: 0,
         };
       }
+      applyQueueState();
 
       // Defensive check for TS narrowing
       if (!message) {
@@ -1713,6 +1753,8 @@ export async function runCodex(opts: {
                 ...message,
                 compactRetryCount: (message.compactRetryCount ?? 0) + 1,
               };
+              hasPendingRetry = true;
+              applyQueueState();
               continue;
             }
             const msg = `Codex error: ${detail}`;
@@ -1758,6 +1800,8 @@ export async function runCodex(opts: {
               ...message,
               compactRetryCount: (message.compactRetryCount ?? 0) + 1,
             };
+            hasPendingRetry = true;
+            applyQueueState();
             continue;
           }
 
@@ -1809,6 +1853,8 @@ export async function runCodex(opts: {
         diffProcessor.reset();
         thinking = false;
         session.keepAlive(thinking, 'remote');
+        hasPendingRetry = pending !== null;
+        applyQueueState();
         emitReadyIfIdle({
           pending,
           queueSize: () => messageQueue.size(),

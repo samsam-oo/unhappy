@@ -169,7 +169,7 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: messageLoader,
-            messageSender: MockSessionMessageSender(result: .success(APISessionSendMessageResult(success: true, error: nil))),
+            messageSender: MockSessionMessageSender(result: .success(APISessionSendMessageResult(success: true, queueCount: nil, queuedMessages: nil, error: nil))),
             deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
             titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )

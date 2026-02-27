@@ -341,6 +341,13 @@ export type AgentState = {
     effort?: string
     fallbackModel?: string
   }
+  queue?: {
+    pendingMessages?: string[]
+    queuedCount?: number
+    isProcessing?: boolean
+    hasPendingRetry?: boolean
+    updatedAt?: number
+  }
   collab?: {
     state: 'in_progress' | 'completed',
     updatedAt: number,

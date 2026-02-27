@@ -33,11 +33,6 @@ public struct SessionDetailView: View {
         case worktree
     }
 
-    private struct QueuedComposerMessage: Identifiable, Equatable {
-        let id: UUID
-        let text: String
-    }
-
     private struct CachedTranscriptPresentation: Equatable {
         let sourceMessage: APISessionMessage
         let dataEncryptionKey: String?
@@ -120,7 +115,6 @@ public struct SessionDetailView: View {
     @State private var applyEffortOverride = false
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
     @State private var serverModelOverrideOptions: [String] = []
-    @State private var queuedComposerMessages: [QueuedComposerMessage] = []
     @State private var shouldFollowTranscript = true
     @State private var scrollToBottomRequestID = UUID()
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
@@ -695,14 +689,15 @@ public struct SessionDetailView: View {
 
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
+            let queuedComposerMessages = viewModel.queuedComposerMessages(for: currentSession.id)
             if !queuedComposerMessages.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(queuedComposerMessages) { item in
+                    ForEach(Array(queuedComposerMessages.enumerated()), id: \.offset) { _, text in
                         HStack(spacing: 6) {
                             Image(systemName: "clock")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
-                            Text(item.text)
+                            Text(text)
                                 .font(.footnote)
                                 .lineLimit(1)
                                 .foregroundStyle(.primary)
@@ -799,11 +794,6 @@ public struct SessionDetailView: View {
             if sent {
                 shouldFollowTranscript = true
                 scrollToBottomRequestID = UUID()
-                if steerMode == .queue {
-                    queuedComposerMessages.append(
-                        QueuedComposerMessage(id: UUID(), text: text)
-                    )
-                }
                 draftMessage = ""
             }
         }
@@ -1325,7 +1315,15 @@ public struct SessionDetailView: View {
             return latestAgentLiveStatusText
         }
 
-        if viewModel.isSendingMessage(sessionID: session.id) {
+        let queuedCount = viewModel.queuedComposerMessages(for: currentSession.id).count
+        if queuedCount > 0 {
+            return queuedCount == 1 ? "Queued 1 message" : "Queued \(queuedCount) messages"
+        }
+
+        if let sendingMode = viewModel.sendingSteerMode(sessionID: currentSession.id) {
+            if sendingMode == .queue {
+                return "Queueing…"
+            }
             return "Thinking…"
         }
 

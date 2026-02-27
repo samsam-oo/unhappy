@@ -169,7 +169,13 @@ describe('ApiSessionClient connection handling', () => {
             callback
         );
 
-        expect(callback).toHaveBeenCalledWith({ success: true });
+        expect(callback).toHaveBeenCalledWith(
+            expect.objectContaining({
+                success: true,
+                queueCount: 1,
+                queuedMessages: ['hello from native'],
+            })
+        );
         expect(received).toHaveLength(1);
         expect(received[0]?.role).toBe('user');
         expect(received[0]?.content?.text).toBe('hello from native');
