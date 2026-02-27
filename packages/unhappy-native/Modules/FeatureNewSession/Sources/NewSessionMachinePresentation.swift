@@ -19,11 +19,33 @@ enum NewSessionMachinePresentation {
 
     static func displayName(for machine: APIMachine) -> String {
         let metadata = decodeMetadata(machine: machine)
-        if let name = firstString(in: metadata, keys: ["displayName", "name", "machineName"]) {
+        let primaryNameKeys = [
+            "displayName", "name", "machineName", "deviceName", "computerName",
+        ]
+        let hostKeys = [
+            "host", "hostname", "computerName", "localHostName", "hostName", "machineHost",
+        ]
+
+        if let name = bestDisplayString(
+            in: metadata,
+            keys: primaryNameKeys,
+            rejectGenericHosts: true
+        ) {
             return name
         }
-        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
+        if let host = bestDisplayString(
+            in: metadata,
+            keys: hostKeys,
+            rejectGenericHosts: true
+        ) {
             return host
+        }
+        if let relaxedHost = bestDisplayString(
+            in: metadata,
+            keys: hostKeys,
+            rejectGenericHosts: false
+        ) {
+            return relaxedHost
         }
         return machine.id
     }
@@ -52,44 +74,80 @@ enum NewSessionMachinePresentation {
         return [:]
     }
 
-    private static func firstString(in object: Any, keys: [String]) -> String? {
+    private static func bestDisplayString(
+        in object: Any,
+        keys: [String],
+        rejectGenericHosts: Bool
+    ) -> String? {
         let normalizedKeys = Set(keys.map(normalizeKey))
-        guard let value = firstValue(in: object, matching: normalizedKeys) else {
-            return nil
-        }
-        if let string = value as? String {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-        if let number = value as? NSNumber {
-            return number.stringValue
+        let candidates = values(in: object, matching: normalizedKeys)
+        for candidate in candidates {
+            if let normalized = normalizeDisplayValue(
+                candidate,
+                rejectGenericHosts: rejectGenericHosts
+            ) {
+                return normalized
+            }
         }
         return nil
     }
 
-    private static func firstValue(in object: Any, matching keys: Set<String>) -> Any? {
+    private static func normalizeDisplayValue(
+        _ raw: String,
+        rejectGenericHosts: Bool
+    ) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let withoutLocalSuffix = trimmed.replacingOccurrences(
+            of: #"\.local$"#,
+            with: "",
+            options: .regularExpression
+        )
+        let lowered = withoutLocalSuffix.lowercased()
+        let blockedValues: Set<String> = [
+            "mac",
+            "localhost",
+            "unknown-host",
+        ]
+        if rejectGenericHosts && blockedValues.contains(lowered) {
+            return nil
+        }
+        return withoutLocalSuffix
+    }
+
+    private static func values(in object: Any, matching keys: Set<String>) -> [String] {
+        var output: [String] = []
+        collectValues(in: object, matching: keys, output: &output)
+        return output
+    }
+
+    private static func collectValues(
+        in object: Any,
+        matching keys: Set<String>,
+        output: inout [String]
+    ) {
         if let dictionary = object as? [String: Any] {
             for (rawKey, value) in dictionary {
                 if keys.contains(normalizeKey(rawKey)) {
-                    return value
+                    if let string = value as? String {
+                        output.append(string)
+                    } else if let number = value as? NSNumber {
+                        output.append(number.stringValue)
+                    }
                 }
             }
             for (_, value) in dictionary {
-                if let nested = firstValue(in: value, matching: keys) {
-                    return nested
-                }
+                collectValues(in: value, matching: keys, output: &output)
             }
-            return nil
+            return
         }
 
         if let array = object as? [Any] {
             for item in array {
-                if let nested = firstValue(in: item, matching: keys) {
-                    return nested
-                }
+                collectValues(in: item, matching: keys, output: &output)
             }
         }
-        return nil
     }
 
     private static func parseJSONObject(fromUTF8String string: String) -> [String: Any]? {

@@ -39,6 +39,18 @@ struct NewSessionMachinePresentationTests {
         #expect(label == "machine-1")
     }
 
+    @Test
+    func prefersNonGenericHostWhenGenericAndSpecificHostsBothExist() {
+        let machine = makeMachine(
+            id: "machine-1",
+            metadata: #"{"host":"mac","details":{"hostname":"studio-mac.local"}}"#
+        )
+
+        let label = NewSessionMachinePresentation.displayName(for: machine)
+
+        #expect(label == "studio-mac")
+    }
+
     private func makeMachine(id: String, metadata: String) -> APIMachine {
         APIMachine(
             id: id,
