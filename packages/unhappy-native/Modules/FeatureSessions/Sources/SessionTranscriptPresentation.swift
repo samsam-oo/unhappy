@@ -34,6 +34,7 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
     let kind: SessionTranscriptEntryKind
     let title: String?
     let body: String
+    let toolUseID: String?
 }
 
 struct SessionTranscriptMessagePresentation: Equatable, Sendable {
@@ -338,6 +339,7 @@ enum SessionTranscriptPresentationBuilder {
         }
 
         var entries: [SessionTranscriptEntry] = []
+        var toolNamesByID: [String: String] = [:]
         for (index, item) in contentArray.enumerated() {
             guard let chunk = item as? [String: Any],
                   let type = chunk["type"] as? String else {
@@ -378,6 +380,10 @@ enum SessionTranscriptPresentationBuilder {
                 )
             case "tool_use", "tool-call":
                 let name = normalizedText(chunk["name"]) ?? "Tool"
+                let toolUseID = extractToolUseID(from: chunk)
+                if let toolUseID {
+                    toolNamesByID[toolUseID] = name
+                }
                 let inputText = stringify(chunk["input"])
                 entries.append(
                     makeEntry(
@@ -385,18 +391,23 @@ enum SessionTranscriptPresentationBuilder {
                         role: .agent,
                         kind: .toolCall,
                         title: toolDisplayName(name),
-                        body: inputText
+                        body: inputText,
+                        toolUseID: toolUseID
                     )
                 )
             case "tool_result", "tool-call-result":
+                let toolUseID = extractToolUseID(from: chunk)
+                let linkedToolName = toolUseID.flatMap { toolNamesByID[$0] }
+                let title = linkedToolName.map { "\(toolDisplayName($0)) Result" } ?? "Tool result"
                 let outputText = stringifyToolResultContent(chunk["content"] ?? chunk["output"])
                 entries.append(
                     makeEntry(
                         id: "\(messageID)-assistant-\(index)",
                         role: .agent,
                         kind: .toolResult,
-                        title: "Tool result",
-                        body: outputText
+                        title: title,
+                        body: outputText,
+                        toolUseID: toolUseID
                     )
                 )
             default:
@@ -446,13 +457,15 @@ enum SessionTranscriptPresentationBuilder {
             var entries: [SessionTranscriptEntry] = []
             for (index, item) in contentArray.enumerated() {
                 if let chunk = item as? [String: Any], (chunk["type"] as? String) == "tool_result" {
+                    let toolUseID = extractToolUseID(from: chunk)
                     entries.append(
                         makeEntry(
                             id: "\(messageID)-output-user-\(index)",
                             role: .agent,
                             kind: .toolResult,
                             title: "Tool result",
-                            body: stringifyToolResultContent(chunk["content"])
+                            body: stringifyToolResultContent(chunk["content"]),
+                            toolUseID: toolUseID
                         )
                     )
                 } else {
@@ -565,6 +578,7 @@ enum SessionTranscriptPresentationBuilder {
             ]
         case "tool-call":
             let name = normalizedText(dictionary["name"]) ?? "Tool"
+            let toolUseID = extractToolUseID(from: dictionary)
             let reasoningTitle = codexReasoningTitle(from: dictionary["input"])
             let title = reasoningTitle ?? toolDisplayName(name)
             let body = reasoningTitle == nil
@@ -576,13 +590,15 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .toolCall,
                     title: title,
-                    body: body
+                    body: body,
+                    toolUseID: toolUseID
                 )
             ]
         case "tool-result", "tool-call-result":
             if shouldHideToolResult(dictionary["output"] ?? dictionary["content"]) {
                 return []
             }
+            let toolUseID = extractToolUseID(from: dictionary)
             let name = normalizedText(dictionary["name"])
             let title = name.map { "\(toolDisplayName($0)) Result" } ?? "Tool Result"
             return [
@@ -591,7 +607,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .toolResult,
                     title: title,
-                    body: stringifyToolResultContent(dictionary["output"] ?? dictionary["content"])
+                    body: stringifyToolResultContent(dictionary["output"] ?? dictionary["content"]),
+                    toolUseID: toolUseID
                 )
             ]
         case "terminal-output":
@@ -666,7 +683,8 @@ enum SessionTranscriptPresentationBuilder {
         role: SessionTranscriptEntryRole,
         kind: SessionTranscriptEntryKind,
         title: String?,
-        body: String
+        body: String,
+        toolUseID: String? = nil
     ) -> SessionTranscriptEntry {
         let cleanedBody = sanitizeText(body)
         let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -677,8 +695,24 @@ enum SessionTranscriptPresentationBuilder {
             role: role,
             kind: kind,
             title: cleanedTitle,
-            body: normalized
+            body: normalized,
+            toolUseID: toolUseID
         )
+    }
+
+    private static func extractToolUseID(from dictionary: [String: Any]) -> String? {
+        let candidates: [Any?] = [
+            dictionary["tool_use_id"],
+            dictionary["toolUseId"],
+            dictionary["callId"],
+            dictionary["id"],
+        ]
+        for candidate in candidates {
+            if let text = normalizedText(candidate) {
+                return text
+            }
+        }
+        return nil
     }
 
     private static func shouldDisplay(entry: SessionTranscriptEntry) -> Bool {

@@ -75,6 +75,86 @@ struct SessionTranscriptPresentationTests {
     }
 
     @Test
+    func assistantToolResultKeepsToolUseIDAndReadableResultTitle() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "assistant",
+                    "message": [
+                        "content": [
+                            [
+                                "type": "tool_use",
+                                "id": "toolu_task_1",
+                                "name": "Task",
+                                "input": [
+                                    "prompt": "Check logs",
+                                ],
+                            ],
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_task_1",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 2)
+        #expect(presentation.entries[0].title == "Run Task")
+        #expect(presentation.entries[0].toolUseID == "toolu_task_1")
+        #expect(presentation.entries[1].title == "Run Task Result")
+        #expect(presentation.entries[1].toolUseID == "toolu_task_1")
+    }
+
+    @Test
+    func outputUserToolResultKeepsToolUseID() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_subagent_1",
+                                "content": [
+                                    [
+                                        "type": "text",
+                                        "text": "Sub-agent finished.",
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].toolUseID == "toolu_subagent_1")
+    }
+
+    @Test
     func codexMessageNestedTextIsExtracted() {
         let payload: [String: Any] = [
             "role": "agent",

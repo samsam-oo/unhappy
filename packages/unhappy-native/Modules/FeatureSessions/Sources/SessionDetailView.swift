@@ -1226,24 +1226,16 @@ public struct SessionDetailView: View {
         var nextCache: [String: CachedTranscriptPresentation] = [:]
         nextCache.reserveCapacity(messages.count)
 
-        var nextVisible: [SessionTranscriptMessagePresentation] = []
-        nextVisible.reserveCapacity(messages.count)
-        var nextSubAgentInProgressCount = 0
+        var nextPresentations: [SessionTranscriptMessagePresentation] = []
+        nextPresentations.reserveCapacity(messages.count)
 
         for message in messages {
             if let cached = transcriptPresentationCache[message.id],
                cached.sourceMessage == message,
                cached.dataEncryptionKey == dataEncryptionKey {
                 nextCache[message.id] = cached
-                for entry in cached.presentation.entries {
-                    if isSubagentToolCallEntry(entry) {
-                        nextSubAgentInProgressCount += 1
-                    } else if isSubagentToolResultEntry(entry) {
-                        nextSubAgentInProgressCount = max(0, nextSubAgentInProgressCount - 1)
-                    }
-                }
                 if !cached.presentation.entries.isEmpty {
-                    nextVisible.append(cached.presentation)
+                    nextPresentations.append(cached.presentation)
                 }
                 continue
             }
@@ -1258,39 +1250,23 @@ public struct SessionDetailView: View {
                 presentation: presentation
             )
             nextCache[message.id] = cached
-            for entry in presentation.entries {
-                if isSubagentToolCallEntry(entry) {
-                    nextSubAgentInProgressCount += 1
-                } else if isSubagentToolResultEntry(entry) {
-                    nextSubAgentInProgressCount = max(0, nextSubAgentInProgressCount - 1)
-                }
-            }
             if !presentation.entries.isEmpty {
-                nextVisible.append(presentation)
+                nextPresentations.append(presentation)
             }
         }
 
+        let filtered = filterSubagentEntriesAndCount(in: nextPresentations)
         transcriptPresentationCache = nextCache
-        if cachedVisibleTranscriptPresentations != nextVisible {
-            cachedVisibleTranscriptPresentations = nextVisible
+        if cachedVisibleTranscriptPresentations != filtered.presentations {
+            cachedVisibleTranscriptPresentations = filtered.presentations
         }
-        if subAgentInProgressCount != nextSubAgentInProgressCount {
-            subAgentInProgressCount = nextSubAgentInProgressCount
+        if subAgentInProgressCount != filtered.inProgressCount {
+            subAgentInProgressCount = filtered.inProgressCount
         }
     }
 
     private var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {
-        cachedVisibleTranscriptPresentations.compactMap { presentation in
-            let filteredEntries = presentation.entries.filter { !isSubagentEntry($0) }
-            guard !filteredEntries.isEmpty else { return nil }
-            guard filteredEntries != presentation.entries else { return presentation }
-            return SessionTranscriptMessagePresentation(
-                messageID: presentation.messageID,
-                sequenceText: presentation.sequenceText,
-                createdAtText: presentation.createdAtText,
-                entries: filteredEntries
-            )
-        }
+        cachedVisibleTranscriptPresentations
     }
 
     private var visibleTranscriptMessageIDs: [String] {
@@ -1310,15 +1286,59 @@ public struct SessionDetailView: View {
         return nil
     }
 
-    private func isSubagentEntry(_ entry: SessionTranscriptEntry) -> Bool {
-        isSubagentToolCallEntry(entry) || isSubagentToolResultEntry(entry)
+    private func filterSubagentEntriesAndCount(
+        in presentations: [SessionTranscriptMessagePresentation]
+    ) -> (presentations: [SessionTranscriptMessagePresentation], inProgressCount: Int) {
+        var filteredPresentations: [SessionTranscriptMessagePresentation] = []
+        filteredPresentations.reserveCapacity(presentations.count)
+        var activeSubagentToolUseIDs: Set<String> = []
+        var inProgressCount = 0
+
+        for presentation in presentations {
+            var filteredEntries: [SessionTranscriptEntry] = []
+            filteredEntries.reserveCapacity(presentation.entries.count)
+
+            for entry in presentation.entries {
+                if isSubagentToolCallEntry(entry) {
+                    if let toolUseID = entry.toolUseID {
+                        activeSubagentToolUseIDs.insert(toolUseID)
+                    }
+                    inProgressCount += 1
+                    continue
+                }
+
+                if isSubagentToolResultEntry(entry, activeToolUseIDs: activeSubagentToolUseIDs) {
+                    if let toolUseID = entry.toolUseID {
+                        activeSubagentToolUseIDs.remove(toolUseID)
+                    }
+                    inProgressCount = max(0, inProgressCount - 1)
+                    continue
+                }
+
+                filteredEntries.append(entry)
+            }
+
+            guard !filteredEntries.isEmpty else { continue }
+            if filteredEntries == presentation.entries {
+                filteredPresentations.append(presentation)
+                continue
+            }
+            filteredPresentations.append(
+                SessionTranscriptMessagePresentation(
+                    messageID: presentation.messageID,
+                    sequenceText: presentation.sequenceText,
+                    createdAtText: presentation.createdAtText,
+                    entries: filteredEntries
+                )
+            )
+        }
+
+        return (filteredPresentations, inProgressCount)
     }
 
     private func isSubagentToolCallEntry(_ entry: SessionTranscriptEntry) -> Bool {
         guard entry.kind == .toolCall else { return false }
-        let normalizedTitle = (entry.title ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        let normalizedTitle = normalizedEntryTitle(entry)
         if normalizedTitle.contains("run task") ||
             normalizedTitle.contains("sub-agent") ||
             normalizedTitle.contains("subagent") {
@@ -1326,14 +1346,21 @@ public struct SessionDetailView: View {
         }
 
         let normalizedBody = entry.body.lowercased()
-        return normalizedBody.contains("spawn_agent")
+        return normalizedBody.contains("spawn_agent") ||
+            normalizedBody.contains("subagent_type")
     }
 
-    private func isSubagentToolResultEntry(_ entry: SessionTranscriptEntry) -> Bool {
+    private func isSubagentToolResultEntry(
+        _ entry: SessionTranscriptEntry,
+        activeToolUseIDs: Set<String>
+    ) -> Bool {
         guard entry.kind == .toolResult else { return false }
-        let normalizedTitle = (entry.title ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
+        if let toolUseID = entry.toolUseID,
+           activeToolUseIDs.contains(toolUseID) {
+            return true
+        }
+
+        let normalizedTitle = normalizedEntryTitle(entry)
         if normalizedTitle.contains("run task") ||
             normalizedTitle.contains("sub-agent") ||
             normalizedTitle.contains("subagent") {
@@ -1341,7 +1368,14 @@ public struct SessionDetailView: View {
         }
 
         let normalizedBody = entry.body.lowercased()
-        return normalizedBody.contains("spawn_agent")
+        return normalizedBody.contains("spawn_agent") ||
+            normalizedBody.contains("subagent_notification")
+    }
+
+    private func normalizedEntryTitle(_ entry: SessionTranscriptEntry) -> String {
+        (entry.title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
     }
 }
 
@@ -1490,12 +1524,6 @@ private struct SessionTranscriptMessageRow: View {
                     SessionTranscriptLogLine(entry: entry)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
         }
         .padding(.vertical, 2)
     }
@@ -1518,7 +1546,7 @@ private struct SessionTranscriptLogLine: View {
             }
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
-        } else if isCollapsibleToolEntry {
+        } else if isCollapsibleReferenceLogEntry {
             VStack(alignment: .leading, spacing: 6) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
@@ -1564,10 +1592,14 @@ private struct SessionTranscriptLogLine: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(bubbleColor)
+                    .fill(referenceLogBackgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(referenceLogBorderColor, lineWidth: 1)
             )
             .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
+        } else if isMainMessageEntry {
             VStack(alignment: .leading, spacing: 4) {
                 if let title = entry.title, !title.isEmpty {
                     Text(title)
@@ -1590,6 +1622,33 @@ private struct SessionTranscriptLogLine: View {
                 maxWidth: .infinity,
                 alignment: entry.role == .user ? .trailing : .leading
             )
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                if let title = entry.title, !title.isEmpty {
+                    Text(title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(entry.body)
+                    .font(bodyFont)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .lineLimit(nil)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(referenceLogBackgroundColor)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(referenceLogBorderColor, lineWidth: 1)
+            )
+            .frame(
+                maxWidth: .infinity,
+                alignment: .leading
+            )
         }
     }
 
@@ -1611,8 +1670,30 @@ private struct SessionTranscriptLogLine: View {
         return Color.primary.opacity(0.04)
     }
 
+    private var referenceLogBackgroundColor: Color {
+        Color.white
+    }
+
+    private var referenceLogBorderColor: Color {
+        Color.black.opacity(0.08)
+    }
+
     private var isCollapsibleToolEntry: Bool {
         entry.kind == .toolCall || entry.kind == .toolResult || isEditFilesEntry
+    }
+
+    private var isCollapsibleReferenceLogEntry: Bool {
+        isCollapsibleToolEntry || entry.kind == .raw
+    }
+
+    private var isMainMessageEntry: Bool {
+        guard entry.role == .user || entry.role == .agent else { return false }
+        switch entry.kind {
+        case .text, .thinking:
+            return true
+        default:
+            return false
+        }
     }
 
     private var collapsibleTitle: String {
