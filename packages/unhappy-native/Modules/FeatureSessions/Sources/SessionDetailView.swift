@@ -593,15 +593,10 @@ public struct SessionDetailView: View {
                     submitDraftMessage(with: .queue)
                 } label: {
                     Text("Queue")
-                        .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .foregroundStyle(.primary)
-                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                        .modifier(DockChipModifier())
                 }
                 .buttonStyle(.plain)
-                .opacity(isComposerSubmitDisabled ? 0.45 : 1)
-                .disabled(isComposerSubmitDisabled)
+                .disabled(viewModel.isSendingMessage(sessionID: session.id))
 
                 Button {
                     submitDraftMessage(with: .immediate)
@@ -610,15 +605,10 @@ public struct SessionDetailView: View {
                         viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
                         systemImage: "paperplane.fill"
                     )
-                    .font(.footnote.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(.primary)
-                    .background(Color.accentColor.opacity(0.18), in: Capsule())
+                    .modifier(DockChipModifier())
                 }
                 .buttonStyle(.plain)
-                .opacity(isComposerSubmitDisabled ? 0.45 : 1)
-                .disabled(isComposerSubmitDisabled)
+                .disabled(viewModel.isSendingMessage(sessionID: session.id))
             }
 
             if let status = viewModel.sendMessageStatusMessage {
@@ -707,6 +697,8 @@ public struct SessionDetailView: View {
         switch flavor {
         case .codex:
             return [
+                "gpt-5.3-codex",
+                "gpt-5.2-codex",
                 "gpt-5-codex",
                 "gpt-5",
             ]
@@ -1014,11 +1006,6 @@ public struct SessionDetailView: View {
         }
         let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? nil : normalized
-    }
-
-    private var isComposerSubmitDisabled: Bool {
-        viewModel.isSendingMessage(sessionID: session.id) ||
-        draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func transcriptPresentation(
