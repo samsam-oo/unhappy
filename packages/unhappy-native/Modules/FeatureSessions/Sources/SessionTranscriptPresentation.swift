@@ -375,7 +375,7 @@ enum SessionTranscriptPresentationBuilder {
                         id: "\(messageID)-assistant-\(index)",
                         role: .agent,
                         kind: .toolCall,
-                        title: "Tool call: \(name)",
+                        title: toolDisplayName(name),
                         body: inputText
                     )
                 )
@@ -525,7 +525,11 @@ enum SessionTranscriptPresentationBuilder {
         let type = normalizedText(dictionary["type"]) ?? "unknown"
         switch type {
         case "message", "reasoning":
-            let text = normalizedText(dictionary["message"]) ?? stringify(dictionary)
+            let text =
+                extractMessageText(from: dictionary["message"]) ??
+                extractMessageText(from: dictionary["text"]) ??
+                extractMessageText(from: dictionary["content"]) ??
+                stringify(dictionary)
             return [
                 makeEntry(
                     id: "\(messageID)-acp-\(type)",
@@ -553,17 +557,19 @@ enum SessionTranscriptPresentationBuilder {
                     id: "\(messageID)-acp-tool-call",
                     role: .agent,
                     kind: .toolCall,
-                    title: "Tool call: \(name)",
+                    title: toolDisplayName(name),
                     body: stringify(dictionary["input"])
                 )
             ]
         case "tool-result", "tool-call-result":
+            let name = normalizedText(dictionary["name"])
+            let title = name.map { "\(toolDisplayName($0)) Result" } ?? "Tool Result"
             return [
                 makeEntry(
                     id: "\(messageID)-acp-tool-result",
                     role: .agent,
                     kind: .toolResult,
-                    title: "Tool result",
+                    title: title,
                     body: stringifyToolResultContent(dictionary["output"] ?? dictionary["content"])
                 )
             ]
@@ -573,7 +579,7 @@ enum SessionTranscriptPresentationBuilder {
                     id: "\(messageID)-acp-terminal",
                     role: .agent,
                     kind: .toolResult,
-                    title: "Terminal output",
+                    title: "Run Command Output",
                     body: stringifyToolResultContent(dictionary["data"] ?? dictionary["output"])
                 )
             ]
@@ -650,7 +656,7 @@ enum SessionTranscriptPresentationBuilder {
     }
 
     private static func stringifyToolResultContent(_ value: Any?) -> String {
-        if let string = normalizedText(value) {
+        if let string = extractMessageText(from: value) {
             return string
         }
         if let chunks = value as? [[String: Any]] {
@@ -663,6 +669,91 @@ enum SessionTranscriptPresentationBuilder {
             }
         }
         return stringify(value)
+    }
+
+    private static func extractMessageText(from value: Any?) -> String? {
+        guard let value else { return nil }
+        if let text = normalizedText(value) {
+            return text
+        }
+        if let dictionary = value as? [String: Any] {
+            let directCandidates: [Any?] = [
+                dictionary["text"],
+                dictionary["message"],
+                dictionary["delta"],
+                dictionary["content"],
+                dictionary["output"],
+            ]
+            for candidate in directCandidates {
+                if let extracted = extractMessageText(from: candidate) {
+                    return extracted
+                }
+            }
+            return nil
+        }
+        if let array = value as? [Any] {
+            let parts = array.compactMap { extractMessageText(from: $0) }
+            if !parts.isEmpty {
+                return parts.joined(separator: "\n")
+            }
+        }
+        return nil
+    }
+
+    private static func toolDisplayName(_ rawName: String) -> String {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Tool" }
+        let key = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
+            .replacingOccurrences(of: " ", with: "")
+
+        switch key {
+        case "read", "readfile", "readfiles":
+            return "Read Files"
+        case "write", "writefile", "writefiles", "edit", "applypatch", "codexpatch", "patch":
+            return "Edit Files"
+        case "bash", "codexbash", "execcommand", "terminal", "shell":
+            return "Run Command"
+        case "listdirectory", "getdirectorytree", "ls":
+            return "List Files"
+        case "ripgrep", "rg", "grep", "search":
+            return "Search Files"
+        case "difftastic", "diff":
+            return "View Diff"
+        case "task":
+            return "Run Task"
+        case "webfetch":
+            return "Fetch Web"
+        case "codexreasoning":
+            return "Reasoning"
+        default:
+            return humanizedIdentifier(trimmed)
+        }
+    }
+
+    private static func humanizedIdentifier(_ value: String) -> String {
+        let separatorsNormalized = value
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+        let withCamelSpacing = separatorsNormalized.replacingOccurrences(
+            of: "([a-z0-9])([A-Z])",
+            with: "$1 $2",
+            options: .regularExpression
+        )
+        let collapsed = withCamelSpacing
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !collapsed.isEmpty else { return "Tool" }
+        return collapsed
+            .split(separator: " ")
+            .map { token in
+                let lower = token.lowercased()
+                return lower.prefix(1).uppercased() + String(lower.dropFirst())
+            }
+            .joined(separator: " ")
     }
 
     private static func stringify(_ value: Any?) -> String {

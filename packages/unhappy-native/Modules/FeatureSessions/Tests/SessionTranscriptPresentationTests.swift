@@ -48,6 +48,62 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries[0].body.contains("unsupported model"))
     }
 
+    @Test
+    func codexToolCallUsesReadableToolName() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "tool-call",
+                    "name": "Read",
+                    "input": [
+                        "path": "/tmp/test.txt",
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].title == "Read Files")
+    }
+
+    @Test
+    func codexMessageNestedTextIsExtracted() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "message",
+                    "message": [
+                        "content": [
+                            [
+                                "type": "text",
+                                "text": "nested response",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].body.contains("nested response"))
+    }
+
     private func makeAgentEventMessage(eventType: String, message: String?) -> APISessionMessage {
         var eventData: [String: Any] = ["type": eventType]
         if let message {
@@ -60,6 +116,10 @@ struct SessionTranscriptPresentationTests {
                 "data": eventData,
             ],
         ]
+        return makeMessage(from: payload)
+    }
+
+    private func makeMessage(from payload: [String: Any]) -> APISessionMessage {
         let data = (try? JSONSerialization.data(withJSONObject: payload, options: [])) ?? Data()
         let text = String(data: data, encoding: .utf8) ?? "{}"
         return APISessionMessage(
