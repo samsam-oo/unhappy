@@ -24,6 +24,11 @@ public struct SessionDetailView: View {
         case customModel
     }
 
+    private struct QueuedComposerMessage: Identifiable, Equatable {
+        let id: UUID
+        let text: String
+    }
+
     private static let customModelOverrideOption = "__custom_model_override__"
     private static let modelPickerDefaultOption = "__model_default__"
     private static let modelPickerCustomOption = "__model_custom__"
@@ -99,6 +104,7 @@ public struct SessionDetailView: View {
     @State private var applyEffortOverride = false
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
     @State private var serverModelOverrideOptions: [String] = []
+    @State private var queuedComposerMessages: [QueuedComposerMessage] = []
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
@@ -579,6 +585,28 @@ public struct SessionDetailView: View {
 
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if !queuedComposerMessages.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(queuedComposerMessages) { item in
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(item.text)
+                                .font(.footnote)
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                    }
+                }
+            }
+
             TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
                 .lineLimit(2...6)
                 .textInputAutocapitalization(.sentences)
@@ -612,11 +640,6 @@ public struct SessionDetailView: View {
                 }
             }
 
-            if let status = viewModel.sendMessageStatusMessage {
-                Text(status)
-                    .font(.footnote)
-                    .foregroundStyle(.green)
-            }
             if let error = viewModel.sendMessageErrorMessage {
                 Text(error)
                     .font(.footnote)
@@ -664,6 +687,11 @@ public struct SessionDetailView: View {
                 token: token
             )
             if sent {
+                if steerMode == .queue {
+                    queuedComposerMessages.append(
+                        QueuedComposerMessage(id: UUID(), text: text)
+                    )
+                }
                 draftMessage = ""
             }
         }
