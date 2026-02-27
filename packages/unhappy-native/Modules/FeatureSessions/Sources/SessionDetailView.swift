@@ -595,26 +595,21 @@ public struct SessionDetailView: View {
             HStack(spacing: 10) {
                 Spacer(minLength: 0)
 
-                Button {
+                dockChipButton(
+                    title: "Queue",
+                    systemImage: "clock",
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
+                ) {
                     submitDraftMessage(with: .queue)
-                } label: {
-                    Text("Queue")
-                        .modifier(DockChipModifier())
                 }
-                .buttonStyle(.plain)
-                .disabled(viewModel.isSendingMessage(sessionID: session.id))
 
-                Button {
+                dockChipButton(
+                    title: viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
+                    systemImage: "paperplane.fill",
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
+                ) {
                     submitDraftMessage(with: .immediate)
-                } label: {
-                    Label(
-                        viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
-                        systemImage: "paperplane.fill"
-                    )
-                    .modifier(DockChipModifier())
                 }
-                .buttonStyle(.plain)
-                .disabled(viewModel.isSendingMessage(sessionID: session.id))
             }
 
             if let status = viewModel.sendMessageStatusMessage {
@@ -729,34 +724,10 @@ public struct SessionDetailView: View {
     private var quickToolsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                Picker(
-                    selection: modelPickerSelection,
-                    label: Label(
-                        "Model: \(selectedModelOverrideLabel)",
-                        systemImage: "cpu"
-                    )
-                    .modifier(DockChipModifier())
-                ) {
-                    ForEach(modelPickerOptions, id: \.id) { option in
-                        Text(option.label).tag(option.id)
-                    }
-                }
-                .pickerStyle(.menu)
+                modelMenuButton
 
                 if supportsReasoningEffortOverride {
-                    Picker(
-                        selection: effortPickerSelection,
-                        label: Label(
-                            "Reasoning: \(selectedReasoningOverrideLabel)",
-                            systemImage: "brain.head.profile"
-                        )
-                        .modifier(DockChipModifier())
-                    ) {
-                        ForEach(effortPickerOptions, id: \.id) { option in
-                            Text(option.label).tag(option.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
+                    effortMenuButton
                 }
 
                 quickToolButton(
@@ -790,14 +761,65 @@ public struct SessionDetailView: View {
         systemImage: String,
         tool: SessionQuickTool
     ) -> some View {
-        Button {
+        dockChipButton(
+            title: title,
+            systemImage: systemImage
+        ) {
             focusedComposerField = nil
             presentedQuickTool = tool
+        }
+    }
+
+    private var modelMenuButton: some View {
+        Menu {
+            ForEach(modelPickerOptions, id: \.id) { option in
+                Button {
+                    modelPickerSelection.wrappedValue = option.id
+                } label: {
+                    if modelPickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
         } label: {
+            Label(selectedModelOverrideLabel, systemImage: "cpu")
+                .modifier(DockChipModifier())
+        }
+    }
+
+    private var effortMenuButton: some View {
+        Menu {
+            ForEach(effortPickerOptions, id: \.id) { option in
+                Button {
+                    effortPickerSelection.wrappedValue = option.id
+                } label: {
+                    if effortPickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
+                .modifier(DockChipModifier())
+        }
+    }
+
+    private func dockChipButton(
+        title: String,
+        systemImage: String,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             Label(title, systemImage: systemImage)
                 .modifier(DockChipModifier())
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 
     private var selectedModelOverrideLabel: String {
