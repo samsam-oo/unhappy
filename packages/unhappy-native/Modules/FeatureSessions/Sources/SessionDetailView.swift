@@ -116,6 +116,7 @@ public struct SessionDetailView: View {
     @State private var scrollToBottomRequestID = UUID()
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
+    @State private var subAgentInProgressCount = 0
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
@@ -635,7 +636,16 @@ public struct SessionDetailView: View {
 
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let thinkingEntry = latestAgentThinkingEntry {
+            if subAgentInProgressCount > 0 {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Sub-agents running: \(subAgentInProgressCount)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            } else if let thinkingEntry = latestAgentThinkingEntry {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
@@ -1191,12 +1201,20 @@ public struct SessionDetailView: View {
 
         var nextVisible: [SessionTranscriptMessagePresentation] = []
         nextVisible.reserveCapacity(messages.count)
+        var nextSubAgentInProgressCount = 0
 
         for message in messages {
             if let cached = transcriptPresentationCache[message.id],
                cached.sourceMessage == message,
                cached.dataEncryptionKey == dataEncryptionKey {
                 nextCache[message.id] = cached
+                for entry in cached.presentation.entries {
+                    if isSubagentToolCallEntry(entry) {
+                        nextSubAgentInProgressCount += 1
+                    } else if isSubagentToolResultEntry(entry) {
+                        nextSubAgentInProgressCount = max(0, nextSubAgentInProgressCount - 1)
+                    }
+                }
                 if !cached.presentation.entries.isEmpty {
                     nextVisible.append(cached.presentation)
                 }
@@ -1213,6 +1231,13 @@ public struct SessionDetailView: View {
                 presentation: presentation
             )
             nextCache[message.id] = cached
+            for entry in presentation.entries {
+                if isSubagentToolCallEntry(entry) {
+                    nextSubAgentInProgressCount += 1
+                } else if isSubagentToolResultEntry(entry) {
+                    nextSubAgentInProgressCount = max(0, nextSubAgentInProgressCount - 1)
+                }
+            }
             if !presentation.entries.isEmpty {
                 nextVisible.append(presentation)
             }
@@ -1222,10 +1247,23 @@ public struct SessionDetailView: View {
         if cachedVisibleTranscriptPresentations != nextVisible {
             cachedVisibleTranscriptPresentations = nextVisible
         }
+        if subAgentInProgressCount != nextSubAgentInProgressCount {
+            subAgentInProgressCount = nextSubAgentInProgressCount
+        }
     }
 
     private var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {
-        cachedVisibleTranscriptPresentations
+        cachedVisibleTranscriptPresentations.compactMap { presentation in
+            let filteredEntries = presentation.entries.filter { !isSubagentEntry($0) }
+            guard !filteredEntries.isEmpty else { return nil }
+            guard filteredEntries != presentation.entries else { return presentation }
+            return SessionTranscriptMessagePresentation(
+                messageID: presentation.messageID,
+                sequenceText: presentation.sequenceText,
+                createdAtText: presentation.createdAtText,
+                entries: filteredEntries
+            )
+        }
     }
 
     private var visibleTranscriptMessageIDs: [String] {
@@ -1243,6 +1281,40 @@ public struct SessionDetailView: View {
             }
         }
         return nil
+    }
+
+    private func isSubagentEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        isSubagentToolCallEntry(entry) || isSubagentToolResultEntry(entry)
+    }
+
+    private func isSubagentToolCallEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        guard entry.kind == .toolCall else { return false }
+        let normalizedTitle = (entry.title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalizedTitle.contains("run task") ||
+            normalizedTitle.contains("sub-agent") ||
+            normalizedTitle.contains("subagent") {
+            return true
+        }
+
+        let normalizedBody = entry.body.lowercased()
+        return normalizedBody.contains("spawn_agent")
+    }
+
+    private func isSubagentToolResultEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        guard entry.kind == .toolResult else { return false }
+        let normalizedTitle = (entry.title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalizedTitle.contains("run task") ||
+            normalizedTitle.contains("sub-agent") ||
+            normalizedTitle.contains("subagent") {
+            return true
+        }
+
+        let normalizedBody = entry.body.lowercased()
+        return normalizedBody.contains("spawn_agent")
     }
 }
 
@@ -1380,9 +1452,6 @@ private struct SessionTranscriptMessageRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(presentation.sequenceText)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Text(presentation.createdAtText)
                     .font(.caption)
@@ -1506,12 +1575,15 @@ private struct SessionTranscriptLogLine: View {
     }
 
     private var isCollapsibleToolEntry: Bool {
-        entry.kind == .toolCall || entry.kind == .toolResult
+        entry.kind == .toolCall || entry.kind == .toolResult || isEditFilesEntry
     }
 
     private var collapsibleTitle: String {
         if let title = entry.title, !title.isEmpty {
             return title
+        }
+        if isEditFilesEntry {
+            return "Edit Files"
         }
         switch entry.kind {
         case .toolCall:
@@ -1531,6 +1603,18 @@ private struct SessionTranscriptLogLine: View {
             return String(singleLine.prefix(120)) + "…"
         }
         return singleLine
+    }
+
+    private var isEditFilesEntry: Bool {
+        let normalizedTitle = (entry.title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalizedTitle.contains("edit files") {
+            return true
+        }
+
+        let normalizedBody = entry.body.lowercased()
+        return normalizedBody.contains("apply_patch") || normalizedBody.contains("*** begin patch")
     }
 
     private var bodyFont: Font {
