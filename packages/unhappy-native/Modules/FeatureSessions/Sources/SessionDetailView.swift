@@ -25,6 +25,12 @@ public struct SessionDetailView: View {
     }
 
     private static let customModelOverrideOption = "__custom_model_override__"
+    private static let modelPickerInheritOption = "__model_inherit__"
+    private static let modelPickerResetOption = "__model_reset__"
+    private static let modelPickerCustomOption = "__model_custom__"
+    private static let modelPickerPresetPrefix = "__model_preset__:"
+    private static let effortPickerInheritOption = "__effort_inherit__"
+    private static let effortPickerPresetPrefix = "__effort_preset__:"
 
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
@@ -89,7 +95,6 @@ public struct SessionDetailView: View {
     @State private var claudeResumeDirectoryDraft = ""
     @State private var draftMessage = ""
     @State private var presentedQuickTool: SessionQuickTool?
-    @State private var showComposerOverrides = false
     @State private var applyModelOverride = false
     @State private var modelOverrideDraft = ""
     @State private var selectedModelOverrideOption = ""
@@ -233,22 +238,11 @@ public struct SessionDetailView: View {
                let first = availableEffortSelections.first {
                 selectedEffortOverride = first
             }
-            if selectedModelOverrideOption.isEmpty,
-               let first = availableModelOverrideOptions.first {
-                selectedModelOverrideOption = first
-            }
             viewModel.startSelectedSessionMessagesPolling(
                 for: session.id,
                 serverURLString: serverURLString,
                 token: token
             )
-        }
-        .onChange(of: applyModelOverride) { _, isEnabled in
-            guard isEnabled else { return }
-            if selectedModelOverrideOption.isEmpty,
-               let first = availableModelOverrideOptions.first {
-                selectedModelOverrideOption = first
-            }
         }
         .refreshable {
             await viewModel.loadMessages(
@@ -586,43 +580,13 @@ public struct SessionDetailView: View {
                 .textInputAutocapitalization(.sentences)
                 .focused($focusedComposerField, equals: .message)
 
-            DisclosureGroup("Model & Reasoning", isExpanded: $showComposerOverrides) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Toggle("Override model", isOn: $applyModelOverride)
-                    if applyModelOverride {
-                        Picker("Model", selection: $selectedModelOverrideOption) {
-                            ForEach(availableModelOverrideOptions, id: \.self) { model in
-                                Text(model).tag(model)
-                            }
-                            Text("Custom…").tag(Self.customModelOverrideOption)
-                            Text("Reset to default").tag("")
-                        }
-                        .pickerStyle(.navigationLink)
-
-                        if selectedModelOverrideOption == Self.customModelOverrideOption {
-                            TextField("Custom model id", text: $modelOverrideDraft)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .font(.footnote.monospaced())
-                                .focused($focusedComposerField, equals: .customModel)
-                        }
-                    }
-
-                    if supportsReasoningEffortOverride {
-                        Toggle("Override reasoning effort", isOn: $applyEffortOverride)
-                        if applyEffortOverride {
-                            Picker("Reasoning", selection: $selectedEffortOverride) {
-                                ForEach(availableEffortSelections, id: \.self) { option in
-                                    Text(option.label).tag(option)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                    }
-                }
-                .padding(.top, 4)
+            if applyModelOverride && selectedModelOverrideOption == Self.customModelOverrideOption {
+                TextField("Custom model id", text: $modelOverrideDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.footnote.monospaced())
+                    .focused($focusedComposerField, equals: .customModel)
             }
-            .font(.footnote)
 
             HStack(spacing: 10) {
                 Button(viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send") {
@@ -753,6 +717,42 @@ public struct SessionDetailView: View {
     private var quickToolsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                Picker(
+                    selection: modelPickerSelection,
+                    label: Label(
+                        "Model: \(selectedModelOverrideLabel)",
+                        systemImage: "cpu"
+                    )
+                    .font(.footnote.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                ) {
+                    ForEach(modelPickerOptions, id: \.id) { option in
+                        Text(option.label).tag(option.id)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                if supportsReasoningEffortOverride {
+                    Picker(
+                        selection: effortPickerSelection,
+                        label: Label(
+                            "Reasoning: \(selectedReasoningOverrideLabel)",
+                            systemImage: "brain.head.profile"
+                        )
+                        .font(.footnote.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                    ) {
+                        ForEach(effortPickerOptions, id: \.id) { option in
+                            Text(option.label).tag(option.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
                 quickToolButton(
                     title: "Info",
                     systemImage: "info.circle",
@@ -773,60 +773,6 @@ public struct SessionDetailView: View {
                     systemImage: "checkmark.circle",
                     tool: .worktree
                 )
-                Menu {
-                    Button("Inherit session model") {
-                        applyModelOverride = false
-                        selectedModelOverrideOption = ""
-                    }
-                    Button("Reset to default model") {
-                        applyModelOverride = true
-                        selectedModelOverrideOption = ""
-                    }
-                    ForEach(availableModelOverrideOptions, id: \.self) { model in
-                        Button(model) {
-                            applyModelOverride = true
-                            selectedModelOverrideOption = model
-                            modelOverrideDraft = model
-                        }
-                    }
-                    Button("Custom model…") {
-                        applyModelOverride = true
-                        selectedModelOverrideOption = Self.customModelOverrideOption
-                        showComposerOverrides = true
-                        focusedComposerField = .customModel
-                    }
-                } label: {
-                    quickMenuLabel(
-                        title: "Model",
-                        value: selectedModelOverrideLabel,
-                        systemImage: "cpu"
-                    )
-                }
-
-                if supportsReasoningEffortOverride {
-                    Menu {
-                        Button("Inherit session reasoning") {
-                            applyEffortOverride = false
-                            selectedEffortOverride = .auto
-                        }
-                        ForEach(availableEffortSelections, id: \.self) { option in
-                            Button(option.label) {
-                                if option == .auto {
-                                    applyEffortOverride = false
-                                } else {
-                                    applyEffortOverride = true
-                                }
-                                selectedEffortOverride = option
-                            }
-                        }
-                    } label: {
-                        quickMenuLabel(
-                            title: "Reasoning",
-                            value: selectedReasoningOverrideLabel,
-                            systemImage: "brain.head.profile"
-                        )
-                    }
-                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -851,18 +797,6 @@ public struct SessionDetailView: View {
         .buttonStyle(.plain)
     }
 
-    private func quickMenuLabel(
-        title: String,
-        value: String,
-        systemImage: String
-    ) -> some View {
-        Label("\(title): \(value)", systemImage: systemImage)
-            .font(.footnote.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
-    }
-
     private var selectedModelOverrideLabel: String {
         guard applyModelOverride else { return "Inherit" }
         switch selectedModelOverrideOption {
@@ -879,6 +813,120 @@ public struct SessionDetailView: View {
     private var selectedReasoningOverrideLabel: String {
         guard applyEffortOverride else { return "Inherit" }
         return selectedEffortOverride.label
+    }
+
+    private struct PickerOption: Identifiable {
+        let id: String
+        let label: String
+    }
+
+    private var modelPickerOptions: [PickerOption] {
+        var options: [PickerOption] = [
+            PickerOption(
+                id: Self.modelPickerInheritOption,
+                label: "Inherit session model"
+            ),
+            PickerOption(
+                id: Self.modelPickerResetOption,
+                label: "Reset to default model"
+            ),
+        ]
+        options.append(
+            contentsOf: availableModelOverrideOptions.map { model in
+                PickerOption(
+                    id: Self.modelPickerPresetPrefix + model,
+                    label: model
+                )
+            }
+        )
+        options.append(
+            PickerOption(
+                id: Self.modelPickerCustomOption,
+                label: "Custom model…"
+            )
+        )
+        return options
+    }
+
+    private var effortPickerOptions: [PickerOption] {
+        var options: [PickerOption] = [
+            PickerOption(
+                id: Self.effortPickerInheritOption,
+                label: "Inherit session reasoning"
+            )
+        ]
+        options.append(
+            contentsOf: availableEffortSelections.map { effort in
+                PickerOption(
+                    id: Self.effortPickerPresetPrefix + effort.rawValue,
+                    label: effort == .auto ? "Auto" : effort.label
+                )
+            }
+        )
+        return options
+    }
+
+    private var modelPickerSelection: Binding<String> {
+        Binding(
+            get: {
+                if !applyModelOverride {
+                    return Self.modelPickerInheritOption
+                }
+                if selectedModelOverrideOption == Self.customModelOverrideOption {
+                    return Self.modelPickerCustomOption
+                }
+                if selectedModelOverrideOption.isEmpty {
+                    return Self.modelPickerResetOption
+                }
+                return Self.modelPickerPresetPrefix + selectedModelOverrideOption
+            },
+            set: { value in
+                switch value {
+                case Self.modelPickerInheritOption:
+                    applyModelOverride = false
+                    selectedModelOverrideOption = ""
+                    focusedComposerField = nil
+                case Self.modelPickerResetOption:
+                    applyModelOverride = true
+                    selectedModelOverrideOption = ""
+                    focusedComposerField = nil
+                case Self.modelPickerCustomOption:
+                    applyModelOverride = true
+                    selectedModelOverrideOption = Self.customModelOverrideOption
+                    focusedComposerField = .customModel
+                default:
+                    guard value.hasPrefix(Self.modelPickerPresetPrefix) else { return }
+                    let model = String(value.dropFirst(Self.modelPickerPresetPrefix.count))
+                    applyModelOverride = true
+                    selectedModelOverrideOption = model
+                    modelOverrideDraft = model
+                    focusedComposerField = nil
+                }
+            }
+        )
+    }
+
+    private var effortPickerSelection: Binding<String> {
+        Binding(
+            get: {
+                guard applyEffortOverride else {
+                    return Self.effortPickerInheritOption
+                }
+                return Self.effortPickerPresetPrefix + selectedEffortOverride.rawValue
+            },
+            set: { value in
+                if value == Self.effortPickerInheritOption {
+                    applyEffortOverride = false
+                    selectedEffortOverride = .auto
+                    return
+                }
+                guard value.hasPrefix(Self.effortPickerPresetPrefix) else { return }
+                let raw = String(value.dropFirst(Self.effortPickerPresetPrefix.count))
+                guard let selected = SessionComposerEffortSelection(rawValue: raw) else { return }
+                selectedEffortOverride = selected
+                applyEffortOverride = selected != .auto
+            }
+        )
     }
 
     @ViewBuilder
