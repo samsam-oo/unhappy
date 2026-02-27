@@ -149,6 +149,89 @@ describe('ApiSessionClient connection handling', () => {
         );
     });
 
+    it('should optimistically dispatch sendMessage public-command to onUserMessage', () => {
+        const client = new ApiSessionClient('fake-token', mockSession);
+        const received: any[] = [];
+        client.onUserMessage((msg) => {
+            received.push(msg);
+        });
+
+        const publicCommandHandler = mockSocket.on.mock.calls.find(
+            ([event]: [string, Function]) => event === 'public-command'
+        )?.[1];
+        expect(publicCommandHandler).toBeTypeOf('function');
+
+        const callback = vi.fn();
+        publicCommandHandler(
+            {
+                command: 'sendMessage',
+                params: { text: 'hello from native', steerMode: 'queue' }
+            },
+            callback
+        );
+
+        expect(callback).toHaveBeenCalledWith({ success: true });
+        expect(received).toHaveLength(1);
+        expect(received[0]?.role).toBe('user');
+        expect(received[0]?.content?.text).toBe('hello from native');
+        expect(received[0]?.localKey).toMatch(/^native-/);
+
+        expect(mockSocket.emit).toHaveBeenCalledWith(
+            'message',
+            expect.objectContaining({
+                sid: 'test-session-id',
+                message: expect.any(String),
+                localId: received[0]?.localKey
+            })
+        );
+    });
+
+    it('should ignore echoed optimistic user message from update stream', () => {
+        const client = new ApiSessionClient('fake-token', mockSession);
+        const received: any[] = [];
+        client.onUserMessage((msg) => {
+            received.push(msg);
+        });
+
+        const publicCommandHandler = mockSocket.on.mock.calls.find(
+            ([event]: [string, Function]) => event === 'public-command'
+        )?.[1];
+        const updateHandler = mockSocket.on.mock.calls.find(
+            ([event]: [string, Function]) => event === 'update'
+        )?.[1];
+        expect(publicCommandHandler).toBeTypeOf('function');
+        expect(updateHandler).toBeTypeOf('function');
+
+        publicCommandHandler(
+            {
+                command: 'sendMessage',
+                params: { text: 'dedupe me' }
+            },
+            vi.fn()
+        );
+        expect(received).toHaveLength(1);
+
+        const messagePayload = mockSocket.emit.mock.calls.find(
+            ([event]: [string, any]) => event === 'message'
+        )?.[1];
+        expect(messagePayload?.message).toBeTypeOf('string');
+
+        updateHandler({
+            body: {
+                t: 'new-message',
+                message: {
+                    content: {
+                        t: 'encrypted',
+                        c: messagePayload.message
+                    }
+                }
+            }
+        });
+
+        // Echoed copy should be dropped; only optimistic dispatch should remain.
+        expect(received).toHaveLength(1);
+    });
+
     afterEach(() => {
         consoleSpy.mockRestore();
         vi.restoreAllMocks();

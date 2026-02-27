@@ -232,11 +232,16 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
 
                 // Emit new message update to relevant clients
                 const updatePayload = buildNewMessageUpdate(msg, sid, updSeq, randomKeyNaked(12));
+                const skipSenderConnection = connection.connectionType === 'session-scoped'
+                    ? undefined
+                    : connection;
                 eventRouter.emitUpdate({
                     userId,
                     payload: updatePayload,
+                    // Session-scoped sender must receive this update so the agent loop
+                    // can consume user messages forwarded via public-command/sendMessage.
                     recipientFilter: { type: 'all-interested-in-session', sessionId: sid },
-                    skipSenderConnection: connection
+                    skipSenderConnection
                 });
             } catch (error) {
                 log({ module: 'websocket', level: 'error' }, `Error in message handler: ${error}`);

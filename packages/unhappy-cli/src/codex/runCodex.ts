@@ -50,7 +50,12 @@ type ReadyEventOptions = {
   notify?: () => void;
 };
 
-export type ReasoningEffortMode = 'low' | 'medium' | 'high' | 'max';
+export type ReasoningEffortMode =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
 
 type CodexTurnEffortOverride =
   | 'low'
@@ -72,6 +77,7 @@ export function resolveCodexTurnEffort(mode: {
     case 'low':
     case 'medium':
     case 'high':
+    case 'xhigh':
       return mode.effort;
     case 'max':
       return 'xhigh';
@@ -225,6 +231,8 @@ export async function runCodex(opts: {
   resume?: boolean;
   clearResume?: boolean;
   resumeThreadId?: string;
+  model?: string;
+  reasoningEffort?: ReasoningEffortMode;
 }): Promise<void> {
   // Use shared PermissionMode type for cross-agent compatibility
   type PermissionMode = import('@/api/types').PermissionMode;
@@ -255,7 +263,7 @@ export async function runCodex(opts: {
 
   // Log startup options
   logger.debug(
-    `[codex] Starting with options: startedBy=${opts.startedBy || 'terminal'}`,
+    `[codex] Starting with options: startedBy=${opts.startedBy || 'terminal'}, model=${opts.model || 'default'}, reasoningEffort=${opts.reasoningEffort || 'default'}`,
   );
 
   //
@@ -357,8 +365,8 @@ export async function runCodex(opts: {
   // Use shared PermissionMode type from api/types for cross-agent compatibility
   let currentPermissionMode: import('@/api/types').PermissionMode | undefined =
     undefined;
-  let currentModel: string | undefined = undefined;
-  let currentEffort: ReasoningEffortMode | undefined = undefined;
+  let currentModel: string | undefined = opts.model;
+  let currentEffort: ReasoningEffortMode | undefined = opts.reasoningEffort;
   // System prompt overrides (sent by mobile/web as message.meta.*)
   // Claude applies these per turn; Codex MCP currently only supports instructions at session start.
   // We still track them so we can inject them into startSession config.
@@ -406,7 +414,11 @@ export async function runCodex(opts: {
       const raw = message.meta.effort;
       messageEffortResetToDefault = raw === null;
       const normalized =
-        raw === 'low' || raw === 'medium' || raw === 'high' || raw === 'max'
+        raw === 'low' ||
+        raw === 'medium' ||
+        raw === 'high' ||
+        raw === 'xhigh' ||
+        raw === 'max'
           ? (raw as ReasoningEffortMode)
           : undefined;
       messageEffort = normalized;

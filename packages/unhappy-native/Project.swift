@@ -194,6 +194,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .external(name: "TweetNacl"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",

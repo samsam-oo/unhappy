@@ -108,6 +108,8 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Options:')}
   --started-by <daemon|terminal>  Set starter context
+  --model <name>                  Set startup model
+  --reasoning-effort <level>      Set startup reasoning effort (low|medium|high|max|xhigh)
   --resume                        Resume previous Codex session for cwd
   --no-resume                     Disable automatic resume
   --clear-resume                  Clear stored resume pointer for cwd
@@ -137,6 +139,14 @@ ${chalk.bold('Examples:')}
       let resume: boolean | undefined = undefined;
       let clearResume = false;
       let resumeThreadId: string | undefined = undefined;
+      let model: string | undefined = undefined;
+      let reasoningEffort:
+        | 'low'
+        | 'medium'
+        | 'high'
+        | 'max'
+        | 'xhigh'
+        | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
@@ -151,6 +161,29 @@ ${chalk.bold('Examples:')}
           if (typeof value === 'string' && value.trim()) {
             resumeThreadId = value.trim();
           }
+        } else if (args[i] === '--model') {
+          const value = args[++i];
+          if (typeof value !== 'string' || !value.trim()) {
+            console.error(chalk.red('Error:'), '--model requires a value');
+            process.exit(1);
+          }
+          model = value.trim();
+        } else if (args[i] === '--reasoning-effort') {
+          const value = args[++i];
+          if (
+            value !== 'low' &&
+            value !== 'medium' &&
+            value !== 'high' &&
+            value !== 'max' &&
+            value !== 'xhigh'
+          ) {
+            console.error(
+              chalk.red('Error:'),
+              `Invalid --reasoning-effort value: ${value}. Must be one of: low, medium, high, max, xhigh`,
+            );
+            process.exit(1);
+          }
+          reasoningEffort = value;
         }
       }
 
@@ -161,6 +194,8 @@ ${chalk.bold('Examples:')}
         resume,
         clearResume,
         resumeThreadId,
+        model,
+        reasoningEffort,
       });
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
@@ -195,6 +230,28 @@ ${chalk.bold('Examples:')}
         arg === '--unhappy-starting-mode'
       ) {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i]);
+      } else if (arg === '--model') {
+        const model = args[++i];
+        if (typeof model !== 'string' || !model.trim()) {
+          console.error(chalk.red('Error:'), '--model requires a value');
+          process.exit(1);
+        }
+        options.model = model.trim();
+      } else if (arg === '--reasoning-effort') {
+        const effort = args[++i];
+        if (
+          effort !== 'low' &&
+          effort !== 'medium' &&
+          effort !== 'high' &&
+          effort !== 'max'
+        ) {
+          console.error(
+            chalk.red('Error:'),
+            `Invalid --reasoning-effort value: ${effort}. Must be one of: low, medium, high, max`,
+          );
+          process.exit(1);
+        }
+        options.reasoningEffort = effort;
       } else if (arg === '--yolo') {
         unknownArgs.push('--dangerously-skip-permissions');
       } else if (arg === '--started-by') {
@@ -349,6 +406,8 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Options:')}
   --started-by <daemon|terminal>  Set starter context
+  --model <name>                  Set startup model
+  --reasoning-effort <level>      Set startup reasoning effort
 
 ${chalk.bold('Examples:')}
   unhappy gemini
@@ -580,9 +639,40 @@ ${chalk.bold('Examples:')}
 
       // Parse startedBy argument
       let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      let model: string | undefined = undefined;
+      let reasoningEffort:
+        | 'low'
+        | 'medium'
+        | 'high'
+        | 'max'
+        | 'xhigh'
+        | undefined = undefined;
       for (let i = 1; i < args.length; i++) {
         if (args[i] === '--started-by') {
           startedBy = args[++i] as 'daemon' | 'terminal';
+        } else if (args[i] === '--model') {
+          const value = args[++i];
+          if (typeof value !== 'string' || !value.trim()) {
+            console.error(chalk.red('Error:'), '--model requires a value');
+            process.exit(1);
+          }
+          model = value.trim();
+        } else if (args[i] === '--reasoning-effort') {
+          const value = args[++i];
+          if (
+            value !== 'low' &&
+            value !== 'medium' &&
+            value !== 'high' &&
+            value !== 'max' &&
+            value !== 'xhigh'
+          ) {
+            console.error(
+              chalk.red('Error:'),
+              `Invalid --reasoning-effort value: ${value}. Must be one of: low, medium, high, max, xhigh`,
+            );
+            process.exit(1);
+          }
+          reasoningEffort = value;
         }
       }
 
@@ -603,7 +693,7 @@ ${chalk.bold('Examples:')}
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
 
-      await runGemini({ credentials, startedBy });
+      await runGemini({ credentials, startedBy, model, reasoningEffort });
     } catch (error) {
       console.error(
         chalk.red('Error:'),

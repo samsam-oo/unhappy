@@ -30,7 +30,8 @@ struct FeatureHomeTests {
                     directoryLister: NewSessionDirectoryListUseCase(service: service),
                     spawner: NewSessionSpawnUseCase(service: service),
                     recentProjectsManager: NewSessionNoopRecentProjectsManager(),
-                    profilesManager: NewSessionNoopProfilesManager()
+                    profilesManager: NewSessionNoopProfilesManager(),
+                    modelsLoader: NewSessionModelsLoadUseCase(service: service)
                 )
             },
             makeSessionToolsViewModel: {

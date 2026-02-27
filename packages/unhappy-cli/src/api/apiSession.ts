@@ -57,6 +57,9 @@ export class ApiSessionClient extends EventEmitter {
     private encryptionVariant: 'legacy' | 'dataKey';
     private pendingSummaryMetadataUpdate: { text: string; updatedAt: number } | null = null;
     private summaryMetadataSyncInFlight = false;
+    // Local keys for optimistic user messages dispatched directly from public-command.
+    // Server will echo these messages back; we drop the echo to avoid duplicate turns.
+    private optimisticUserMessageKeys = new Set<string>();
 
     constructor(token: string, session: Session) {
         super()
@@ -166,23 +169,38 @@ export class ApiSessionClient extends EventEmitter {
                         return;
                     }
 
-                    const content: MessageContent = {
+                    const localKey = `native-${randomUUID()}`;
+                    const content: UserMessage = {
                         role: 'user',
                         content: {
                             type: 'text',
                             text
                         },
+                        localKey,
                         meta: {
                             sentFrom: 'native',
                             ...(steerMode ? { steerMode } : {})
                         }
                     };
+                    this.optimisticUserMessageKeys.add(localKey);
+                    if (this.optimisticUserMessageKeys.size > 512) {
+                        const oldest = this.optimisticUserMessageKeys.values().next().value;
+                        if (typeof oldest === 'string') {
+                            this.optimisticUserMessageKeys.delete(oldest);
+                        }
+                    }
+                    if (this.pendingMessageCallback) {
+                        this.pendingMessageCallback(content);
+                    } else {
+                        this.pendingMessages.push(content);
+                    }
                     const encrypted = encodeBase64(
                         encrypt(this.encryptionKey, this.encryptionVariant, content)
                     );
                     this.socket.emit('message', {
                         sid: this.sessionId,
-                        message: encrypted
+                        message: encrypted,
+                        localId: localKey
                     });
                     callback({ success: true });
                     return;
@@ -243,6 +261,13 @@ export class ApiSessionClient extends EventEmitter {
                     // Try to parse as user message first
                     const userResult = UserMessageSchema.safeParse(body);
                     if (userResult.success) {
+                        const localKey = typeof userResult.data.localKey === 'string'
+                            ? userResult.data.localKey
+                            : null;
+                        if (localKey && this.optimisticUserMessageKeys.delete(localKey)) {
+                            logger.debug(`[SOCKET] [UPDATE] Skipping echoed optimistic user message (localKey=${localKey})`);
+                            return;
+                        }
                         // Server already filtered to only our session
                         if (this.pendingMessageCallback) {
                             this.pendingMessageCallback(userResult.data);

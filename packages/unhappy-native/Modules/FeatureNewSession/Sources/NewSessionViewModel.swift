@@ -16,8 +16,14 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public var codexResumeThreadID: String = ""
     @Published public var claudeResumeSessionID: String = ""
     @Published public var sessionToken: String = ""
+    @Published public var selectedModel: String = ""
+    @Published public var selectedReasoningEffort: NewSessionReasoningEffort = .auto
     @Published public var environmentVariablesText: String = ""
     @Published public private(set) var codexThreads: [APICodexThreadSummary] = []
+    @Published public private(set) var availableModels: [String] = []
+    @Published public private(set) var availableReasoningEfforts: [NewSessionReasoningEffort] = [.auto]
+    @Published public private(set) var isLoadingModels = false
+    @Published public private(set) var modelsErrorMessage: String?
     @Published public private(set) var isLoadingCodexThreads = false
     @Published public private(set) var isLoadingMoreCodexThreads = false
     @Published public private(set) var codexThreadsHasNext = false
@@ -37,10 +43,14 @@ public final class NewSessionViewModel: ObservableObject {
     private let spawner: any NewSessionSpawningAction
     private let recentProjectsManager: any NewSessionRecentProjectsManaging
     private let profilesManager: any NewSessionProfilesManaging
+    private let modelsLoader: (any NewSessionModelsLoadingAction)?
     private let codexThreadsLoader: (any NewSessionCodexThreadsLoadingAction)?
     private let claudeSessionsLoader: (any NewSessionClaudeSessionsLoadingAction)?
     private var codexThreadsNextCursor: String?
     private var claudeSessionsNextCursor: String?
+    private var selectedModelByAgent: [APISessionSpawnAgent: String] = [:]
+    private var selectedReasoningEffortByAgent: [APISessionSpawnAgent: NewSessionReasoningEffort] = [:]
+    private var lastSelectedAgent: APISessionSpawnAgent = .claude
 
     public init(
         machinesLoader: any NewSessionMachinesLoadingAction,
@@ -48,6 +58,7 @@ public final class NewSessionViewModel: ObservableObject {
         spawner: any NewSessionSpawningAction,
         recentProjectsManager: any NewSessionRecentProjectsManaging,
         profilesManager: any NewSessionProfilesManaging,
+        modelsLoader: (any NewSessionModelsLoadingAction)? = nil,
         codexThreadsLoader: (any NewSessionCodexThreadsLoadingAction)? = nil,
         claudeSessionsLoader: (any NewSessionClaudeSessionsLoadingAction)? = nil
     ) {
@@ -56,8 +67,29 @@ public final class NewSessionViewModel: ObservableObject {
         self.spawner = spawner
         self.recentProjectsManager = recentProjectsManager
         self.profilesManager = profilesManager
+        self.modelsLoader = modelsLoader
         self.codexThreadsLoader = codexThreadsLoader
         self.claudeSessionsLoader = claudeSessionsLoader
+    }
+
+    public func handleSelectedAgentChange(
+        _ newAgent: APISessionSpawnAgent,
+        serverURLString: String,
+        token: String
+    ) async {
+        rememberCurrentAgentSelections()
+        selectedAgent = newAgent
+        selectedModel = selectedModelByAgent[newAgent] ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[newAgent] ?? .auto
+        lastSelectedAgent = newAgent
+        await loadModels(serverURLString: serverURLString, token: token, agent: newAgent)
+    }
+
+    public func setInitialSelectedAgent(_ agent: APISessionSpawnAgent) {
+        selectedAgent = agent
+        selectedModel = selectedModelByAgent[agent] ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[agent] ?? .auto
+        lastSelectedAgent = agent
     }
 
     public func loadMachines(serverURLString: String, token: String) async {
@@ -85,12 +117,19 @@ public final class NewSessionViewModel: ObservableObject {
                 // Keep machine-loading UI scoped to machine fetch, not directory fetch.
                 isLoadingMachines = false
                 await loadDirectory(serverURLString: serverURLString, token: token)
+                await loadModels(serverURLString: serverURLString, token: token, agent: selectedAgent)
             } else {
                 directoryEntries = []
+                availableModels = []
+                availableReasoningEfforts = [.auto]
+                modelsErrorMessage = nil
             }
         } catch {
             machines = []
             directoryEntries = []
+            availableModels = []
+            availableReasoningEfforts = [.auto]
+            modelsErrorMessage = nil
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -111,10 +150,74 @@ public final class NewSessionViewModel: ObservableObject {
         claudeSessionsHasNext = false
         isLoadingMoreClaudeSessions = false
         claudeSessionsErrorMessage = nil
+        availableModels = []
+        availableReasoningEfforts = [.auto]
+        modelsErrorMessage = nil
         approvalDirectory = nil
         spawnedSessionID = nil
         infoMessage = nil
         await loadDirectory(serverURLString: serverURLString, token: token)
+        await loadModels(serverURLString: serverURLString, token: token, agent: selectedAgent)
+    }
+
+    public func loadModels(
+        serverURLString: String,
+        token: String,
+        agent: APISessionSpawnAgent? = nil
+    ) async {
+        guard !isLoadingModels else { return }
+        guard let machineID = selectedMachineID else {
+            availableModels = []
+            availableReasoningEfforts = [.auto]
+            modelsErrorMessage = NewSessionError.missingMachineID.errorDescription
+            return
+        }
+
+        let targetAgent = agent ?? selectedAgent
+        guard let modelsLoader else {
+            availableModels = []
+            availableReasoningEfforts = [.auto]
+            modelsErrorMessage = nil
+            return
+        }
+
+        if targetAgent == selectedAgent {
+            rememberCurrentAgentSelections()
+        }
+
+        isLoadingModels = true
+        modelsErrorMessage = nil
+        defer { isLoadingModels = false }
+
+        do {
+            let capabilities = try await modelsLoader.loadModels(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: machineID,
+                agent: targetAgent
+            )
+            let models = capabilities.models
+            let reasoningEfforts = normalizeReasoningEfforts(capabilities.reasoningEfforts)
+            availableModels = models
+            availableReasoningEfforts = reasoningEfforts
+            modelsErrorMessage = nil
+
+            let selected = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !selected.isEmpty, !models.contains(selected) {
+                selectedModel = ""
+            }
+
+            if !reasoningEfforts.contains(selectedReasoningEffort) {
+                selectedReasoningEffort = reasoningEfforts.first ?? .auto
+            }
+
+            selectedModelByAgent[targetAgent] = selectedModel
+            selectedReasoningEffortByAgent[targetAgent] = selectedReasoningEffort
+        } catch {
+            availableModels = []
+            availableReasoningEfforts = [.auto]
+            modelsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     public func loadDirectory(
@@ -348,20 +451,32 @@ public final class NewSessionViewModel: ObservableObject {
     }
 
     public func selectCodexThread(_ thread: APICodexThreadSummary) {
+        rememberCurrentAgentSelections()
         codexResumeThreadID = thread.id
         claudeResumeSessionID = ""
         selectedAgent = .codex
+        selectedModel = selectedModelByAgent[.codex] ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[.codex] ?? .auto
+        lastSelectedAgent = .codex
         if let threadCWD = normalizedOptionalPath(thread.cwd) {
             directoryPath = normalizedPath(threadCWD)
         }
+        selectedModel = normalizedOptionalPath(thread.model) ?? ""
+        selectedReasoningEffort = NewSessionReasoningEffort(threadEffort: thread.effort)
+        selectedModelByAgent[.codex] = selectedModel
+        selectedReasoningEffortByAgent[.codex] = selectedReasoningEffort
         infoMessage = "Selected Codex session \(thread.id)"
         errorMessage = nil
     }
 
     public func selectClaudeSession(_ session: APIClaudeSessionSummary) {
+        rememberCurrentAgentSelections()
         claudeResumeSessionID = session.id
         codexResumeThreadID = ""
         selectedAgent = .claude
+        selectedModel = selectedModelByAgent[.claude] ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[.claude] ?? .auto
+        lastSelectedAgent = .claude
         if let sessionCWD = normalizedOptionalPath(session.cwd) {
             directoryPath = normalizedPath(sessionCWD)
         }
@@ -414,16 +529,23 @@ public final class NewSessionViewModel: ObservableObject {
         }
         directoryPath = normalizedPath(profile.directoryPath)
         selectedAgent = profile.agent
+        lastSelectedAgent = profile.agent
         codexResumeThreadID = profile.codexResumeThreadID ?? ""
         claudeResumeSessionID = profile.claudeResumeSessionID ?? ""
         sessionToken = profile.sessionToken ?? ""
+        selectedModel = profile.model ?? ""
+        selectedReasoningEffort = NewSessionReasoningEffort(threadEffort: profile.reasoningEffort)
+        selectedModelByAgent[profile.agent] = selectedModel
+        selectedReasoningEffortByAgent[profile.agent] = selectedReasoningEffort
         environmentVariablesText = profile.environmentVariablesText
         await loadDirectory(serverURLString: serverURLString, token: token)
+        await loadModels(serverURLString: serverURLString, token: token, agent: selectedAgent)
     }
 
     public func saveCurrentAsProfile(named name: String) async {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else { return }
+        rememberCurrentAgentSelections()
 
         let profile = NewSessionProfile(
             id: UUID().uuidString.lowercased(),
@@ -434,6 +556,8 @@ public final class NewSessionViewModel: ObservableObject {
             codexResumeThreadID: normalizedOptionalPath(codexResumeThreadID),
             claudeResumeSessionID: normalizedOptionalPath(claudeResumeSessionID),
             sessionToken: normalizedOptionalPath(sessionToken),
+            model: normalizedOptionalPath(selectedModel),
+            reasoningEffort: selectedReasoningEffort.apiValue,
             environmentVariablesText: environmentVariablesText
         )
         profiles = await profilesManager.saveProfile(profile)
@@ -468,6 +592,7 @@ public final class NewSessionViewModel: ObservableObject {
         directory: String,
         approvedNewDirectoryCreation: Bool
     ) async -> Bool {
+        rememberCurrentAgentSelections()
         let environmentVariables: [String: String]
         do {
             environmentVariables = try NewSessionEnvironmentVariablesParser.parse(environmentVariablesText)
@@ -501,7 +626,9 @@ public final class NewSessionViewModel: ObservableObject {
                 codexResumeThreadID: codexResumeThreadID,
                 claudeResumeSessionID: claudeResumeSessionID,
                 sessionToken: sessionToken,
-                environmentVariables: environmentVariables
+                environmentVariables: environmentVariables,
+                model: selectedModel,
+                reasoningEffort: selectedReasoningEffort.apiValue
             )
             let sessionID = result.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
             spawnedSessionID = (sessionID?.isEmpty == false) ? sessionID : nil
@@ -583,6 +710,11 @@ public final class NewSessionViewModel: ObservableObject {
         }
         return false
     }
+
+    private func rememberCurrentAgentSelections() {
+        selectedModelByAgent[lastSelectedAgent] = selectedModel
+        selectedReasoningEffortByAgent[lastSelectedAgent] = selectedReasoningEffort
+    }
 }
 
 
@@ -609,6 +741,20 @@ private func mergeUniqueByID<Row: Identifiable>(
         merged.append(row)
     }
     return merged
+}
+
+private func normalizeReasoningEfforts(_ rawValues: [String]) -> [NewSessionReasoningEffort] {
+    var normalized: [NewSessionReasoningEffort] = [.auto]
+    var seen: Set<NewSessionReasoningEffort> = [.auto]
+
+    for raw in rawValues {
+        guard let value = NewSessionReasoningEffort.fromBackend(raw) else { continue }
+        if seen.insert(value).inserted {
+            normalized.append(value)
+        }
+    }
+
+    return normalized
 }
 
 private func normalizedPath(_ raw: String) -> String {

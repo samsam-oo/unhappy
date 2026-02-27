@@ -211,6 +211,8 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
     public let updatedAt: String?
     public let createdAt: String?
     public let archived: Bool?
+    public let model: String?
+    public let effort: APISessionReasoningEffort?
 
     public init(
         id: String,
@@ -218,7 +220,9 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         cwd: String?,
         updatedAt: String?,
         createdAt: String?,
-        archived: Bool?
+        archived: Bool?,
+        model: String? = nil,
+        effort: APISessionReasoningEffort? = nil
     ) {
         self.id = id
         self.name = name
@@ -226,6 +230,8 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         self.updatedAt = updatedAt
         self.createdAt = createdAt
         self.archived = archived
+        self.model = model
+        self.effort = effort
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -235,6 +241,8 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         case updatedAt
         case createdAt
         case archived
+        case model
+        case effort
     }
 
     public init(from decoder: Decoder) throws {
@@ -247,6 +255,12 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         updatedAt = try? container.decodeIfPresent(String.self, forKey: .updatedAt)
         createdAt = try? container.decodeIfPresent(String.self, forKey: .createdAt)
         archived = try? container.decodeIfPresent(Bool.self, forKey: .archived)
+        model = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .model)
+        )
+        effort = decodeReasoningEffort(
+            try? container.decodeIfPresent(String.self, forKey: .effort)
+        )
     }
 }
 
@@ -297,6 +311,36 @@ public enum APISessionSpawnAgent: String, Encodable, Sendable {
     case claude
     case codex
     case gemini
+}
+
+public enum APISessionReasoningEffort: String, Codable, CaseIterable, Sendable {
+    case low
+    case medium
+    case high
+    case max
+    case xhigh
+}
+
+private func decodeReasoningEffort(_ raw: String?) -> APISessionReasoningEffort? {
+    guard let raw else { return nil }
+    let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if normalized.isEmpty {
+        return nil
+    }
+    switch normalized {
+    case "low":
+        return .low
+    case "medium":
+        return .medium
+    case "high":
+        return .high
+    case "max":
+        return .max
+    case "xhigh":
+        return .xhigh
+    default:
+        return nil
+    }
 }
 
 public enum APISessionPermissionMode: String, Encodable, CaseIterable, Sendable {

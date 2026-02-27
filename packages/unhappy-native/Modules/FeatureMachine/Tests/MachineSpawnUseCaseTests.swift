@@ -95,7 +95,9 @@ private struct ImmediateMachineSpawnService: MachineSessionSpawning {
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?,
         sessionToken: String?,
-        environmentVariables: [String : String]?
+        environmentVariables: [String : String]?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult {
         response
     }
@@ -119,7 +121,9 @@ private actor SlowCountingMachineSpawnService: MachineSessionSpawning {
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?,
         sessionToken: String?,
-        environmentVariables: [String : String]?
+        environmentVariables: [String : String]?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult {
         count += 1
         try await Task.sleep(nanoseconds: 80_000_000)

@@ -56,6 +56,8 @@ import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
 export async function runGemini(opts: {
   credentials: Credentials;
   startedBy?: 'daemon' | 'terminal';
+  model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh';
 }): Promise<void> {
   //
   // Define session
@@ -229,7 +231,7 @@ export async function runGemini(opts: {
 
   // Track current overrides to apply per message
   let currentPermissionMode: PermissionMode | undefined = undefined;
-  let currentModel: string | undefined = undefined;
+  let currentModel: string | undefined = opts.model;
 
   session.onUserMessage((message) => {
     // Resolve permission mode (validate) - same as Codex
@@ -473,12 +475,12 @@ export async function runGemini(opts: {
 
   // Track current model for UI display
   // Initialize with env var or default to show correct model from start
-  let displayedModel: string | undefined = getInitialGeminiModel();
+  let displayedModel: string | undefined = opts.model ?? getInitialGeminiModel();
 
   // Log initial values
   const localConfig = readGeminiLocalConfig();
   logger.debug(
-    `[gemini] Initial model setup: env[GEMINI_MODEL_ENV]=${process.env[GEMINI_MODEL_ENV] || 'not set'}, localConfig=${localConfig.model || 'not set'}, displayedModel=${displayedModel}`,
+    `[gemini] Initial model setup: startupModel=${opts.model || 'not set'}, env[GEMINI_MODEL_ENV]=${process.env[GEMINI_MODEL_ENV] || 'not set'}, localConfig=${localConfig.model || 'not set'}, displayedModel=${displayedModel}`,
   );
 
   // Function to update displayed model and notify UI

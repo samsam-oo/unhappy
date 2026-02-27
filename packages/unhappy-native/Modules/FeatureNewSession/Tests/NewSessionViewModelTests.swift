@@ -323,7 +323,9 @@ struct NewSessionViewModelTests {
                 cwd: "/Users/skyline23/Downloads/unhappy",
                 updatedAt: nil,
                 createdAt: nil,
-                archived: false
+                archived: false,
+                model: "gpt-5-codex",
+                effort: .high
             )
         )
 
@@ -331,6 +333,8 @@ struct NewSessionViewModelTests {
         #expect(model.codexResumeThreadID == "thread-123")
         #expect(model.claudeResumeSessionID.isEmpty)
         #expect(model.directoryPath == "/Users/skyline23/Downloads/unhappy")
+        #expect(model.selectedModel == "gpt-5-codex")
+        #expect(model.selectedReasoningEffort == .high)
     }
 
     @Test
@@ -487,7 +491,9 @@ private struct ViewModelSpawner: NewSessionSpawningAction {
         codexResumeThreadID: String?,
         claudeResumeSessionID: String?,
         sessionToken: String?,
-        environmentVariables: [String : String]
+        environmentVariables: [String : String],
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult {
         APISessionSpawnResult(
             success: true,

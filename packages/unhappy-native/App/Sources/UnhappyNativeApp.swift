@@ -50,9 +50,10 @@ struct UnhappyNativeApp: App {
         let newSessionMachinesLoader = NewSessionMachinesLoadUseCase(service: machinesService)
         let newSessionDirectoryLister = NewSessionDirectoryListUseCase(service: machinesService)
         let newSessionSpawner = NewSessionSpawnUseCase(service: machinesService)
+        let newSessionModelsLoader = NewSessionModelsLoadUseCase(service: machinesService)
         let newSessionCodexThreadsLoader = NewSessionCodexThreadsLoadUseCase(service: machinesService)
         let newSessionClaudeSessionsLoader = NewSessionClaudeSessionsLoadUseCase(service: machinesService)
-        let newSessionRecentProjects = NewSessionRecentProjectsUseCase(store: settingsStore)
+        let newSessionRecentProjects = NewSessionNoopRecentProjectsManager()
         let newSessionProfiles = NewSessionProfilesUseCase(store: UserDefaultsNewSessionProfilesStore())
         let usageLoader = SettingsUsageLoadUseCase(service: sessionsService)
         let daemonStatusLoader = DaemonStatusLoadUseCase(service: machinesService)
@@ -115,6 +116,7 @@ struct UnhappyNativeApp: App {
                 spawner: newSessionSpawner,
                 recentProjectsManager: newSessionRecentProjects,
                 profilesManager: newSessionProfiles,
+                modelsLoader: newSessionModelsLoader,
                 codexThreadsLoader: newSessionCodexThreadsLoader,
                 claudeSessionsLoader: newSessionClaudeSessionsLoader
             )

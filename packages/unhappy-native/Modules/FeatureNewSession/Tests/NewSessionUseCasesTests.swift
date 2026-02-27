@@ -174,6 +174,25 @@ struct NewSessionUseCasesTests {
     }
 
     @Test
+    func loadModelsForwardsMachineAndAgent() async throws {
+        let service = ModelsService(models: ["gpt-5", "gpt-5-codex"])
+        let useCase = NewSessionModelsLoadUseCase(service: service)
+
+        let capabilities = try await useCase.loadModels(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1",
+            agent: .codex
+        )
+
+        let request = await service.lastRequest
+        #expect(capabilities.models == ["gpt-5", "gpt-5-codex"])
+        #expect(capabilities.reasoningEfforts == ["auto", "low", "medium", "high", "max"])
+        #expect(request?.machineID == "machine-1")
+        #expect(request?.agent == .codex)
+    }
+
+    @Test
     func spawnThrowsApprovalError() async {
         let response = APISessionSpawnResult(
             success: false,
@@ -196,7 +215,9 @@ struct NewSessionUseCasesTests {
                 codexResumeThreadID: nil,
                 claudeResumeSessionID: nil,
                 sessionToken: nil,
-                environmentVariables: [:]
+                environmentVariables: [:],
+                model: nil,
+                reasoningEffort: nil
             )
         }
     }
@@ -224,7 +245,9 @@ struct NewSessionUseCasesTests {
             codexResumeThreadID: "thread-123",
             claudeResumeSessionID: "claude-456",
             sessionToken: "session-token",
-            environmentVariables: ["OPENAI_API_KEY": "test-key"]
+            environmentVariables: ["OPENAI_API_KEY": "test-key"],
+            model: "gpt-5-codex",
+            reasoningEffort: .high
         )
 
         let request = await service.lastRequest
@@ -236,6 +259,8 @@ struct NewSessionUseCasesTests {
         #expect(request?.claudeResumeSessionID == "claude-456")
         #expect(request?.sessionToken == "session-token")
         #expect(request?.environmentVariables == ["OPENAI_API_KEY": "test-key"])
+        #expect(request?.model == "gpt-5-codex")
+        #expect(request?.reasoningEffort == .high)
     }
 
     @Test
@@ -520,6 +545,8 @@ private struct SpawnRequest: Equatable {
     let approvedNewDirectoryCreation: Bool?
     let sessionToken: String?
     let environmentVariables: [String: String]?
+    let model: String?
+    let reasoningEffort: APISessionReasoningEffort?
 }
 
 private actor SpawnService: MachineSessionSpawning {
@@ -541,7 +568,9 @@ private actor SpawnService: MachineSessionSpawning {
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?,
         sessionToken: String?,
-        environmentVariables: [String : String]?
+        environmentVariables: [String : String]?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSpawnResult {
         lastRequest = SpawnRequest(
             machineID: machineID,
@@ -551,8 +580,38 @@ private actor SpawnService: MachineSessionSpawning {
             claudeResumeSessionID: claudeResumeSessionID,
             approvedNewDirectoryCreation: approvedNewDirectoryCreation,
             sessionToken: sessionToken,
-            environmentVariables: environmentVariables
+            environmentVariables: environmentVariables,
+            model: model,
+            reasoningEffort: reasoningEffort
         )
         return response
+    }
+}
+
+private struct ModelsRequest: Equatable {
+    let machineID: String
+    let agent: APISessionSpawnAgent
+}
+
+private actor ModelsService: MachineModelsListing {
+    let models: [String]
+    var lastRequest: ModelsRequest?
+
+    init(models: [String]) {
+        self.models = models
+        self.lastRequest = nil
+    }
+
+    func fetchAgentCapabilities(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        agent: APISessionSpawnAgent
+    ) async throws -> APIMachineAgentCapabilities {
+        lastRequest = ModelsRequest(machineID: machineID, agent: agent)
+        return APIMachineAgentCapabilities(
+            models: models,
+            reasoningEfforts: ["auto", "low", "medium", "high", "max"]
+        )
     }
 }

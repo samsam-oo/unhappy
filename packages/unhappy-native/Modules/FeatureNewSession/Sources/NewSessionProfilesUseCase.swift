@@ -10,6 +10,8 @@ public struct NewSessionProfile: Equatable, Identifiable, Sendable {
     public var codexResumeThreadID: String?
     public var claudeResumeSessionID: String?
     public var sessionToken: String?
+    public var model: String?
+    public var reasoningEffort: APISessionReasoningEffort?
     public var environmentVariablesText: String
 
     public init(
@@ -21,6 +23,8 @@ public struct NewSessionProfile: Equatable, Identifiable, Sendable {
         codexResumeThreadID: String?,
         claudeResumeSessionID: String?,
         sessionToken: String?,
+        model: String? = nil,
+        reasoningEffort: APISessionReasoningEffort? = nil,
         environmentVariablesText: String
     ) {
         self.id = id
@@ -31,6 +35,8 @@ public struct NewSessionProfile: Equatable, Identifiable, Sendable {
         self.codexResumeThreadID = codexResumeThreadID
         self.claudeResumeSessionID = claudeResumeSessionID
         self.sessionToken = sessionToken
+        self.model = model
+        self.reasoningEffort = reasoningEffort
         self.environmentVariablesText = environmentVariablesText
     }
 }
@@ -130,6 +136,8 @@ private func normalizedProfile(_ profile: NewSessionProfile) -> NewSessionProfil
         codexResumeThreadID: normalizedOptional(profile.codexResumeThreadID),
         claudeResumeSessionID: normalizedOptional(profile.claudeResumeSessionID),
         sessionToken: normalizedOptional(profile.sessionToken),
+        model: normalizedOptional(profile.model),
+        reasoningEffort: profile.reasoningEffort,
         environmentVariablesText: profile.environmentVariablesText
     )
 }
@@ -149,6 +157,8 @@ private struct NewSessionProfileDTO: Codable {
     let codexResumeThreadID: String?
     let claudeResumeSessionID: String?
     let sessionToken: String?
+    let model: String?
+    let reasoningEffort: String?
     let environmentVariablesText: String
 
     var profile: NewSessionProfile {
@@ -161,6 +171,8 @@ private struct NewSessionProfileDTO: Codable {
             codexResumeThreadID: codexResumeThreadID,
             claudeResumeSessionID: claudeResumeSessionID,
             sessionToken: sessionToken,
+            model: model,
+            reasoningEffort: APISessionReasoningEffort(rawValue: reasoningEffort ?? ""),
             environmentVariablesText: environmentVariablesText
         )
     }
@@ -174,6 +186,8 @@ private struct NewSessionProfileDTO: Codable {
         codexResumeThreadID = profile.codexResumeThreadID
         claudeResumeSessionID = profile.claudeResumeSessionID
         sessionToken = profile.sessionToken
+        model = profile.model
+        reasoningEffort = profile.reasoningEffort?.rawValue
         environmentVariablesText = profile.environmentVariablesText
     }
 }

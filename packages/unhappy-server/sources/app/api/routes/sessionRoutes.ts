@@ -1046,6 +1046,8 @@ export function sessionRoutes(app: Fastify) {
             body: z.object({
                 directory: z.string(),
                 agent: z.enum(['claude', 'codex', 'gemini']).optional(),
+                model: z.string().optional(),
+                reasoningEffort: z.enum(['low', 'medium', 'high', 'max', 'xhigh']).optional(),
                 codexResumeThreadId: z.string().optional(),
                 claudeResumeSessionId: z.string().optional(),
                 approvedNewDirectoryCreation: z.boolean().optional()
@@ -1058,6 +1060,8 @@ export function sessionRoutes(app: Fastify) {
         const {
             directory,
             agent,
+            model,
+            reasoningEffort,
             codexResumeThreadId,
             claudeResumeSessionId,
             approvedNewDirectoryCreation
@@ -1096,6 +1100,8 @@ export function sessionRoutes(app: Fastify) {
                 directory: normalizedDirectory,
                 sessionId,
                 agent,
+                model: typeof model === 'string' && model.trim().length > 0 ? model.trim() : undefined,
+                reasoningEffort,
                 codexResumeThreadId:
                     typeof codexResumeThreadId === 'string' && codexResumeThreadId.trim().length > 0
                         ? codexResumeThreadId.trim()

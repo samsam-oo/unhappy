@@ -508,6 +508,7 @@ public struct HomeView: View {
                 spawner: NewSessionSpawnUseCase(service: service),
                 recentProjectsManager: NewSessionNoopRecentProjectsManager(),
                 profilesManager: NewSessionNoopProfilesManager(),
+                modelsLoader: NewSessionModelsLoadUseCase(service: service),
                 codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
                 claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
             )

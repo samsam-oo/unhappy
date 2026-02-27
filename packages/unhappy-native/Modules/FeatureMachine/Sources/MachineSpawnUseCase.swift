@@ -115,7 +115,9 @@ public actor MachineSpawnUseCase: MachineSpawnAction {
                 claudeResumeSessionID: nil,
                 approvedNewDirectoryCreation: approvedNewDirectoryCreation,
                 sessionToken: nil,
-                environmentVariables: nil
+                environmentVariables: nil,
+                model: nil,
+                reasoningEffort: nil
             )
 
             if response.success {
