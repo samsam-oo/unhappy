@@ -227,7 +227,14 @@ public struct SessionDetailView: View {
                 }
             )
             .safeAreaInset(edge: .bottom) {
-                bottomDock
+                VStack(spacing: 8) {
+                    if subAgentInProgressCount > 0 {
+                        subAgentLiveBar
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    bottomDock
+                }
+                .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
             }
             .navigationTitle("Session")
             .navigationBarTitleDisplayMode(.inline)
@@ -646,18 +653,31 @@ public struct SessionDetailView: View {
         )
     }
 
+    private var subAgentLiveBar: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Color.green)
+                .frame(width: 8, height: 8)
+            Text("\(subAgentInProgressCount) sub-agents")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color.green)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.green.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
+    }
+
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if subAgentInProgressCount > 0 {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Sub-agents running: \(subAgentInProgressCount)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            } else if let thinkingEntry = latestAgentThinkingEntry {
+            if let thinkingEntry = latestAgentThinkingEntry {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
@@ -1519,7 +1539,7 @@ private struct SessionTranscriptMessageRow: View {
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 ForEach(presentation.entries) { entry in
                     SessionTranscriptLogLine(entry: entry)
                 }
@@ -1547,30 +1567,21 @@ private struct SessionTranscriptLogLine: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
         } else if isCollapsibleReferenceLogEntry {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         isExpanded.toggle()
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        if isEditFilesEntry {
-                            Text(collapsibleTitle)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 0)
-                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Text(collapsibleTitle)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 0)
-                        }
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(collapsibleTitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
                     }
                 }
                 .buttonStyle(.plain)
@@ -1581,15 +1592,10 @@ private struct SessionTranscriptLogLine: View {
                         .foregroundStyle(.primary)
                         .textSelection(.enabled)
                         .lineLimit(nil)
-                } else if !isEditFilesEntry, let preview = collapsedPreview {
-                    Text(preview)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(referenceLogBackgroundColor)
@@ -1711,16 +1717,6 @@ private struct SessionTranscriptLogLine: View {
         default:
             return "Details"
         }
-    }
-
-    private var collapsedPreview: String? {
-        let trimmed = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        let singleLine = trimmed.replacingOccurrences(of: "\n", with: " ")
-        if singleLine.count > 120 {
-            return String(singleLine.prefix(120)) + "…"
-        }
-        return singleLine
     }
 
     private var isEditFilesEntry: Bool {
