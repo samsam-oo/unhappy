@@ -682,11 +682,12 @@ public final class SessionsViewModel: ObservableObject {
 
     @discardableResult
     private func cacheMessages(_ messages: [APISessionMessage], for sessionID: String) -> [APISessionMessage] {
+        let orderedMessages = normalizeMessageOrder(messages)
         let normalizedMessages: [APISessionMessage]
-        if messages.count > CachePolicy.maxMessagesPerSession {
-            normalizedMessages = Array(messages.suffix(CachePolicy.maxMessagesPerSession))
+        if orderedMessages.count > CachePolicy.maxMessagesPerSession {
+            normalizedMessages = Array(orderedMessages.suffix(CachePolicy.maxMessagesPerSession))
         } else {
-            normalizedMessages = messages
+            normalizedMessages = orderedMessages
         }
 
         if messagesBySessionID[sessionID] != normalizedMessages {
@@ -713,6 +714,21 @@ public final class SessionsViewModel: ObservableObject {
             return cachedMessages
         }
         return cachedMessages + Array(fetchedMessages.dropFirst(cachedMessages.count))
+    }
+
+    private func normalizeMessageOrder(_ messages: [APISessionMessage]) -> [APISessionMessage] {
+        messages.sorted { lhs, rhs in
+            if lhs.seq != rhs.seq {
+                return lhs.seq < rhs.seq
+            }
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+            if lhs.updatedAt != rhs.updatedAt {
+                return lhs.updatedAt < rhs.updatedAt
+            }
+            return lhs.id < rhs.id
+        }
     }
 
     private func appendOptimisticUserMessageIfPossible(for sessionID: String, text: String) {

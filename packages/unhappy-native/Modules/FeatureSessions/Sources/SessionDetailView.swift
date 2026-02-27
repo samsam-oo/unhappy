@@ -192,13 +192,24 @@ public struct SessionDetailView: View {
                     } else {
                         ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
                             SessionTranscriptMessageRow(
-                                presentation: presentation
+                                presentation: presentation,
+                                onReferenceToggle: {
+                                    shouldFollowTranscript = false
+                                }
                             )
                             .listRowSeparator(.hidden)
                             .listRowInsets(
                                 EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12)
                             )
                         }
+                    }
+
+                    if let liveStatusText {
+                        SessionTranscriptLiveStatusRow(statusText: liveStatusText)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(
+                                EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12)
+                            )
                     }
 
                     Color.clear
@@ -684,17 +695,6 @@ public struct SessionDetailView: View {
 
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let liveStatusText {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(liveStatusText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-
             if !queuedComposerMessages.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(queuedComposerMessages) { item in
@@ -1612,6 +1612,7 @@ private struct ClaudeSessionRow: View {
 
 private struct SessionTranscriptMessageRow: View {
     let presentation: SessionTranscriptMessagePresentation
+    let onReferenceToggle: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: showsTimestamp ? 6 : 2) {
@@ -1626,7 +1627,10 @@ private struct SessionTranscriptMessageRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(presentation.entries) { entry in
-                    SessionTranscriptLogLine(entry: entry)
+                    SessionTranscriptLogLine(
+                        entry: entry,
+                        onReferenceToggle: onReferenceToggle
+                    )
                 }
             }
         }
@@ -1641,8 +1645,28 @@ private struct SessionTranscriptMessageRow: View {
     }
 }
 
+private struct SessionTranscriptLiveStatusRow: View {
+    let statusText: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(statusText)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 private struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
+    let onReferenceToggle: (() -> Void)?
     @State private var isExpanded = false
 
     var body: some View {
@@ -1661,7 +1685,10 @@ private struct SessionTranscriptLogLine: View {
         } else if isCollapsibleReferenceLogEntry {
             VStack(alignment: .leading, spacing: 1) {
                 Button {
-                    isExpanded.toggle()
+                    onReferenceToggle?()
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        isExpanded.toggle()
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
