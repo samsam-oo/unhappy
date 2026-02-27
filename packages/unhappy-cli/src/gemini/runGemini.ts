@@ -193,6 +193,10 @@ export async function runGemini(opts: {
   session.updateAgentState((currentState) => ({
     ...currentState,
     controlledByUser: opts.startedBy !== 'daemon',
+    mode: {
+      ...(currentState?.mode ?? {}),
+      model: opts.model,
+    },
   }));
 
   // Report to daemon (only if we have a real session)
@@ -232,6 +236,15 @@ export async function runGemini(opts: {
   // Track current overrides to apply per message
   let currentPermissionMode: PermissionMode | undefined = undefined;
   let currentModel: string | undefined = opts.model;
+  const syncAgentModeState = (model: string | undefined) => {
+    session.updateAgentState((currentState) => ({
+      ...currentState,
+      mode: {
+        ...(currentState?.mode ?? {}),
+        model,
+      },
+    }));
+  };
 
   session.onUserMessage((message) => {
     // Resolve permission mode (validate) - same as Codex
@@ -324,6 +337,7 @@ export async function runGemini(opts: {
       model: messageModel,
       originalUserMessage, // Store original message separately
     };
+    syncAgentModeState(currentModel);
     messageQueue.push(fullPrompt, mode);
 
     // Record user message in conversation history for context preservation

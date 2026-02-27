@@ -327,6 +327,11 @@ export async function runCodex(opts: {
     ...currentState,
     controlledByUser: opts.startedBy !== 'daemon',
     collab: undefined,
+    mode: {
+      ...(currentState?.mode ?? {}),
+      model: opts.model,
+      effort: opts.reasoningEffort,
+    },
   }));
 
   // Always report to daemon if it exists (skip if offline)
@@ -367,6 +372,16 @@ export async function runCodex(opts: {
     undefined;
   let currentModel: string | undefined = opts.model;
   let currentEffort: ReasoningEffortMode | undefined = opts.reasoningEffort;
+  const syncAgentModeState = (model: string | undefined, effort: ReasoningEffortMode | undefined) => {
+    session.updateAgentState((currentState) => ({
+      ...currentState,
+      mode: {
+        ...(currentState?.mode ?? {}),
+        model,
+        effort,
+      },
+    }));
+  };
   // System prompt overrides (sent by mobile/web as message.meta.*)
   // Claude applies these per turn; Codex MCP currently only supports instructions at session start.
   // We still track them so we can inject them into startSession config.
@@ -435,6 +450,7 @@ export async function runCodex(opts: {
         `[Codex] User message received with no effort override, using current: ${currentEffort || 'default'}`,
       );
     }
+    syncAgentModeState(currentModel, currentEffort);
 
     // Resolve custom system prompt; explicit null resets to default (undefined)
     let messageCustomSystemPrompt = currentCustomSystemPrompt;

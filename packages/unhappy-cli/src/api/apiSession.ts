@@ -160,6 +160,30 @@ export class ApiSessionClient extends EventEmitter {
                             : steerModeRaw === 'queue'
                                 ? 'queue'
                                 : undefined;
+                    const hasModelOverride =
+                        data?.params &&
+                        Object.prototype.hasOwnProperty.call(data.params, 'model');
+                    const hasEffortOverride =
+                        data?.params &&
+                        Object.prototype.hasOwnProperty.call(data.params, 'effort');
+                    const rawModel = hasModelOverride ? data?.params?.model : undefined;
+                    const normalizedModel =
+                        rawModel === null
+                            ? null
+                            : typeof rawModel === 'string'
+                                ? (rawModel.trim() || null)
+                                : undefined;
+                    const rawEffort = hasEffortOverride ? data?.params?.effort : undefined;
+                    const normalizedEffort =
+                        rawEffort === null
+                            ? null
+                            : rawEffort === 'low' ||
+                                rawEffort === 'medium' ||
+                                rawEffort === 'high' ||
+                                rawEffort === 'max' ||
+                                rawEffort === 'xhigh'
+                                ? rawEffort
+                                : undefined;
 
                     if (!this.socket.connected) {
                         callback({ success: false, error: 'Session socket is not connected' });
@@ -176,7 +200,13 @@ export class ApiSessionClient extends EventEmitter {
                         localKey,
                         meta: {
                             sentFrom: 'native',
-                            ...(steerMode ? { steerMode } : {})
+                            ...(steerMode ? { steerMode } : {}),
+                            ...(hasModelOverride && normalizedModel !== undefined
+                                ? { model: normalizedModel }
+                                : {}),
+                            ...(hasEffortOverride && normalizedEffort !== undefined
+                                ? { effort: normalizedEffort }
+                                : {})
                         }
                     };
                     this.optimisticUserMessageKeys.add(localKey);
