@@ -39,6 +39,18 @@ public struct SessionInfoView: View {
                     Text(presentation.title ?? "Untitled")
                         .foregroundStyle(presentation.title == nil ? .secondary : .primary)
                 }
+                if let machineDisplayName = presentation.machineDisplayName {
+                    LabeledContent("Machine") {
+                        Text(machineDisplayName)
+                            .lineLimit(1)
+                    }
+                }
+                if let machineIdentifier = presentation.machineIdentifier {
+                    LabeledContent("Machine ID") {
+                        Text(machineIdentifier)
+                            .font(.footnote.monospaced())
+                    }
+                }
                 LabeledContent("Status") {
                     Text(presentation.active ? "Active" : "Inactive")
                         .foregroundStyle(presentation.active ? Color.green : Color.secondary)
