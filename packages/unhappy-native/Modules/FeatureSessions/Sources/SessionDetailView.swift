@@ -196,7 +196,7 @@ public struct SessionDetailView: View {
                             )
                             .listRowSeparator(.hidden)
                             .listRowInsets(
-                                EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12)
+                                EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12)
                             )
                         }
                     }
@@ -1531,12 +1531,14 @@ private struct SessionTranscriptMessageRow: View {
     let presentation: SessionTranscriptMessagePresentation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Spacer()
-                Text(presentation.createdAtText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: showsTimestamp ? 6 : 2) {
+            if showsTimestamp {
+                HStack {
+                    Spacer()
+                    Text(presentation.createdAtText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -1545,7 +1547,14 @@ private struct SessionTranscriptMessageRow: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 1)
+    }
+
+    private var showsTimestamp: Bool {
+        presentation.entries.contains { entry in
+            guard entry.role == .user || entry.role == .agent else { return false }
+            return entry.kind == .text || entry.kind == .thinking
+        }
     }
 }
 
@@ -1567,7 +1576,7 @@ private struct SessionTranscriptLogLine: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
         } else if isCollapsibleReferenceLogEntry {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         isExpanded.toggle()
@@ -1594,16 +1603,8 @@ private struct SessionTranscriptLogLine: View {
                         .lineLimit(nil)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(referenceLogBackgroundColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(referenceLogBorderColor, lineWidth: 1)
-            )
+            .padding(.horizontal, 2)
+            .padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if isMainMessageEntry {
             VStack(alignment: .leading, spacing: 4) {
@@ -1641,16 +1642,8 @@ private struct SessionTranscriptLogLine: View {
                     .textSelection(.enabled)
                     .lineLimit(nil)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(referenceLogBackgroundColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(referenceLogBorderColor, lineWidth: 1)
-            )
+            .padding(.horizontal, 2)
+            .padding(.vertical, 1)
             .frame(
                 maxWidth: .infinity,
                 alignment: .leading
@@ -1674,14 +1667,6 @@ private struct SessionTranscriptLogLine: View {
             return Color.blue.opacity(0.12)
         }
         return Color.primary.opacity(0.04)
-    }
-
-    private var referenceLogBackgroundColor: Color {
-        Color.white
-    }
-
-    private var referenceLogBorderColor: Color {
-        Color.black.opacity(0.08)
     }
 
     private var isCollapsibleToolEntry: Bool {
