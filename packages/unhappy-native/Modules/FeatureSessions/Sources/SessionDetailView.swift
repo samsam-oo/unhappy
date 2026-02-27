@@ -589,14 +589,19 @@ public struct SessionDetailView: View {
             HStack(spacing: 10) {
                 Spacer(minLength: 0)
 
-                Button("Queue") {
+                Button {
                     submitDraftMessage(with: .queue)
+                } label: {
+                    Text("Queue")
+                        .font(.footnote.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(.primary)
+                        .background(Color.secondary.opacity(0.12), in: Capsule())
                 }
-                .buttonStyle(.bordered)
-                .disabled(
-                    viewModel.isSendingMessage(sessionID: session.id) ||
-                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
+                .buttonStyle(.plain)
+                .opacity(isComposerSubmitDisabled ? 0.45 : 1)
+                .disabled(isComposerSubmitDisabled)
 
                 Button {
                     submitDraftMessage(with: .immediate)
@@ -605,12 +610,15 @@ public struct SessionDetailView: View {
                         viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
                         systemImage: "paperplane.fill"
                     )
+                    .font(.footnote.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(.primary)
+                    .background(Color.accentColor.opacity(0.18), in: Capsule())
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    viewModel.isSendingMessage(sessionID: session.id) ||
-                    draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
+                .buttonStyle(.plain)
+                .opacity(isComposerSubmitDisabled ? 0.45 : 1)
+                .disabled(isComposerSubmitDisabled)
             }
 
             if let status = viewModel.sendMessageStatusMessage {
@@ -726,10 +734,7 @@ public struct SessionDetailView: View {
                         "Model: \(selectedModelOverrideLabel)",
                         systemImage: "cpu"
                     )
-                    .font(.footnote.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                    .modifier(DockChipModifier())
                 ) {
                     ForEach(modelPickerOptions, id: \.id) { option in
                         Text(option.label).tag(option.id)
@@ -744,10 +749,7 @@ public struct SessionDetailView: View {
                             "Reasoning: \(selectedReasoningOverrideLabel)",
                             systemImage: "brain.head.profile"
                         )
-                        .font(.footnote.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.secondary.opacity(0.12), in: Capsule())
+                        .modifier(DockChipModifier())
                     ) {
                         ForEach(effortPickerOptions, id: \.id) { option in
                             Text(option.label).tag(option.id)
@@ -792,16 +794,13 @@ public struct SessionDetailView: View {
             presentedQuickTool = tool
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.footnote.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.secondary.opacity(0.12), in: Capsule())
+                .modifier(DockChipModifier())
         }
         .buttonStyle(.plain)
     }
 
     private var selectedModelOverrideLabel: String {
-        guard applyModelOverride else { return "Default" }
+        guard applyModelOverride else { return resolvedCurrentModelLabel ?? "Default" }
         switch selectedModelOverrideOption {
         case Self.customModelOverrideOption:
             let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -812,7 +811,7 @@ public struct SessionDetailView: View {
     }
 
     private var selectedReasoningOverrideLabel: String {
-        guard applyEffortOverride else { return "Auto" }
+        guard applyEffortOverride else { return resolvedCurrentEffortLabel ?? "Auto" }
         return selectedEffortOverride.label
     }
 
@@ -825,7 +824,7 @@ public struct SessionDetailView: View {
         var options: [PickerOption] = [
             PickerOption(
                 id: Self.modelPickerDefaultOption,
-                label: "Default"
+                label: "Use current model"
             ),
         ]
         options.append(
@@ -953,12 +952,73 @@ public struct SessionDetailView: View {
     }
 
     private var parsedSessionFlavor: SessionComposerFlavor? {
-        guard let data = currentSession.metadata.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let raw = json["flavor"] as? String else {
+        guard let raw = SessionPayloadValueResolver.firstString(
+            in: [decodedSessionMetadata, decodedSessionAgentState],
+            keys: ["flavor", "agent", "provider"]
+        ) else {
             return nil
         }
-        return SessionComposerFlavor(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let flavor = SessionComposerFlavor(rawValue: normalized) {
+            return flavor
+        }
+        if normalized.contains("claude") {
+            return .claude
+        }
+        if normalized.contains("gemini") {
+            return .gemini
+        }
+        if normalized.contains("codex") || normalized.contains("openai") || normalized.contains("gpt") {
+            return .codex
+        }
+        return nil
+    }
+
+    private var decodedSessionMetadata: [String: Any] {
+        SessionPayloadValueResolver.decodeJSONObject(
+            payload: currentSession.metadata,
+            dataEncryptionKey: currentSession.dataEncryptionKey
+        )
+    }
+
+    private var decodedSessionAgentState: [String: Any] {
+        SessionPayloadValueResolver.decodeJSONObject(
+            payload: currentSession.agentState,
+            dataEncryptionKey: currentSession.dataEncryptionKey
+        )
+    }
+
+    private var resolvedCurrentModelLabel: String? {
+        SessionPayloadValueResolver.firstString(
+            in: [decodedSessionAgentState, decodedSessionMetadata],
+            keys: [
+                "model",
+                "currentModel",
+                "selectedModel",
+                "modelName",
+            ]
+        )
+    }
+
+    private var resolvedCurrentEffortLabel: String? {
+        guard let raw = SessionPayloadValueResolver.firstString(
+            in: [decodedSessionAgentState, decodedSessionMetadata],
+            keys: [
+                "effort",
+                "reasoningEffort",
+                "reasoning_effort",
+                "modelReasoningEffort",
+            ]
+        ) else {
+            return nil
+        }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private var isComposerSubmitDisabled: Bool {
+        viewModel.isSendingMessage(sessionID: session.id) ||
+        draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func transcriptPresentation(
@@ -968,6 +1028,16 @@ public struct SessionDetailView: View {
             from: message,
             dataEncryptionKey: currentSession.dataEncryptionKey
         )
+    }
+}
+
+private struct DockChipModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.footnote.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
     }
 }
 
