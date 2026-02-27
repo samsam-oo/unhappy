@@ -29,6 +29,12 @@ public struct SessionDetailView: View {
         let text: String
     }
 
+    private struct CachedTranscriptPresentation: Equatable {
+        let sourceMessage: APISessionMessage
+        let dataEncryptionKey: String?
+        let presentation: SessionTranscriptMessagePresentation
+    }
+
     private static let customModelOverrideOption = "__custom_model_override__"
     private static let modelPickerDefaultOption = "__model_default__"
     private static let modelPickerCustomOption = "__model_custom__"
@@ -108,6 +114,8 @@ public struct SessionDetailView: View {
     @State private var queuedComposerMessages: [QueuedComposerMessage] = []
     @State private var shouldFollowTranscript = true
     @State private var scrollToBottomRequestID = UUID()
+    @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
+    @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
     public init(
@@ -270,7 +278,23 @@ public struct SessionDetailView: View {
                     serverURLString: serverURLString,
                     token: token
                 )
+                refreshTranscriptPresentationCache(
+                    messages: viewModel.selectedSessionMessages,
+                    dataEncryptionKey: currentSession.dataEncryptionKey
+                )
                 scrollTranscriptToBottom(using: scrollProxy, animated: false)
+            }
+            .onChange(of: viewModel.selectedSessionMessages) { _, messages in
+                refreshTranscriptPresentationCache(
+                    messages: messages,
+                    dataEncryptionKey: currentSession.dataEncryptionKey
+                )
+            }
+            .onChange(of: currentSession.dataEncryptionKey) { _, dataEncryptionKey in
+                refreshTranscriptPresentationCache(
+                    messages: viewModel.selectedSessionMessages,
+                    dataEncryptionKey: dataEncryptionKey
+                )
             }
             .onChange(of: visibleTranscriptMessageIDs) { _, _ in
                 guard shouldFollowTranscript else { return }
@@ -1158,20 +1182,50 @@ public struct SessionDetailView: View {
         }
     }
 
-    private func transcriptPresentation(
-        for message: APISessionMessage
-    ) -> SessionTranscriptMessagePresentation {
-        SessionTranscriptPresentationBuilder.make(
-            from: message,
-            dataEncryptionKey: currentSession.dataEncryptionKey
-        )
+    private func refreshTranscriptPresentationCache(
+        messages: [APISessionMessage],
+        dataEncryptionKey: String?
+    ) {
+        var nextCache: [String: CachedTranscriptPresentation] = [:]
+        nextCache.reserveCapacity(messages.count)
+
+        var nextVisible: [SessionTranscriptMessagePresentation] = []
+        nextVisible.reserveCapacity(messages.count)
+
+        for message in messages {
+            if let cached = transcriptPresentationCache[message.id],
+               cached.sourceMessage == message,
+               cached.dataEncryptionKey == dataEncryptionKey {
+                nextCache[message.id] = cached
+                if !cached.presentation.entries.isEmpty {
+                    nextVisible.append(cached.presentation)
+                }
+                continue
+            }
+
+            let presentation = SessionTranscriptPresentationBuilder.make(
+                from: message,
+                dataEncryptionKey: dataEncryptionKey
+            )
+            let cached = CachedTranscriptPresentation(
+                sourceMessage: message,
+                dataEncryptionKey: dataEncryptionKey,
+                presentation: presentation
+            )
+            nextCache[message.id] = cached
+            if !presentation.entries.isEmpty {
+                nextVisible.append(presentation)
+            }
+        }
+
+        transcriptPresentationCache = nextCache
+        if cachedVisibleTranscriptPresentations != nextVisible {
+            cachedVisibleTranscriptPresentations = nextVisible
+        }
     }
 
     private var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {
-        viewModel.selectedSessionMessages.compactMap { message in
-            let presentation = transcriptPresentation(for: message)
-            return presentation.entries.isEmpty ? nil : presentation
-        }
+        cachedVisibleTranscriptPresentations
     }
 
     private var visibleTranscriptMessageIDs: [String] {
