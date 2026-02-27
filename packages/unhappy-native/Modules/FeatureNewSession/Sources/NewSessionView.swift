@@ -73,7 +73,7 @@ public struct NewSessionView: View {
                         directoryBrowserFilterText = ""
                         showDirectoryBrowserSheet = true
                     }
-                    .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingDirectory)
+                    .disabled(viewModel.selectedMachineID == nil)
 
                     if viewModel.isLoadingDirectory {
                         HStack {
@@ -148,7 +148,6 @@ public struct NewSessionView: View {
                         }
                     }
                     .pickerStyle(.navigationLink)
-                    .disabled(viewModel.availableModels.isEmpty && viewModel.isLoadingModels)
 
                     if let error = viewModel.modelsErrorMessage {
                         Text(error)
@@ -313,11 +312,6 @@ public struct NewSessionView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    focusedField = nil
-                }
-            )
             .navigationTitle("New Session")
             .navigationBarTitleDisplayMode(.inline)
             .alert("Save Profile", isPresented: $showSaveProfilePrompt) {

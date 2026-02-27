@@ -116,8 +116,16 @@ public final class NewSessionViewModel: ObservableObject {
             if self.selectedMachineID != nil {
                 // Keep machine-loading UI scoped to machine fetch, not directory fetch.
                 isLoadingMachines = false
-                await loadDirectory(serverURLString: serverURLString, token: token)
-                await loadModels(serverURLString: serverURLString, token: token, agent: selectedAgent)
+                async let directoryLoad: Void = loadDirectory(
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                async let modelsLoad: Void = loadModels(
+                    serverURLString: serverURLString,
+                    token: token,
+                    agent: selectedAgent
+                )
+                _ = await (directoryLoad, modelsLoad)
             } else {
                 directoryEntries = []
                 availableModels = []
@@ -156,8 +164,16 @@ public final class NewSessionViewModel: ObservableObject {
         approvalDirectory = nil
         spawnedSessionID = nil
         infoMessage = nil
-        await loadDirectory(serverURLString: serverURLString, token: token)
-        await loadModels(serverURLString: serverURLString, token: token, agent: selectedAgent)
+        async let directoryLoad: Void = loadDirectory(
+            serverURLString: serverURLString,
+            token: token
+        )
+        async let modelsLoad: Void = loadModels(
+            serverURLString: serverURLString,
+            token: token,
+            agent: selectedAgent
+        )
+        _ = await (directoryLoad, modelsLoad)
     }
 
     public func loadModels(
