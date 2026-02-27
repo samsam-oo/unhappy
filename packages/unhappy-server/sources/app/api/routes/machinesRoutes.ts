@@ -464,7 +464,8 @@ export function machinesRoutes(app: Fastify) {
             }),
             querystring: z.object({
                 cwd: z.string().optional(),
-                limit: z.coerce.number().int().min(1).max(100).default(20)
+                limit: z.coerce.number().int().min(1).max(100).default(20),
+                cursor: z.string().optional()
             }).optional()
         }
     }, async (request, reply) => {
@@ -472,6 +473,7 @@ export function machinesRoutes(app: Fastify) {
         const { id } = request.params;
         const cwd = request.query?.cwd?.trim();
         const limit = request.query?.limit ?? 20;
+        const cursor = request.query?.cursor?.trim();
 
         const machine = await db.machine.findFirst({
             where: {
@@ -494,7 +496,8 @@ export function machinesRoutes(app: Fastify) {
             command: 'codex-list-threads',
             params: {
                 cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit
+                limit,
+                cursor: cursor && cursor.length > 0 ? cursor : undefined
             }
         });
 
@@ -516,7 +519,8 @@ export function machinesRoutes(app: Fastify) {
             }),
             querystring: z.object({
                 cwd: z.string().optional(),
-                limit: z.coerce.number().int().min(1).max(100).default(20)
+                limit: z.coerce.number().int().min(1).max(100).default(20),
+                cursor: z.string().optional()
             }).optional()
         }
     }, async (request, reply) => {
@@ -524,6 +528,7 @@ export function machinesRoutes(app: Fastify) {
         const { id } = request.params;
         const cwd = request.query?.cwd?.trim();
         const limit = request.query?.limit ?? 20;
+        const cursor = request.query?.cursor?.trim();
 
         const machine = await db.machine.findFirst({
             where: {
@@ -546,7 +551,8 @@ export function machinesRoutes(app: Fastify) {
             command: 'claude-list-sessions',
             params: {
                 cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit
+                limit,
+                cursor: cursor && cursor.length > 0 ? cursor : undefined
             }
         });
 
@@ -554,6 +560,53 @@ export function machinesRoutes(app: Fastify) {
             return reply.code(502).send({
                 success: false,
                 error: typeof result?.error === 'string' ? result.error : 'Failed to list Claude sessions'
+            });
+        }
+
+        return reply.send(result);
+    });
+
+    app.get('/v1/machines/:id/models', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            querystring: z.object({
+                agent: z.enum(['claude', 'codex', 'gemini'])
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const agent = request.query.agent;
+
+        const machine = await db.machine.findFirst({
+            where: {
+                accountId: userId,
+                id
+            },
+            select: { id: true }
+        });
+
+        if (!machine) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const target = findConnectedMachine(userId, id);
+        if (!target) {
+            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
+        }
+
+        const result = await invokePublicCommand(target, {
+            command: 'list-models',
+            params: { agent }
+        });
+
+        if (!result?.success) {
+            return reply.code(502).send({
+                success: false,
+                error: typeof result?.error === 'string' ? result.error : 'Failed to list models'
             });
         }
 

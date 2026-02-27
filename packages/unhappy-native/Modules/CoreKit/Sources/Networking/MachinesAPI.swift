@@ -54,6 +54,27 @@ public enum MachinesAPI {
         return request
     }
 
+    public static func makeListModelsRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        agent: APISessionSpawnAgent
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let modelsURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/models")
+        guard var components = URLComponents(url: modelsURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        components.queryItems = [URLQueryItem(name: "agent", value: agent.rawValue)]
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(url: url, method: "GET", token: token)
+    }
+
     public static func makeCodexThreadsRequest(
         serverURL: URL,
         token: String,
@@ -236,6 +257,24 @@ public enum MachinesAPI {
         )
     }
 
+    public static func decodeAgentCapabilitiesResponse(_ data: Data) throws -> APIMachineAgentCapabilities {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(MachinesListModelsResponse.self, from: data)
+        guard response.success else {
+            let normalizedError = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to list models"
+            )
+        }
+
+        let rawModels = response.models ?? []
+        let rawReasoningEfforts = response.reasoningEfforts ?? []
+        return APIMachineAgentCapabilities(
+            models: deduplicatedValues(rawModels),
+            reasoningEfforts: deduplicatedValues(rawReasoningEfforts)
+        )
+    }
+
     private static func makeRequest(url: URL, method: String, token: String) throws -> URLRequest {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -335,6 +374,13 @@ private struct MachinesClaudeSessionsResponse: Decodable {
     let hasNext: Bool?
 }
 
+private struct MachinesListModelsResponse: Decodable {
+    let success: Bool
+    let models: [String]?
+    let reasoningEfforts: [String]?
+    let error: String?
+}
+
 private struct MachineSpawnPayload: Encodable {
     let directory: String
     let agent: APISessionSpawnAgent?
@@ -353,6 +399,19 @@ private struct MachineListDirectoryPayload: Encodable {
     let types: [String]?
     let sort: Bool?
     let maxEntries: Int?
+}
+
+private func deduplicatedValues(_ values: [String]) -> [String] {
+    var deduplicated: [String] = []
+    var seen = Set<String>()
+    for raw in values {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { continue }
+        if seen.insert(normalized).inserted {
+            deduplicated.append(normalized)
+        }
+    }
+    return deduplicated
 }
 
 public protocol MachinesFetching: Sendable {
@@ -496,6 +555,44 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
             throw MachinesAPIError.missingDirectory
         }
 
+        do {
+            let request = try MachinesAPI.makeSpawnSessionRequest(
+                serverURL: serverURL,
+                token: token,
+                machineID: normalizedMachineID,
+                directory: normalizedDirectory,
+                agent: agent,
+                codexResumeThreadID: codexResumeThreadID,
+                claudeResumeSessionID: claudeResumeSessionID,
+                approvedNewDirectoryCreation: approvedNewDirectoryCreation,
+                sessionToken: sessionToken,
+                environmentVariables: environmentVariables,
+                model: model,
+                reasoningEffort: reasoningEffort
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            if (200..<300).contains(http.statusCode) || http.statusCode == 409 {
+                return try MachinesAPI.decodeSpawnResponse(data)
+            }
+            if shouldFallbackToRPC(statusCode: http.statusCode) {
+                throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/spawn")
+            }
+            let errorMessage = parseServerErrorMessage(from: data)
+            if let errorMessage {
+                throw MachinesAPIError.rpcCallFailed(errorMessage)
+            }
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        } catch let error as MachinesAPIError {
+            if case .endpointUnavailable = error {
+                // Fallback for older backends that do not yet expose REST machine commands.
+            } else {
+                throw error
+            }
+        }
+
         var params: [String: Any] = [
             "directory": normalizedDirectory,
             "machineId": normalizedMachineID,
@@ -596,6 +693,36 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
             throw MachinesAPIError.missingMachineID
         }
 
+        do {
+            let request = try MachinesAPI.makeListModelsRequest(
+                serverURL: serverURL,
+                token: token,
+                machineID: normalizedMachineID,
+                agent: agent
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                if shouldFallbackToRPC(statusCode: http.statusCode) {
+                    throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/models")
+                }
+                let errorMessage = parseServerErrorMessage(from: data)
+                if let errorMessage {
+                    throw MachinesAPIError.rpcCallFailed(errorMessage)
+                }
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+            return try MachinesAPI.decodeAgentCapabilitiesResponse(data)
+        } catch let error as MachinesAPIError {
+            if case .endpointUnavailable = error {
+                // Fallback for servers that do not yet expose /models.
+            } else {
+                throw error
+            }
+        }
+
         let data = try await rpcDirectoryService.invokeCommand(
             serverURL: serverURL,
             token: token,
@@ -603,43 +730,7 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
             command: "list-models",
             params: ["agent": agent.rawValue]
         )
-        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw MachinesAPIError.invalidRPCPayload
-        }
-        if payload["success"] as? Bool == false {
-            let normalizedError = (payload["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw MachinesAPIError.rpcCallFailed(
-                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to list models"
-            )
-        }
-
-        guard let rawModels = payload["models"] as? [String] else {
-            throw MachinesAPIError.invalidRPCPayload
-        }
-        let rawReasoningEfforts = payload["reasoningEfforts"] as? [String] ?? []
-
-        var models: [String] = []
-        var seen = Set<String>()
-        for raw in rawModels {
-            let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !normalized.isEmpty else { continue }
-            if seen.insert(normalized).inserted {
-                models.append(normalized)
-            }
-        }
-        var reasoningEfforts: [String] = []
-        var seenEfforts = Set<String>()
-        for raw in rawReasoningEfforts {
-            let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !normalized.isEmpty else { continue }
-            if seenEfforts.insert(normalized).inserted {
-                reasoningEfforts.append(normalized)
-            }
-        }
-        return APIMachineAgentCapabilities(
-            models: models,
-            reasoningEfforts: reasoningEfforts
-        )
+        return try MachinesAPI.decodeAgentCapabilitiesResponse(data)
     }
 
     public func stopDaemon(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
@@ -702,6 +793,40 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         machineID: String,
         path: String
     ) async throws -> APIMachineListDirectoryResult {
+        do {
+            let request = try MachinesAPI.makeListDirectoryRequest(
+                serverURL: serverURL,
+                token: token,
+                machineID: machineID,
+                path: path,
+                includeStats: false,
+                types: ["directory"],
+                sort: true,
+                maxEntries: 2_000
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                if shouldFallbackToRPC(statusCode: http.statusCode) {
+                    throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/commands/list-directory")
+                }
+                let errorMessage = parseServerErrorMessage(from: data)
+                if let errorMessage {
+                    throw MachinesAPIError.rpcCallFailed(errorMessage)
+                }
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+            return try MachinesAPI.decodeListDirectoryResponse(data)
+        } catch let error as MachinesAPIError {
+            if case .endpointUnavailable = error {
+                // Fallback for servers that do not yet expose list-directory.
+            } else {
+                throw error
+            }
+        }
+
         return try await rpcDirectoryService.listDirectory(
             serverURL: serverURL,
             token: token,
@@ -758,6 +883,38 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         cursor: String?
     ) async throws -> APICodexThreadsPage {
         let boundedLimit = min(max(limit, 1), 100)
+        do {
+            let request = try MachinesAPI.makeCodexThreadsRequest(
+                serverURL: serverURL,
+                token: token,
+                machineID: machineID,
+                limit: boundedLimit,
+                cwd: cwd,
+                cursor: cursor
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                if shouldFallbackToRPC(statusCode: http.statusCode) {
+                    throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/codex/threads")
+                }
+                let errorMessage = parseServerErrorMessage(from: data)
+                if let errorMessage {
+                    throw MachinesAPIError.rpcCallFailed(errorMessage)
+                }
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+            return try MachinesAPI.decodeCodexThreadsPageResponse(data)
+        } catch let error as MachinesAPIError {
+            if case .endpointUnavailable = error {
+                // Fallback for servers that do not yet expose codex thread listing.
+            } else {
+                throw error
+            }
+        }
+
         return try await rpcDirectoryService.fetchCodexThreadsPage(
             serverURL: serverURL,
             token: token,
@@ -815,6 +972,38 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
         cursor: String?
     ) async throws -> APIClaudeSessionsPage {
         let boundedLimit = min(max(limit, 1), 100)
+        do {
+            let request = try MachinesAPI.makeClaudeSessionsRequest(
+                serverURL: serverURL,
+                token: token,
+                machineID: machineID,
+                limit: boundedLimit,
+                cwd: cwd,
+                cursor: cursor
+            )
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                if shouldFallbackToRPC(statusCode: http.statusCode) {
+                    throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/claude/sessions")
+                }
+                let errorMessage = parseServerErrorMessage(from: data)
+                if let errorMessage {
+                    throw MachinesAPIError.rpcCallFailed(errorMessage)
+                }
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+            return try MachinesAPI.decodeClaudeSessionsPageResponse(data)
+        } catch let error as MachinesAPIError {
+            if case .endpointUnavailable = error {
+                // Fallback for servers that do not yet expose Claude session listing.
+            } else {
+                throw error
+            }
+        }
+
         return try await rpcDirectoryService.fetchClaudeSessionsPage(
             serverURL: serverURL,
             token: token,
@@ -823,5 +1012,25 @@ public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning
             cwd: cwd,
             cursor: cursor
         )
+    }
+
+    private func shouldFallbackToRPC(statusCode: Int) -> Bool {
+        statusCode == 404 || statusCode == 405 || statusCode == 501
+    }
+
+    private func parseServerErrorMessage(from data: Data) -> String? {
+        guard let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let keys = ["error", "message", "errorMessage"]
+        for key in keys {
+            if let value = payload[key] as? String {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        return nil
     }
 }

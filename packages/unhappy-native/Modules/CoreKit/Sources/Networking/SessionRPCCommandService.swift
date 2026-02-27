@@ -15,6 +15,14 @@ public protocol SessionRPCCommandDispatching: Sendable {
 public actor SocketIOSessionRPCCommandService: SessionRPCCommandDispatching {
     private let connectTimeoutSeconds: Double
     private let ackTimeoutSeconds: Double
+    private var liveConnection: LiveConnection?
+
+    private struct LiveConnection {
+        let serverURLString: String
+        let token: String
+        let manager: SocketManager
+        let socket: SocketIOClient
+    }
 
     public init(
         connectTimeoutSeconds: Double = 8,
@@ -54,14 +62,83 @@ public actor SocketIOSessionRPCCommandService: SessionRPCCommandDispatching {
             "allowMachineFallback": allowMachineFallback,
         ]
 
+        let socket = try await getOrCreateConnectedSocket(
+            serverURL: serverURL,
+            token: normalizedToken
+        )
+
+        do {
+            let ackItems = try await emitWithAck(
+                socket: socket,
+                event: "session-public-command",
+                payload: requestPayload
+            )
+
+            if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
+                teardownLiveConnection()
+                throw SessionsAPIError.rpcTimedOut
+            }
+
+            guard let responseObject = ackItems.first as? [String: Any] else {
+                teardownLiveConnection()
+                throw SessionsAPIError.invalidRPCPayload
+            }
+            guard JSONSerialization.isValidJSONObject(responseObject) else {
+                teardownLiveConnection()
+                throw SessionsAPIError.invalidRPCPayload
+            }
+
+            guard let ok = responseObject["ok"] as? Bool else {
+                teardownLiveConnection()
+                throw SessionsAPIError.invalidRPCPayload
+            }
+            if !ok {
+                teardownLiveConnection()
+                let rawError = responseObject["error"] as? String
+                let message = rawError?.trimmingCharacters(in: .whitespacesAndNewlines)
+                throw SessionsAPIError.rpcCallFailed(
+                    (message?.isEmpty == false ? message : nil) ?? "Session RPC command failed"
+                )
+            }
+
+            guard let bodyObject = responseObject["body"] else {
+                teardownLiveConnection()
+                throw SessionsAPIError.invalidRPCPayload
+            }
+            guard JSONSerialization.isValidJSONObject(bodyObject) else {
+                teardownLiveConnection()
+                throw SessionsAPIError.invalidRPCPayload
+            }
+
+            return try JSONSerialization.data(withJSONObject: bodyObject)
+        } catch {
+            teardownLiveConnection()
+            throw error
+        }
+    }
+
+    private func getOrCreateConnectedSocket(
+        serverURL: URL,
+        token: String
+    ) async throws -> SocketIOClient {
+        let serverURLString = serverURL.absoluteString
+
+        if let liveConnection {
+            let sameIdentity =
+                liveConnection.serverURLString == serverURLString &&
+                liveConnection.token == token
+            if sameIdentity, liveConnection.socket.status == .connected {
+                return liveConnection.socket
+            }
+            teardownLiveConnection()
+        }
+
         let queue = DispatchQueue(label: "im.unhappy.native.session-rpc.\(UUID().uuidString)")
         let manager = SocketManager(
             socketURL: serverURL,
             config: [
                 .path("/v1/updates"),
                 .version(.three),
-                .forceWebsockets(true),
-                .forceNew(true),
                 .reconnects(false),
                 .log(false),
                 .compress,
@@ -69,49 +146,28 @@ public actor SocketIOSessionRPCCommandService: SessionRPCCommandDispatching {
             ]
         )
         let socket = manager.defaultSocket
-
-        try await connectSocket(socket, token: normalizedToken)
-        defer {
+        do {
+            try await connectSocket(socket, token: token)
+        } catch {
             socket.disconnect()
             manager.disconnect()
+            throw error
         }
 
-        let ackItems = try await emitWithAck(
-            socket: socket,
-            event: "session-public-command",
-            payload: requestPayload
+        liveConnection = LiveConnection(
+            serverURLString: serverURLString,
+            token: token,
+            manager: manager,
+            socket: socket
         )
+        return socket
+    }
 
-        if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
-            throw SessionsAPIError.rpcTimedOut
-        }
-
-        guard let responseObject = ackItems.first as? [String: Any] else {
-            throw SessionsAPIError.invalidRPCPayload
-        }
-        guard JSONSerialization.isValidJSONObject(responseObject) else {
-            throw SessionsAPIError.invalidRPCPayload
-        }
-
-        guard let ok = responseObject["ok"] as? Bool else {
-            throw SessionsAPIError.invalidRPCPayload
-        }
-        if !ok {
-            let rawError = responseObject["error"] as? String
-            let message = rawError?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw SessionsAPIError.rpcCallFailed(
-                (message?.isEmpty == false ? message : nil) ?? "Session RPC command failed"
-            )
-        }
-
-        guard let bodyObject = responseObject["body"] else {
-            throw SessionsAPIError.invalidRPCPayload
-        }
-        guard JSONSerialization.isValidJSONObject(bodyObject) else {
-            throw SessionsAPIError.invalidRPCPayload
-        }
-
-        return try JSONSerialization.data(withJSONObject: bodyObject)
+    private func teardownLiveConnection() {
+        guard let liveConnection else { return }
+        liveConnection.socket.disconnect()
+        liveConnection.manager.disconnect()
+        self.liveConnection = nil
     }
 
     private func connectSocket(_ socket: SocketIOClient, token: String) async throws {

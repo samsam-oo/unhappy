@@ -11,6 +11,8 @@ struct SessionInfoPayloadField: Equatable, Identifiable, Sendable {
 struct SessionInfoPresentation: Equatable, Sendable {
     let sessionID: String
     let title: String?
+    let machineDisplayName: String?
+    let machineIdentifier: String?
     let active: Bool
     let sequenceText: String?
     let createdAtText: String
@@ -40,12 +42,17 @@ enum SessionInfoPresentationBuilder {
         let metadataPreview = truncate(session.metadata, limit: metadataPreviewLimit)
         let agentStateRaw = normalizedOptional(session.agentState)
         let agentStatePreview = agentStateRaw.map { truncate($0, limit: metadataPreviewLimit) }
-        let metadataFields = parseJSONFields(raw: session.metadata)
-        let agentStateFields = parseJSONFields(raw: agentStateRaw ?? "")
+        let metadataObject = parseJSONObject(raw: session.metadata)
+        let metadataFields = parseJSONFields(object: metadataObject)
+        let agentStateFields = parseJSONFields(object: parseJSONObject(raw: agentStateRaw ?? ""))
 
         return SessionInfoPresentation(
             sessionID: session.id,
             title: normalizedOptional(session.displayName),
+            machineDisplayName: machineDisplayName(from: metadataObject),
+            machineIdentifier: firstString(in: metadataObject, keys: [
+                "machineId", "machineID", "machine_id",
+            ]),
             active: session.active,
             sequenceText: session.seq.map { "#\($0)" },
             createdAtText: timestampFormatter(session.createdAt),
@@ -81,11 +88,8 @@ enum SessionInfoPresentationBuilder {
         return (String(value.prefix(limit)), true)
     }
 
-    private static func parseJSONFields(raw: String) -> [SessionInfoPayloadField] {
-        guard !raw.isEmpty else { return [] }
-        guard let data = raw.data(using: .utf8) else { return [] }
-        guard let object = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        guard let dictionary = object as? [String: Any] else { return [] }
+    private static func parseJSONFields(object: [String: Any]?) -> [SessionInfoPayloadField] {
+        guard let dictionary = object else { return [] }
 
         return dictionary.keys.sorted().map { key in
             SessionInfoPayloadField(
@@ -93,6 +97,76 @@ enum SessionInfoPresentationBuilder {
                 value: stringify(dictionary[key])
             )
         }
+    }
+
+    private static func parseJSONObject(raw: String) -> [String: Any]? {
+        let payload = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !payload.isEmpty else { return nil }
+
+        if let data = payload.data(using: .utf8),
+           let object = try? JSONSerialization.jsonObject(with: data),
+           let dictionary = object as? [String: Any] {
+            return dictionary
+        }
+
+        if let decoded = decodeBase64(payload),
+           let object = try? JSONSerialization.jsonObject(with: decoded),
+           let dictionary = object as? [String: Any] {
+            return dictionary
+        }
+
+        return nil
+    }
+
+    private static func machineDisplayName(from metadata: [String: Any]?) -> String? {
+        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
+            return host
+        }
+        return firstString(in: metadata, keys: ["displayName", "name", "machineName"])
+    }
+
+    private static func firstString(in object: Any?, keys: [String]) -> String? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        guard let value = firstValue(in: object, matching: normalizedKeys) else {
+            return nil
+        }
+        if let string = value as? String {
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let number = value as? NSNumber {
+            return number.stringValue
+        }
+        return nil
+    }
+
+    private static func firstValue(in object: Any?, matching keys: Set<String>) -> Any? {
+        if let dictionary = object as? [String: Any] {
+            for (rawKey, value) in dictionary {
+                if keys.contains(normalizeKey(rawKey)) {
+                    return value
+                }
+            }
+            for (_, value) in dictionary {
+                if let nested = firstValue(in: value, matching: keys) {
+                    return nested
+                }
+            }
+            return nil
+        }
+
+        if let array = object as? [Any] {
+            for item in array {
+                if let nested = firstValue(in: item, matching: keys) {
+                    return nested
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func normalizeKey(_ value: String) -> String {
+        value.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 
     private static func stringify(_ value: Any?) -> String {
@@ -126,5 +200,17 @@ enum SessionInfoPresentationBuilder {
         let prefix = trimmed.prefix(4)
         let suffix = trimmed.suffix(4)
         return "\(prefix)…\(suffix)"
+    }
+
+    private static func decodeBase64(_ raw: String) -> Data? {
+        if let direct = Data(base64Encoded: raw) {
+            return direct
+        }
+        let replaced = raw
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let paddingCount = (4 - (replaced.count % 4)) % 4
+        let padded = replaced + String(repeating: "=", count: paddingCount)
+        return Data(base64Encoded: padded)
     }
 }

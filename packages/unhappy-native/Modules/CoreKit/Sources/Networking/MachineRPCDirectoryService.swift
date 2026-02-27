@@ -40,6 +40,14 @@ public protocol MachineRPCDirectoryListing: Sendable {
 public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
     private let connectTimeoutSeconds: Double
     private let ackTimeoutSeconds: Double
+    private var liveConnection: LiveConnection?
+
+    private struct LiveConnection {
+        let serverURLString: String
+        let token: String
+        let manager: SocketManager
+        let socket: SocketIOClient
+    }
 
     public init(
         connectTimeoutSeconds: Double = 8,
@@ -204,14 +212,61 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             "params": params,
         ]
 
+        let socket = try await getOrCreateConnectedSocket(
+            serverURL: serverURL,
+            token: normalizedToken
+        )
+
+        do {
+            let ackItems = try await emitWithAck(
+                socket: socket,
+                event: "machine-public-command",
+                payload: requestPayload
+            )
+
+            if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
+                teardownLiveConnection()
+                throw MachinesAPIError.rpcTimedOut
+            }
+
+            guard let responseObject = ackItems.first as? [String: Any] else {
+                teardownLiveConnection()
+                throw MachinesAPIError.invalidRPCPayload
+            }
+            guard JSONSerialization.isValidJSONObject(responseObject) else {
+                teardownLiveConnection()
+                throw MachinesAPIError.invalidRPCPayload
+            }
+
+            return try JSONSerialization.data(withJSONObject: responseObject)
+        } catch {
+            teardownLiveConnection()
+            throw error
+        }
+    }
+
+    private func getOrCreateConnectedSocket(
+        serverURL: URL,
+        token: String
+    ) async throws -> SocketIOClient {
+        let serverURLString = serverURL.absoluteString
+
+        if let liveConnection {
+            let sameIdentity =
+                liveConnection.serverURLString == serverURLString &&
+                liveConnection.token == token
+            if sameIdentity, liveConnection.socket.status == .connected {
+                return liveConnection.socket
+            }
+            teardownLiveConnection()
+        }
+
         let queue = DispatchQueue(label: "im.unhappy.native.machine-rpc.\(UUID().uuidString)")
         let manager = SocketManager(
             socketURL: serverURL,
             config: [
                 .path("/v1/updates"),
                 .version(.three),
-                .forceWebsockets(true),
-                .forceNew(true),
                 .reconnects(false),
                 .log(false),
                 .compress,
@@ -219,31 +274,28 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             ]
         )
         let socket = manager.defaultSocket
-
-        try await connectSocket(socket, token: normalizedToken)
-        defer {
+        do {
+            try await connectSocket(socket, token: token)
+        } catch {
             socket.disconnect()
             manager.disconnect()
+            throw error
         }
 
-        let ackItems = try await emitWithAck(
-            socket: socket,
-            event: "machine-public-command",
-            payload: requestPayload
+        liveConnection = LiveConnection(
+            serverURLString: serverURLString,
+            token: token,
+            manager: manager,
+            socket: socket
         )
+        return socket
+    }
 
-        if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
-            throw MachinesAPIError.rpcTimedOut
-        }
-
-        guard let responseObject = ackItems.first as? [String: Any] else {
-            throw MachinesAPIError.invalidRPCPayload
-        }
-        guard JSONSerialization.isValidJSONObject(responseObject) else {
-            throw MachinesAPIError.invalidRPCPayload
-        }
-
-        return try JSONSerialization.data(withJSONObject: responseObject)
+    private func teardownLiveConnection() {
+        guard let liveConnection else { return }
+        liveConnection.socket.disconnect()
+        liveConnection.manager.disconnect()
+        self.liveConnection = nil
     }
 
     private func connectSocket(_ socket: SocketIOClient, token: String) async throws {
