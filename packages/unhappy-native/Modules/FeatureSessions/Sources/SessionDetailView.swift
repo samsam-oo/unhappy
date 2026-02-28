@@ -1822,6 +1822,8 @@ private struct DockChipModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.caption.monospaced().weight(.semibold))
+            .lineLimit(1)
+            .truncationMode(.tail)
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
