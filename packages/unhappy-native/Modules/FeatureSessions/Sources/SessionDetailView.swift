@@ -185,13 +185,9 @@ public struct SessionDetailView: View {
             }
             .defaultScrollAnchor(.bottom)
             .toolbar(.hidden, for: .tabBar)
-            .navigationBarBackButtonHidden(true)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    toolbarLeadingContent
-                }
                 ToolbarItem(placement: .principal) {
                     topBarTitleView
                 }
@@ -246,6 +242,11 @@ public struct SessionDetailView: View {
                 guard focusedField != nil else { return }
                 shouldFollowTranscript = true
                 scrollTranscriptToBottom(using: scrollProxy)
+            }
+            .onChange(of: viewModel.isLoadingSessionMessages) { wasLoading, isLoading in
+                guard wasLoading && !isLoading else { return }
+                shouldFollowTranscript = true
+                scrollTranscriptToBottom(using: scrollProxy, animated: false)
             }
             .onDisappear {
                 viewModel.stopSelectedSessionMessagesPolling()
@@ -720,18 +721,6 @@ public struct SessionDetailView: View {
         .padding(.bottom, isKeyboardActive ? 6 : 8)
         .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
         .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
-    }
-
-    private var toolbarLeadingContent: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(AppPalette.secondaryText)
-                .frame(width: 28, height: 28)
-        }
-        .buttonStyle(PressableScaleButtonStyle())
     }
 
     private var topBarTitleView: some View {
