@@ -36,8 +36,8 @@ public struct SessionInfoView: View {
                         .font(.footnote.monospaced())
                 }
                 LabeledContent("Title") {
-                    Text(presentation.title ?? "Untitled")
-                        .foregroundStyle(presentation.title == nil ? .secondary : .primary)
+                    Text(presentation.title)
+                        .foregroundStyle(presentation.isFallbackTitle ? .secondary : .primary)
                 }
                 if let machineDisplayName = presentation.machineDisplayName {
                     LabeledContent("Machine") {

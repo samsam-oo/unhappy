@@ -256,12 +256,7 @@ private struct SessionsRow: View {
     }
 
     private var normalizedDisplayTitle: String? {
-        guard let raw = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              raw != session.id else {
-            return nil
-        }
-        return raw
+        SessionDisplayTitleResolver.resolvedDisplayTitle(for: session)
     }
 
     private var hasDisplayTitle: Bool {
@@ -272,10 +267,7 @@ private struct SessionsRow: View {
         if let normalizedDisplayTitle {
             return normalizedDisplayTitle
         }
-        if let seq = session.seq, seq > 0 {
-            return "Session \(seq)"
-        }
-        return "Session"
+        return SessionDisplayTitleResolver.fallbackTitle(for: session)
     }
 
     private var machineDisplayName: String? {
@@ -286,33 +278,36 @@ private struct SessionsRow: View {
         if let primary = bestDisplayString(
             in: metadata,
             keys: ["displayName", "name", "machineName", "deviceName", "computerName"],
-            rejectGenericHosts: true
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
         ) {
             return primary
         }
         if let host = bestDisplayString(
             in: metadata,
             keys: ["host", "hostname", "computerName", "localHostName", "hostName", "machineHost"],
-            rejectGenericHosts: true
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
         ) {
             return host
         }
-        return bestDisplayString(
-            in: metadata,
-            keys: ["host", "hostname", "computerName", "localHostName", "hostName", "machineHost"],
-            rejectGenericHosts: false
-        )
+        return nil
     }
 
     private func bestDisplayString(
         in object: Any?,
         keys: [String],
-        rejectGenericHosts: Bool
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
     ) -> String? {
         let normalizedKeys = Set(keys.map(normalizeKey))
         let candidates = values(in: object, matching: normalizedKeys)
         for candidate in candidates {
-            if let normalized = normalizeDisplayValue(candidate, rejectGenericHosts: rejectGenericHosts) {
+            if let normalized = normalizeDisplayValue(
+                candidate,
+                rejectGenericHosts: rejectGenericHosts,
+                rejectOpaqueIdentifiers: rejectOpaqueIdentifiers
+            ) {
                 return normalized
             }
         }
@@ -321,7 +316,8 @@ private struct SessionsRow: View {
 
     private func normalizeDisplayValue(
         _ raw: String,
-        rejectGenericHosts: Bool
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
     ) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -340,7 +336,33 @@ private struct SessionsRow: View {
         if rejectGenericHosts && blockedValues.contains(lowered) {
             return nil
         }
+        if rejectOpaqueIdentifiers && looksLikeOpaqueIdentifier(withoutLocalSuffix) {
+            return nil
+        }
         return withoutLocalSuffix
+    }
+
+    private func looksLikeOpaqueIdentifier(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        if trimmed.range(
+            of: #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9a-fA-F]{20,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9]{10,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[a-z0-9-]{24,}$"#, options: .regularExpression) != nil,
+           trimmed.lowercased().contains("macbook") == false {
+            return true
+        }
+        return false
     }
 
     private func values(in object: Any?, matching keys: Set<String>) -> [String] {

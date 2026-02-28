@@ -32,7 +32,7 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
 
         self.sessionID = session.id
         self.isActive = session.active
-        self.title = Self.resolveTitle(session)
+        self.title = Self.resolveTitle(session: session, metadata: metadata, agentState: agentState)
         self.agent = Self.resolveAgent(metadata: metadata, agentState: agentState)
         self.directory = Self.resolveDirectory(metadata: metadata, agentState: agentState)
         self.requiresApproval = Self.resolveRequiresApproval(metadata: metadata, agentState: agentState)
@@ -45,16 +45,55 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
         self.updatedAt = Date(timeIntervalSince1970: session.updatedAt)
     }
 
-    private static func resolveTitle(_ session: APISession) -> String {
+    private static func resolveTitle(
+        session: APISession,
+        metadata: [String: Any],
+        agentState: [String: Any]
+    ) -> String {
         if let raw = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty,
            raw != session.id {
             return raw
         }
+
+        if let summary = resolveSummaryText(from: [agentState, metadata]) {
+            return summary
+        }
+
+        if let raw = SessionPayloadDecoder.firstString(
+            in: [agentState, metadata],
+            keys: ["displayName", "name", "title", "threadName", "sessionName"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty,
+           raw != session.id {
+            return raw
+        }
+
         if let seq = session.seq, seq > 0 {
             return "Session \(seq)"
         }
         return "Session"
+    }
+
+    private static func resolveSummaryText(from objects: [Any]) -> String? {
+        for object in objects {
+            if let dictionary = object as? [String: Any] {
+                if let summaryObject = dictionary["summary"] as? [String: Any],
+                   let text = summaryObject["text"] as? String {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        return trimmed
+                    }
+                }
+                if let summary = dictionary["summary"] as? String {
+                    let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        return trimmed
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     private static func resolveAgent(
@@ -498,7 +537,7 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
     ) async {
         guard let activity = activitiesBySessionID[sessionID] else { return }
         let endState = UnhappySessionsActivityAttributes.ContentState(
-            title: "Session",
+            title: lastContentStateBySessionID[sessionID]?.title ?? "Session",
             agent: .unknown,
             directory: "Directory unavailable",
             statusText: "Completed",

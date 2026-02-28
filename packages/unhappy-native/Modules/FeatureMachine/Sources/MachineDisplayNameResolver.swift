@@ -22,7 +22,7 @@ enum MachineDisplayNameResolver {
             raw: machine.metadata,
             dataEncryptionKey: machine.dataEncryptionKey
         ) else {
-            return machine.id
+            return fallbackDisplayName(for: machine)
         }
 
         let primaryNameKeys = [
@@ -35,28 +35,21 @@ enum MachineDisplayNameResolver {
         if let name = bestDisplayString(
             in: metadata,
             keys: primaryNameKeys,
-            rejectGenericHosts: true
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
         ) {
             return name
         }
         if let host = bestDisplayString(
             in: metadata,
             keys: hostKeys,
-            rejectGenericHosts: true
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
         ) {
             return host
         }
 
-        // If we only have generic values (e.g. "mac"), still prefer showing that over opaque ids.
-        if let relaxedHost = bestDisplayString(
-            in: metadata,
-            keys: hostKeys,
-            rejectGenericHosts: false
-        ) {
-            return relaxedHost
-        }
-
-        return machine.id
+        return fallbackDisplayName(for: machine)
     }
 
     private static func parseJSONObject(
@@ -106,14 +99,16 @@ enum MachineDisplayNameResolver {
     private static func bestDisplayString(
         in object: Any?,
         keys: [String],
-        rejectGenericHosts: Bool
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
     ) -> String? {
         let normalizedKeys = Set(keys.map(normalizeKey))
         let candidates = values(in: object, matching: normalizedKeys)
         for candidate in candidates {
             if let normalized = normalizeDisplayValue(
                 candidate,
-                rejectGenericHosts: rejectGenericHosts
+                rejectGenericHosts: rejectGenericHosts,
+                rejectOpaqueIdentifiers: rejectOpaqueIdentifiers
             ) {
                 return normalized
             }
@@ -123,7 +118,8 @@ enum MachineDisplayNameResolver {
 
     private static func normalizeDisplayValue(
         _ raw: String,
-        rejectGenericHosts: Bool
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
     ) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -142,7 +138,40 @@ enum MachineDisplayNameResolver {
         if rejectGenericHosts && blockedValues.contains(lowered) {
             return nil
         }
+        if rejectOpaqueIdentifiers && looksLikeOpaqueIdentifier(withoutLocalSuffix) {
+            return nil
+        }
         return withoutLocalSuffix
+    }
+
+    private static func fallbackDisplayName(for machine: APIMachine) -> String {
+        if let seq = machine.seq, seq > 0 {
+            return "Machine \(seq)"
+        }
+        return "Machine"
+    }
+
+    private static func looksLikeOpaqueIdentifier(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        if trimmed.range(
+            of: #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9a-fA-F]{20,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9]{10,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[a-z0-9-]{24,}$"#, options: .regularExpression) != nil,
+           trimmed.lowercased().contains("macbook") == false {
+            return true
+        }
+        return false
     }
 
     private static func values(in object: Any?, matching keys: Set<String>) -> [String] {

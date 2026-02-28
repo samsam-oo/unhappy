@@ -78,12 +78,7 @@ private struct RecentSessionRow: View {
     }
 
     private var normalizedDisplayTitle: String? {
-        guard let raw = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              raw != session.id else {
-            return nil
-        }
-        return raw
+        SessionDisplayTitleResolver.resolvedDisplayTitle(for: session)
     }
 
     private var hasDisplayTitle: Bool {
@@ -94,9 +89,6 @@ private struct RecentSessionRow: View {
         if let normalizedDisplayTitle {
             return normalizedDisplayTitle
         }
-        if let seq = session.seq, seq > 0 {
-            return "Session \(seq)"
-        }
-        return "Session"
+        return SessionDisplayTitleResolver.fallbackTitle(for: session)
     }
 }

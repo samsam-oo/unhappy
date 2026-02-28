@@ -58,7 +58,7 @@ struct SessionInfoPresentationTests {
 
         let presentation = SessionInfoPresentationBuilder.make(from: session)
 
-        #expect(presentation.machineDisplayName == "mbp.local")
+        #expect(presentation.machineDisplayName == "mbp")
         #expect(presentation.machineIdentifier == "machine-2")
         #expect(presentation.metadataFields.map(\.key) == ["hostname", "machineId"])
     }

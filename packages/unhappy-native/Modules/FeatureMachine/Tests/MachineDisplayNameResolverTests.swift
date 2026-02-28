@@ -16,7 +16,7 @@ struct MachineDisplayNameResolverTests {
     }
 
     @Test
-    func fallsBackToGenericHostWhenOnlyHostAvailable() {
+    func fallsBackToFallbackLabelWhenOnlyGenericHostAvailable() {
         let machine = makeMachine(
             id: "machine-1",
             metadata: #"{"host":"mac"}"#
@@ -24,11 +24,11 @@ struct MachineDisplayNameResolverTests {
 
         let label = MachineDisplayNameResolver.displayName(for: machine)
 
-        #expect(label == "mac")
+        #expect(label == "Machine")
     }
 
     @Test
-    func fallsBackToMachineIDWhenMetadataUnavailable() {
+    func fallsBackToFallbackLabelWhenMetadataUnavailable() {
         let machine = makeMachine(
             id: "machine-1",
             metadata: "not-json"
@@ -36,7 +36,7 @@ struct MachineDisplayNameResolverTests {
 
         let label = MachineDisplayNameResolver.displayName(for: machine)
 
-        #expect(label == "machine-1")
+        #expect(label == "Machine")
     }
 
     private func makeMachine(id: String, metadata: String) -> APIMachine {

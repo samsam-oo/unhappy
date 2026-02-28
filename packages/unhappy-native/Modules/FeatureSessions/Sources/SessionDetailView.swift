@@ -241,7 +241,7 @@ public struct SessionDetailView: View {
                 }
                 .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
             }
-            .navigationTitle("Session")
+            .navigationTitle(currentSessionTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -629,12 +629,7 @@ public struct SessionDetailView: View {
     }
 
     private var currentSessionDisplayTitle: String? {
-        guard let raw = currentSession.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              raw != currentSession.id else {
-            return nil
-        }
-        return raw
+        SessionDisplayTitleResolver.resolvedDisplayTitle(for: currentSession)
     }
 
     private var currentSessionHasDisplayTitle: Bool {
@@ -645,10 +640,7 @@ public struct SessionDetailView: View {
         if let currentSessionDisplayTitle {
             return currentSessionDisplayTitle
         }
-        if let seq = currentSession.seq, seq > 0 {
-            return "Session \(seq)"
-        }
-        return "Session"
+        return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
     }
 
     private var bottomDock: some View {
