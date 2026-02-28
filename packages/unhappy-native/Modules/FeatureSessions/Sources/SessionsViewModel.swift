@@ -684,9 +684,8 @@ public final class SessionsViewModel: ObservableObject {
                 title: persistedTitle
             )
 
-            if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
-                let session = sessions[index]
-                sessions[index] = APISession(
+            if let session = sessions.first(where: { $0.id == sessionID }) {
+                let updatedSession = APISession(
                     id: session.id,
                     displayName: persistedTitle,
                     seq: session.seq,
@@ -701,6 +700,7 @@ public final class SessionsViewModel: ObservableObject {
                     dataEncryptionKey: session.dataEncryptionKey,
                     lastMessage: session.lastMessage
                 )
+                replaceSession(updatedSession)
                 refreshQueuedComposerMessagesCache(from: sessions)
             }
             errorMessage = nil
@@ -1030,5 +1030,12 @@ public final class SessionsViewModel: ObservableObject {
             }
             return lhs.updatedAt > rhs.updatedAt
         }
+    }
+
+    private func replaceSession(_ session: APISession) {
+        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
+        var nextSessions = sessions
+        nextSessions[index] = session
+        sessions = nextSessions
     }
 }
