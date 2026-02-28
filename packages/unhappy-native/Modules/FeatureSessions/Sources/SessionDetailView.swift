@@ -554,24 +554,17 @@ public struct SessionDetailView: View {
         HStack(spacing: 6) {
             Image(systemName: "rectangle.text.magnifyingglass")
                 .font(.caption2)
-                .foregroundStyle(AppPalette.accent)
-            Text("Session")
-                .font(.caption.weight(.bold))
                 .foregroundStyle(AppPalette.secondaryText)
+            Text("Session")
+                .font(.caption2.monospaced().weight(.bold))
+                .foregroundStyle(AppPalette.secondaryText)
+                .textCase(.uppercase)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(AppPalette.chatToolBackground)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-        )
+        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 4, trailing: 14))
+        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
 
         sessionSummaryRow(
             title: "Title",
@@ -1952,24 +1945,17 @@ private struct MessagesSectionRows: View {
         HStack(spacing: 6) {
             Image(systemName: "bubble.left.and.bubble.right.fill")
                 .font(.caption2)
-                .foregroundStyle(AppPalette.accent)
-            Text("Messages")
-                .font(.caption.weight(.bold))
                 .foregroundStyle(AppPalette.secondaryText)
+            Text("Messages")
+                .font(.caption2.monospaced().weight(.bold))
+                .foregroundStyle(AppPalette.secondaryText)
+                .textCase(.uppercase)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(AppPalette.chatToolBackground)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-        )
+        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 4, trailing: 14))
+        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
     }
 }
 
@@ -1980,20 +1966,12 @@ private struct TranscriptLoadingCard: View {
                 .controlSize(.small)
                 .tint(AppPalette.accent)
             Text("Loading messages…")
-                .font(.footnote.weight(.semibold))
+                .font(.footnote.monospaced())
                 .foregroundStyle(AppPalette.secondaryText)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppPalette.chatToolBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-        )
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
     }
 }
 
@@ -2013,7 +1991,7 @@ private struct TranscriptErrorCard: View {
             }
 
             Text(error)
-                .font(.caption)
+                .font(.caption.monospaced())
                 .foregroundStyle(AppPalette.secondaryText)
                 .lineSpacing(1.5)
 
@@ -2023,16 +2001,8 @@ private struct TranscriptErrorCard: View {
             }
             .buttonStyle(PressableScaleButtonStyle())
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppPalette.chatToolBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-        )
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
     }
 }
 
@@ -2048,12 +2018,6 @@ private struct SessionTranscriptMessageRow: View {
                     Text(presentation.createdAtText)
                         .font(.caption2.monospaced())
                         .foregroundStyle(AppPalette.secondaryText.opacity(0.9))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(AppPalette.chatToolBackground)
-                        )
                 }
             }
 
@@ -2106,7 +2070,7 @@ private struct SessionTranscriptLiveStatusRow: View {
 
             if isExpanded {
                 Text(statusText)
-                    .font(.footnote)
+                    .font(.footnote.monospaced())
                     .foregroundStyle(AppPalette.secondaryText)
                     .lineSpacing(1.5)
                     .fixedSize(horizontal: false, vertical: true)
@@ -2116,16 +2080,8 @@ private struct SessionTranscriptLiveStatusRow: View {
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppPalette.liveActivityMuted.opacity(0.55))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppPalette.liveActivity.opacity(0.25), lineWidth: 1)
-        )
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -2188,7 +2144,6 @@ private struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
     let onReferenceToggle: (() -> Void)?
     @State private var isExpanded = false
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         if isSystemEvent {
@@ -2220,48 +2175,37 @@ private struct SessionTranscriptLogLine: View {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppPalette.terminalLineTool)
                             .padding(.top, 1)
                         Text(collapsibleTitle)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(AppPalette.secondaryText)
+                            .font(.caption2.monospaced().weight(.semibold))
+                            .foregroundStyle(AppPalette.terminalLineTool)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(AppPalette.chatToolBackground)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-                    )
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 2)
                 }
                 .buttonStyle(.plain)
 
                 if isExpanded {
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(entry.body)
                             .font(bodyFont)
                             .foregroundStyle(.primary)
                             .textSelection(.enabled)
                             .lineLimit(nil)
+                            .lineSpacing(1.5)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(AppPalette.chatToolBackground)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-                    )
+                    .padding(.leading, 14)
+                    .padding(.top, 1)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(AppPalette.terminalLineTool.opacity(0.45))
+                            .frame(width: 1)
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 16)
                     .transition(.opacity)
                 }
             }
@@ -2269,46 +2213,48 @@ private struct SessionTranscriptLogLine: View {
             .padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if isMainMessageEntry {
-            VStack(alignment: .leading, spacing: 4) {
-                if let title = entry.title, !title.isEmpty {
-                    Text(title)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppPalette.secondaryText)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(roleColor)
+                        .frame(width: 6, height: 6)
+                    Text(roleLabel)
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(roleColor)
+                    if let title = entry.title, !title.isEmpty {
+                        Text(title)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
                 }
+
                 Text(entry.body)
-                    .font(bodyFont)
+                    .font(.callout.monospaced())
                     .foregroundStyle(AppPalette.primaryText)
                     .textSelection(.enabled)
                     .lineLimit(nil)
-                    .lineSpacing(2)
+                    .lineSpacing(2.2)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .padding(.leading, entry.role == .user ? 56 : 0)
-            .padding(.trailing, entry.role == .user ? 0 : 56)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(bubbleGradient)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(entry.role == .user ? 0.08 : 0.05), radius: 10, y: 4)
-            .frame(
-                maxWidth: .infinity,
-                alignment: entry.role == .user ? .trailing : .leading
-            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(roleColor.opacity(0.45))
+                    .frame(width: 2)
+            }
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 if let title = entry.title, !title.isEmpty {
                     Text(title)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(AppPalette.secondaryText)
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(AppPalette.terminalLineTool)
                 }
                 Text(entry.body)
                     .font(bodyFont)
-                    .foregroundStyle(AppPalette.primaryText)
+                    .foregroundStyle(AppPalette.secondaryText)
                     .textSelection(.enabled)
                     .lineLimit(nil)
                     .lineSpacing(1.5)
@@ -2340,26 +2286,12 @@ private struct SessionTranscriptLogLine: View {
         return AppPalette.chatAgentBubble
     }
 
-    private var bubbleGradient: LinearGradient {
-        if entry.role == .user {
-            return LinearGradient(
-                colors: [
-                    AppPalette.accent.opacity(colorScheme == .dark ? 0.52 : 0.34),
-                    AppPalette.accent.opacity(colorScheme == .dark ? 0.38 : 0.24),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+    private var roleLabel: String {
+        entry.role == .user ? "user" : "assistant"
+    }
 
-        return LinearGradient(
-            colors: [
-                bubbleColor,
-                bubbleColor.opacity(0.92),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var roleColor: Color {
+        entry.role == .user ? AppPalette.terminalLineUser : AppPalette.terminalLineAgent
     }
 
     private var isCollapsibleToolEntry: Bool {
