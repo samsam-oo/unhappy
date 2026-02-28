@@ -36,8 +36,8 @@ public struct SessionDetailView: View {
     private static let modelPickerPresetPrefix = "__model_preset__:"
     private static let effortPickerPresetPrefix = "__effort_preset__:"
     private static let transcriptBottomAnchorID = "__session_transcript_bottom__"
-    private static let quickToolsLeadingAnchorID = "__session_quick_tools_leading__"
     private static let quickToolsFadeWidth: CGFloat = 16
+    private static let quickToolsBarHeight: CGFloat = 36
 
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
@@ -1093,74 +1093,58 @@ public struct SessionDetailView: View {
     }
 
     private var quickToolsBar: some View {
-        ScrollViewReader { quickToolsScrollProxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 8) {
-                    modelMenuButton
-                        .id(Self.quickToolsLeadingAnchorID)
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 8) {
+                modelMenuButton
 
-                    if supportsReasoningEffortOverride {
-                        effortMenuButton
-                    }
-
-                    quickToolButton(
-                        title: "Info",
-                        systemImage: "info.circle",
-                        tool: .info
-                    )
-                    quickToolButton(
-                        title: "Files",
-                        systemImage: "doc.text",
-                        tool: .files
-                    )
-                    quickToolButton(
-                        title: "Diff",
-                        systemImage: "doc.text.magnifyingglass",
-                        tool: .review
-                    )
-                    quickToolButton(
-                        title: "Worktree",
-                        systemImage: "checkmark.circle",
-                        tool: .worktree
-                    )
+                if supportsReasoningEffortOverride {
+                    effortMenuButton
                 }
-                .padding(.horizontal, Self.quickToolsFadeWidth)
-                .padding(.vertical, 4)
-            }
-            .overlay(alignment: .leading) {
-                LinearGradient(
-                    colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: Self.quickToolsFadeWidth)
-                .allowsHitTesting(false)
-            }
-            .overlay(alignment: .trailing) {
-                LinearGradient(
-                    colors: [bottomSheetSurfaceColor.opacity(0), bottomSheetSurfaceColor],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .frame(width: Self.quickToolsFadeWidth)
-                .allowsHitTesting(false)
-            }
-            .onAppear {
-                resetQuickToolsScroll(using: quickToolsScrollProxy)
-            }
-            .onChange(of: supportsReasoningEffortOverride) { _, _ in
-                resetQuickToolsScroll(using: quickToolsScrollProxy)
-            }
-            .onChange(of: serverModelOverrideOptions) { _, _ in
-                resetQuickToolsScroll(using: quickToolsScrollProxy)
-            }
-        }
-    }
 
-    private func resetQuickToolsScroll(using scrollProxy: ScrollViewProxy) {
-        Task { @MainActor in
-            await Task.yield()
-            scrollProxy.scrollTo(Self.quickToolsLeadingAnchorID, anchor: .leading)
+                quickToolButton(
+                    title: "Info",
+                    systemImage: "info.circle",
+                    tool: .info
+                )
+                quickToolButton(
+                    title: "Files",
+                    systemImage: "doc.text",
+                    tool: .files
+                )
+                quickToolButton(
+                    title: "Diff",
+                    systemImage: "doc.text.magnifyingglass",
+                    tool: .review
+                )
+                quickToolButton(
+                    title: "Worktree",
+                    systemImage: "checkmark.circle",
+                    tool: .worktree
+                )
+            }
+            .padding(.horizontal, Self.quickToolsFadeWidth)
+            .padding(.vertical, 4)
+        }
+        .defaultScrollAnchor(.leading)
+        .id("\(session.id)-\(supportsReasoningEffortOverride)-\(serverModelOverrideOptions.count)")
+        .frame(height: Self.quickToolsBarHeight)
+        .overlay(alignment: .leading) {
+            LinearGradient(
+                colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: Self.quickToolsFadeWidth)
+            .allowsHitTesting(false)
+        }
+        .overlay(alignment: .trailing) {
+            LinearGradient(
+                colors: [bottomSheetSurfaceColor.opacity(0), bottomSheetSurfaceColor],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: Self.quickToolsFadeWidth)
+            .allowsHitTesting(false)
         }
     }
 
