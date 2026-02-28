@@ -38,6 +38,15 @@ async function findConnectedMachineForSession(userId: string, sessionId: string)
     return null;
 }
 
+function resolveSessionApiUpdatedAt(createdAt: Date, latestMessageCreatedAt?: Date): number {
+    // Keep API ordering stable by anchoring to message activity instead of Session.updatedAt,
+    // which is bumped by metadata/state/presence writes due Prisma @updatedAt.
+    if (!latestMessageCreatedAt) {
+        return createdAt.getTime();
+    }
+    return Math.max(createdAt.getTime(), latestMessageCreatedAt.getTime());
+}
+
 export function sessionRoutes(app: Fastify) {
     async function ensureSessionBelongsToUser(userId: string, sessionId: string): Promise<boolean> {
         const session = await db.session.findFirst({
@@ -80,14 +89,11 @@ export function sessionRoutes(app: Fastify) {
 
         const sessions = await db.session.findMany({
             where: { accountId: userId },
-            orderBy: { updatedAt: 'desc' },
-            take: 150,
             select: {
                 id: true,
                 seq: true,
                 displayName: true,
                 createdAt: true,
-                updatedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -95,42 +101,44 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
-                // messages: {
-                //     orderBy: { seq: 'desc' },
-                //     take: 1,
-                //     select: {
-                //         id: true,
-                //         seq: true,
-                //         content: true,
-                //         localId: true,
-                //         createdAt: true
-                //     }
-                // }
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true
+                    }
+                }
             }
         });
 
-        return reply.send({
-            sessions: sessions.map((v) => {
-                // const lastMessage = v.messages[0];
-                const sessionUpdatedAt = v.updatedAt.getTime();
-                // const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
+        const responseSessions = sessions
+            .map((v) => ({
+                id: v.id,
+                seq: v.seq,
+                displayName: v.displayName,
+                createdAt: v.createdAt.getTime(),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]?.createdAt),
+                active: v.active,
+                activeAt: v.lastActiveAt.getTime(),
+                metadata: v.metadata,
+                metadataVersion: v.metadataVersion,
+                agentState: v.agentState,
+                agentStateVersion: v.agentStateVersion,
+                dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
+                lastMessage: null
+            }))
+            .sort((lhs, rhs) => {
+                if (lhs.updatedAt !== rhs.updatedAt) {
+                    return rhs.updatedAt - lhs.updatedAt;
+                }
+                if (lhs.createdAt !== rhs.createdAt) {
+                    return rhs.createdAt - lhs.createdAt;
+                }
+                return rhs.id.localeCompare(lhs.id);
+            });
 
-                return {
-                    id: v.id,
-                    seq: v.seq,
-                    displayName: v.displayName,
-                    createdAt: v.createdAt.getTime(),
-                    updatedAt: sessionUpdatedAt,
-                    active: v.active,
-                    activeAt: v.lastActiveAt.getTime(),
-                    metadata: v.metadata,
-                    metadataVersion: v.metadataVersion,
-                    agentState: v.agentState,
-                    agentStateVersion: v.agentStateVersion,
-                    dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-                    lastMessage: null
-                };
-            })
+        return reply.send({
+            sessions: responseSessions.slice(0, 150)
         });
     });
 
@@ -159,7 +167,6 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 displayName: true,
                 createdAt: true,
-                updatedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -167,6 +174,13 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true
+                    }
+                }
             }
         });
 
@@ -176,7 +190,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: v.seq,
                 displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime(),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]?.createdAt),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
@@ -216,6 +230,7 @@ export function sessionRoutes(app: Fastify) {
         const where: Prisma.SessionWhereInput = { accountId: userId };
 
         // Add changedSince filter (just a filter, doesn't affect pagination)
+        // Keep this bound to Session.updatedAt for sync invalidation semantics.
         if (changedSince) {
             where.updatedAt = {
                 gt: new Date(changedSince)
@@ -241,7 +256,6 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 displayName: true,
                 createdAt: true,
-                updatedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -249,6 +263,13 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true
+                    }
+                }
             }
         });
 
@@ -269,7 +290,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: v.seq,
                 displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime(),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]?.createdAt),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
@@ -302,6 +323,26 @@ export function sessionRoutes(app: Fastify) {
             where: {
                 accountId: userId,
                 tag: tag
+            },
+            select: {
+                id: true,
+                seq: true,
+                displayName: true,
+                metadata: true,
+                metadataVersion: true,
+                agentState: true,
+                agentStateVersion: true,
+                dataEncryptionKey: true,
+                active: true,
+                lastActiveAt: true,
+                createdAt: true,
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true
+                    }
+                }
             }
         });
         if (session) {
@@ -319,7 +360,7 @@ export function sessionRoutes(app: Fastify) {
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
+                    updatedAt: resolveSessionApiUpdatedAt(session.createdAt, session.messages[0]?.createdAt),
                     lastMessage: null
                 }
             });
@@ -369,7 +410,7 @@ export function sessionRoutes(app: Fastify) {
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
+                    updatedAt: resolveSessionApiUpdatedAt(session.createdAt),
                     lastMessage: null
                 }
             });

@@ -29,12 +29,14 @@ import {
   connectionState,
   startOfflineReconnection,
 } from '@/utils/serverConnectionErrors';
+import fs from 'node:fs';
 import { join, resolve } from 'node:path';
 import packageJson from '../../package.json';
 import { projectPath } from '../projectPath';
 import { EnhancedMode, PermissionMode } from './loop';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { Session } from './session';
+import { getProjectPath } from './utils/path';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun';
@@ -228,6 +230,35 @@ export async function runClaude(
   // Variable to track current session instance (updated via onSessionReady callback)
   // Used by hook server to notify Session when Claude changes session ID
   let currentSession: Session | null = null;
+
+  const deleteClaudeTranscriptFile = (sessionId: string | null): boolean => {
+    const normalizedSessionId =
+      typeof sessionId === 'string' ? sessionId.trim() : '';
+    if (!normalizedSessionId) return false;
+
+    const transcriptPath = join(
+      getProjectPath(workingDirectory),
+      `${normalizedSessionId}.jsonl`,
+    );
+    try {
+      if (!fs.existsSync(transcriptPath)) {
+        return false;
+      }
+      fs.unlinkSync(transcriptPath);
+      logger.debug('[START] Deleted Claude transcript file on kill', {
+        sessionId: normalizedSessionId,
+        transcriptPath,
+      });
+      return true;
+    } catch (error) {
+      logger.debug('[START] Failed to delete Claude transcript file on kill', {
+        sessionId: normalizedSessionId,
+        transcriptPath,
+        error,
+      });
+      return false;
+    }
+  };
 
   // Start Hook server for receiving Claude session notifications
   const hookServer = await startHookServer({
@@ -500,10 +531,14 @@ export async function runClaude(
   });
 
   // Setup signal handlers for graceful shutdown
-  const cleanup = async () => {
+  const cleanup = async (options?: { deleteTranscript?: boolean }) => {
     logger.debug('[START] Received termination signal, cleaning up...');
 
     try {
+      if (options?.deleteTranscript) {
+        deleteClaudeTranscriptFile(currentSession?.sessionId ?? null);
+      }
+
       // Update lifecycle state to archived before closing
       if (session) {
         session.updateMetadata((currentMetadata) => ({
@@ -542,18 +577,22 @@ export async function runClaude(
   };
 
   // Handle termination signals
-  process.on('SIGTERM', cleanup);
-  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', () => {
+    void cleanup();
+  });
+  process.on('SIGINT', () => {
+    void cleanup();
+  });
 
   // Handle uncaught exceptions and rejections
   process.on('uncaughtException', (error) => {
     logger.debug('[START] Uncaught exception:', error);
-    cleanup();
+    void cleanup();
   });
 
   process.on('unhandledRejection', (reason) => {
     logger.debug('[START] Unhandled rejection:', reason);
-    cleanup();
+    void cleanup();
   });
 
   // Model listing for UI dropdown (best-effort).
@@ -565,7 +604,9 @@ export async function runClaude(
     return resp;
   });
 
-  registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+  registerKillSessionHandler(session.rpcHandlerManager, async () => {
+    await cleanup({ deleteTranscript: true });
+  });
 
   // Use the same stdio bridge pattern as Codex/Gemini for better MCP compatibility.
   const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');

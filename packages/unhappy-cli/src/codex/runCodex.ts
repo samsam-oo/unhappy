@@ -876,6 +876,21 @@ export async function runCodex(opts: {
     logger.debug('[Codex] Abort completed, proceeding with termination');
 
     try {
+      const transcriptTargetSessionId =
+        client.getSessionId() ??
+        storedSessionIdForResume;
+      if (transcriptTargetSessionId) {
+        const deletedCount = deleteCodexTranscriptFilesForSession(
+          transcriptTargetSessionId,
+        );
+        if (deletedCount > 0) {
+          logger.debug('[Codex] Deleted transcript files on kill', {
+            sessionId: transcriptTargetSessionId,
+            deletedCount,
+          });
+        }
+      }
+
       // Explicit termination: don't auto-resume this session next time.
       try {
         await clearCodexResumeEntry(cwd);
@@ -1261,6 +1276,51 @@ export async function runCodex(opts: {
     } catch {}
 
     return null;
+  }
+
+  function deleteCodexTranscriptFilesForSession(sessionId: string): number {
+    const normalized = sessionId.trim();
+    if (!normalized) return 0;
+
+    const deletedPaths = new Set<string>();
+    const removeFile = (path: string | null): void => {
+      if (!path) return;
+      const normalizedPath = path.trim();
+      if (!normalizedPath || deletedPaths.has(normalizedPath)) return;
+      try {
+        fs.unlinkSync(normalizedPath);
+        deletedPaths.add(normalizedPath);
+      } catch (error) {
+        const code =
+          typeof error === 'object' && error && 'code' in error
+            ? (error as { code?: string }).code
+            : undefined;
+        if (code !== 'ENOENT') {
+          logger.debug('[Codex] Failed to delete transcript file', {
+            path: normalizedPath,
+            error,
+          });
+        }
+      }
+    };
+
+    // Remove persisted/known path first.
+    if (storedResumeFileForResume?.endsWith(`-${normalized}.jsonl`)) {
+      removeFile(storedResumeFileForResume);
+    }
+
+    // Best-effort sweep: keep asking fallback resolver and delete all matches.
+    for (let i = 0; i < 32; i += 1) {
+      const found = findCodexResumeFileWithFallbacks(normalized);
+      if (!found) break;
+      const beforeCount = deletedPaths.size;
+      removeFile(found);
+      if (deletedPaths.size === beforeCount) {
+        break;
+      }
+    }
+
+    return deletedPaths.size;
   }
 
   // If daemon or shell changed CODEX_HOME between runs, resuming may require going back to the
