@@ -677,20 +677,15 @@ public struct SessionDetailView: View {
     private var bottomDock: some View {
         VStack(spacing: isKeyboardActive ? 6 : 10) {
             composerBar
-
-            if !isKeyboardActive {
-                Rectangle()
-                    .fill(AppPalette.chromeDivider)
-                    .frame(height: 1)
-                    .padding(.horizontal, 4)
-
-                quickToolsBar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            Rectangle()
+                .fill(AppPalette.chromeDivider)
+                .frame(height: 1)
+                .padding(.horizontal, 4)
+            quickToolsBar
         }
         .padding(.horizontal, 12)
         .padding(.top, isKeyboardActive ? 8 : 10)
-        .padding(.bottom, isKeyboardActive ? 8 : 12)
+        .padding(.bottom, isKeyboardActive ? 0 : 10)
         .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
@@ -711,7 +706,10 @@ public struct SessionDetailView: View {
         .background {
             if #available(iOS 17.0, *) {
                 UnevenRoundedRectangle(
-                    cornerRadii: .init(topLeading: 20, topTrailing: 20),
+                    cornerRadii: .init(
+                        topLeading: 20,
+                        topTrailing: 20
+                    ),
                     style: .continuous
                 )
                 .fill(.ultraThinMaterial)
@@ -723,13 +721,22 @@ public struct SessionDetailView: View {
         .overlay {
             if #available(iOS 17.0, *) {
                 UnevenRoundedRectangle(
-                    cornerRadii: .init(topLeading: 20, topTrailing: 20),
+                    cornerRadii: .init(
+                        topLeading: 20,
+                        topTrailing: 20
+                    ),
                     style: .continuous
                 )
-                .stroke(AppPalette.chromeSurfaceStroke.opacity(0.7), lineWidth: 1)
+                .stroke(
+                    AppPalette.chromeSurfaceStroke.opacity(0.7),
+                    lineWidth: 1
+                )
             } else {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(AppPalette.chromeSurfaceStroke.opacity(0.7), lineWidth: 1)
+                    .stroke(
+                        AppPalette.chromeSurfaceStroke.opacity(0.7),
+                        lineWidth: 1
+                    )
             }
         }
         .shadow(
