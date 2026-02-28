@@ -105,10 +105,12 @@ describe('sessionScanner', () => {
     scanner.onNewSession(sessionId2)
     await new Promise(resolve => setTimeout(resolve, 100))
     
-    // Should have added only 1 new message (summary) 
-    // The historical user + assistant messages (lines 1-2) are deduplicated because they have same UUIDs
-    expect(collectedMessages).toHaveLength(phase1Count + 1)
+    // Should include summary + historical user + historical assistant from resumed session file.
+    // Deduplication is session-scoped, so cross-session history replay is preserved.
+    expect(collectedMessages).toHaveLength(phase1Count + 3)
     expect(collectedMessages[phase1Count].type).toBe('summary')
+    expect(collectedMessages[phase1Count + 1].type).toBe('user')
+    expect(collectedMessages[phase1Count + 2].type).toBe('assistant')
     
     // Write new messages (user asks for ls tool) - this is line 3
     await new Promise(resolve => setTimeout(resolve, 50))
@@ -133,8 +135,8 @@ describe('sessionScanner', () => {
     // Final count check
     const finalMessages = collectedMessages.slice(phase1Count)
     
-    // Should have: 1 summary + 0 history (deduplicated) + 4 new messages = 5 total for session 2
-    expect(finalMessages.length).toBeGreaterThanOrEqual(5)
+    // Should have: 1 summary + 2 history + 4 new messages = 7 total for session 2
+    expect(finalMessages).toHaveLength(7)
     
     // Verify last message is assistant with the file listing
     const lastAssistantMsg = collectedMessages[collectedMessages.length - 1]
