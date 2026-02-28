@@ -4,8 +4,8 @@ public enum AppPalette {
     public static let primaryText = Color.primary
     public static let secondaryText = Color.secondary
     public static let accent = Color(red: 0.11, green: 0.39, blue: 0.95)
-    public static let chatBackgroundTop = Color(red: 0.95, green: 0.97, blue: 1.00)
-    public static let chatBackgroundBottom = Color(red: 0.98, green: 0.99, blue: 1.00)
+    public static let chatBackgroundTop = Color(red: 0.90, green: 0.93, blue: 0.98)
+    public static let chatBackgroundBottom = Color(red: 0.94, green: 0.96, blue: 0.99)
     public static let chatUserBubble = accent.opacity(0.16)
     public static let chatAgentBubble = Color.primary.opacity(0.05)
     public static let chatBubbleStroke = Color.primary.opacity(0.10)
