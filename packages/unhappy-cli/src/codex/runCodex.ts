@@ -492,6 +492,7 @@ export async function runCodex(opts: {
       message.meta?.steerMode === 'immediate' ? 'immediate' : 'queue';
     const shouldTrySteer =
       steerMode === 'immediate' &&
+      message.meta?.sentFrom !== 'native' &&
       typeof userText === 'string' &&
       userText.trim().length > 0 &&
       thinking &&

@@ -1311,8 +1311,11 @@ public struct SessionDetailView: View {
             return "Loading messages…"
         }
 
-        if let latestAgentLiveStatusText {
-            return latestAgentLiveStatusText
+        if let sendingMode = viewModel.sendingSteerMode(sessionID: currentSession.id) {
+            if sendingMode == .queue {
+                return "Queueing…"
+            }
+            return "Sending…"
         }
 
         let queuedCount = viewModel.queuedComposerMessages(for: currentSession.id).count
@@ -1320,11 +1323,8 @@ public struct SessionDetailView: View {
             return queuedCount == 1 ? "Queued 1 message" : "Queued \(queuedCount) messages"
         }
 
-        if let sendingMode = viewModel.sendingSteerMode(sessionID: currentSession.id) {
-            if sendingMode == .queue {
-                return "Queueing…"
-            }
-            return "Thinking…"
+        if let latestAgentLiveStatusText {
+            return latestAgentLiveStatusText
         }
 
         return nil
