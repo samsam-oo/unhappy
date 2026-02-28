@@ -1297,8 +1297,9 @@ public struct SessionDetailView: View {
         if cachedVisibleTranscriptPresentations != filtered.presentations {
             cachedVisibleTranscriptPresentations = filtered.presentations
         }
-        if subAgentInProgressCount != filtered.inProgressCount {
-            subAgentInProgressCount = filtered.inProgressCount
+        let normalizedInProgressCount = currentSession.active ? filtered.inProgressCount : 0
+        if subAgentInProgressCount != normalizedInProgressCount {
+            subAgentInProgressCount = normalizedInProgressCount
         }
     }
 
@@ -1341,10 +1342,22 @@ public struct SessionDetailView: View {
         }
 
         if let latestAgentLiveStatusText {
-            return latestAgentLiveStatusText
+            if shouldShowAgentLiveStatus {
+                return latestAgentLiveStatusText
+            }
         }
 
         return nil
+    }
+
+    private var shouldShowAgentLiveStatus: Bool {
+        if subAgentInProgressCount > 0 {
+            return true
+        }
+        if latestAgentThinkingEntry != nil {
+            return true
+        }
+        return hasOutstandingAgentToolCalls
     }
 
     private var latestAgentLiveStatusText: String? {
@@ -1402,6 +1415,40 @@ public struct SessionDetailView: View {
             return String(body.prefix(120)) + "…"
         }
         return body
+    }
+
+    private var hasOutstandingAgentToolCalls: Bool {
+        var outstandingToolUseIDs: Set<String> = []
+        var anonymousOutstandingCalls = 0
+
+        for presentation in visibleTranscriptPresentations {
+            for entry in presentation.entries where entry.role == .agent {
+                switch entry.kind {
+                case .toolCall:
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                        outstandingToolUseIDs.insert(toolUseID)
+                    } else {
+                        anonymousOutstandingCalls += 1
+                    }
+                case .toolResult:
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                        outstandingToolUseIDs.remove(toolUseID)
+                    } else if anonymousOutstandingCalls > 0 {
+                        anonymousOutstandingCalls -= 1
+                    }
+                default:
+                    continue
+                }
+            }
+        }
+
+        return !outstandingToolUseIDs.isEmpty || anonymousOutstandingCalls > 0
+    }
+
+    private func normalizedToolUseID(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func filterSubagentEntriesAndCount(
@@ -1672,12 +1719,10 @@ private struct SessionTranscriptLiveStatusRow: View {
         } label: {
             HStack(spacing: 8) {
                 LivePulseDot(size: 7)
-                ShimmeringStatusText(
-                    text: statusText,
-                    font: .footnote,
-                    baseColor: .secondary
-                )
-                .lineLimit(isExpanded ? 4 : 1)
+                Text(statusText)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(isExpanded ? 4 : 1)
                 Spacer(minLength: 0)
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.caption2)
@@ -1721,20 +1766,10 @@ private struct SessionTranscriptLogLine: View {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        if isLikelyLiveStatusEntry {
-                            LivePulseDot(size: 6)
-                            ShimmeringStatusText(
-                                text: collapsibleTitle,
-                                font: .caption2.weight(.semibold),
-                                baseColor: .secondary
-                            )
+                        Text(collapsibleTitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
-                        } else {
-                            Text(collapsibleTitle)
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
                         Spacer(minLength: 0)
                     }
                 }
@@ -1833,27 +1868,6 @@ private struct SessionTranscriptLogLine: View {
         isCollapsibleToolEntry || entry.kind == .raw
     }
 
-    private var isLikelyLiveStatusEntry: Bool {
-        let title = (entry.title ?? "").lowercased()
-        let body = entry.body.lowercased()
-        let statusKeywords = [
-            "planning",
-            "explored",
-            "summarizing",
-            "finalizing",
-            "calling",
-            "crafting",
-            "loading",
-            "retry",
-            "updating",
-            "thinking",
-            "image #",
-        ]
-        return statusKeywords.contains { keyword in
-            title.contains(keyword) || body.contains(keyword)
-        }
-    }
-
     private var isMainMessageEntry: Bool {
         guard entry.role == .user || entry.role == .agent else { return false }
         switch entry.kind {
@@ -1916,59 +1930,6 @@ private struct LivePulseDot: View {
             .onAppear {
                 withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                     isAnimating = true
-                }
-            }
-    }
-}
-
-private struct ShimmeringStatusText: View {
-    let text: String
-    let font: Font
-    let baseColor: Color
-    var isActive: Bool = true
-
-    @State private var phase: CGFloat = -1.2
-
-    var body: some View {
-        Text(text)
-            .font(font)
-            .foregroundStyle(baseColor)
-            .overlay {
-                if isActive {
-                    GeometryReader { geometry in
-                        let width = max(geometry.size.width, 1)
-                        LinearGradient(
-                            colors: [
-                                .clear,
-                                .white.opacity(0.9),
-                                .clear,
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(width: width * 0.45)
-                        .offset(x: phase * width)
-                    }
-                    .mask(
-                        Text(text)
-                            .font(font)
-                    )
-                    .allowsHitTesting(false)
-                }
-            }
-            .onAppear {
-                guard isActive else { return }
-                phase = -1.2
-                withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) {
-                    phase = 1.2
-                }
-            }
-            .onChange(of: isActive) { _, active in
-                if active {
-                    phase = -1.2
-                    withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) {
-                        phase = 1.2
-                    }
                 }
             }
     }
