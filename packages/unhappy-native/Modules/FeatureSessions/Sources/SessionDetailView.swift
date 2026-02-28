@@ -191,6 +191,7 @@ public struct SessionDetailView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 bottomInsetContent
             }
+            .defaultScrollAnchor(.bottom)
             .toolbar(.hidden, for: .tabBar)
             .navigationBarBackButtonHidden(true)
             .navigationBarTitleDisplayMode(.inline)
@@ -648,7 +649,7 @@ public struct SessionDetailView: View {
             )
 
             Circle()
-                .fill(AppPalette.accent.opacity(colorScheme == .dark ? 0.08 : 0.12))
+                .fill(AppPalette.accent.opacity(colorScheme == .dark ? 0.06 : 0.07))
                 .frame(width: 320, height: 320)
                 .blur(radius: 56)
                 .offset(x: 160, y: -260)
@@ -674,18 +675,38 @@ public struct SessionDetailView: View {
         focusedComposerField != nil
     }
 
+    private var bottomSheetSurfaceColor: Color {
+        Color(.systemBackground)
+    }
+
+    private var bottomSheetCornerRadius: CGFloat {
+        22
+    }
+
     private var bottomDock: some View {
         VStack(spacing: isKeyboardActive ? 6 : 10) {
             composerBar
-            Rectangle()
-                .fill(AppPalette.chromeDivider)
-                .frame(height: 1)
-                .padding(.horizontal, 4)
             quickToolsBar
         }
         .padding(.horizontal, 12)
         .padding(.top, isKeyboardActive ? 8 : 10)
         .padding(.bottom, 0)
+        .background(
+            RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
+                .fill(bottomSheetSurfaceColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
+                .stroke(
+                    AppPalette.chromeSurfaceStroke.opacity(isKeyboardActive ? 0.32 : 0.55),
+                    lineWidth: 1
+                )
+        )
+        .shadow(
+            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.42 : 0.14),
+            radius: isKeyboardActive ? 8 : 10,
+            y: isKeyboardActive ? 2 : 3
+        )
         .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
@@ -703,33 +724,8 @@ public struct SessionDetailView: View {
             bottomDock
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            if #available(iOS 17.0, *) {
-                UnevenRoundedRectangle(
-                    cornerRadii: .init(
-                        topLeading: isKeyboardActive ? 14 : 20,
-                        topTrailing: isKeyboardActive ? 14 : 20
-                    ),
-                    style: .continuous
-                )
-                .fill(.ultraThinMaterial)
-            } else {
-                RoundedRectangle(cornerRadius: isKeyboardActive ? 14 : 20, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            }
-        }
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(AppPalette.chromeSurfaceStroke.opacity(isKeyboardActive ? 0.45 : 0.7))
-                .frame(height: 1)
-                .padding(.horizontal, 10)
-        }
-        .ignoresSafeArea(.container, edges: .bottom)
-        .shadow(
-            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.45 : 0.14),
-            radius: isKeyboardActive ? 0 : 10,
-            y: isKeyboardActive ? 0 : 2
-        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, isKeyboardActive ? 6 : 8)
         .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
         .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
     }
@@ -1140,12 +1136,30 @@ public struct SessionDetailView: View {
                 )
                 .id(SessionQuickToolsAnchor.worktree.rawValue)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 0)
             .padding(.vertical, 4)
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.viewAligned)
         .scrollPosition(id: $quickToolsScrollPositionID, anchor: .leading)
+        .overlay(alignment: .leading) {
+            LinearGradient(
+                colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 14)
+            .allowsHitTesting(false)
+        }
+        .overlay(alignment: .trailing) {
+            LinearGradient(
+                colors: [bottomSheetSurfaceColor.opacity(0), bottomSheetSurfaceColor],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: 14)
+            .allowsHitTesting(false)
+        }
         .onChange(of: supportsReasoningEffortOverride) { _, enabled in
             guard !enabled else { return }
             if quickToolsScrollPositionID == SessionQuickToolsAnchor.effort.rawValue {
