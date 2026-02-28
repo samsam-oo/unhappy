@@ -1719,10 +1719,11 @@ private struct SessionTranscriptLiveStatusRow: View {
         } label: {
             HStack(spacing: 8) {
                 LivePulseDot(size: 7)
-                Text(statusText)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(isExpanded ? 4 : 1)
+                LiveStatusShimmerText(
+                    text: statusText,
+                    lineLimit: isExpanded ? 4 : 1
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Spacer(minLength: 0)
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.caption2)
@@ -1733,6 +1734,60 @@ private struct SessionTranscriptLiveStatusRow: View {
         .padding(.horizontal, 2)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct LiveStatusShimmerText: View {
+    let text: String
+    let lineLimit: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .lineLimit(lineLimit)
+            .overlay {
+                if !reduceMotion {
+                    GeometryReader { proxy in
+                        let width = proxy.size.width
+                        let bandWidth = max(18, width * 0.24)
+                        let highlightOpacity = colorScheme == .dark ? 0.40 : 0.34
+
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: .white.opacity(highlightOpacity), location: 0.5),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(width: bandWidth, height: proxy.size.height * 1.7)
+                        .rotationEffect(.degrees(14))
+                        .offset(
+                            x: (phase * (width + bandWidth * 2)) - bandWidth,
+                            y: -proxy.size.height * 0.35
+                        )
+                    }
+                    .mask(
+                        Text(text)
+                            .font(.footnote)
+                            .lineLimit(lineLimit)
+                    )
+                    .blendMode(.screen)
+                    .allowsHitTesting(false)
+                    .onAppear {
+                        phase = 0
+                        withAnimation(.linear(duration: 1.75).repeatForever(autoreverses: false)) {
+                            phase = 1
+                        }
+                    }
+                }
+            }
     }
 }
 
@@ -1794,16 +1849,16 @@ private struct SessionTranscriptLogLine: View {
                     .padding(.leading, 16)
                     .transition(
                         .asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
+                            insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .topLeading)),
                             removal: .opacity
                         )
                     )
                 }
             }
+            .clipped()
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(maxHeight: .infinity, alignment: .topLeading)
         } else if isMainMessageEntry {
             VStack(alignment: .leading, spacing: 4) {
                 if let title = entry.title, !title.isEmpty {
@@ -1932,10 +1987,15 @@ private struct LivePulseDot: View {
         Circle()
             .fill(Color.green)
             .frame(width: size, height: size)
-            .scaleEffect(isAnimating ? 1.0 : 0.78)
-            .opacity(isAnimating ? 1.0 : 0.5)
+            .overlay {
+                Circle()
+                    .stroke(Color.green.opacity(0.55), lineWidth: 1)
+                    .scaleEffect(isAnimating ? 2.1 : 1.0)
+                    .opacity(isAnimating ? 0 : 0.9)
+            }
             .onAppear {
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                isAnimating = false
+                withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
                     isAnimating = true
                 }
             }
