@@ -1670,17 +1670,29 @@ private struct SessionTranscriptMessageRow: View {
 
 private struct SessionTranscriptLiveStatusRow: View {
     let statusText: String
+    @State private var isExpanded = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-            Text(statusText)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            Spacer(minLength: 0)
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                LivePulseDot(size: 7)
+                ShimmeringStatusText(
+                    text: statusText,
+                    font: .footnote,
+                    baseColor: .secondary
+                )
+                .lineLimit(isExpanded ? 4 : 1)
+                Spacer(minLength: 0)
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 2)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1717,10 +1729,20 @@ private struct SessionTranscriptLogLine: View {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
-                        Text(collapsibleTitle)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                        if isLikelyLiveStatusEntry {
+                            LivePulseDot(size: 6)
+                            ShimmeringStatusText(
+                                text: collapsibleTitle,
+                                font: .caption2.weight(.semibold),
+                                baseColor: .secondary
+                            )
                             .lineLimit(1)
+                        } else {
+                            Text(collapsibleTitle)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                         Spacer(minLength: 0)
                     }
                 }
@@ -1819,6 +1841,27 @@ private struct SessionTranscriptLogLine: View {
         isCollapsibleToolEntry || entry.kind == .raw
     }
 
+    private var isLikelyLiveStatusEntry: Bool {
+        let title = (entry.title ?? "").lowercased()
+        let body = entry.body.lowercased()
+        let statusKeywords = [
+            "planning",
+            "explored",
+            "summarizing",
+            "finalizing",
+            "calling",
+            "crafting",
+            "loading",
+            "retry",
+            "updating",
+            "thinking",
+            "image #",
+        ]
+        return statusKeywords.contains { keyword in
+            title.contains(keyword) || body.contains(keyword)
+        }
+    }
+
     private var isMainMessageEntry: Bool {
         guard entry.role == .user || entry.role == .agent else { return false }
         switch entry.kind {
@@ -1865,6 +1908,77 @@ private struct SessionTranscriptLogLine: View {
         default:
             return .subheadline
         }
+    }
+}
+
+private struct LivePulseDot: View {
+    let size: CGFloat
+    @State private var isAnimating = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.green)
+            .frame(width: size, height: size)
+            .scaleEffect(isAnimating ? 1.0 : 0.78)
+            .opacity(isAnimating ? 1.0 : 0.5)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    isAnimating = true
+                }
+            }
+    }
+}
+
+private struct ShimmeringStatusText: View {
+    let text: String
+    let font: Font
+    let baseColor: Color
+    var isActive: Bool = true
+
+    @State private var phase: CGFloat = -1.2
+
+    var body: some View {
+        Text(text)
+            .font(font)
+            .foregroundStyle(baseColor)
+            .overlay {
+                if isActive {
+                    GeometryReader { geometry in
+                        let width = max(geometry.size.width, 1)
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                .white.opacity(0.9),
+                                .clear,
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(width: width * 0.45)
+                        .offset(x: phase * width)
+                    }
+                    .mask(
+                        Text(text)
+                            .font(font)
+                    )
+                    .allowsHitTesting(false)
+                }
+            }
+            .onAppear {
+                guard isActive else { return }
+                phase = -1.2
+                withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) {
+                    phase = 1.2
+                }
+            }
+            .onChange(of: isActive) { _, active in
+                if active {
+                    phase = -1.2
+                    withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) {
+                        phase = 1.2
+                    }
+                }
+            }
     }
 }
 
