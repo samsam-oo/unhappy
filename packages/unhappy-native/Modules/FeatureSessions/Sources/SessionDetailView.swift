@@ -1,7 +1,6 @@
 import SwiftUI
 import CoreKit
 import FeatureSessionTools
-import UIKit
 
 @MainActor
 public struct SessionDetailView: View {
@@ -25,20 +24,6 @@ public struct SessionDetailView: View {
         case customModel
     }
 
-    private enum SessionQuickToolsAnchor: String {
-        case model
-        case effort
-        case info
-        case files
-        case review
-        case worktree
-    }
-
-    private struct QueuedComposerMessage: Identifiable, Equatable {
-        let id: UUID
-        let text: String
-    }
-
     private struct CachedTranscriptPresentation: Equatable {
         let sourceMessage: APISessionMessage
         let dataEncryptionKey: String?
@@ -51,6 +36,8 @@ public struct SessionDetailView: View {
     private static let modelPickerPresetPrefix = "__model_preset__:"
     private static let effortPickerPresetPrefix = "__effort_preset__:"
     private static let transcriptBottomAnchorID = "__session_transcript_bottom__"
+    private static let quickToolsFadeWidth: CGFloat = 16
+    private static let quickToolsBarHeight: CGFloat = 36
 
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
@@ -104,6 +91,7 @@ public struct SessionDetailView: View {
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showDeleteConfirmation = false
     @State private var showRenameSheet = false
     @State private var showCodexThreadsSheet = false
@@ -121,14 +109,11 @@ public struct SessionDetailView: View {
     @State private var applyEffortOverride = false
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
     @State private var serverModelOverrideOptions: [String] = []
-    @State private var queuedComposerMessages: [QueuedComposerMessage] = []
     @State private var shouldFollowTranscript = true
     @State private var scrollToBottomRequestID = UUID()
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var subAgentInProgressCount = 0
-    @State private var keyboardOverlap: CGFloat = 0
-    @State private var quickToolsScrollPositionID: String? = SessionQuickToolsAnchor.model.rawValue
     @GestureState private var isInteractingWithBottomDock = false
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
@@ -148,70 +133,37 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         ScrollViewReader { scrollProxy in
+            let messagesSectionRows = MessagesSectionRows(
+                isLoading: viewModel.isLoadingSessionMessages,
+                errorMessage: viewModel.selectedSessionErrorMessage,
+                visibleTranscriptPresentations: visibleTranscriptPresentations,
+                liveStatusText: liveStatusText,
+                transcriptBottomAnchorID: Self.transcriptBottomAnchorID,
+                onReferenceToggle: {
+                    shouldFollowTranscript = false
+                },
+                onRetry: {
+                    Task {
+                        await viewModel.loadMessages(
+                            for: session.id,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+            )
             List {
-                Section("Session") {
-                    LabeledContent("Title") {
-                        Text(currentSessionTitle)
-                            .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
-                    }
-                    LabeledContent("ID") {
-                        Text(currentSession.id)
-                            .font(.footnote.monospaced())
-                    }
-                    LabeledContent("Status") {
-                        Text(currentSession.active ? "Active" : "Inactive")
-                            .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
-                    }
-                    LabeledContent("Updated") {
-                        Text(SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt))
-                    }
+                Section {
+                    sessionSectionContent
                 }
 
-                Section("Messages") {
-                    if viewModel.isLoadingSessionMessages {
-                        ProgressView("Loading messages…")
-                    } else if let error = viewModel.selectedSessionErrorMessage {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Unable to load messages")
-                                .font(.headline)
-                            Text(error)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Button("Retry") {
-                                Task {
-                                    await viewModel.loadMessages(
-                                        for: session.id,
-                                        serverURLString: serverURLString,
-                                        token: token
-                                    )
-                                }
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    } else if visibleTranscriptPresentations.isEmpty {
-                        Text("No synced messages yet for this session")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
-                            SessionTranscriptMessageRow(
-                                presentation: presentation
-                            )
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(
-                                EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12)
-                            )
-                        }
-                    }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .id(Self.transcriptBottomAnchorID)
+                Section {
+                    messagesSectionRows
                 }
-
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(transcriptBackground)
             .scrollDismissesKeyboard(.immediately)
             .scrollDisabled(isInteractingWithBottomDock)
             .simultaneousGesture(
@@ -228,65 +180,20 @@ public struct SessionDetailView: View {
                     shouldFollowTranscript = false
                 }
             )
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    if subAgentInProgressCount > 0 {
-                        subAgentLiveBar
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                    bottomDock
-                }
-                .padding(.bottom, keyboardOverlap)
-                .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomInsetContent
             }
-            .navigationTitle("Session")
+            .defaultScrollAnchor(.bottom)
+            .toolbar(.hidden, for: .tabBar)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
-                    ProgressView()
-                } else {
-                    Menu {
-                        Button("List Codex Sessions", systemImage: "list.bullet") {
-                            showCodexThreadsSheet = true
-                            if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                codexResumeDirectoryDraft = codexCwdFilterDraft
-                            }
-                            Task {
-                                await viewModel.loadCodexThreads(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    cwd: normalizedCWD(from: codexCwdFilterDraft)
-                                )
-                            }
-                        }
-                        Button("List Claude Sessions", systemImage: "list.bullet.rectangle") {
-                            showClaudeSessionsSheet = true
-                            if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                claudeResumeDirectoryDraft = claudeCwdFilterDraft
-                            }
-                            Task {
-                                await viewModel.loadClaudeSessions(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                                )
-                            }
-                        }
-                        Button("Rename", systemImage: "pencil") {
-                            renameDraft = currentSession.displayName ?? ""
-                            showRenameSheet = true
-                        }
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            showDeleteConfirmation = true
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
+                ToolbarItem(placement: .principal) {
+                    topBarTitleView
                 }
-            }
+                ToolbarItem(placement: .topBarTrailing) {
+                    toolbarTrailingContent
+                }
             }
             .onAppear {
                 if !availableEffortSelections.contains(selectedEffortOverride),
@@ -322,10 +229,11 @@ public struct SessionDetailView: View {
                 )
             }
             .onChange(of: visibleTranscriptMessageIDs) { oldIDs, newIDs in
-                guard shouldFollowTranscript else { return }
-                // Avoid List/UICollectionView out-of-bounds assertions during shrink updates.
-                guard newIDs.count >= oldIDs.count else { return }
-                scrollTranscriptToBottom(using: scrollProxy)
+                handleVisibleTranscriptMessageIDsChange(
+                    oldIDs: oldIDs,
+                    newIDs: newIDs,
+                    using: scrollProxy
+                )
             }
             .onChange(of: scrollToBottomRequestID) { _, _ in
                 scrollTranscriptToBottom(using: scrollProxy)
@@ -335,21 +243,12 @@ public struct SessionDetailView: View {
                 shouldFollowTranscript = true
                 scrollTranscriptToBottom(using: scrollProxy)
             }
-            .onChange(of: keyboardOverlap) { _, overlap in
-                guard overlap > 0 else { return }
+            .onChange(of: viewModel.isLoadingSessionMessages) { wasLoading, isLoading in
+                guard wasLoading && !isLoading else { return }
                 shouldFollowTranscript = true
-                scrollTranscriptToBottom(using: scrollProxy)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
-                updateKeyboardOverlap(from: notification)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                withAnimation(.easeOut(duration: 0.2)) {
-                    keyboardOverlap = 0
-                }
+                scrollTranscriptToBottom(using: scrollProxy, animated: false)
             }
             .onDisappear {
-                keyboardOverlap = 0
                 viewModel.stopSelectedSessionMessagesPolling()
                 viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
             }
@@ -628,9 +527,6 @@ public struct SessionDetailView: View {
                         }
                     }
                 }
-            },
-            message: {
-                Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
             }
             )
         }
@@ -641,12 +537,7 @@ public struct SessionDetailView: View {
     }
 
     private var currentSessionDisplayTitle: String? {
-        guard let raw = currentSession.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty,
-              raw != currentSession.id else {
-            return nil
-        }
-        return raw
+        SessionDisplayTitleResolver.resolvedDisplayTitle(for: currentSession)
     }
 
     private var currentSessionHasDisplayTitle: Bool {
@@ -657,19 +548,159 @@ public struct SessionDetailView: View {
         if let currentSessionDisplayTitle {
             return currentSessionDisplayTitle
         }
-        if let seq = currentSession.seq, seq > 0 {
-            return "Session \(seq)"
+        return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
+    }
+
+    @ViewBuilder
+    private var sessionSectionContent: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.caption2)
+                .foregroundStyle(AppPalette.secondaryText)
+            Text("Session")
+                .font(.caption2.monospaced().weight(.bold))
+                .foregroundStyle(AppPalette.secondaryText)
+                .textCase(.uppercase)
         }
-        return "Session"
+        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
+
+        VStack(spacing: 0) {
+            sessionSummaryPanelRow(
+                title: "Title",
+                value: currentSessionTitle,
+                valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
+            )
+            Divider().opacity(0.28)
+            sessionSummaryPanelRow(
+                title: "ID",
+                value: currentSession.id,
+                valueFont: .footnote.monospaced(),
+                valueColor: AppPalette.secondaryText
+            )
+            Divider().opacity(0.28)
+            sessionSummaryPanelRow(
+                title: "Status",
+                value: currentSession.active ? "Active" : "Inactive",
+                valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
+            )
+            Divider().opacity(0.28)
+            sessionSummaryPanelRow(
+                title: "Updated",
+                value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
+                valueColor: AppPalette.secondaryText
+            )
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppPalette.chatToolBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+        )
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(
+            EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+        )
+    }
+
+    private func sessionSummaryPanelRow(
+        title: String,
+        value: String,
+        valueFont: Font = .subheadline.monospaced().weight(.semibold),
+        valueColor: Color = AppPalette.primaryText
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.caption.monospaced().weight(.semibold))
+                .foregroundStyle(AppPalette.secondaryText)
+            Spacer(minLength: 0)
+            Text(value)
+                .font(valueFont)
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+    }
+
+    private var transcriptBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: backgroundGradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(AppPalette.accent.opacity(colorScheme == .dark ? 0.06 : 0.07))
+                .frame(width: 320, height: 320)
+                .blur(radius: 56)
+                .offset(x: 160, y: -260)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var backgroundGradientColors: [Color] {
+        if colorScheme == .dark {
+            return [
+                Color(red: 0.08, green: 0.10, blue: 0.14),
+                Color(red: 0.06, green: 0.07, blue: 0.10),
+            ]
+        }
+
+        return [
+            AppPalette.chatBackgroundTop,
+            AppPalette.chatBackgroundBottom,
+        ]
+    }
+
+    private var isKeyboardActive: Bool {
+        focusedComposerField != nil
+    }
+
+    private var bottomSheetSurfaceColor: Color {
+        Color(.systemBackground)
+    }
+
+    private var bottomSheetCornerRadius: CGFloat {
+        22
     }
 
     private var bottomDock: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: isKeyboardActive ? 6 : 10) {
             composerBar
             quickToolsBar
         }
-        .padding(.top, 8)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 12)
+        .padding(.top, isKeyboardActive ? 8 : 10)
+        .padding(.bottom, 0)
+        .background(
+            RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
+                .fill(bottomSheetSurfaceColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
+                .stroke(
+                    AppPalette.chromeSurfaceStroke.opacity(isKeyboardActive ? 0.32 : 0.55),
+                    lineWidth: 1
+                )
+        )
+        .shadow(
+            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.42 : 0.14),
+            radius: isKeyboardActive ? 8 : 10,
+            y: isKeyboardActive ? 2 : 3
+        )
+        .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
                 state = true
@@ -677,67 +708,256 @@ public struct SessionDetailView: View {
         )
     }
 
+    private var bottomInsetContent: some View {
+        VStack(spacing: isKeyboardActive ? 6 : 8) {
+            if subAgentInProgressCount > 0 && !isKeyboardActive {
+                subAgentLiveBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            bottomDock
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.bottom, isKeyboardActive ? 6 : 8)
+        .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+        .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
+    }
+
+    private var topBarTitleView: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "terminal")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppPalette.secondaryText)
+            Text(currentSessionTitle)
+                .font(.subheadline.monospaced().weight(.semibold))
+                .foregroundStyle(AppPalette.primaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+    }
+
+    @ViewBuilder
+    private var toolbarTrailingContent: some View {
+        if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
+            ProgressView()
+        } else {
+            Menu {
+                Button("List Codex Sessions", systemImage: "list.bullet") {
+                    showCodexThreadsSheet = true
+                    if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        codexResumeDirectoryDraft = codexCwdFilterDraft
+                    }
+                    Task {
+                        await viewModel.loadCodexThreads(
+                            for: session.id,
+                            serverURLString: serverURLString,
+                            token: token,
+                            cwd: normalizedCWD(from: codexCwdFilterDraft)
+                        )
+                    }
+                }
+                Button("List Claude Sessions", systemImage: "list.bullet.rectangle") {
+                    showClaudeSessionsSheet = true
+                    if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        claudeResumeDirectoryDraft = claudeCwdFilterDraft
+                    }
+                    Task {
+                        await viewModel.loadClaudeSessions(
+                            for: session.id,
+                            serverURLString: serverURLString,
+                            token: token,
+                            cwd: normalizedCWD(from: claudeCwdFilterDraft)
+                        )
+                    }
+                }
+                Button("Rename", systemImage: "pencil") {
+                    renameDraft = currentSession.displayName ?? ""
+                    showRenameSheet = true
+                }
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(PressableScaleButtonStyle())
+        }
+    }
+
     private var subAgentLiveBar: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(Color.green)
+                .fill(AppPalette.liveActivity)
                 .frame(width: 8, height: 8)
             Text("\(subAgentInProgressCount) sub-agents")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(Color.green)
+                .foregroundStyle(AppPalette.liveActivity)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.green.opacity(0.12))
+                .fill(AppPalette.liveActivityMuted)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+                .stroke(AppPalette.liveActivity.opacity(0.4), lineWidth: 1)
         )
         .padding(.horizontal, 12)
+        .shadow(color: AppPalette.liveActivity.opacity(0.25), radius: 8, y: 2)
     }
 
     private var composerBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let liveStatusText {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(liveStatusText)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
+        VStack(alignment: .leading, spacing: isKeyboardActive ? 8 : 10) {
+            let isSending = viewModel.isSendingMessage(sessionID: session.id)
+            let queuedComposerMessages = viewModel.queuedComposerMessages(for: currentSession.id)
 
             if !queuedComposerMessages.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(queuedComposerMessages) { item in
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Text(item.text)
-                                .font(.footnote)
-                                .lineLimit(1)
-                                .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: isKeyboardActive ? 6 : 8) {
+                    let visibleQueuedMessages = Array(queuedComposerMessages.suffix(3))
+                    let hiddenCount = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
+                    let visibleStartIndex = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.stack.3d.up")
+                            .font(.caption2)
+                            .foregroundStyle(AppPalette.secondaryText)
+                        Text("Steer Stack")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppPalette.secondaryText)
+                        if hiddenCount > 0 {
+                            Text("+\(hiddenCount)")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(AppPalette.secondaryText)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.secondary.opacity(0.12))
-                        )
+                        Spacer(minLength: 0)
+                        Text(queuedComposerMessages.count == 1 ? "1 queued" : "\(queuedComposerMessages.count) queued")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+
+                    if !isKeyboardActive {
+                        ForEach(Array(visibleQueuedMessages.enumerated()), id: \.offset) { index, text in
+                            let queueIndex = visibleStartIndex + index
+                            HStack(spacing: 8) {
+                                Image(systemName: "clock")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppPalette.secondaryText)
+                                Text(text)
+                                    .font(.footnote)
+                                    .lineLimit(1)
+                                    .foregroundStyle(AppPalette.primaryText)
+                                Spacer(minLength: 0)
+                                Button("Edit") {
+                                    let restored = viewModel.takeQueuedComposerMessage(
+                                        for: currentSession.id,
+                                        at: queueIndex
+                                    ) ?? text
+                                    draftMessage = restored
+                                    focusedComposerField = .message
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                            }
+
+                            if index < visibleQueuedMessages.count - 1 {
+                                Rectangle()
+                                    .fill(AppPalette.chromeDivider.opacity(0.7))
+                                    .frame(height: 1)
+                            }
+                        }
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppPalette.controlSurface.opacity(colorScheme == .dark ? 0.72 : 0.9))
+                )
             }
 
-            TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
-                .lineLimit(2...6)
-                .textInputAutocapitalization(.sentences)
-                .focused($focusedComposerField, equals: .message)
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "terminal.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.accent)
+                    .frame(width: 18, height: 18)
+                    .padding(.top, 2)
+
+                TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
+                    .lineLimit(isKeyboardActive ? 1...3 : 1...4)
+                    .textInputAutocapitalization(.sentences)
+                    .font(.subheadline.weight(.medium))
+                    .focused($focusedComposerField, equals: .message)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, isKeyboardActive ? 9 : 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppPalette.composerFieldBackground)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        focusedComposerField == .message
+                            ? AppPalette.accent.opacity(0.55)
+                            : AppPalette.composerFieldStroke.opacity(0.4),
+                        lineWidth: focusedComposerField == .message ? 1.5 : 1
+                    )
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    submitDraftMessage(with: .queue)
+                } label: {
+                    Label("Queue", systemImage: "clock")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppPalette.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(AppPalette.controlSurface)
+                        )
+                }
+                .buttonStyle(PressableScaleButtonStyle())
+                .disabled(isSending)
+
+                Button {
+                    submitDraftMessage(with: .immediate)
+                } label: {
+                    Label(isSending ? "Sending…" : "Send", systemImage: "paperplane.fill")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            AppPalette.sendGradientTop,
+                                            AppPalette.sendGradientBottom,
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .shadow(color: AppPalette.accent.opacity(0.3), radius: 6, y: 2)
+                }
+                .buttonStyle(PressableScaleButtonStyle())
+                .disabled(isSending)
+            }
 
             if applyModelOverride && selectedModelOverrideOption == Self.customModelOverrideOption {
                 TextField("Custom model id", text: $modelOverrideDraft)
@@ -745,26 +965,21 @@ public struct SessionDetailView: View {
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
                     .focused($focusedComposerField, equals: .customModel)
-            }
-
-            HStack(spacing: 10) {
-                Spacer(minLength: 0)
-
-                dockChipButton(
-                    title: "Queue",
-                    systemImage: "clock",
-                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
-                ) {
-                    submitDraftMessage(with: .queue)
-                }
-
-                dockChipButton(
-                    title: viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
-                    systemImage: "paperplane.fill",
-                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
-                ) {
-                    submitDraftMessage(with: .immediate)
-                }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppPalette.controlSurface)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                focusedComposerField == .customModel
+                                    ? AppPalette.accent.opacity(0.55)
+                                    : AppPalette.composerFieldStroke.opacity(0.4),
+                                lineWidth: focusedComposerField == .customModel ? 1.5 : 1
+                            )
+                    }
             }
 
             if let error = viewModel.sendMessageErrorMessage {
@@ -773,7 +988,6 @@ public struct SessionDetailView: View {
                     .foregroundStyle(.red)
             }
         }
-        .padding(.horizontal, 12)
     }
 
     private func submitDraftMessage(with steerMode: APISessionSteerMode) {
@@ -816,11 +1030,6 @@ public struct SessionDetailView: View {
             if sent {
                 shouldFollowTranscript = true
                 scrollToBottomRequestID = UUID()
-                if steerMode == .queue {
-                    queuedComposerMessages.append(
-                        QueuedComposerMessage(id: UUID(), text: text)
-                    )
-                }
                 draftMessage = ""
             }
         }
@@ -880,13 +1089,11 @@ public struct SessionDetailView: View {
 
     private var quickToolsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            LazyHStack(spacing: 8) {
                 modelMenuButton
-                    .id(SessionQuickToolsAnchor.model.rawValue)
 
                 if supportsReasoningEffortOverride {
                     effortMenuButton
-                        .id(SessionQuickToolsAnchor.effort.rawValue)
                 }
 
                 quickToolButton(
@@ -894,37 +1101,45 @@ public struct SessionDetailView: View {
                     systemImage: "info.circle",
                     tool: .info
                 )
-                .id(SessionQuickToolsAnchor.info.rawValue)
                 quickToolButton(
                     title: "Files",
                     systemImage: "doc.text",
                     tool: .files
                 )
-                .id(SessionQuickToolsAnchor.files.rawValue)
                 quickToolButton(
                     title: "Diff",
                     systemImage: "doc.text.magnifyingglass",
                     tool: .review
                 )
-                .id(SessionQuickToolsAnchor.review.rawValue)
                 quickToolButton(
                     title: "Worktree",
                     systemImage: "checkmark.circle",
                     tool: .worktree
                 )
-                .id(SessionQuickToolsAnchor.worktree.rawValue)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .scrollTargetLayout()
+            .padding(.horizontal, Self.quickToolsFadeWidth)
+            .padding(.vertical, 4)
         }
-        .scrollTargetBehavior(.viewAligned)
-        .scrollPosition(id: $quickToolsScrollPositionID, anchor: .leading)
-        .onChange(of: supportsReasoningEffortOverride) { _, enabled in
-            guard !enabled else { return }
-            if quickToolsScrollPositionID == SessionQuickToolsAnchor.effort.rawValue {
-                quickToolsScrollPositionID = SessionQuickToolsAnchor.model.rawValue
-            }
+        .defaultScrollAnchor(.leading)
+        .id("\(session.id)-\(supportsReasoningEffortOverride)-\(serverModelOverrideOptions.count)")
+        .frame(height: Self.quickToolsBarHeight)
+        .overlay(alignment: .leading) {
+            LinearGradient(
+                colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: Self.quickToolsFadeWidth)
+            .allowsHitTesting(false)
+        }
+        .overlay(alignment: .trailing) {
+            LinearGradient(
+                colors: [bottomSheetSurfaceColor.opacity(0), bottomSheetSurfaceColor],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: Self.quickToolsFadeWidth)
+            .allowsHitTesting(false)
         }
     }
 
@@ -957,7 +1172,7 @@ public struct SessionDetailView: View {
             }
         } label: {
             Label(selectedModelOverrideLabel, systemImage: "cpu")
-                .modifier(DockChipModifier())
+                .modifier(DockChipModifier(tone: .neutral))
         }
         .tint(.primary)
     }
@@ -977,7 +1192,7 @@ public struct SessionDetailView: View {
             }
         } label: {
             Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
-                .modifier(DockChipModifier())
+                .modifier(DockChipModifier(tone: .neutral))
         }
         .tint(.primary)
     }
@@ -986,13 +1201,14 @@ public struct SessionDetailView: View {
         title: String,
         systemImage: String,
         isDisabled: Bool = false,
+        tone: DockChipTone = .neutral,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .modifier(DockChipModifier())
+                .modifier(DockChipModifier(tone: tone))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableScaleButtonStyle())
         .disabled(isDisabled)
     }
 
@@ -1148,33 +1364,6 @@ public struct SessionDetailView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private func updateKeyboardOverlap(from notification: Notification) {
-        guard
-            let userInfo = notification.userInfo,
-            let keyboardFrameValue = userInfo[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue
-        else {
-            return
-        }
-
-        let keyboardFrame = keyboardFrameValue.cgRectValue
-        let screenBounds = UIScreen.main.bounds
-        let rawOverlap = max(0, screenBounds.maxY - keyboardFrame.minY)
-        let overlap = max(0, rawOverlap - bottomSafeAreaInset())
-
-        let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? NSNumber)?.doubleValue ?? 0.25
-        withAnimation(.easeOut(duration: duration)) {
-            keyboardOverlap = overlap
-        }
-    }
-
-    private func bottomSafeAreaInset() -> CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow)?
-            .safeAreaInsets.bottom ?? 0
-    }
-
     private func scrollTranscriptToBottom(
         using proxy: ScrollViewProxy,
         animated: Bool = true
@@ -1192,6 +1381,17 @@ public struct SessionDetailView: View {
                 action()
             }
         }
+    }
+
+    private func handleVisibleTranscriptMessageIDsChange(
+        oldIDs: [String],
+        newIDs: [String],
+        using proxy: ScrollViewProxy
+    ) {
+        guard shouldFollowTranscript else { return }
+        // Avoid List/UICollectionView out-of-bounds assertions during shrink updates.
+        guard newIDs.count >= oldIDs.count else { return }
+        scrollTranscriptToBottom(using: proxy)
     }
 
     private var parsedSessionFlavor: SessionComposerFlavor? {
@@ -1334,8 +1534,9 @@ public struct SessionDetailView: View {
         if cachedVisibleTranscriptPresentations != filtered.presentations {
             cachedVisibleTranscriptPresentations = filtered.presentations
         }
-        if subAgentInProgressCount != filtered.inProgressCount {
-            subAgentInProgressCount = filtered.inProgressCount
+        let normalizedInProgressCount = currentSession.active ? filtered.inProgressCount : 0
+        if subAgentInProgressCount != normalizedInProgressCount {
+            subAgentInProgressCount = normalizedInProgressCount
         }
     }
 
@@ -1365,15 +1566,39 @@ public struct SessionDetailView: View {
             return "Loading messages…"
         }
 
-        if let latestAgentLiveStatusText {
-            return latestAgentLiveStatusText
+        if let sendingMode = viewModel.sendingSteerMode(sessionID: currentSession.id) {
+            if sendingMode == .queue {
+                return "Queueing…"
+            }
+            return "Sending…"
         }
 
-        if viewModel.isSendingMessage(sessionID: session.id) {
-            return "Thinking…"
+        let queuedCount = viewModel.queuedComposerMessages(for: currentSession.id).count
+        if queuedCount > 0 {
+            return queuedCount == 1 ? "Queued 1 message" : "Queued \(queuedCount) messages"
+        }
+
+        if let latestAgentLiveStatusText {
+            if shouldShowAgentLiveStatus {
+                return latestAgentLiveStatusText
+            }
+        }
+
+        if currentSession.active {
+            return "Working…"
         }
 
         return nil
+    }
+
+    private var shouldShowAgentLiveStatus: Bool {
+        if subAgentInProgressCount > 0 {
+            return true
+        }
+        if latestAgentThinkingEntry != nil {
+            return true
+        }
+        return hasOutstandingAgentToolCalls
     }
 
     private var latestAgentLiveStatusText: String? {
@@ -1431,6 +1656,40 @@ public struct SessionDetailView: View {
             return String(body.prefix(120)) + "…"
         }
         return body
+    }
+
+    private var hasOutstandingAgentToolCalls: Bool {
+        var outstandingToolUseIDs: Set<String> = []
+        var anonymousOutstandingCalls = 0
+
+        for presentation in visibleTranscriptPresentations {
+            for entry in presentation.entries where entry.role == .agent {
+                switch entry.kind {
+                case .toolCall:
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                        outstandingToolUseIDs.insert(toolUseID)
+                    } else {
+                        anonymousOutstandingCalls += 1
+                    }
+                case .toolResult:
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                        outstandingToolUseIDs.remove(toolUseID)
+                    } else if anonymousOutstandingCalls > 0 {
+                        anonymousOutstandingCalls -= 1
+                    }
+                default:
+                    continue
+                }
+            }
+        }
+
+        return !outstandingToolUseIDs.isEmpty || anonymousOutstandingCalls > 0
+    }
+
+    private func normalizedToolUseID(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private func filterSubagentEntriesAndCount(
@@ -1526,13 +1785,53 @@ public struct SessionDetailView: View {
     }
 }
 
+private enum DockChipTone {
+    case neutral
+    case primary
+}
+
+private struct PressableScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 private struct DockChipModifier: ViewModifier {
+    let tone: DockChipTone
+
     func body(content: Content) -> some View {
         content
-            .font(.footnote.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .font(.caption.monospaced().weight(.semibold))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .foregroundStyle(foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(chipBackground)
+            )
+    }
+
+    private var chipBackground: Color {
+        switch tone {
+        case .neutral:
+            return AppPalette.controlSurface
+        case .primary:
+            return AppPalette.chipPrimaryBackground
+        }
+    }
+
+    private var foreground: Color {
+        switch tone {
+        case .neutral:
+            return AppPalette.primaryText
+        case .primary:
+            return .white
+        }
     }
 }
 
@@ -1654,23 +1953,168 @@ private struct ClaudeSessionRow: View {
     }
 }
 
-private struct SessionTranscriptMessageRow: View {
-    let presentation: SessionTranscriptMessagePresentation
+private struct MessagesSectionRows: View {
+    let isLoading: Bool
+    let errorMessage: String?
+    let visibleTranscriptPresentations: [SessionTranscriptMessagePresentation]
+    let liveStatusText: String?
+    let transcriptBottomAnchorID: String
+    let onReferenceToggle: () -> Void
+    let onRetry: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: showsTimestamp ? 6 : 2) {
+        messageSectionBadge
+        if isLoading {
+            TranscriptLoadingCard()
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+                )
+        } else if let errorMessage {
+            TranscriptErrorCard(error: errorMessage, onRetry: onRetry)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+                )
+        } else if visibleTranscriptPresentations.isEmpty {
+            Text("No synced messages yet for this session")
+                .font(.footnote)
+                .foregroundStyle(AppPalette.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppPalette.chatToolBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+                )
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+                )
+        } else {
+            ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
+                SessionTranscriptMessageRow(
+                    presentation: presentation,
+                    onReferenceToggle: onReferenceToggle
+                )
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+                )
+            }
+        }
+
+        if let liveStatusText {
+            SessionTranscriptLiveStatusRow(statusText: liveStatusText)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+                )
+        }
+
+        Color.clear
+            .frame(height: 1)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .id(transcriptBottomAnchorID)
+    }
+
+    private var messageSectionBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bubble.left.and.bubble.right.fill")
+                .font(.caption2)
+                .foregroundStyle(AppPalette.secondaryText)
+            Text("Messages")
+                .font(.caption2.monospaced().weight(.bold))
+                .foregroundStyle(AppPalette.secondaryText)
+                .textCase(.uppercase)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
+    }
+}
+
+private struct TranscriptLoadingCard: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(AppPalette.accent)
+            Text("Loading messages…")
+                .font(.footnote.monospaced())
+                .foregroundStyle(AppPalette.secondaryText)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+    }
+}
+
+private struct TranscriptErrorCard: View {
+    let error: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.orange)
+                Text("Unable to load messages")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(AppPalette.primaryText)
+            }
+
+            Text(error)
+                .font(.caption.monospaced())
+                .foregroundStyle(AppPalette.secondaryText)
+                .lineSpacing(1.5)
+
+            Button(action: onRetry) {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .modifier(DockChipModifier(tone: .neutral))
+            }
+            .buttonStyle(PressableScaleButtonStyle())
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 4)
+    }
+}
+
+private struct SessionTranscriptMessageRow: View {
+    let presentation: SessionTranscriptMessagePresentation
+    let onReferenceToggle: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: showsTimestamp ? 8 : 3) {
             if showsTimestamp {
                 HStack {
                     Spacer()
                     Text(presentation.createdAtText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(AppPalette.secondaryText.opacity(0.9))
                 }
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(presentation.entries) { entry in
-                    SessionTranscriptLogLine(entry: entry)
+                    SessionTranscriptLogLine(
+                        entry: entry,
+                        onReferenceToggle: onReferenceToggle
+                    )
                 }
             }
         }
@@ -1685,8 +2129,108 @@ private struct SessionTranscriptMessageRow: View {
     }
 }
 
+private struct SessionTranscriptLiveStatusRow: View {
+    let statusText: String
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    LivePulseDot(size: 7)
+                        .padding(.top, 4)
+                    LiveStatusShimmerText(
+                        text: statusText,
+                        lineLimit: 1
+                    )
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Text(statusText)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .lineSpacing(1.5)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 15)
+                    .padding(.trailing, 4)
+                    .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct LiveStatusShimmerText: View {
+    let text: String
+    let lineLimit: Int
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var phase: CGFloat = 0
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .foregroundStyle(AppPalette.secondaryText)
+            .lineLimit(lineLimit)
+            .overlay {
+                if !reduceMotion {
+                    GeometryReader { proxy in
+                        let width = proxy.size.width
+                        let bandWidth = max(18, width * 0.24)
+                        let highlightOpacity = colorScheme == .dark ? 0.40 : 0.34
+
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: .white.opacity(highlightOpacity), location: 0.5),
+                                .init(color: .clear, location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(width: bandWidth, height: proxy.size.height * 1.7)
+                        .rotationEffect(.degrees(14))
+                        .offset(
+                            x: (phase * (width + bandWidth * 2)) - bandWidth,
+                            y: -proxy.size.height * 0.35
+                        )
+                    }
+                    .mask(
+                        Text(text)
+                            .font(.footnote)
+                            .lineLimit(lineLimit)
+                    )
+                    .blendMode(.screen)
+                    .allowsHitTesting(false)
+                    .onAppear {
+                        phase = 0
+                        withAnimation(.linear(duration: 1.75).repeatForever(autoreverses: false)) {
+                            phase = 1
+                        }
+                    }
+                }
+            }
+    }
+}
+
 private struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
+    let onReferenceToggle: (() -> Void)?
     @State private var isExpanded = false
 
     var body: some View {
@@ -1694,80 +2238,114 @@ private struct SessionTranscriptLogLine: View {
             HStack(spacing: 6) {
                 Image(systemName: "info.circle")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppPalette.secondaryText)
                 Text(systemEventText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppPalette.secondaryText)
                     .multilineTextAlignment(.center)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(AppPalette.chatToolBackground)
+            )
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
         } else if isCollapsibleReferenceLogEntry {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 4) {
                 Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    onReferenceToggle?()
+                    withAnimation(.easeOut(duration: 0.18)) {
                         isExpanded.toggle()
                     }
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(alignment: .top, spacing: 6) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppPalette.terminalLineTool)
+                            .padding(.top, 1)
                         Text(collapsibleTitle)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .font(.caption2.monospaced().weight(.semibold))
+                            .foregroundStyle(AppPalette.terminalLineTool)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 2)
                 }
                 .buttonStyle(.plain)
 
                 if isExpanded {
-                    Text(entry.body)
-                        .font(bodyFont)
-                        .foregroundStyle(.primary)
-                        .textSelection(.enabled)
-                        .lineLimit(nil)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.body)
+                            .font(bodyFont)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .lineLimit(nil)
+                            .lineSpacing(1.5)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.leading, 14)
+                    .padding(.top, 1)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(AppPalette.terminalLineTool.opacity(0.45))
+                            .frame(width: 1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity)
                 }
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if isMainMessageEntry {
-            VStack(alignment: .leading, spacing: 4) {
-                if let title = entry.title, !title.isEmpty {
-                    Text(title)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(roleColor)
+                        .frame(width: 6, height: 6)
+                    Text(roleLabel)
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(roleColor)
+                    if let title = entry.title, !title.isEmpty {
+                        Text(title)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
                 }
+
                 Text(entry.body)
-                    .font(bodyFont)
-                    .foregroundStyle(.primary)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(AppPalette.primaryText)
                     .textSelection(.enabled)
                     .lineLimit(nil)
+                    .lineSpacing(2.2)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(bubbleColor)
-            )
-            .frame(
-                maxWidth: .infinity,
-                alignment: entry.role == .user ? .trailing : .leading
-            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(roleColor.opacity(0.45))
+                    .frame(width: 2)
+            }
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 if let title = entry.title, !title.isEmpty {
                     Text(title)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.caption2.monospaced().weight(.semibold))
+                        .foregroundStyle(AppPalette.terminalLineTool)
                 }
                 Text(entry.body)
                     .font(bodyFont)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(AppPalette.secondaryText)
                     .textSelection(.enabled)
                     .lineLimit(nil)
+                    .lineSpacing(1.5)
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
@@ -1791,9 +2369,17 @@ private struct SessionTranscriptLogLine: View {
 
     private var bubbleColor: Color {
         if entry.role == .user {
-            return Color.blue.opacity(0.12)
+            return AppPalette.chatUserBubble
         }
-        return Color.primary.opacity(0.04)
+        return AppPalette.chatAgentBubble
+    }
+
+    private var roleLabel: String {
+        entry.role == .user ? "user" : "assistant"
+    }
+
+    private var roleColor: Color {
+        entry.role == .user ? AppPalette.terminalLineUser : AppPalette.terminalLineAgent
     }
 
     private var isCollapsibleToolEntry: Bool {
@@ -1850,6 +2436,29 @@ private struct SessionTranscriptLogLine: View {
         default:
             return .subheadline
         }
+    }
+}
+
+private struct LivePulseDot: View {
+    let size: CGFloat
+    @State private var isAnimating = false
+
+    var body: some View {
+        Circle()
+            .fill(AppPalette.liveActivity)
+            .frame(width: size, height: size)
+            .overlay {
+                Circle()
+                    .stroke(AppPalette.liveActivity.opacity(0.55), lineWidth: 1)
+                    .scaleEffect(isAnimating ? 2.1 : 1.0)
+                    .opacity(isAnimating ? 0 : 0.9)
+            }
+            .onAppear {
+                isAnimating = false
+                withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
+                    isAnimating = true
+                }
+            }
     }
 }
 

@@ -10,7 +10,8 @@ struct SessionInfoPayloadField: Equatable, Identifiable, Sendable {
 
 struct SessionInfoPresentation: Equatable, Sendable {
     let sessionID: String
-    let title: String?
+    let title: String
+    let isFallbackTitle: Bool
     let machineDisplayName: String?
     let machineIdentifier: String?
     let active: Bool
@@ -43,12 +44,19 @@ enum SessionInfoPresentationBuilder {
         let agentStateRaw = normalizedOptional(session.agentState)
         let agentStatePreview = agentStateRaw.map { truncate($0, limit: metadataPreviewLimit) }
         let metadataObject = parseJSONObject(raw: session.metadata)
+        let agentStateObject = parseJSONObject(raw: agentStateRaw ?? "")
         let metadataFields = parseJSONFields(object: metadataObject)
-        let agentStateFields = parseJSONFields(object: parseJSONObject(raw: agentStateRaw ?? ""))
+        let agentStateFields = parseJSONFields(object: agentStateObject)
+        let resolvedTitle = sessionTitle(
+            for: session,
+            metadata: metadataObject,
+            agentState: agentStateObject
+        )
 
         return SessionInfoPresentation(
             sessionID: session.id,
-            title: normalizedOptional(session.displayName),
+            title: resolvedTitle.value,
+            isFallbackTitle: resolvedTitle.isFallback,
             machineDisplayName: machineDisplayName(from: metadataObject),
             machineIdentifier: firstString(in: metadataObject, keys: [
                 "machineId", "machineID", "machine_id",
@@ -119,10 +127,152 @@ enum SessionInfoPresentationBuilder {
     }
 
     private static func machineDisplayName(from metadata: [String: Any]?) -> String? {
-        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
+        if let name = bestDisplayString(
+            in: metadata,
+            keys: ["displayName", "name", "machineName", "deviceName", "computerName"],
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
+        ) {
+            return name
+        }
+        if let host = bestDisplayString(
+            in: metadata,
+            keys: ["host", "hostname", "computerName", "localHostName", "hostName", "machineHost"],
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
+        ) {
             return host
         }
-        return firstString(in: metadata, keys: ["displayName", "name", "machineName"])
+        return nil
+    }
+
+    private static func sessionTitle(
+        for session: APISession,
+        metadata: [String: Any]?,
+        agentState: [String: Any]?
+    ) -> (value: String, isFallback: Bool) {
+        if let displayName = normalizedOptional(session.displayName),
+           displayName != session.id {
+            return (displayName, false)
+        }
+
+        if let summary = summaryText(in: [agentState, metadata]) {
+            return (summary, false)
+        }
+
+        if let metadataName = firstString(
+            in: [agentState, metadata],
+            keys: ["displayName", "name", "title", "threadName", "sessionName"]
+        ),
+           metadataName != session.id {
+            return (metadataName, false)
+        }
+
+        if let seq = session.seq, seq > 0 {
+            return ("Session \(seq)", true)
+        }
+
+        return ("Session", true)
+    }
+
+    private static func summaryText(in objects: [Any?]) -> String? {
+        for object in objects {
+            guard let object else { continue }
+            if let dictionary = object as? [String: Any] {
+                if let summaryObject = dictionary["summary"] as? [String: Any],
+                   let text = normalizedOptional(summaryObject["text"] as? String) {
+                    return text
+                }
+                if let summary = normalizedOptional(dictionary["summary"] as? String) {
+                    return summary
+                }
+                if let nested = summaryText(in: Array(dictionary.values)) {
+                    return nested
+                }
+            } else if let array = object as? [Any] {
+                if let nested = summaryText(in: array) {
+                    return nested
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func bestDisplayString(
+        in object: Any?,
+        keys: [String],
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
+    ) -> String? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        guard let value = firstValue(in: object, matching: normalizedKeys) else {
+            return nil
+        }
+        return normalizeDisplayValue(
+            value,
+            rejectGenericHosts: rejectGenericHosts,
+            rejectOpaqueIdentifiers: rejectOpaqueIdentifiers
+        )
+    }
+
+    private static func normalizeDisplayValue(
+        _ value: Any,
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
+    ) -> String? {
+        let raw: String
+        if let string = value as? String {
+            raw = string
+        } else if let number = value as? NSNumber {
+            raw = number.stringValue
+        } else {
+            return nil
+        }
+
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let withoutLocalSuffix = trimmed.replacingOccurrences(
+            of: #"\.local$"#,
+            with: "",
+            options: .regularExpression
+        )
+        let lowered = withoutLocalSuffix.lowercased()
+        let blockedValues: Set<String> = [
+            "mac",
+            "localhost",
+            "unknown-host",
+        ]
+        if rejectGenericHosts && blockedValues.contains(lowered) {
+            return nil
+        }
+        if rejectOpaqueIdentifiers && looksLikeOpaqueIdentifier(withoutLocalSuffix) {
+            return nil
+        }
+        return withoutLocalSuffix
+    }
+
+    private static func looksLikeOpaqueIdentifier(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        if trimmed.range(
+            of: #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9a-fA-F]{20,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9]{10,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[a-z0-9-]{24,}$"#, options: .regularExpression) != nil,
+           trimmed.lowercased().contains("macbook") == false {
+            return true
+        }
+        return false
     }
 
     private static func firstString(in object: Any?, keys: [String]) -> String? {

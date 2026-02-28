@@ -1138,7 +1138,24 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
             if (200..<300).contains(codexHTTP.statusCode) {
                 return
             }
-            throw SessionsAPIError.invalidHTTPStatus(codexHTTP.statusCode)
+
+            // Some environments still return 5xx for codex-title updates even when legacy title
+            // updates succeed. Fall back once to avoid surfacing transient server incompatibilities.
+            let legacyFallbackRequest = try SessionsAPI.makeSetTitleRequest(
+                serverURL: serverURL,
+                token: token,
+                sessionID: sessionID,
+                title: persistedTitle
+            )
+            let (_, legacyFallbackResponse) = try await URLSession.shared.data(for: legacyFallbackRequest)
+
+            guard let legacyFallbackHTTP = legacyFallbackResponse as? HTTPURLResponse else {
+                throw URLError(.badServerResponse)
+            }
+            guard (200..<300).contains(legacyFallbackHTTP.statusCode) else {
+                throw SessionsAPIError.invalidHTTPStatus(codexHTTP.statusCode)
+            }
+            return
         }
 
         let legacyRequest = try SessionsAPI.makeSetTitleRequest(
@@ -1188,7 +1205,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
                 sessionID: sessionID,
                 command: "codex-list-threads",
                 params: params,
-                allowMachineFallback: false
+                allowMachineFallback: true
             )
 
             let page = try SessionsAPI.decodeCodexThreadsPageResponse(data)
@@ -1239,7 +1256,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
                 sessionID: sessionID,
                 command: "claude-list-sessions",
                 params: params,
-                allowMachineFallback: false
+                allowMachineFallback: true
             )
 
             let page = try SessionsAPI.decodeClaudeSessionsPageResponse(data)

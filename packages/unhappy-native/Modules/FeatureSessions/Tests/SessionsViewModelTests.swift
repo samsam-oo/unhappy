@@ -169,7 +169,7 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: messageLoader,
-            messageSender: MockSessionMessageSender(result: .success(APISessionSendMessageResult(success: true, error: nil))),
+            messageSender: MockSessionMessageSender(result: .success(APISessionSendMessageResult(success: true, queueCount: nil, queuedMessages: nil, error: nil))),
             deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
             titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
@@ -568,6 +568,39 @@ struct SessionsViewModelTests {
 
         #expect(model.sessions.first?.displayName == "New Title")
         #expect(model.errorMessage == nil)
+    }
+
+    @Test
+    func takeQueuedComposerMessageRemovesPickedEntry() async throws {
+        let sessions = [
+            APISession(
+                id: "session-1",
+                active: true,
+                activeAt: 1,
+                createdAt: 1,
+                updatedAt: 10,
+                metadataVersion: 1,
+                metadata: "enc",
+                agentState: #"{"queue":{"pendingMessages":["first","second"]}}"#,
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success(sessions)),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: sessions, nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.queuedComposerMessages(for: "session-1") == ["first", "second"])
+        let taken = model.takeQueuedComposerMessage(for: "session-1", at: 0)
+        #expect(taken == "first")
+        #expect(model.queuedComposerMessages(for: "session-1") == ["second"])
     }
 
     @Test

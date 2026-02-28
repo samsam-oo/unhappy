@@ -39,7 +39,7 @@ export async function createSessionScanner(opts: {
         let messages = await readSessionLog(projectDir, opts.sessionId);
         logger.debug(`[SESSION_SCANNER] Marking ${messages.length} existing messages as processed from session ${opts.sessionId}`);
         for (let m of messages) {
-            processedMessageKeys.add(messageKey(m));
+            processedMessageKeys.add(scopedMessageKey(opts.sessionId, m));
         }
         // IMPORTANT: Also start watching the initial session file because Claude Code
         // may continue writing to it even after creating a new session with --resume
@@ -82,7 +82,7 @@ export async function createSessionScanner(opts: {
                 if (cleaningUp) {
                     return;
                 }
-                let key = messageKey(file);
+                let key = scopedMessageKey(session, file);
                 if (processedMessageKeys.has(key)) {
                     skipped++;
                     continue;
@@ -169,6 +169,13 @@ export type SessionScanner = ReturnType<typeof createSessionScanner>;
 //
 // Helpers
 //
+
+function scopedMessageKey(sessionId: string, message: RawJSONLines): string {
+    const baseKey = messageKey(message);
+    // Keep dedupe scoped to a session so resumed sessions can replay prior
+    // history from their own session file without being dropped.
+    return `${sessionId}:${baseKey}`;
+}
 
 function messageKey(message: RawJSONLines): string {
     if (message.type === 'user') {

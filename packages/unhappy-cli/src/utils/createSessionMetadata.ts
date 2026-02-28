@@ -66,6 +66,13 @@ export interface SessionMetadataResult {
 export function createSessionMetadata(opts: CreateSessionMetadataOptions): SessionMetadataResult {
     const state: AgentState = {
         controlledByUser: false,
+        queue: {
+            pendingMessages: [],
+            queuedCount: 0,
+            isProcessing: false,
+            hasPendingRetry: false,
+            updatedAt: Date.now(),
+        },
     };
 
     const metadata: Metadata = {

@@ -34,8 +34,10 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var deletingSessionIDs: Set<String> = []
     @Published public private(set) var renamingSessionIDs: Set<String> = []
     @Published public private(set) var sendingMessageSessionID: String?
+    @Published public private(set) var sendingMessageSteerMode: APISessionSteerMode?
     @Published public private(set) var sendMessageStatusMessage: String?
     @Published public private(set) var sendMessageErrorMessage: String?
+    @Published public private(set) var queuedComposerMessagesBySessionID: [String: [String]] = [:]
 
     private let loader: any SessionsLoading
     private let pageLoader: any SessionsPageLoading
@@ -156,6 +158,27 @@ public final class SessionsViewModel: ObservableObject {
         sendingMessageSessionID == sessionID
     }
 
+    public func sendingSteerMode(sessionID: String) -> APISessionSteerMode? {
+        guard sendingMessageSessionID == sessionID else { return nil }
+        return sendingMessageSteerMode
+    }
+
+    public func queuedComposerMessages(for sessionID: String) -> [String] {
+        queuedComposerMessagesBySessionID[sessionID] ?? []
+    }
+
+    public func takeQueuedComposerMessage(for sessionID: String, at index: Int) -> String? {
+        guard var queued = queuedComposerMessagesBySessionID[sessionID] else { return nil }
+        guard queued.indices.contains(index) else { return nil }
+        let message = queued.remove(at: index)
+        if queued.isEmpty {
+            queuedComposerMessagesBySessionID[sessionID] = nil
+        } else {
+            queuedComposerMessagesBySessionID[sessionID] = queued
+        }
+        return message
+    }
+
     public func load(serverURLString: String, token: String) async {
         guard !isLoading else { return }
         isLoading = true
@@ -170,11 +193,13 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = firstPage.sessions
+            refreshQueuedComposerMessagesCache(from: sessions)
             nextCursor = firstPage.nextCursor
             hasMoreSessions = firstPage.hasNext
             errorMessage = nil
         } catch {
             sessions = []
+            refreshQueuedComposerMessagesCache(from: sessions)
             nextCursor = nil
             hasMoreSessions = false
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -197,6 +222,7 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 sessions = mergeLatestRows(rows, into: sessions)
+                refreshQueuedComposerMessagesCache(from: sessions)
                 errorMessage = nil
                 isLoading = false
             }
@@ -204,6 +230,7 @@ public final class SessionsViewModel: ObservableObject {
             // Stream cancellation is expected when the view task is torn down.
         } catch {
             sessions = []
+            refreshQueuedComposerMessagesCache(from: sessions)
             nextCursor = nil
             hasMoreSessions = false
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -230,6 +257,7 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = mergeLatestRows(page.sessions, into: sessions)
+            refreshQueuedComposerMessagesCache(from: sessions)
             self.nextCursor = page.nextCursor
             hasMoreSessions = page.hasNext
             errorMessage = nil
@@ -517,12 +545,16 @@ public final class SessionsViewModel: ObservableObject {
         }
 
         sendingMessageSessionID = sessionID
+        sendingMessageSteerMode = steerMode
         sendMessageStatusMessage = nil
         sendMessageErrorMessage = nil
-        defer { sendingMessageSessionID = nil }
+        defer {
+            sendingMessageSessionID = nil
+            sendingMessageSteerMode = nil
+        }
 
         do {
-            _ = try await messageSender.sendMessage(
+            let result = try await messageSender.sendMessage(
                 serverURLString: serverURLString,
                 token: token,
                 sessionID: sessionID,
@@ -533,6 +565,12 @@ public final class SessionsViewModel: ObservableObject {
             )
             sendMessageStatusMessage = nil
             sendMessageErrorMessage = nil
+            applyQueuedComposerSnapshot(
+                for: sessionID,
+                steerMode: steerMode,
+                sentText: text,
+                response: result
+            )
             appendOptimisticUserMessageIfPossible(for: sessionID, text: text)
             return true
         } catch {
@@ -587,6 +625,7 @@ public final class SessionsViewModel: ObservableObject {
             )
 
             sessions.removeAll { $0.id == sessionID }
+            queuedComposerMessagesBySessionID[sessionID] = nil
             messagesBySessionID[sessionID] = nil
             if selectedSessionID == sessionID {
                 stopSelectedSessionMessagesPolling()
@@ -633,6 +672,7 @@ public final class SessionsViewModel: ObservableObject {
         claudeResumeStatusMessage = nil
         claudeResumeErrorMessage = nil
         sendingMessageSessionID = nil
+        sendingMessageSteerMode = nil
         sendMessageStatusMessage = nil
         sendMessageErrorMessage = nil
     }
@@ -656,9 +696,8 @@ public final class SessionsViewModel: ObservableObject {
                 title: persistedTitle
             )
 
-            if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
-                let session = sessions[index]
-                sessions[index] = APISession(
+            if let session = sessions.first(where: { $0.id == sessionID }) {
+                let updatedSession = APISession(
                     id: session.id,
                     displayName: persistedTitle,
                     seq: session.seq,
@@ -673,6 +712,8 @@ public final class SessionsViewModel: ObservableObject {
                     dataEncryptionKey: session.dataEncryptionKey,
                     lastMessage: session.lastMessage
                 )
+                replaceSession(updatedSession)
+                refreshQueuedComposerMessagesCache(from: sessions)
             }
             errorMessage = nil
         } catch {
@@ -680,13 +721,160 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    private func applyQueuedComposerSnapshot(
+        for sessionID: String,
+        steerMode: APISessionSteerMode,
+        sentText: String,
+        response: APISessionSendMessageResult
+    ) {
+        let responseMessages = normalizeQueuedComposerMessageTexts(
+            (response.queuedMessages ?? []).map { $0 as Any }
+        )
+
+        var next = queuedComposerMessagesBySessionID
+        if !responseMessages.isEmpty {
+            next[sessionID] = responseMessages
+        } else if let queueCount = response.queueCount, queueCount <= 0 {
+            next[sessionID] = nil
+        } else if steerMode == .queue {
+            let normalizedText = sentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalizedText.isEmpty {
+                var existing = next[sessionID] ?? []
+                existing.append(normalizedText)
+                next[sessionID] = normalizeQueuedComposerMessageTexts(existing.map { $0 as Any })
+            }
+        }
+
+        if next != queuedComposerMessagesBySessionID {
+            queuedComposerMessagesBySessionID = next
+        }
+    }
+
+    private func refreshQueuedComposerMessagesCache(from sessions: [APISession]) {
+        var next: [String: [String]] = [:]
+        next.reserveCapacity(sessions.count)
+
+        for session in sessions {
+            let decoded = decodeQueuedComposerState(from: session)
+            if !decoded.messages.isEmpty {
+                next[session.id] = decoded.messages
+                continue
+            }
+            if let queueCount = decoded.queueCount, queueCount <= 0 {
+                continue
+            }
+            if let existing = queuedComposerMessagesBySessionID[session.id], !existing.isEmpty {
+                next[session.id] = existing
+            }
+        }
+
+        if next != queuedComposerMessagesBySessionID {
+            queuedComposerMessagesBySessionID = next
+        }
+    }
+
+    private func decodeQueuedComposerState(from session: APISession) -> (messages: [String], queueCount: Int?) {
+        let payload = SessionPayloadValueResolver.decodeJSONObject(
+            payload: session.agentState,
+            dataEncryptionKey: session.dataEncryptionKey
+        )
+        guard !payload.isEmpty else {
+            return ([], nil)
+        }
+
+        if let queue = payload["queue"] as? [String: Any] {
+            let queueCount = normalizedNonNegativeInt(from: queue["queuedCount"])
+            let candidates: [Any?] = [
+                queue["pendingMessages"],
+                queue["queuedMessages"],
+                queue["messages"],
+            ]
+            for candidate in candidates {
+                let messages = normalizeQueuedComposerMessageTexts(arrayValue(from: candidate))
+                if !messages.isEmpty {
+                    return (messages, queueCount)
+                }
+            }
+            if let queueCount {
+                return ([], queueCount)
+            }
+        }
+
+        let fallbackCandidates: [Any?] = [
+            payload["pendingMessages"],
+            payload["queuedMessages"],
+            payload["messages"],
+        ]
+        for candidate in fallbackCandidates {
+            let messages = normalizeQueuedComposerMessageTexts(arrayValue(from: candidate))
+            if !messages.isEmpty {
+                return (messages, nil)
+            }
+        }
+
+        return ([], nil)
+    }
+
+    private func arrayValue(from value: Any?) -> [Any] {
+        guard let value else { return [] }
+        if let array = value as? [Any] {
+            return array
+        }
+        return []
+    }
+
+    private func normalizeQueuedComposerMessageTexts(_ values: [Any]) -> [String] {
+        var normalized: [String] = []
+        normalized.reserveCapacity(values.count)
+
+        for value in values {
+            if let text = value as? String {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { continue }
+                normalized.append(trimmed)
+                continue
+            }
+            if let payload = value as? [String: Any] {
+                let textCandidates: [Any?] = [payload["text"], payload["message"], payload["value"]]
+                for candidate in textCandidates {
+                    guard let raw = candidate as? String else { continue }
+                    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { continue }
+                    normalized.append(trimmed)
+                    break
+                }
+            }
+        }
+
+        var deduped: [String] = []
+        deduped.reserveCapacity(normalized.count)
+        for message in normalized where !deduped.contains(message) {
+            deduped.append(message)
+        }
+        return deduped
+    }
+
+    private func normalizedNonNegativeInt(from value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return max(0, intValue)
+        }
+        if let number = value as? NSNumber {
+            return max(0, number.intValue)
+        }
+        if let string = value as? String, let parsed = Int(string.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return max(0, parsed)
+        }
+        return nil
+    }
+
     @discardableResult
     private func cacheMessages(_ messages: [APISessionMessage], for sessionID: String) -> [APISessionMessage] {
+        let orderedMessages = normalizeMessageOrder(messages)
         let normalizedMessages: [APISessionMessage]
-        if messages.count > CachePolicy.maxMessagesPerSession {
-            normalizedMessages = Array(messages.suffix(CachePolicy.maxMessagesPerSession))
+        if orderedMessages.count > CachePolicy.maxMessagesPerSession {
+            normalizedMessages = Array(orderedMessages.suffix(CachePolicy.maxMessagesPerSession))
         } else {
-            normalizedMessages = messages
+            normalizedMessages = orderedMessages
         }
 
         if messagesBySessionID[sessionID] != normalizedMessages {
@@ -713,6 +901,21 @@ public final class SessionsViewModel: ObservableObject {
             return cachedMessages
         }
         return cachedMessages + Array(fetchedMessages.dropFirst(cachedMessages.count))
+    }
+
+    private func normalizeMessageOrder(_ messages: [APISessionMessage]) -> [APISessionMessage] {
+        messages.sorted { lhs, rhs in
+            if lhs.seq != rhs.seq {
+                return lhs.seq < rhs.seq
+            }
+            if lhs.createdAt != rhs.createdAt {
+                return lhs.createdAt < rhs.createdAt
+            }
+            if lhs.updatedAt != rhs.updatedAt {
+                return lhs.updatedAt < rhs.updatedAt
+            }
+            return lhs.id < rhs.id
+        }
     }
 
     private func appendOptimisticUserMessageIfPossible(for sessionID: String, text: String) {
@@ -839,5 +1042,12 @@ public final class SessionsViewModel: ObservableObject {
             }
             return lhs.updatedAt > rhs.updatedAt
         }
+    }
+
+    private func replaceSession(_ session: APISession) {
+        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
+        var nextSessions = sessions
+        nextSessions[index] = session
+        sessions = nextSessions
     }
 }

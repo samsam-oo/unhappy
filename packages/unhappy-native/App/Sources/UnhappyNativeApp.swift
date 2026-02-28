@@ -10,6 +10,9 @@ import FeatureSettings
 
 @main
 struct UnhappyNativeApp: App {
+    @AppStorage("unhappy.native.appearanceMode")
+    private var storedAppearanceMode = "system"
+
     private let onboarding: any HomeAccountOnboardingAction
     private let makeSettingsViewModel: @MainActor () -> SettingsViewModel
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
@@ -185,9 +188,21 @@ struct UnhappyNativeApp: App {
                 makeAccountLinkViewModel: makeAccountLinkViewModel,
                 makeServerStatusViewModel: makeServerStatusViewModel
             )
+            .preferredColorScheme(preferredColorScheme)
             .task {
                 await sessionPresenceCoordinator.start()
             }
+        }
+    }
+
+    private var preferredColorScheme: ColorScheme? {
+        switch storedAppearanceMode {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
         }
     }
 }

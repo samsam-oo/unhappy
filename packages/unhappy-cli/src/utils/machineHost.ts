@@ -9,6 +9,14 @@ function normalizeHost(value: string | null | undefined): string | null {
   return trimmed.replace(/\.local$/i, '');
 }
 
+function isGenericHost(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  return normalized === 'mac' || normalized === 'localhost' || normalized === 'unknown-host';
+}
+
 function readMacScutilName(key: 'ComputerName' | 'LocalHostName' | 'HostName'): string | null {
   const result = spawnSync('scutil', ['--get', key], {
     encoding: 'utf8',
@@ -23,23 +31,35 @@ function readMacScutilName(key: 'ComputerName' | 'LocalHostName' | 'HostName'): 
 }
 
 export function resolveMachineHost(): string {
+  const candidates: string[] = [];
+
   if (process.platform === 'darwin') {
     const computerName = readMacScutilName('ComputerName');
     if (computerName) {
-      return computerName;
+      candidates.push(computerName);
     }
 
     const localHostName = readMacScutilName('LocalHostName');
     if (localHostName) {
-      return localHostName;
+      candidates.push(localHostName);
     }
 
     const hostName = readMacScutilName('HostName');
     if (hostName) {
-      return hostName;
+      candidates.push(hostName);
     }
   }
 
-  return normalizeHost(os.hostname()) ?? 'unknown-host';
-}
+  const osHost = normalizeHost(os.hostname());
+  if (osHost) {
+    candidates.push(osHost);
+  }
 
+  for (const candidate of candidates) {
+    if (!isGenericHost(candidate)) {
+      return candidate;
+    }
+  }
+
+  return candidates[0] ?? 'unknown-host';
+}

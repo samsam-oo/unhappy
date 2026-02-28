@@ -230,7 +230,12 @@ export class ApiSessionClient extends EventEmitter {
                         message: encrypted,
                         localId: localKey
                     });
-                    callback({ success: true });
+                    const queuedMessages = this.queueSnapshotForSendMessage(steerMode, text);
+                    callback({
+                        success: true,
+                        queueCount: queuedMessages.length,
+                        queuedMessages
+                    });
                     return;
                 }
                 if (command === 'listMessages') {
@@ -409,11 +414,7 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content);
 
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -425,7 +426,7 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    sendCodexMessage(body: any) {
+    sendCodexMessage(body: any, options?: { localId?: string }) {
         let content = {
             role: 'agent',
             content: {
@@ -436,18 +437,7 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
-            // TODO: Consider implementing message queue or HTTP fallback for reliability
-        }
-
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content, options);
     }
 
     /**
@@ -457,7 +447,11 @@ export class ApiSessionClient extends EventEmitter {
      * @param provider - The agent provider sending the message (e.g., 'gemini', 'codex', 'claude')
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
-    sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
+    sendAgentMessage(
+        provider: 'gemini' | 'codex' | 'claude' | 'opencode',
+        body: ACPMessageData,
+        options?: { localId?: string },
+    ) {
         let content = {
             role: 'agent',
             content: {
@@ -472,11 +466,21 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content, options);
+    }
+
+    sendAgentOutputMessage(data: unknown, options?: { localId?: string }) {
+        const content: MessageContent = {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data,
+            },
+            meta: {
+                sentFrom: 'cli',
+            },
+        };
+        this.emitEncryptedMessage(content, options);
     }
 
     sendSessionEvent(event: {
@@ -496,11 +500,7 @@ export class ApiSessionClient extends EventEmitter {
                 data: event
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content);
     }
 
     /**
@@ -687,8 +687,90 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.close();
     }
 
+    private queueSnapshotForSendMessage(
+        steerMode: 'queue' | 'immediate' | undefined,
+        text: string,
+    ): string[] {
+        const fromState = this.queuedMessagesFromAgentState();
+        if (steerMode !== 'queue') {
+            return fromState;
+        }
+        const normalizedText = text.trim();
+        if (!normalizedText) {
+            return fromState;
+        }
+        return [...fromState, normalizedText];
+    }
+
+    private queuedMessagesFromAgentState(): string[] {
+        if (!this.agentState || typeof this.agentState !== 'object') {
+            return [];
+        }
+        const root = this.agentState as Record<string, unknown>;
+        const queueNode = root.queue;
+        if (queueNode && typeof queueNode === 'object') {
+            const queueObject = queueNode as Record<string, unknown>;
+            const queueCandidates = [
+                queueObject.pendingMessages,
+                queueObject.queuedMessages,
+                queueObject.messages,
+            ];
+            for (const candidate of queueCandidates) {
+                const normalized = this.normalizeQueuedMessagesValue(candidate);
+                if (normalized.length > 0) {
+                    return normalized;
+                }
+            }
+        }
+        const fallbackCandidates = [
+            root.pendingMessages,
+            root.queuedMessages,
+            root.messages,
+        ];
+        for (const candidate of fallbackCandidates) {
+            const normalized = this.normalizeQueuedMessagesValue(candidate);
+            if (normalized.length > 0) {
+                return normalized;
+            }
+        }
+        return [];
+    }
+
+    private normalizeQueuedMessagesValue(value: unknown): string[] {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+        const rows: string[] = [];
+        for (const item of value) {
+            if (typeof item === 'string') {
+                const normalized = item.trim();
+                if (!normalized) continue;
+                rows.push(normalized);
+                continue;
+            }
+            if (!item || typeof item !== 'object') {
+                continue;
+            }
+            const payload = item as Record<string, unknown>;
+            const textCandidates = [payload.text, payload.message, payload.value];
+            for (const candidate of textCandidates) {
+                if (typeof candidate !== 'string') continue;
+                const normalized = candidate.trim();
+                if (!normalized) continue;
+                rows.push(normalized);
+                break;
+            }
+        }
+        return rows;
+    }
+
     private async listMessagesForPublicCommand(): Promise<
-        { success: true; messages: Array<Record<string, unknown>> }
+        {
+            success: true;
+            messages: Array<Record<string, unknown>>;
+            queueCount: number;
+            queuedMessages: string[];
+        }
         | { success: false; error: string }
     > {
         try {
@@ -706,7 +788,13 @@ export class ApiSessionClient extends EventEmitter {
             const messages = rows.map((row, index) =>
                 this.normalizeMessageForPublicCommand(row, index),
             );
-            return { success: true, messages };
+            const queuedMessages = this.queuedMessagesFromAgentState();
+            return {
+                success: true,
+                messages,
+                queueCount: queuedMessages.length,
+                queuedMessages,
+            };
         } catch (error) {
             const message =
                 axios.isAxiosError(error)
@@ -823,5 +911,25 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
         return Date.now() / 1000;
+    }
+
+    private emitEncryptedMessage(
+        content: MessageContent | Record<string, unknown>,
+        options?: { localId?: string },
+    ): void {
+        // Check if socket is connected before sending
+        if (!this.socket.connected) {
+            logger.debug('[API] Socket not connected, cannot send message. Message will be lost');
+            // TODO: Consider implementing message queue or HTTP fallback for reliability
+        }
+
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
+        const localId =
+            typeof options?.localId === 'string' ? options.localId.trim() : '';
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted,
+            ...(localId ? { localId } : {}),
+        });
     }
 }

@@ -160,6 +160,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             }
 
             const { sid, thinking } = data;
+            const isActivelyWorking = thinking === true;
 
             // Check session validity using cache
             const isValid = await activityCache.isSessionValid(sid, userId);
@@ -167,11 +168,16 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
                 return;
             }
 
-            // Queue database update (will only update if time difference is significant)
-            activityCache.queueSessionUpdate(sid, t);
+            // Queue database update (also persists active-state transitions immediately)
+            activityCache.queueSessionUpdate(sid, t, isActivelyWorking);
 
             // Emit session activity update
-            const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
+            const sessionActivity = buildSessionActivityEphemeral(
+                sid,
+                isActivelyWorking,
+                t,
+                thinking || false
+            );
             eventRouter.emitEphemeral({
                 userId,
                 payload: sessionActivity,

@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const mockState = vi.hoisted(() => {
   const sendToAllDevices = vi.fn();
@@ -25,6 +28,7 @@ const mockState = vi.hoisted(() => {
     flush: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     sendCodexMessage: vi.fn(),
+    sendAgentOutputMessage: vi.fn(),
     updateMetadata: vi.fn((updater: (meta: Record<string, unknown>) => Record<string, unknown>) => {
       const next = updater(sessionMetadata as unknown as Record<string, unknown>);
       Object.assign(sessionMetadata, next);
@@ -40,6 +44,7 @@ const mockState = vi.hoisted(() => {
 
   const client = {
     connect: vi.fn(async () => {}),
+    setPreferredResumeThreadId: vi.fn(),
     listRecentThreadsByCwd: vi.fn(async () => []),
     setPermissionHandler: vi.fn(),
     setHandler: vi.fn(),
@@ -156,10 +161,13 @@ vi.mock('@/utils/MessageQueue2', () => ({
   MessageQueue2: class {
     private idx = 0;
     private readonly batches = [...mockState.queueBatches];
+    queue: Array<{ message: string }> = [];
     constructor(_hashMode: unknown) {}
-    push() {}
+    push(message: string) {
+      this.queue.push({ message });
+    }
     size() {
-      return 0;
+      return this.queue.length;
     }
     async waitForMessagesAndGetAsString() {
       if (this.idx >= this.batches.length) {
@@ -228,6 +236,7 @@ vi.mock('../codexAppServerClient', () => ({
 }));
 
 import { runCodex } from '../runCodex';
+import { readCodexResumeEntry } from '@/persistence';
 
 describe('runCodex auto-compaction recovery', () => {
   beforeEach(() => {
@@ -301,5 +310,112 @@ describe('runCodex auto-compaction recovery', () => {
       message:
         'Codex auto-compaction hit the context limit. Starting a new thread and retrying once.',
     });
+  });
+
+  it('imports prior resume transcript messages before first resumed turn', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'codex-resume-import-'));
+    const resumeFile = join(tempDir, 'rollout-2026-02-28-thread-1.jsonl');
+    writeFileSync(
+      resumeFile,
+      [
+        JSON.stringify({
+          type: 'session_meta',
+          payload: { id: 'thread-1' },
+        }),
+        JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: '# AGENTS.md instructions for /tmp/repo' }],
+          },
+        }),
+        JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'hello from history' }],
+          },
+        }),
+        JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'history answer' }],
+          },
+        }),
+      ].join('\n'),
+      'utf8',
+    );
+
+    vi.mocked(readCodexResumeEntry).mockResolvedValue({
+      codexSessionId: 'thread-1',
+      codexHomeDir: tempDir,
+      resumeFile,
+      updatedAt: Date.now(),
+    } as any);
+
+    mockState.queueBatches.length = 0;
+    mockState.queueBatches.push({
+      message: 'continue',
+      mode: { permissionMode: 'default' },
+      isolate: false,
+      hash: 'resume-1',
+    });
+
+    mockState.client.startSession.mockReset();
+    mockState.client.startSession.mockImplementation(
+      async (_config: any, options?: { onThreadReady?: (state: any) => Promise<void> | void }) => {
+        if (options?.onThreadReady) {
+          await options.onThreadReady({
+            mode: 'resume',
+            threadId: 'thread-1',
+            resumedFromThreadId: 'thread-1',
+          });
+        }
+        return {
+          content: [{ type: 'text', text: 'ok' }],
+          structuredContent: { threadId: 'thread-1', content: 'ok' },
+        };
+      },
+    );
+
+    try {
+      await runCodex({
+        credentials: {} as any,
+        startedBy: 'terminal',
+        resume: true,
+        clearResume: false,
+      });
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+
+    expect(mockState.session.sendAgentOutputMessage).toHaveBeenCalledTimes(2);
+    const firstCall = mockState.session.sendAgentOutputMessage.mock.calls[0];
+    const secondCall = mockState.session.sendAgentOutputMessage.mock.calls[1];
+
+    expect(firstCall?.[0]).toMatchObject({
+      type: 'user',
+      message: {
+        content: [{ type: 'input_text', text: 'hello from history' }],
+      },
+    });
+    expect(secondCall?.[0]).toMatchObject({
+      type: 'assistant',
+      message: {
+        content: [{ type: 'text', text: 'history answer' }],
+      },
+    });
+
+    expect(firstCall?.[1]).toMatchObject({
+      localId: expect.stringMatching(/^codex-resume-/),
+    });
+    expect(secondCall?.[1]).toMatchObject({
+      localId: expect.stringMatching(/^codex-resume-/),
+    });
+    expect(mockState.session.flush).toHaveBeenCalled();
   });
 });

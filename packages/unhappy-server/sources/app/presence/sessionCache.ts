@@ -5,7 +5,8 @@ import { sessionCacheCounter, databaseUpdatesSkippedCounter } from "@/app/monito
 interface SessionCacheEntry {
     validUntil: number;
     lastUpdateSent: number;
-    pendingUpdate: number | null;
+    lastActiveStateSent: boolean;
+    pendingUpdate: { timestamp: number; active: boolean } | null;
     userId: string;
 }
 
@@ -69,6 +70,7 @@ class ActivityCache {
                 this.sessionCache.set(sessionId, {
                     validUntil: now + this.CACHE_TTL,
                     lastUpdateSent: session.lastActiveAt.getTime(),
+                    lastActiveStateSent: session.active,
                     pendingUpdate: null,
                     userId
                 });
@@ -123,16 +125,18 @@ class ActivityCache {
         }
     }
 
-    queueSessionUpdate(sessionId: string, timestamp: number): boolean {
+    queueSessionUpdate(sessionId: string, timestamp: number, active: boolean): boolean {
         const cached = this.sessionCache.get(sessionId);
         if (!cached) {
             return false; // Should validate first
         }
         
-        // Only queue if time difference is significant
+        // Always persist explicit active-state transitions.
+        const activeChanged = active !== cached.lastActiveStateSent;
+        // Otherwise, queue only when time difference is significant.
         const timeDiff = Math.abs(timestamp - cached.lastUpdateSent);
-        if (timeDiff > this.UPDATE_THRESHOLD) {
-            cached.pendingUpdate = timestamp;
+        if (activeChanged || timeDiff > this.UPDATE_THRESHOLD) {
+            cached.pendingUpdate = { timestamp, active };
             return true;
         }
         
@@ -158,14 +162,19 @@ class ActivityCache {
     }
 
     private async flushPendingUpdates(): Promise<void> {
-        const sessionUpdates: { id: string, timestamp: number }[] = [];
+        const sessionUpdates: { id: string, timestamp: number, active: boolean }[] = [];
         const machineUpdates: { id: string, timestamp: number, userId: string }[] = [];
         
         // Collect session updates
         for (const [sessionId, entry] of this.sessionCache.entries()) {
             if (entry.pendingUpdate) {
-                sessionUpdates.push({ id: sessionId, timestamp: entry.pendingUpdate });
-                entry.lastUpdateSent = entry.pendingUpdate;
+                sessionUpdates.push({
+                    id: sessionId,
+                    timestamp: entry.pendingUpdate.timestamp,
+                    active: entry.pendingUpdate.active
+                });
+                entry.lastUpdateSent = entry.pendingUpdate.timestamp;
+                entry.lastActiveStateSent = entry.pendingUpdate.active;
                 entry.pendingUpdate = null;
             }
         }
@@ -189,7 +198,7 @@ class ActivityCache {
                 await Promise.all(sessionUpdates.map(update =>
                     db.session.update({
                         where: { id: update.id },
-                        data: { lastActiveAt: new Date(update.timestamp), active: true }
+                        data: { lastActiveAt: new Date(update.timestamp), active: update.active }
                     })
                 ));
                 

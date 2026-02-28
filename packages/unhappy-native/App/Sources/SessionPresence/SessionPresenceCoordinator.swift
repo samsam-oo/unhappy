@@ -32,7 +32,7 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
 
         self.sessionID = session.id
         self.isActive = session.active
-        self.title = Self.resolveTitle(session)
+        self.title = Self.resolveTitle(session: session, metadata: metadata, agentState: agentState)
         self.agent = Self.resolveAgent(metadata: metadata, agentState: agentState)
         self.directory = Self.resolveDirectory(metadata: metadata, agentState: agentState)
         self.requiresApproval = Self.resolveRequiresApproval(metadata: metadata, agentState: agentState)
@@ -45,33 +45,97 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
         self.updatedAt = Date(timeIntervalSince1970: session.updatedAt)
     }
 
-    private static func resolveTitle(_ session: APISession) -> String {
+    private static func resolveTitle(
+        session: APISession,
+        metadata: [String: Any],
+        agentState: [String: Any]
+    ) -> String {
         if let raw = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
            !raw.isEmpty,
            raw != session.id {
             return raw
         }
+
+        if let summary = resolveSummaryText(from: [agentState, metadata]) {
+            return summary
+        }
+
+        if let raw = SessionPayloadDecoder.firstString(
+            in: [agentState, metadata],
+            keys: ["displayName", "name", "title", "threadName", "sessionName"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !raw.isEmpty,
+           raw != session.id {
+            return raw
+        }
+
         if let seq = session.seq, seq > 0 {
             return "Session \(seq)"
         }
         return "Session"
     }
 
+    private static func resolveSummaryText(from objects: [Any]) -> String? {
+        for object in objects {
+            if let dictionary = object as? [String: Any] {
+                if let summaryObject = dictionary["summary"] as? [String: Any],
+                   let text = summaryObject["text"] as? String {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        return trimmed
+                    }
+                }
+                if let summary = dictionary["summary"] as? String {
+                    let trimmed = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        return trimmed
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
     private static func resolveAgent(
         metadata: [String: Any],
         agentState: [String: Any]
     ) -> UnhappySessionAgentKind {
-        let raw = SessionPayloadDecoder.firstString(
-            in: [agentState, metadata],
+        if let resolved = resolveAgent(
+            from: metadata,
             keys: [
                 "agent",
                 "agentType",
                 "backend",
                 "provider",
                 "flavor",
-                "startedBy",
+                "model",
             ]
-        )
+        ) {
+            return resolved
+        }
+
+        if let resolved = resolveAgent(
+            from: agentState,
+            keys: [
+                "agent",
+                "agentType",
+                "backend",
+                "provider",
+                "flavor",
+                "model",
+            ]
+        ) {
+            return resolved
+        }
+
+        return .unknown
+    }
+
+    private static func resolveAgent(
+        from object: [String: Any],
+        keys: [String]
+    ) -> UnhappySessionAgentKind? {
+        let raw = SessionPayloadDecoder.firstString(in: [object], keys: keys)
         let normalized = raw?.lowercased() ?? ""
         if normalized.contains("claude") {
             return .claude
@@ -82,7 +146,7 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
         if normalized.contains("codex") || normalized.contains("gpt") || normalized.contains("openai") {
             return .codex
         }
-        return .unknown
+        return nil
     }
 
     private static func resolveDirectory(
@@ -361,6 +425,7 @@ actor UserNotificationsSessionNotifier: SessionNotificationsHandling {
 
 actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
     private var activitiesBySessionID: [String: Activity<UnhappySessionsActivityAttributes>] = [:]
+    private var lastContentStateBySessionID: [String: UnhappySessionsActivityAttributes.ContentState] = [:]
     private var didLoadExistingActivities = false
 
     func startIfNeeded() async {
@@ -392,20 +457,33 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
         }
 
         for activeSession in activeSessions {
-            let content = ActivityContent(
-                state: contentState(for: activeSession),
-                staleDate: Date().addingTimeInterval(60)
-            )
+            let contentState = contentState(for: activeSession)
+            let previousContentState = lastContentStateBySessionID[activeSession.sessionID]
 
             if let activity = activitiesBySessionID[activeSession.sessionID] {
+                if let previousContentState,
+                   isSemanticallySame(previousContentState, contentState) {
+                    continue
+                }
+
+                let content = ActivityContent(
+                    state: contentState,
+                    staleDate: Date().addingTimeInterval(60 * 5)
+                )
                 await activity.update(content)
+                lastContentStateBySessionID[activeSession.sessionID] = contentState
                 continue
             }
 
             let attributes = UnhappySessionsActivityAttributes(sessionID: activeSession.sessionID)
             do {
+                let content = ActivityContent(
+                    state: contentState,
+                    staleDate: Date().addingTimeInterval(60 * 5)
+                )
                 let activity = try Activity.request(attributes: attributes, content: content)
                 activitiesBySessionID[activeSession.sessionID] = activity
+                lastContentStateBySessionID[activeSession.sessionID] = contentState
             } catch {
                 // Keep silent to avoid interrupting session UX when Live Activity is unavailable.
             }
@@ -415,14 +493,35 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
     private func contentState(
         for session: SessionRuntimeSnapshot
     ) -> UnhappySessionsActivityAttributes.ContentState {
-        UnhappySessionsActivityAttributes.ContentState(
+        let previousAgent = lastContentStateBySessionID[session.sessionID]?.agent
+        let stableAgent: UnhappySessionAgentKind
+        if session.agent == .unknown,
+           let previousAgent,
+           previousAgent != .unknown {
+            stableAgent = previousAgent
+        } else {
+            stableAgent = session.agent
+        }
+
+        return UnhappySessionsActivityAttributes.ContentState(
             title: session.title,
-            agent: session.agent,
+            agent: stableAgent,
             directory: session.directory,
             statusText: session.statusText,
             requiresApproval: session.requiresApproval,
             updatedAt: session.updatedAt
         )
+    }
+
+    private func isSemanticallySame(
+        _ lhs: UnhappySessionsActivityAttributes.ContentState,
+        _ rhs: UnhappySessionsActivityAttributes.ContentState
+    ) -> Bool {
+        lhs.title == rhs.title &&
+        lhs.agent == rhs.agent &&
+        lhs.directory == rhs.directory &&
+        lhs.statusText == rhs.statusText &&
+        lhs.requiresApproval == rhs.requiresApproval
     }
 
     private func endAllActivities(dismissalPolicy: ActivityUIDismissalPolicy) async {
@@ -438,7 +537,7 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
     ) async {
         guard let activity = activitiesBySessionID[sessionID] else { return }
         let endState = UnhappySessionsActivityAttributes.ContentState(
-            title: "Session",
+            title: lastContentStateBySessionID[sessionID]?.title ?? "Session",
             agent: .unknown,
             directory: "Directory unavailable",
             statusText: "Completed",
@@ -448,6 +547,7 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
         let endContent = ActivityContent(state: endState, staleDate: nil)
         await activity.end(endContent, dismissalPolicy: dismissalPolicy)
         activitiesBySessionID[sessionID] = nil
+        lastContentStateBySessionID[sessionID] = nil
     }
 }
 

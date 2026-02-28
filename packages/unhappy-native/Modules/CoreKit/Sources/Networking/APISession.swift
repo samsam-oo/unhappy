@@ -508,10 +508,14 @@ public struct APISessionSwitchResult: Decodable, Equatable, Sendable {
 
 public struct APISessionSendMessageResult: Decodable, Equatable, Sendable {
     public let success: Bool
+    public let queueCount: Int?
+    public let queuedMessages: [String]?
     public let error: String?
 
-    public init(success: Bool, error: String?) {
+    public init(success: Bool, queueCount: Int?, queuedMessages: [String]?, error: String?) {
         self.success = success
+        self.queueCount = queueCount
+        self.queuedMessages = queuedMessages
         self.error = error
     }
 }

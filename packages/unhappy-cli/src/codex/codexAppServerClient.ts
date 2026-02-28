@@ -51,6 +51,20 @@ type ContinueSessionOptions = {
   };
 };
 
+export type CodexThreadBootstrapState = {
+  mode: 'resume' | 'start';
+  threadId: string | null;
+  resumedFromThreadId?: string | null;
+  resumePath?: string | null;
+};
+
+type StartSessionOptions = {
+  signal?: AbortSignal;
+  onThreadReady?: (
+    state: CodexThreadBootstrapState,
+  ) => Promise<void> | void;
+};
+
 type AppServerReasoningEffort =
   NonNullable<ContinueSessionOptions['overrides']>['effort'];
 type CodexThreadSummaryEffort = Exclude<AppServerReasoningEffort, null>;
@@ -295,10 +309,13 @@ export class CodexAppServerClient {
 
   async startSession(
     config: CodexSessionConfig,
-    options?: { signal?: AbortSignal },
+    options?: StartSessionOptions,
   ): Promise<CodexToolResponse> {
     if (!this.connected) await this.connect();
-    await this.ensureThread(config, options?.signal);
+    const threadState = await this.ensureThread(config, options?.signal);
+    if (options?.onThreadReady) {
+      await options.onThreadReady(threadState);
+    }
 
     const effort = mapEffortFromLegacyConfig(
       isRecord(config.config) ? config.config.model_reasoning_effort : undefined,
@@ -576,9 +593,17 @@ export class CodexAppServerClient {
     return null;
   }
 
-  private async ensureThread(config: CodexSessionConfig, signal?: AbortSignal): Promise<void> {
+  private async ensureThread(
+    config: CodexSessionConfig,
+    signal?: AbortSignal,
+  ): Promise<CodexThreadBootstrapState> {
     if (this.sessionId) {
-      return;
+      return {
+        mode: 'resume',
+        threadId: this.sessionId,
+        resumedFromThreadId: this.sessionId,
+        resumePath: null,
+      };
     }
 
     const cfg = isRecord(config.config) ? { ...config.config } : undefined;
@@ -626,7 +651,12 @@ export class CodexAppServerClient {
         await this.flushPendingThreadName(signal);
         this.preferredResumeThreadId = null;
         this.needsThreadReattach = false;
-        return;
+        return {
+          mode: 'resume',
+          threadId: this.sessionId,
+          resumedFromThreadId: resumeThreadId,
+          resumePath,
+        };
       } catch (error) {
         logger.debug('[CodexAppServer] thread/resume failed, falling back to thread/start', error);
         const candidateThreadId = await this.findMostRecentThreadIdByCwd(baseParams.cwd);
@@ -652,7 +682,12 @@ export class CodexAppServerClient {
             await this.flushPendingThreadName(signal);
             this.preferredResumeThreadId = null;
             this.needsThreadReattach = false;
-            return;
+            return {
+              mode: 'resume',
+              threadId: this.sessionId,
+              resumedFromThreadId: candidateThreadId,
+              resumePath: null,
+            };
           } catch (fallbackError) {
             logger.debug(
               '[CodexAppServer] fallback thread/resume from thread/list failed',
@@ -674,6 +709,12 @@ export class CodexAppServerClient {
     this.extractIdentifiers(startResp);
     await this.flushPendingThreadName(signal);
     this.needsThreadReattach = false;
+    return {
+      mode: 'start',
+      threadId: this.sessionId,
+      resumedFromThreadId: null,
+      resumePath: null,
+    };
   }
 
   private async ensureThreadAttachedAfterReconnect(

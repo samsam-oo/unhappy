@@ -22,16 +22,34 @@ enum MachineDisplayNameResolver {
             raw: machine.metadata,
             dataEncryptionKey: machine.dataEncryptionKey
         ) else {
-            return machine.id
+            return fallbackDisplayName(for: machine)
         }
 
-        if let name = firstString(in: metadata, keys: ["displayName", "name", "machineName"]) {
+        let primaryNameKeys = [
+            "displayName", "name", "machineName", "deviceName", "computerName",
+        ]
+        let hostKeys = [
+            "host", "hostname", "computerName", "localHostName", "hostName", "machineHost",
+        ]
+
+        if let name = bestDisplayString(
+            in: metadata,
+            keys: primaryNameKeys,
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
+        ) {
             return name
         }
-        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
+        if let host = bestDisplayString(
+            in: metadata,
+            keys: hostKeys,
+            rejectGenericHosts: true,
+            rejectOpaqueIdentifiers: true
+        ) {
             return host
         }
-        return machine.id
+
+        return fallbackDisplayName(for: machine)
     }
 
     private static func parseJSONObject(
@@ -42,14 +60,12 @@ enum MachineDisplayNameResolver {
         guard !payload.isEmpty else { return nil }
 
         if let data = payload.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data),
-           let dictionary = object as? [String: Any] {
+           let dictionary = parseJSONObject(fromData: data) {
             return dictionary
         }
 
         if let decoded = decodeBase64(payload),
-           let object = try? JSONSerialization.jsonObject(with: decoded),
-           let dictionary = object as? [String: Any] {
+           let dictionary = parseJSONObject(fromData: decoded) {
             return dictionary
         }
 
@@ -57,29 +73,54 @@ enum MachineDisplayNameResolver {
             payload: payload,
             dataEncryptionKey: dataEncryptionKey
         ),
-           let object = try? JSONSerialization.jsonObject(with: decrypted),
-           let dictionary = object as? [String: Any] {
+           let dictionary = parseJSONObject(fromData: decrypted) {
             return dictionary
         }
 
         return nil
     }
 
-    private static func firstString(in object: Any?, keys: [String]) -> String? {
-        let normalizedKeys = Set(keys.map(normalizeKey))
-        guard let value = firstValue(in: object, matching: normalizedKeys) else {
+    private static func parseJSONObject(fromData data: Data) -> [String: Any]? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
             return nil
         }
-        if let string = value as? String {
-            return normalizeDisplayValue(string)
+
+        if let dictionary = object as? [String: Any] {
+            return dictionary
         }
-        if let number = value as? NSNumber {
-            return normalizeDisplayValue(number.stringValue)
+        if let encoded = object as? String,
+           let nestedData = encoded.data(using: .utf8),
+           let nested = try? JSONSerialization.jsonObject(with: nestedData) as? [String: Any] {
+            return nested
         }
         return nil
     }
 
-    private static func normalizeDisplayValue(_ raw: String) -> String? {
+    private static func bestDisplayString(
+        in object: Any?,
+        keys: [String],
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
+    ) -> String? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        let candidates = values(in: object, matching: normalizedKeys)
+        for candidate in candidates {
+            if let normalized = normalizeDisplayValue(
+                candidate,
+                rejectGenericHosts: rejectGenericHosts,
+                rejectOpaqueIdentifiers: rejectOpaqueIdentifiers
+            ) {
+                return normalized
+            }
+        }
+        return nil
+    }
+
+    private static func normalizeDisplayValue(
+        _ raw: String,
+        rejectGenericHosts: Bool,
+        rejectOpaqueIdentifiers: Bool
+    ) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
@@ -94,33 +135,77 @@ enum MachineDisplayNameResolver {
             "localhost",
             "unknown-host",
         ]
-        guard !blockedValues.contains(lowered) else { return nil }
+        if rejectGenericHosts && blockedValues.contains(lowered) {
+            return nil
+        }
+        if rejectOpaqueIdentifiers && looksLikeOpaqueIdentifier(withoutLocalSuffix) {
+            return nil
+        }
         return withoutLocalSuffix
     }
 
-    private static func firstValue(in object: Any?, matching keys: Set<String>) -> Any? {
+    private static func fallbackDisplayName(for machine: APIMachine) -> String {
+        if let seq = machine.seq, seq > 0 {
+            return "Machine \(seq)"
+        }
+        return "Machine"
+    }
+
+    private static func looksLikeOpaqueIdentifier(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        if trimmed.range(
+            of: #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9a-fA-F]{20,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[0-9]{10,}$"#, options: .regularExpression) != nil {
+            return true
+        }
+        if trimmed.range(of: #"^[a-z0-9-]{24,}$"#, options: .regularExpression) != nil,
+           trimmed.lowercased().contains("macbook") == false {
+            return true
+        }
+        return false
+    }
+
+    private static func values(in object: Any?, matching keys: Set<String>) -> [String] {
+        var output: [String] = []
+        collectValues(in: object, matching: keys, output: &output)
+        return output
+    }
+
+    private static func collectValues(
+        in object: Any?,
+        matching keys: Set<String>,
+        output: inout [String]
+    ) {
         if let dictionary = object as? [String: Any] {
             for (rawKey, value) in dictionary {
                 if keys.contains(normalizeKey(rawKey)) {
-                    return value
+                    if let string = value as? String {
+                        output.append(string)
+                    } else if let number = value as? NSNumber {
+                        output.append(number.stringValue)
+                    }
                 }
             }
             for (_, value) in dictionary {
-                if let nested = firstValue(in: value, matching: keys) {
-                    return nested
-                }
+                collectValues(in: value, matching: keys, output: &output)
             }
-            return nil
+            return
         }
 
         if let array = object as? [Any] {
             for item in array {
-                if let nested = firstValue(in: item, matching: keys) {
-                    return nested
-                }
+                collectValues(in: item, matching: keys, output: &output)
             }
         }
-        return nil
     }
 
     private static func normalizeKey(_ value: String) -> String {

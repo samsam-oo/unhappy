@@ -38,6 +38,22 @@ async function findConnectedMachineForSession(userId: string, sessionId: string)
     return null;
 }
 
+function resolveSessionApiUpdatedAt(
+    createdAt: Date,
+    latestMessage?: { createdAt: Date; updatedAt: Date }
+): number {
+    // Keep API ordering stable by anchoring to message activity instead of Session.updatedAt,
+    // which is bumped by metadata/state/presence writes due Prisma @updatedAt.
+    if (!latestMessage) {
+        return createdAt.getTime();
+    }
+    const latestMessageAt = Math.max(
+        latestMessage.createdAt.getTime(),
+        latestMessage.updatedAt.getTime()
+    );
+    return Math.max(createdAt.getTime(), latestMessageAt);
+}
+
 export function sessionRoutes(app: Fastify) {
     async function ensureSessionBelongsToUser(userId: string, sessionId: string): Promise<boolean> {
         const session = await db.session.findFirst({
@@ -80,14 +96,11 @@ export function sessionRoutes(app: Fastify) {
 
         const sessions = await db.session.findMany({
             where: { accountId: userId },
-            orderBy: { updatedAt: 'desc' },
-            take: 150,
             select: {
                 id: true,
                 seq: true,
                 displayName: true,
                 createdAt: true,
-                updatedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -95,42 +108,45 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
-                // messages: {
-                //     orderBy: { seq: 'desc' },
-                //     take: 1,
-                //     select: {
-                //         id: true,
-                //         seq: true,
-                //         content: true,
-                //         localId: true,
-                //         createdAt: true
-                //     }
-                // }
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true,
+                        updatedAt: true
+                    }
+                }
             }
         });
 
-        return reply.send({
-            sessions: sessions.map((v) => {
-                // const lastMessage = v.messages[0];
-                const sessionUpdatedAt = v.updatedAt.getTime();
-                // const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
+        const responseSessions = sessions
+            .map((v) => ({
+                id: v.id,
+                seq: v.seq,
+                displayName: v.displayName,
+                createdAt: v.createdAt.getTime(),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
+                active: v.active,
+                activeAt: v.lastActiveAt.getTime(),
+                metadata: v.metadata,
+                metadataVersion: v.metadataVersion,
+                agentState: v.agentState,
+                agentStateVersion: v.agentStateVersion,
+                dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
+                lastMessage: null
+            }))
+            .sort((lhs, rhs) => {
+                if (lhs.updatedAt !== rhs.updatedAt) {
+                    return rhs.updatedAt - lhs.updatedAt;
+                }
+                if (lhs.createdAt !== rhs.createdAt) {
+                    return rhs.createdAt - lhs.createdAt;
+                }
+                return rhs.id.localeCompare(lhs.id);
+            });
 
-                return {
-                    id: v.id,
-                    seq: v.seq,
-                    displayName: v.displayName,
-                    createdAt: v.createdAt.getTime(),
-                    updatedAt: sessionUpdatedAt,
-                    active: v.active,
-                    activeAt: v.lastActiveAt.getTime(),
-                    metadata: v.metadata,
-                    metadataVersion: v.metadataVersion,
-                    agentState: v.agentState,
-                    agentStateVersion: v.agentStateVersion,
-                    dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
-                    lastMessage: null
-                };
-            })
+        return reply.send({
+            sessions: responseSessions.slice(0, 150)
         });
     });
 
@@ -159,7 +175,6 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 displayName: true,
                 createdAt: true,
-                updatedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -167,6 +182,14 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true,
+                        updatedAt: true
+                    }
+                }
             }
         });
 
@@ -176,7 +199,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: v.seq,
                 displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime(),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
@@ -216,6 +239,7 @@ export function sessionRoutes(app: Fastify) {
         const where: Prisma.SessionWhereInput = { accountId: userId };
 
         // Add changedSince filter (just a filter, doesn't affect pagination)
+        // Keep this bound to Session.updatedAt for sync invalidation semantics.
         if (changedSince) {
             where.updatedAt = {
                 gt: new Date(changedSince)
@@ -241,7 +265,6 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 displayName: true,
                 createdAt: true,
-                updatedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -249,6 +272,14 @@ export function sessionRoutes(app: Fastify) {
                 dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true,
+                        updatedAt: true
+                    }
+                }
             }
         });
 
@@ -269,7 +300,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: v.seq,
                 displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime(),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
@@ -302,6 +333,27 @@ export function sessionRoutes(app: Fastify) {
             where: {
                 accountId: userId,
                 tag: tag
+            },
+            select: {
+                id: true,
+                seq: true,
+                displayName: true,
+                metadata: true,
+                metadataVersion: true,
+                agentState: true,
+                agentStateVersion: true,
+                dataEncryptionKey: true,
+                active: true,
+                lastActiveAt: true,
+                createdAt: true,
+                messages: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                    select: {
+                        createdAt: true,
+                        updatedAt: true
+                    }
+                }
             }
         });
         if (session) {
@@ -319,7 +371,7 @@ export function sessionRoutes(app: Fastify) {
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
+                    updatedAt: resolveSessionApiUpdatedAt(session.createdAt, session.messages[0]),
                     lastMessage: null
                 }
             });
@@ -369,7 +421,7 @@ export function sessionRoutes(app: Fastify) {
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime(),
+                    updatedAt: resolveSessionApiUpdatedAt(session.createdAt),
                     lastMessage: null
                 }
             });
@@ -671,8 +723,22 @@ export function sessionRoutes(app: Fastify) {
                 error: typeof result?.error === 'string' ? result.error : 'Failed to send message'
             });
         }
+        const queuedMessages = Array.isArray(result?.queuedMessages)
+            ? result.queuedMessages
+                .filter((item: unknown): item is string => typeof item === 'string')
+                .map((item: string) => item.trim())
+                .filter((item: string) => item.length > 0)
+            : [];
+        const queueCountRaw = typeof result?.queueCount === 'number' ? result.queueCount : undefined;
+        const queueCount = typeof queueCountRaw === 'number'
+            ? Math.max(0, Math.floor(queueCountRaw))
+            : queuedMessages.length;
 
-        return reply.send({ success: true });
+        return reply.send({
+            success: true,
+            queueCount,
+            queuedMessages
+        });
     });
 
     app.post('/v1/sessions/:sessionId/commands/bash', {
@@ -982,17 +1048,31 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
+        let result: any;
+        const params = {
+            cwd: cwd && cwd.length > 0 ? cwd : undefined,
+            limit
+        };
         const sessionTarget = findConnectedSession(userId, sessionId);
-        if (!sessionTarget) {
-            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
-        }
-        const result = await invokePublicCommand(sessionTarget, {
-            command: 'codex-list-threads',
-            params: {
-                cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'codex-list-threads',
+                params
+            });
+        } else {
+            const machineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!machineId) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
             }
-        });
+            const machineTarget = findConnectedMachine(userId, machineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'codex-list-threads',
+                params
+            });
+        }
 
         if (!result?.success) {
             return reply.code(502).send({
@@ -1033,17 +1113,31 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
+        let result: any;
+        const params = {
+            cwd: cwd && cwd.length > 0 ? cwd : undefined,
+            limit
+        };
         const sessionTarget = findConnectedSession(userId, sessionId);
-        if (!sessionTarget) {
-            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
-        }
-        const result = await invokePublicCommand(sessionTarget, {
-            command: 'claude-list-sessions',
-            params: {
-                cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'claude-list-sessions',
+                params
+            });
+        } else {
+            const machineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!machineId) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
             }
-        });
+            const machineTarget = findConnectedMachine(userId, machineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'claude-list-sessions',
+                params
+            });
+        }
 
         if (!result?.success) {
             return reply.code(502).send({
