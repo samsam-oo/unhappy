@@ -825,6 +825,7 @@ public struct SessionDetailView: View {
                 VStack(alignment: .leading, spacing: isKeyboardActive ? 6 : 8) {
                     let visibleQueuedMessages = Array(queuedComposerMessages.suffix(3))
                     let hiddenCount = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
+                    let visibleStartIndex = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
 
                     HStack(spacing: 6) {
                         Image(systemName: "square.stack.3d.up")
@@ -846,6 +847,7 @@ public struct SessionDetailView: View {
 
                     if !isKeyboardActive {
                         ForEach(Array(visibleQueuedMessages.enumerated()), id: \.offset) { index, text in
+                            let queueIndex = visibleStartIndex + index
                             HStack(spacing: 8) {
                                 Image(systemName: "clock")
                                     .font(.caption2)
@@ -856,7 +858,11 @@ public struct SessionDetailView: View {
                                     .foregroundStyle(AppPalette.primaryText)
                                 Spacer(minLength: 0)
                                 Button("Edit") {
-                                    draftMessage = text
+                                    let restored = viewModel.takeQueuedComposerMessage(
+                                        for: currentSession.id,
+                                        at: queueIndex
+                                    ) ?? text
+                                    draftMessage = restored
                                     focusedComposerField = .message
                                 }
                                 .buttonStyle(.borderless)
@@ -1576,6 +1582,10 @@ public struct SessionDetailView: View {
             if shouldShowAgentLiveStatus {
                 return latestAgentLiveStatusText
             }
+        }
+
+        if currentSession.active {
+            return "Working…"
         }
 
         return nil

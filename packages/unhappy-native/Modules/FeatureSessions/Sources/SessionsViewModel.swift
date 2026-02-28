@@ -167,6 +167,18 @@ public final class SessionsViewModel: ObservableObject {
         queuedComposerMessagesBySessionID[sessionID] ?? []
     }
 
+    public func takeQueuedComposerMessage(for sessionID: String, at index: Int) -> String? {
+        guard var queued = queuedComposerMessagesBySessionID[sessionID] else { return nil }
+        guard queued.indices.contains(index) else { return nil }
+        let message = queued.remove(at: index)
+        if queued.isEmpty {
+            queuedComposerMessagesBySessionID[sessionID] = nil
+        } else {
+            queuedComposerMessagesBySessionID[sessionID] = queued
+        }
+        return message
+    }
+
     public func load(serverURLString: String, token: String) async {
         guard !isLoading else { return }
         isLoading = true
