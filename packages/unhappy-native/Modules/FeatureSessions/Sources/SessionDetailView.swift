@@ -692,7 +692,24 @@ public struct SessionDetailView: View {
             let queuedComposerMessages = viewModel.queuedComposerMessages(for: currentSession.id)
             if !queuedComposerMessages.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(queuedComposerMessages.enumerated()), id: \.offset) { _, text in
+                    let visibleQueuedMessages = Array(queuedComposerMessages.suffix(4))
+                    let hiddenCount = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.stack.3d.up")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("Steer Stack")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        if hiddenCount > 0 {
+                            Text("+\(hiddenCount)")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    ForEach(Array(visibleQueuedMessages.enumerated()), id: \.offset) { _, text in
                         HStack(spacing: 6) {
                             Image(systemName: "clock")
                                 .font(.caption2)
@@ -701,6 +718,14 @@ public struct SessionDetailView: View {
                                 .font(.footnote)
                                 .lineLimit(1)
                                 .foregroundStyle(.primary)
+                            Spacer(minLength: 0)
+                            Button("Edit") {
+                                draftMessage = text
+                                focusedComposerField = .message
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.accentColor)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
