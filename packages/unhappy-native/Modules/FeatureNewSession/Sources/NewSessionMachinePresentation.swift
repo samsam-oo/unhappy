@@ -159,7 +159,15 @@ enum NewSessionMachinePresentation {
         guard let object = try? JSONSerialization.jsonObject(with: data) else {
             return nil
         }
-        return object as? [String: Any]
+        if let dictionary = object as? [String: Any] {
+            return dictionary
+        }
+        if let encoded = object as? String,
+           let nestedData = encoded.data(using: .utf8),
+           let nested = try? JSONSerialization.jsonObject(with: nestedData) as? [String: Any] {
+            return nested
+        }
+        return nil
     }
 
     private static func resolveDataEncryptionKey(raw: String?) -> Data? {

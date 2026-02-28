@@ -279,84 +279,104 @@ private struct SessionsRow: View {
     }
 
     private var machineDisplayName: String? {
-        let metadata = parseJSONObject(raw: session.metadata)
-        if let host = firstString(in: metadata, keys: ["host", "hostname", "computerName"]) {
+        let metadata = SessionPayloadValueResolver.decodeJSONObject(
+            payload: session.metadata,
+            dataEncryptionKey: session.dataEncryptionKey
+        )
+        if let primary = bestDisplayString(
+            in: metadata,
+            keys: ["displayName", "name", "machineName", "deviceName", "computerName"],
+            rejectGenericHosts: true
+        ) {
+            return primary
+        }
+        if let host = bestDisplayString(
+            in: metadata,
+            keys: ["host", "hostname", "computerName", "localHostName", "hostName", "machineHost"],
+            rejectGenericHosts: true
+        ) {
             return host
         }
-        return firstString(in: metadata, keys: ["displayName", "name", "machineName"])
+        return bestDisplayString(
+            in: metadata,
+            keys: ["host", "hostname", "computerName", "localHostName", "hostName", "machineHost"],
+            rejectGenericHosts: false
+        )
     }
 
-    private func parseJSONObject(raw: String) -> [String: Any]? {
-        let payload = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !payload.isEmpty else { return nil }
-
-        if let data = payload.data(using: .utf8),
-           let object = try? JSONSerialization.jsonObject(with: data),
-           let dictionary = object as? [String: Any] {
-            return dictionary
+    private func bestDisplayString(
+        in object: Any?,
+        keys: [String],
+        rejectGenericHosts: Bool
+    ) -> String? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        let candidates = values(in: object, matching: normalizedKeys)
+        for candidate in candidates {
+            if let normalized = normalizeDisplayValue(candidate, rejectGenericHosts: rejectGenericHosts) {
+                return normalized
+            }
         }
-
-        if let decoded = decodeBase64(payload),
-           let object = try? JSONSerialization.jsonObject(with: decoded),
-           let dictionary = object as? [String: Any] {
-            return dictionary
-        }
-
         return nil
     }
 
-    private func firstString(in object: Any?, keys: [String]) -> String? {
-        let normalizedKeys = Set(keys.map(normalizeKey))
-        guard let value = firstValue(in: object, matching: normalizedKeys) else {
+    private func normalizeDisplayValue(
+        _ raw: String,
+        rejectGenericHosts: Bool
+    ) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let withoutLocalSuffix = trimmed.replacingOccurrences(
+            of: #"\.local$"#,
+            with: "",
+            options: .regularExpression
+        )
+        let lowered = withoutLocalSuffix.lowercased()
+        let blockedValues: Set<String> = [
+            "mac",
+            "localhost",
+            "unknown-host",
+        ]
+        if rejectGenericHosts && blockedValues.contains(lowered) {
             return nil
         }
-        if let string = value as? String {
-            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-        if let number = value as? NSNumber {
-            return number.stringValue
-        }
-        return nil
+        return withoutLocalSuffix
     }
 
-    private func firstValue(in object: Any?, matching keys: Set<String>) -> Any? {
+    private func values(in object: Any?, matching keys: Set<String>) -> [String] {
+        var output: [String] = []
+        collectValues(in: object, matching: keys, output: &output)
+        return output
+    }
+
+    private func collectValues(
+        in object: Any?,
+        matching keys: Set<String>,
+        output: inout [String]
+    ) {
         if let dictionary = object as? [String: Any] {
             for (rawKey, value) in dictionary where keys.contains(normalizeKey(rawKey)) {
-                return value
-            }
-            for (_, value) in dictionary {
-                if let nested = firstValue(in: value, matching: keys) {
-                    return nested
+                if let string = value as? String {
+                    output.append(string)
+                } else if let number = value as? NSNumber {
+                    output.append(number.stringValue)
                 }
             }
-            return nil
+            for (_, value) in dictionary {
+                collectValues(in: value, matching: keys, output: &output)
+            }
+            return
         }
 
         if let array = object as? [Any] {
             for item in array {
-                if let nested = firstValue(in: item, matching: keys) {
-                    return nested
-                }
+                collectValues(in: item, matching: keys, output: &output)
             }
         }
-        return nil
     }
 
     private func normalizeKey(_ value: String) -> String {
         value.lowercased().filter { $0.isLetter || $0.isNumber }
-    }
-
-    private func decodeBase64(_ raw: String) -> Data? {
-        if let direct = Data(base64Encoded: raw) {
-            return direct
-        }
-        let replaced = raw
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        let paddingCount = (4 - (replaced.count % 4)) % 4
-        let padded = replaced + String(repeating: "=", count: paddingCount)
-        return Data(base64Encoded: padded)
     }
 }
 
