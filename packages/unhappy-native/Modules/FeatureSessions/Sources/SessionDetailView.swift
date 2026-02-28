@@ -191,9 +191,11 @@ public struct SessionDetailView: View {
             .safeAreaInset(edge: .bottom) {
                 bottomInsetContent
             }
-            .navigationTitle(currentSessionTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    topBarTitleView
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     toolbarTrailingContent
                 }
@@ -660,11 +662,11 @@ public struct SessionDetailView: View {
             composerBar
             quickToolsBar
         }
-        .padding(.top, 8)
+        .padding(.top, 6)
         .padding(.horizontal, 10)
-        .padding(.bottom, 6)
+        .padding(.bottom, 4)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(.ultraThinMaterial)
         )
         .overlay(alignment: .top) {
@@ -674,7 +676,7 @@ public struct SessionDetailView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 1)
         }
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.1), radius: 14, y: 4)
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.2 : 0.05), radius: 8, y: 2)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
                 state = true
@@ -691,6 +693,28 @@ public struct SessionDetailView: View {
             bottomDock
         }
         .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+    }
+
+    private var topBarTitleView: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "terminal")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppPalette.secondaryText)
+            Text(currentSessionTitle)
+                .font(.subheadline.monospaced().weight(.semibold))
+                .foregroundStyle(AppPalette.primaryText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(AppPalette.chatToolBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -736,18 +760,17 @@ public struct SessionDetailView: View {
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.subheadline.weight(.bold))
+                    .font(.footnote.weight(.bold))
                     .foregroundStyle(AppPalette.primaryText)
-                    .padding(8)
+                    .padding(7)
                     .background(
                         Circle()
-                            .fill(.ultraThinMaterial)
+                            .fill(AppPalette.chatToolBackground)
                     )
                     .overlay(
                         Circle()
                             .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
                     )
-                    .shadow(color: Color.black.opacity(0.07), radius: 6, y: 2)
             }
         }
     }
@@ -776,7 +799,7 @@ public struct SessionDetailView: View {
     }
 
     private var composerBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             let queuedComposerMessages = viewModel.queuedComposerMessages(for: currentSession.id)
             if !queuedComposerMessages.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -829,21 +852,28 @@ public struct SessionDetailView: View {
                 }
             }
 
-            TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
-                .lineLimit(2...6)
-                .textInputAutocapitalization(.sentences)
-                .focused($focusedComposerField, equals: .message)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AppPalette.composerFieldBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(AppPalette.composerFieldStroke, lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.05), radius: 8, y: 2)
+            HStack(alignment: .top, spacing: 8) {
+                Text(">")
+                    .font(.callout.monospaced().weight(.semibold))
+                    .foregroundStyle(AppPalette.terminalLineUser)
+                    .padding(.top, 8)
+
+                TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
+                    .lineLimit(2...6)
+                    .textInputAutocapitalization(.sentences)
+                    .font(.callout.monospaced())
+                    .focused($focusedComposerField, equals: .message)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppPalette.composerFieldBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(AppPalette.composerFieldStroke, lineWidth: 1)
+            )
 
             if applyModelOverride && selectedModelOverrideOption == Self.customModelOverrideOption {
                 TextField("Custom model id", text: $modelOverrideDraft)
@@ -892,7 +922,7 @@ public struct SessionDetailView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.bottom, 2)
+        .padding(.bottom, 1)
     }
 
     private func submitDraftMessage(with steerMode: APISessionSteerMode) {
@@ -1034,11 +1064,11 @@ public struct SessionDetailView: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(AppPalette.chatToolBackground.opacity(0.7))
+                .fill(AppPalette.chatToolBackground.opacity(0.55))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(AppPalette.chatBubbleStroke.opacity(0.9), lineWidth: 1)
+                .stroke(AppPalette.chatBubbleStroke.opacity(0.75), lineWidth: 1)
         )
         .scrollTargetBehavior(.viewAligned)
         .scrollPosition(id: $quickToolsScrollPositionID, anchor: .leading)
