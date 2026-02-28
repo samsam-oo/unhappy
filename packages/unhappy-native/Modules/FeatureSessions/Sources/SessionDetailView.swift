@@ -1100,7 +1100,7 @@ public struct SessionDetailView: View {
     private var quickToolsBar: some View {
         ScrollViewReader { quickToolsScrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
+                LazyHStack(spacing: 8) {
                     modelMenuButton
                         .id(Self.quickToolsLeadingAnchorID)
 
