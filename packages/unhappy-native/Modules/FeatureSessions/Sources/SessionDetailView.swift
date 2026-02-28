@@ -161,11 +161,11 @@ public struct SessionDetailView: View {
                 }
             )
             List {
-                Section("Session") {
+                Section {
                     sessionSectionContent
                 }
 
-                Section("Messages") {
+                Section {
                     messagesSectionRows
                 }
             }
@@ -551,6 +551,28 @@ public struct SessionDetailView: View {
 
     @ViewBuilder
     private var sessionSectionContent: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "rectangle.text.magnifyingglass")
+                .font(.caption2)
+                .foregroundStyle(AppPalette.accent)
+            Text("Session")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppPalette.secondaryText)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(AppPalette.chatToolBackground)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+        )
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 4, trailing: 14))
+
         sessionSummaryRow(
             title: "Title",
             value: currentSessionTitle,
@@ -647,7 +669,7 @@ public struct SessionDetailView: View {
         }
         .padding(.top, 8)
         .padding(.horizontal, 10)
-        .padding(.bottom, 4)
+        .padding(.bottom, 6)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(.ultraThinMaterial)
@@ -659,6 +681,7 @@ public struct SessionDetailView: View {
                 .padding(.horizontal, 18)
                 .padding(.top, 1)
         }
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.1), radius: 14, y: 4)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
                 state = true
@@ -731,6 +754,7 @@ public struct SessionDetailView: View {
                         Circle()
                             .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
                     )
+                    .shadow(color: Color.black.opacity(0.07), radius: 6, y: 2)
             }
         }
     }
@@ -755,6 +779,7 @@ public struct SessionDetailView: View {
                 .stroke(AppPalette.liveActivity.opacity(0.4), lineWidth: 1)
         )
         .padding(.horizontal, 12)
+        .shadow(color: AppPalette.liveActivity.opacity(0.25), radius: 8, y: 2)
     }
 
     private var composerBar: some View {
@@ -825,6 +850,7 @@ public struct SessionDetailView: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(AppPalette.composerFieldStroke, lineWidth: 1)
                 )
+                .shadow(color: Color.black.opacity(0.05), radius: 8, y: 2)
 
             if applyModelOverride && selectedModelOverrideOption == Self.customModelOverrideOption {
                 TextField("Custom model id", text: $modelOverrideDraft)
@@ -873,6 +899,7 @@ public struct SessionDetailView: View {
             }
         }
         .padding(.horizontal, 12)
+        .padding(.bottom, 2)
     }
 
     private func submitDraftMessage(with steerMode: APISessionSteerMode) {
@@ -1012,6 +1039,14 @@ public struct SessionDetailView: View {
             .padding(.vertical, 8)
             .scrollTargetLayout()
         }
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppPalette.chatToolBackground.opacity(0.7))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke.opacity(0.9), lineWidth: 1)
+        )
         .scrollTargetBehavior(.viewAligned)
         .scrollPosition(id: $quickToolsScrollPositionID, anchor: .leading)
         .onChange(of: supportsReasoningEffortOverride) { _, enabled in
@@ -1680,6 +1715,7 @@ private struct DockChipModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.footnote.weight(.semibold))
+            .foregroundStyle(foreground)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(chipBackground, in: Capsule())
@@ -1687,6 +1723,7 @@ private struct DockChipModifier: ViewModifier {
                 Capsule()
                     .stroke(chipStroke, lineWidth: 1)
             )
+            .shadow(color: tone == .primary ? AppPalette.accent.opacity(0.25) : .clear, radius: 6, y: 2)
     }
 
     private var chipBackground: Color {
@@ -1704,6 +1741,15 @@ private struct DockChipModifier: ViewModifier {
             return AppPalette.chipStroke
         case .primary:
             return AppPalette.chipPrimaryStroke
+        }
+    }
+
+    private var foreground: Color {
+        switch tone {
+        case .neutral:
+            return AppPalette.primaryText
+        case .primary:
+            return .white
         }
     }
 }
@@ -1836,6 +1882,7 @@ private struct MessagesSectionRows: View {
     let onRetry: () -> Void
 
     var body: some View {
+        messageSectionBadge
         if isLoading {
             TranscriptLoadingCard()
                 .listRowSeparator(.hidden)
@@ -1899,6 +1946,30 @@ private struct MessagesSectionRows: View {
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             .id(transcriptBottomAnchorID)
+    }
+
+    private var messageSectionBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bubble.left.and.bubble.right.fill")
+                .font(.caption2)
+                .foregroundStyle(AppPalette.accent)
+            Text("Messages")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppPalette.secondaryText)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(AppPalette.chatToolBackground)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+        )
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 4, trailing: 14))
     }
 }
 
@@ -1976,7 +2047,13 @@ private struct SessionTranscriptMessageRow: View {
                     Spacer()
                     Text(presentation.createdAtText)
                         .font(.caption2.monospaced())
-                        .foregroundStyle(AppPalette.secondaryText.opacity(0.85))
+                        .foregroundStyle(AppPalette.secondaryText.opacity(0.9))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(AppPalette.chatToolBackground)
+                        )
                 }
             }
 
@@ -2111,6 +2188,7 @@ private struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
     let onReferenceToggle: (() -> Void)?
     @State private var isExpanded = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         if isSystemEvent {
@@ -2152,6 +2230,14 @@ private struct SessionTranscriptLogLine: View {
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(AppPalette.chatToolBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+                    )
                 }
                 .buttonStyle(.plain)
 
@@ -2198,10 +2284,11 @@ private struct SessionTranscriptLogLine: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .frame(maxWidth: 520, alignment: .leading)
+            .padding(.leading, entry.role == .user ? 56 : 0)
+            .padding(.trailing, entry.role == .user ? 0 : 56)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(bubbleColor)
+                    .fill(bubbleGradient)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -2251,6 +2338,28 @@ private struct SessionTranscriptLogLine: View {
             return AppPalette.chatUserBubble
         }
         return AppPalette.chatAgentBubble
+    }
+
+    private var bubbleGradient: LinearGradient {
+        if entry.role == .user {
+            return LinearGradient(
+                colors: [
+                    AppPalette.accent.opacity(colorScheme == .dark ? 0.52 : 0.34),
+                    AppPalette.accent.opacity(colorScheme == .dark ? 0.38 : 0.24),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+
+        return LinearGradient(
+            colors: [
+                bubbleColor,
+                bubbleColor.opacity(0.92),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private var isCollapsibleToolEntry: Bool {
