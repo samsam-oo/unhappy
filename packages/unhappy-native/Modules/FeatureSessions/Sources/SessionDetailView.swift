@@ -98,6 +98,7 @@ public struct SessionDetailView: View {
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showDeleteConfirmation = false
     @State private var showRenameSheet = false
     @State private var showCodexThreadsSheet = false
@@ -192,8 +193,9 @@ public struct SessionDetailView: View {
                                 }
                             )
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                             .listRowInsets(
-                                EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12)
+                                EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
                             )
                         }
                     }
@@ -201,20 +203,24 @@ public struct SessionDetailView: View {
                     if let liveStatusText {
                         SessionTranscriptLiveStatusRow(statusText: liveStatusText)
                             .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                             .listRowInsets(
-                                EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12)
+                                EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
                             )
                     }
 
                     Color.clear
                         .frame(height: 1)
                         .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         .id(Self.transcriptBottomAnchorID)
                 }
 
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(transcriptBackground)
             .scrollDismissesKeyboard(.immediately)
             .scrollDisabled(isInteractingWithBottomDock)
             .simultaneousGesture(
@@ -643,13 +649,56 @@ public struct SessionDetailView: View {
         return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
     }
 
+    private var transcriptBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: backgroundGradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(AppPalette.accent.opacity(colorScheme == .dark ? 0.08 : 0.12))
+                .frame(width: 320, height: 320)
+                .blur(radius: 56)
+                .offset(x: 160, y: -260)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var backgroundGradientColors: [Color] {
+        if colorScheme == .dark {
+            return [
+                Color(red: 0.08, green: 0.10, blue: 0.14),
+                Color(red: 0.06, green: 0.07, blue: 0.10),
+            ]
+        }
+
+        return [
+            AppPalette.chatBackgroundTop,
+            AppPalette.chatBackgroundBottom,
+        ]
+    }
+
     private var bottomDock: some View {
         VStack(spacing: 8) {
             composerBar
             quickToolsBar
         }
         .padding(.top, 8)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(alignment: .top) {
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(AppPalette.dockDivider)
+                .frame(height: 1)
+                .padding(.horizontal, 18)
+                .padding(.top, 1)
+        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
                 state = true
@@ -660,21 +709,21 @@ public struct SessionDetailView: View {
     private var subAgentLiveBar: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(Color.green)
+                .fill(AppPalette.liveActivity)
                 .frame(width: 8, height: 8)
             Text("\(subAgentInProgressCount) sub-agents")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(Color.green)
+                .foregroundStyle(AppPalette.liveActivity)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.green.opacity(0.12))
+                .fill(AppPalette.liveActivityMuted)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.green.opacity(0.4), lineWidth: 1)
+                .stroke(AppPalette.liveActivity.opacity(0.4), lineWidth: 1)
         )
         .padding(.horizontal, 12)
     }
@@ -690,14 +739,14 @@ public struct SessionDetailView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "square.stack.3d.up")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppPalette.secondaryText)
                         Text("Steer Stack")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppPalette.secondaryText)
                         if hiddenCount > 0 {
                             Text("+\(hiddenCount)")
                                 .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppPalette.secondaryText)
                         }
                     }
 
@@ -705,11 +754,11 @@ public struct SessionDetailView: View {
                         HStack(spacing: 6) {
                             Image(systemName: "clock")
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(AppPalette.secondaryText)
                             Text(text)
                                 .font(.footnote)
                                 .lineLimit(1)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(AppPalette.primaryText)
                             Spacer(minLength: 0)
                             Button("Edit") {
                                 draftMessage = text
@@ -723,7 +772,11 @@ public struct SessionDetailView: View {
                         .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.secondary.opacity(0.12))
+                                .fill(AppPalette.chatToolBackground)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
                         )
                     }
                 }
@@ -733,6 +786,16 @@ public struct SessionDetailView: View {
                 .lineLimit(2...6)
                 .textInputAutocapitalization(.sentences)
                 .focused($focusedComposerField, equals: .message)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AppPalette.composerFieldBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(AppPalette.composerFieldStroke, lineWidth: 1)
+                )
 
             if applyModelOverride && selectedModelOverrideOption == Self.customModelOverrideOption {
                 TextField("Custom model id", text: $modelOverrideDraft)
@@ -740,6 +803,16 @@ public struct SessionDetailView: View {
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
                     .focused($focusedComposerField, equals: .customModel)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AppPalette.composerFieldBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(AppPalette.composerFieldStroke, lineWidth: 1)
+                    )
             }
 
             HStack(spacing: 10) {
@@ -748,7 +821,8 @@ public struct SessionDetailView: View {
                 dockChipButton(
                     title: "Queue",
                     systemImage: "clock",
-                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id),
+                    tone: .neutral
                 ) {
                     submitDraftMessage(with: .queue)
                 }
@@ -756,7 +830,8 @@ public struct SessionDetailView: View {
                 dockChipButton(
                     title: viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
                     systemImage: "paperplane.fill",
-                    isDisabled: viewModel.isSendingMessage(sessionID: session.id)
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id),
+                    tone: .primary
                 ) {
                     submitDraftMessage(with: .immediate)
                 }
@@ -947,7 +1022,7 @@ public struct SessionDetailView: View {
             }
         } label: {
             Label(selectedModelOverrideLabel, systemImage: "cpu")
-                .modifier(DockChipModifier())
+                .modifier(DockChipModifier(tone: .neutral))
         }
         .tint(.primary)
     }
@@ -967,7 +1042,7 @@ public struct SessionDetailView: View {
             }
         } label: {
             Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
-                .modifier(DockChipModifier())
+                .modifier(DockChipModifier(tone: .neutral))
         }
         .tint(.primary)
     }
@@ -976,11 +1051,12 @@ public struct SessionDetailView: View {
         title: String,
         systemImage: String,
         isDisabled: Bool = false,
+        tone: DockChipTone = .neutral,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
-                .modifier(DockChipModifier())
+                .modifier(DockChipModifier(tone: tone))
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -1544,13 +1620,42 @@ public struct SessionDetailView: View {
     }
 }
 
+private enum DockChipTone {
+    case neutral
+    case primary
+}
+
 private struct DockChipModifier: ViewModifier {
+    let tone: DockChipTone
+
     func body(content: Content) -> some View {
         content
             .font(.footnote.weight(.semibold))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .background(chipBackground, in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(chipStroke, lineWidth: 1)
+            )
+    }
+
+    private var chipBackground: Color {
+        switch tone {
+        case .neutral:
+            return AppPalette.chipBackground
+        case .primary:
+            return AppPalette.chipPrimaryBackground
+        }
+    }
+
+    private var chipStroke: Color {
+        switch tone {
+        case .neutral:
+            return AppPalette.chipStroke
+        case .primary:
+            return AppPalette.chipPrimaryStroke
+        }
     }
 }
 
@@ -1677,13 +1782,13 @@ private struct SessionTranscriptMessageRow: View {
     let onReferenceToggle: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: showsTimestamp ? 6 : 2) {
+        VStack(alignment: .leading, spacing: showsTimestamp ? 8 : 3) {
             if showsTimestamp {
                 HStack {
                     Spacer()
                     Text(presentation.createdAtText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(AppPalette.secondaryText.opacity(0.85))
                 }
             }
 
@@ -1731,8 +1836,16 @@ private struct SessionTranscriptLiveStatusRow: View {
             }
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 2)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppPalette.liveActivityMuted.opacity(0.55))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppPalette.liveActivity.opacity(0.25), lineWidth: 1)
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
@@ -1748,7 +1861,7 @@ private struct LiveStatusShimmerText: View {
     var body: some View {
         Text(text)
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(AppPalette.secondaryText)
             .lineLimit(lineLimit)
             .overlay {
                 if !reduceMotion {
@@ -1801,12 +1914,18 @@ private struct SessionTranscriptLogLine: View {
             HStack(spacing: 6) {
                 Image(systemName: "info.circle")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppPalette.secondaryText)
                 Text(systemEventText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppPalette.secondaryText)
                     .multilineTextAlignment(.center)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(AppPalette.chatToolBackground)
+            )
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
         } else if isCollapsibleReferenceLogEntry {
@@ -1823,10 +1942,12 @@ private struct SessionTranscriptLogLine: View {
                             .foregroundStyle(.secondary)
                         Text(collapsibleTitle)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppPalette.secondaryText)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
 
@@ -1843,7 +1964,11 @@ private struct SessionTranscriptLogLine: View {
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.primary.opacity(0.06))
+                            .fill(AppPalette.chatToolBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 16)
@@ -1864,20 +1989,27 @@ private struct SessionTranscriptLogLine: View {
                 if let title = entry.title, !title.isEmpty {
                     Text(title)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppPalette.secondaryText)
                 }
                 Text(entry.body)
                     .font(bodyFont)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(AppPalette.primaryText)
                     .textSelection(.enabled)
                     .lineLimit(nil)
+                    .lineSpacing(2)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 520, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(bubbleColor)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(entry.role == .user ? 0.08 : 0.05), radius: 10, y: 4)
             .frame(
                 maxWidth: .infinity,
                 alignment: entry.role == .user ? .trailing : .leading
@@ -1887,13 +2019,14 @@ private struct SessionTranscriptLogLine: View {
                 if let title = entry.title, !title.isEmpty {
                     Text(title)
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppPalette.secondaryText)
                 }
                 Text(entry.body)
                     .font(bodyFont)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(AppPalette.primaryText)
                     .textSelection(.enabled)
                     .lineLimit(nil)
+                    .lineSpacing(1.5)
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
@@ -1917,9 +2050,9 @@ private struct SessionTranscriptLogLine: View {
 
     private var bubbleColor: Color {
         if entry.role == .user {
-            return Color.blue.opacity(0.12)
+            return AppPalette.chatUserBubble
         }
-        return Color.primary.opacity(0.04)
+        return AppPalette.chatAgentBubble
     }
 
     private var isCollapsibleToolEntry: Bool {
@@ -1985,11 +2118,11 @@ private struct LivePulseDot: View {
 
     var body: some View {
         Circle()
-            .fill(Color.green)
+            .fill(AppPalette.liveActivity)
             .frame(width: size, height: size)
             .overlay {
                 Circle()
-                    .stroke(Color.green.opacity(0.55), lineWidth: 1)
+                    .stroke(AppPalette.liveActivity.opacity(0.55), lineWidth: 1)
                     .scaleEffect(isAnimating ? 2.1 : 1.0)
                     .opacity(isAnimating ? 0 : 0.9)
             }
