@@ -1092,11 +1092,6 @@ public struct SessionDetailView: View {
         }
     }
 
-    private var quickToolsScrollIdentity: String {
-        let modelOptionsSignature = availableModelOverrideOptions.joined(separator: "|")
-        return "\(session.id)-\(supportsReasoningEffortOverride)-\(modelOptionsSignature)"
-    }
-
     private var quickToolsBar: some View {
         ScrollViewReader { quickToolsScrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -1132,7 +1127,6 @@ public struct SessionDetailView: View {
                 .padding(.horizontal, Self.quickToolsFadeWidth)
                 .padding(.vertical, 4)
             }
-            .id(quickToolsScrollIdentity)
             .overlay(alignment: .leading) {
                 LinearGradient(
                     colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
@@ -1154,7 +1148,10 @@ public struct SessionDetailView: View {
             .onAppear {
                 resetQuickToolsScroll(using: quickToolsScrollProxy)
             }
-            .onChange(of: quickToolsScrollIdentity) { _, _ in
+            .onChange(of: supportsReasoningEffortOverride) { _, _ in
+                resetQuickToolsScroll(using: quickToolsScrollProxy)
+            }
+            .onChange(of: serverModelOverrideOptions) { _, _ in
                 resetQuickToolsScroll(using: quickToolsScrollProxy)
             }
         }
