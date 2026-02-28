@@ -141,105 +141,33 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         ScrollViewReader { scrollProxy in
+            let messagesSectionRows = MessagesSectionRows(
+                isLoading: viewModel.isLoadingSessionMessages,
+                errorMessage: viewModel.selectedSessionErrorMessage,
+                visibleTranscriptPresentations: visibleTranscriptPresentations,
+                liveStatusText: liveStatusText,
+                transcriptBottomAnchorID: Self.transcriptBottomAnchorID,
+                onReferenceToggle: {
+                    shouldFollowTranscript = false
+                },
+                onRetry: {
+                    Task {
+                        await viewModel.loadMessages(
+                            for: session.id,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+            )
             List {
                 Section("Session") {
-                    sessionSummaryRow(
-                        title: "Title",
-                        value: currentSessionTitle,
-                        valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
-                    )
-                    sessionSummaryRow(
-                        title: "ID",
-                        value: currentSession.id,
-                        valueFont: .footnote.monospaced(),
-                        valueColor: AppPalette.secondaryText
-                    )
-                    sessionSummaryRow(
-                        title: "Status",
-                        value: currentSession.active ? "Active" : "Inactive",
-                        valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
-                    )
-                    sessionSummaryRow(
-                        title: "Updated",
-                        value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
-                        valueColor: AppPalette.secondaryText
-                    )
+                    sessionSectionContent
                 }
 
                 Section("Messages") {
-                    if viewModel.isLoadingSessionMessages {
-                        ProgressView("Loading messages…")
-                    } else if let error = viewModel.selectedSessionErrorMessage {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Unable to load messages")
-                                .font(.headline)
-                            Text(error)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Button("Retry") {
-                                Task {
-                                    await viewModel.loadMessages(
-                                        for: session.id,
-                                        serverURLString: serverURLString,
-                                        token: token
-                                    )
-                                }
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    } else if visibleTranscriptPresentations.isEmpty {
-                        Text("No synced messages yet for this session")
-                            .font(.footnote)
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 14)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(AppPalette.chatToolBackground)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-                            )
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(
-                                EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-                            )
-                    } else {
-                        ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
-                            SessionTranscriptMessageRow(
-                                presentation: presentation,
-                                onReferenceToggle: {
-                                    shouldFollowTranscript = false
-                                }
-                            )
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(
-                                EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-                            )
-                        }
-                    }
-
-                    if let liveStatusText {
-                        SessionTranscriptLiveStatusRow(statusText: liveStatusText)
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(Color.clear)
-                            .listRowInsets(
-                                EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-                            )
-                    }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        .id(Self.transcriptBottomAnchorID)
+                    messagesSectionRows
                 }
-
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -261,63 +189,14 @@ public struct SessionDetailView: View {
                 }
             )
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 8) {
-                    if subAgentInProgressCount > 0 {
-                        subAgentLiveBar
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                    bottomDock
-                }
-                .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+                bottomInsetContent
             }
             .navigationTitle(currentSessionTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
-                    ProgressView()
-                } else {
-                    Menu {
-                        Button("List Codex Sessions", systemImage: "list.bullet") {
-                            showCodexThreadsSheet = true
-                            if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                codexResumeDirectoryDraft = codexCwdFilterDraft
-                            }
-                            Task {
-                                await viewModel.loadCodexThreads(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    cwd: normalizedCWD(from: codexCwdFilterDraft)
-                                )
-                            }
-                        }
-                        Button("List Claude Sessions", systemImage: "list.bullet.rectangle") {
-                            showClaudeSessionsSheet = true
-                            if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                claudeResumeDirectoryDraft = claudeCwdFilterDraft
-                            }
-                            Task {
-                                await viewModel.loadClaudeSessions(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                                )
-                            }
-                        }
-                        Button("Rename", systemImage: "pencil") {
-                            renameDraft = currentSession.displayName ?? ""
-                            showRenameSheet = true
-                        }
-                        Button("Delete", systemImage: "trash", role: .destructive) {
-                            showDeleteConfirmation = true
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
+                ToolbarItem(placement: .topBarTrailing) {
+                    toolbarTrailingContent
                 }
-            }
             }
             .onAppear {
                 if !availableEffortSelections.contains(selectedEffortOverride),
@@ -353,10 +232,11 @@ public struct SessionDetailView: View {
                 )
             }
             .onChange(of: visibleTranscriptMessageIDs) { oldIDs, newIDs in
-                guard shouldFollowTranscript else { return }
-                // Avoid List/UICollectionView out-of-bounds assertions during shrink updates.
-                guard newIDs.count >= oldIDs.count else { return }
-                scrollTranscriptToBottom(using: scrollProxy)
+                handleVisibleTranscriptMessageIDsChange(
+                    oldIDs: oldIDs,
+                    newIDs: newIDs,
+                    using: scrollProxy
+                )
             }
             .onChange(of: scrollToBottomRequestID) { _, _ in
                 scrollTranscriptToBottom(using: scrollProxy)
@@ -645,9 +525,6 @@ public struct SessionDetailView: View {
                         }
                     }
                 }
-            },
-            message: {
-                Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
             }
             )
         }
@@ -670,6 +547,31 @@ public struct SessionDetailView: View {
             return currentSessionDisplayTitle
         }
         return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
+    }
+
+    @ViewBuilder
+    private var sessionSectionContent: some View {
+        sessionSummaryRow(
+            title: "Title",
+            value: currentSessionTitle,
+            valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
+        )
+        sessionSummaryRow(
+            title: "ID",
+            value: currentSession.id,
+            valueFont: .footnote.monospaced(),
+            valueColor: AppPalette.secondaryText
+        )
+        sessionSummaryRow(
+            title: "Status",
+            value: currentSession.active ? "Active" : "Inactive",
+            valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
+        )
+        sessionSummaryRow(
+            title: "Updated",
+            value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
+            valueColor: AppPalette.secondaryText
+        )
     }
 
     private func sessionSummaryRow(
@@ -762,6 +664,75 @@ public struct SessionDetailView: View {
                 state = true
             }
         )
+    }
+
+    private var bottomInsetContent: some View {
+        VStack(spacing: 8) {
+            if subAgentInProgressCount > 0 {
+                subAgentLiveBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            bottomDock
+        }
+        .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+    }
+
+    @ViewBuilder
+    private var toolbarTrailingContent: some View {
+        if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
+            ProgressView()
+        } else {
+            Menu {
+                Button("List Codex Sessions", systemImage: "list.bullet") {
+                    showCodexThreadsSheet = true
+                    if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        codexResumeDirectoryDraft = codexCwdFilterDraft
+                    }
+                    Task {
+                        await viewModel.loadCodexThreads(
+                            for: session.id,
+                            serverURLString: serverURLString,
+                            token: token,
+                            cwd: normalizedCWD(from: codexCwdFilterDraft)
+                        )
+                    }
+                }
+                Button("List Claude Sessions", systemImage: "list.bullet.rectangle") {
+                    showClaudeSessionsSheet = true
+                    if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        claudeResumeDirectoryDraft = claudeCwdFilterDraft
+                    }
+                    Task {
+                        await viewModel.loadClaudeSessions(
+                            for: session.id,
+                            serverURLString: serverURLString,
+                            token: token,
+                            cwd: normalizedCWD(from: claudeCwdFilterDraft)
+                        )
+                    }
+                }
+                Button("Rename", systemImage: "pencil") {
+                    renameDraft = currentSession.displayName ?? ""
+                    showRenameSheet = true
+                }
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    showDeleteConfirmation = true
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(AppPalette.primaryText)
+                    .padding(8)
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+                    )
+            }
+        }
     }
 
     private var subAgentLiveBar: some View {
@@ -1116,7 +1087,7 @@ public struct SessionDetailView: View {
             Label(title, systemImage: systemImage)
                 .modifier(DockChipModifier(tone: tone))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableScaleButtonStyle())
         .disabled(isDisabled)
     }
 
@@ -1289,6 +1260,17 @@ public struct SessionDetailView: View {
                 action()
             }
         }
+    }
+
+    private func handleVisibleTranscriptMessageIDsChange(
+        oldIDs: [String],
+        newIDs: [String],
+        using proxy: ScrollViewProxy
+    ) {
+        guard shouldFollowTranscript else { return }
+        // Avoid List/UICollectionView out-of-bounds assertions during shrink updates.
+        guard newIDs.count >= oldIDs.count else { return }
+        scrollTranscriptToBottom(using: proxy)
     }
 
     private var parsedSessionFlavor: SessionComposerFlavor? {
@@ -1683,6 +1665,15 @@ private enum DockChipTone {
     case primary
 }
 
+private struct PressableScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
 private struct DockChipModifier: ViewModifier {
     let tone: DockChipTone
 
@@ -1832,6 +1823,145 @@ private struct ClaudeSessionRow: View {
             return candidate
         }
         return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+    }
+}
+
+private struct MessagesSectionRows: View {
+    let isLoading: Bool
+    let errorMessage: String?
+    let visibleTranscriptPresentations: [SessionTranscriptMessagePresentation]
+    let liveStatusText: String?
+    let transcriptBottomAnchorID: String
+    let onReferenceToggle: () -> Void
+    let onRetry: () -> Void
+
+    var body: some View {
+        if isLoading {
+            TranscriptLoadingCard()
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+                )
+        } else if let errorMessage {
+            TranscriptErrorCard(error: errorMessage, onRetry: onRetry)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+                )
+        } else if visibleTranscriptPresentations.isEmpty {
+            Text("No synced messages yet for this session")
+                .font(.footnote)
+                .foregroundStyle(AppPalette.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppPalette.chatToolBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+                )
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+                )
+        } else {
+            ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
+                SessionTranscriptMessageRow(
+                    presentation: presentation,
+                    onReferenceToggle: onReferenceToggle
+                )
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+                )
+            }
+        }
+
+        if let liveStatusText {
+            SessionTranscriptLiveStatusRow(statusText: liveStatusText)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(
+                    EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+                )
+        }
+
+        Color.clear
+            .frame(height: 1)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .id(transcriptBottomAnchorID)
+    }
+}
+
+private struct TranscriptLoadingCard: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(AppPalette.accent)
+            Text("Loading messages…")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(AppPalette.secondaryText)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppPalette.chatToolBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+        )
+    }
+}
+
+private struct TranscriptErrorCard: View {
+    let error: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.orange)
+                Text("Unable to load messages")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(AppPalette.primaryText)
+            }
+
+            Text(error)
+                .font(.caption)
+                .foregroundStyle(AppPalette.secondaryText)
+                .lineSpacing(1.5)
+
+            Button(action: onRetry) {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .modifier(DockChipModifier(tone: .neutral))
+            }
+            .buttonStyle(PressableScaleButtonStyle())
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppPalette.chatToolBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+        )
     }
 }
 
