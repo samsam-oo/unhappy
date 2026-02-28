@@ -685,7 +685,7 @@ public struct SessionDetailView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, isKeyboardActive ? 8 : 10)
-        .padding(.bottom, isKeyboardActive ? 0 : 10)
+        .padding(.bottom, 0)
         .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
@@ -707,42 +707,28 @@ public struct SessionDetailView: View {
             if #available(iOS 17.0, *) {
                 UnevenRoundedRectangle(
                     cornerRadii: .init(
-                        topLeading: 20,
-                        topTrailing: 20
+                        topLeading: isKeyboardActive ? 14 : 20,
+                        topTrailing: isKeyboardActive ? 14 : 20
                     ),
                     style: .continuous
                 )
                 .fill(.ultraThinMaterial)
             } else {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                RoundedRectangle(cornerRadius: isKeyboardActive ? 14 : 20, style: .continuous)
                     .fill(.ultraThinMaterial)
             }
         }
-        .overlay {
-            if #available(iOS 17.0, *) {
-                UnevenRoundedRectangle(
-                    cornerRadii: .init(
-                        topLeading: 20,
-                        topTrailing: 20
-                    ),
-                    style: .continuous
-                )
-                .stroke(
-                    AppPalette.chromeSurfaceStroke.opacity(0.7),
-                    lineWidth: 1
-                )
-            } else {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(
-                        AppPalette.chromeSurfaceStroke.opacity(0.7),
-                        lineWidth: 1
-                    )
-            }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AppPalette.chromeSurfaceStroke.opacity(isKeyboardActive ? 0.45 : 0.7))
+                .frame(height: 1)
+                .padding(.horizontal, 10)
         }
+        .ignoresSafeArea(.container, edges: .bottom)
         .shadow(
             color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.45 : 0.14),
-            radius: isKeyboardActive ? 8 : 10,
-            y: 2
+            radius: isKeyboardActive ? 0 : 10,
+            y: isKeyboardActive ? 0 : 2
         )
         .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
         .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
