@@ -113,9 +113,10 @@ export async function startHappyServer(
   );
 
   const transport = new StreamableHTTPServerTransport({
-    // NOTE: Returning session id here will result in claude
-    // sdk spawn to fail with `Invalid Request: Server already initialized`
-    sessionIdGenerator: undefined,
+    // Stateful mode is required with newer MCP Streamable HTTP transport.
+    // Stateless mode now requires a fresh transport per request and causes 500s
+    // when reused by persistent clients (Codex/Claude/Gemini bridge flows).
+    sessionIdGenerator: () => randomUUID(),
   });
   transport.onerror = (error) => {
     logger.debug('[happyMCP] Transport error:', formatUnknownError(error));
