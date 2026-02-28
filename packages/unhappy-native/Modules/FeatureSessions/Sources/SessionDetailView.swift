@@ -191,8 +191,13 @@ public struct SessionDetailView: View {
             .safeAreaInset(edge: .bottom) {
                 bottomInsetContent
             }
+            .navigationBarBackButtonHidden(true)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    toolbarLeadingContent
+                }
                 ToolbarItem(placement: .principal) {
                     topBarTitleView
                 }
@@ -568,38 +573,58 @@ public struct SessionDetailView: View {
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
 
-        sessionSummaryRow(
-            title: "Title",
-            value: currentSessionTitle,
-            valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
+        VStack(spacing: 0) {
+            sessionSummaryPanelRow(
+                title: "Title",
+                value: currentSessionTitle,
+                valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
+            )
+            Divider().opacity(0.28)
+            sessionSummaryPanelRow(
+                title: "ID",
+                value: currentSession.id,
+                valueFont: .footnote.monospaced(),
+                valueColor: AppPalette.secondaryText
+            )
+            Divider().opacity(0.28)
+            sessionSummaryPanelRow(
+                title: "Status",
+                value: currentSession.active ? "Active" : "Inactive",
+                valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
+            )
+            Divider().opacity(0.28)
+            sessionSummaryPanelRow(
+                title: "Updated",
+                value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
+                valueColor: AppPalette.secondaryText
+            )
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(AppPalette.chatToolBackground)
         )
-        sessionSummaryRow(
-            title: "ID",
-            value: currentSession.id,
-            valueFont: .footnote.monospaced(),
-            valueColor: AppPalette.secondaryText
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
         )
-        sessionSummaryRow(
-            title: "Status",
-            value: currentSession.active ? "Active" : "Inactive",
-            valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
-        )
-        sessionSummaryRow(
-            title: "Updated",
-            value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
-            valueColor: AppPalette.secondaryText
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(
+            EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
         )
     }
 
-    private func sessionSummaryRow(
+    private func sessionSummaryPanelRow(
         title: String,
         value: String,
-        valueFont: Font = .subheadline.weight(.semibold),
+        valueFont: Font = .subheadline.monospaced().weight(.semibold),
         valueColor: Color = AppPalette.primaryText
     ) -> some View {
         HStack(spacing: 12) {
             Text(title)
-                .font(.footnote.weight(.semibold))
+                .font(.caption.monospaced().weight(.semibold))
                 .foregroundStyle(AppPalette.secondaryText)
             Spacer(minLength: 0)
             Text(value)
@@ -610,20 +635,7 @@ public struct SessionDetailView: View {
                 .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AppPalette.chatToolBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-        )
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(
-            EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-        )
+        .padding(.vertical, 9)
     }
 
     private var transcriptBackground: some View {
@@ -695,6 +707,26 @@ public struct SessionDetailView: View {
         .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
     }
 
+    private var toolbarLeadingContent: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(AppPalette.primaryText)
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(AppPalette.chatToolBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+                )
+        }
+        .buttonStyle(PressableScaleButtonStyle())
+    }
+
     private var topBarTitleView: some View {
         HStack(spacing: 6) {
             Image(systemName: "terminal")
@@ -705,7 +737,7 @@ public struct SessionDetailView: View {
                 .foregroundStyle(AppPalette.primaryText)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -762,16 +794,17 @@ public struct SessionDetailView: View {
                 Image(systemName: "ellipsis")
                     .font(.footnote.weight(.bold))
                     .foregroundStyle(AppPalette.primaryText)
-                    .padding(7)
+                    .frame(width: 30, height: 30)
                     .background(
-                        Circle()
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(AppPalette.chatToolBackground)
                     )
                     .overlay(
-                        Circle()
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
                     )
             }
+            .buttonStyle(PressableScaleButtonStyle())
         }
     }
 
@@ -852,20 +885,37 @@ public struct SessionDetailView: View {
                 }
             }
 
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .center, spacing: 8) {
                 Text(">")
                     .font(.callout.monospaced().weight(.semibold))
                     .foregroundStyle(AppPalette.terminalLineUser)
-                    .padding(.top, 8)
 
                 TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
-                    .lineLimit(2...6)
+                    .lineLimit(1...4)
                     .textInputAutocapitalization(.sentences)
                     .font(.callout.monospaced())
                     .focused($focusedComposerField, equals: .message)
+
+                dockChipButton(
+                    title: "Queue",
+                    systemImage: "clock",
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id),
+                    tone: .neutral
+                ) {
+                    submitDraftMessage(with: .queue)
+                }
+
+                dockChipButton(
+                    title: viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
+                    systemImage: "paperplane.fill",
+                    isDisabled: viewModel.isSendingMessage(sessionID: session.id),
+                    tone: .primary
+                ) {
+                    submitDraftMessage(with: .immediate)
+                }
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(AppPalette.composerFieldBackground)
@@ -891,28 +941,6 @@ public struct SessionDetailView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(AppPalette.composerFieldStroke, lineWidth: 1)
                     )
-            }
-
-            HStack(spacing: 10) {
-                Spacer(minLength: 0)
-
-                dockChipButton(
-                    title: "Queue",
-                    systemImage: "clock",
-                    isDisabled: viewModel.isSendingMessage(sessionID: session.id),
-                    tone: .neutral
-                ) {
-                    submitDraftMessage(with: .queue)
-                }
-
-                dockChipButton(
-                    title: viewModel.isSendingMessage(sessionID: session.id) ? "Sending…" : "Send",
-                    systemImage: "paperplane.fill",
-                    isDisabled: viewModel.isSendingMessage(sessionID: session.id),
-                    tone: .primary
-                ) {
-                    submitDraftMessage(with: .immediate)
-                }
             }
 
             if let error = viewModel.sendMessageErrorMessage {
@@ -1737,16 +1765,18 @@ private struct DockChipModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .font(.footnote.weight(.semibold))
+            .font(.caption.monospaced().weight(.semibold))
             .foregroundStyle(foreground)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(chipBackground, in: Capsule())
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(chipBackground)
+            )
             .overlay(
-                Capsule()
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(chipStroke, lineWidth: 1)
             )
-            .shadow(color: tone == .primary ? AppPalette.accent.opacity(0.25) : .clear, radius: 6, y: 2)
     }
 
     private var chipBackground: Color {
