@@ -188,7 +188,7 @@ public struct SessionDetailView: View {
                     shouldFollowTranscript = false
                 }
             )
-            .safeAreaInset(edge: .bottom) {
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 bottomInsetContent
             }
             .toolbar(.hidden, for: .tabBar)
@@ -670,34 +670,28 @@ public struct SessionDetailView: View {
         ]
     }
 
+    private var isKeyboardActive: Bool {
+        focusedComposerField != nil
+    }
+
     private var bottomDock: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: isKeyboardActive ? 6 : 10) {
             composerBar
-            quickToolsBar
+
+            if !isKeyboardActive {
+                Rectangle()
+                    .fill(AppPalette.chromeDivider)
+                    .frame(height: 1)
+                    .padding(.horizontal, 4)
+
+                quickToolsBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
-        .padding(.top, 6)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppPalette.chromeSurface)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(AppPalette.chromeSurfaceStroke, lineWidth: 1)
-        }
-        .overlay(alignment: .top) {
-            RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(AppPalette.chromeDivider)
-                .frame(height: 1)
-                .padding(.horizontal, 18)
-                .padding(.top, 1)
-        }
-        .shadow(
-            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.5 : 0.25),
-            radius: 10,
-            y: 2
-        )
+        .padding(.horizontal, 12)
+        .padding(.top, isKeyboardActive ? 8 : 10)
+        .padding(.bottom, isKeyboardActive ? 8 : 12)
+        .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
                 state = true
@@ -706,14 +700,45 @@ public struct SessionDetailView: View {
     }
 
     private var bottomInsetContent: some View {
-        VStack(spacing: 8) {
-            if subAgentInProgressCount > 0 {
+        VStack(spacing: isKeyboardActive ? 6 : 8) {
+            if subAgentInProgressCount > 0 && !isKeyboardActive {
                 subAgentLiveBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             bottomDock
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if #available(iOS 17.0, *) {
+                UnevenRoundedRectangle(
+                    cornerRadii: .init(topLeading: 20, topTrailing: 20),
+                    style: .continuous
+                )
+                .fill(.ultraThinMaterial)
+            } else {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.ultraThinMaterial)
+            }
+        }
+        .overlay {
+            if #available(iOS 17.0, *) {
+                UnevenRoundedRectangle(
+                    cornerRadii: .init(topLeading: 20, topTrailing: 20),
+                    style: .continuous
+                )
+                .stroke(AppPalette.chromeSurfaceStroke.opacity(0.7), lineWidth: 1)
+            } else {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(AppPalette.chromeSurfaceStroke.opacity(0.7), lineWidth: 1)
+            }
+        }
+        .shadow(
+            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.45 : 0.14),
+            radius: isKeyboardActive ? 8 : 10,
+            y: 2
+        )
         .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+        .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
     }
 
     private var toolbarLeadingContent: some View {
@@ -737,16 +762,13 @@ public struct SessionDetailView: View {
                 .font(.subheadline.monospaced().weight(.semibold))
                 .foregroundStyle(AppPalette.primaryText)
                 .lineLimit(1)
+                .truncationMode(.middle)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .background(
             Capsule(style: .continuous)
-                .fill(AppPalette.chromeSurface)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(AppPalette.chromeSurfaceStroke, lineWidth: 1)
+                .fill(.ultraThinMaterial)
         )
     }
 
@@ -825,12 +847,13 @@ public struct SessionDetailView: View {
     }
 
     private var composerBar: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: isKeyboardActive ? 8 : 10) {
             let isSending = viewModel.isSendingMessage(sessionID: session.id)
             let queuedComposerMessages = viewModel.queuedComposerMessages(for: currentSession.id)
+
             if !queuedComposerMessages.isEmpty {
-                VStack(alignment: .leading, spacing: 7) {
-                    let visibleQueuedMessages = Array(queuedComposerMessages.suffix(4))
+                VStack(alignment: .leading, spacing: isKeyboardActive ? 6 : 8) {
+                    let visibleQueuedMessages = Array(queuedComposerMessages.suffix(3))
                     let hiddenCount = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
 
                     HStack(spacing: 6) {
@@ -850,51 +873,44 @@ public struct SessionDetailView: View {
                             .font(.caption2.monospaced())
                             .foregroundStyle(AppPalette.secondaryText)
                     }
-                    .padding(.horizontal, 2)
 
-                    ForEach(Array(visibleQueuedMessages.enumerated()), id: \.offset) { _, text in
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock")
-                                .font(.caption2)
-                                .foregroundStyle(AppPalette.secondaryText)
-                            Text(text)
-                                .font(.footnote)
-                                .lineLimit(1)
-                                .foregroundStyle(AppPalette.primaryText)
-                            Spacer(minLength: 0)
-                            Button("Edit") {
-                                draftMessage = text
-                                focusedComposerField = .message
+                    if !isKeyboardActive {
+                        ForEach(Array(visibleQueuedMessages.enumerated()), id: \.offset) { index, text in
+                            HStack(spacing: 8) {
+                                Image(systemName: "clock")
+                                    .font(.caption2)
+                                    .foregroundStyle(AppPalette.secondaryText)
+                                Text(text)
+                                    .font(.footnote)
+                                    .lineLimit(1)
+                                    .foregroundStyle(AppPalette.primaryText)
+                                Spacer(minLength: 0)
+                                Button("Edit") {
+                                    draftMessage = text
+                                    focusedComposerField = .message
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
                             }
-                            .buttonStyle(.borderless)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.accentColor)
+
+                            if index < visibleQueuedMessages.count - 1 {
+                                Rectangle()
+                                    .fill(AppPalette.chromeDivider.opacity(0.7))
+                                    .frame(height: 1)
+                            }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(AppPalette.controlSurface)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(AppPalette.controlSurfaceStroke, lineWidth: 1)
-                        )
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AppPalette.controlSurface.opacity(0.82))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(AppPalette.controlSurfaceStroke.opacity(0.85), lineWidth: 1)
+                        .fill(AppPalette.controlSurface.opacity(colorScheme == .dark ? 0.72 : 0.9))
                 )
             }
 
-            HStack(alignment: .top, spacing: 9) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "terminal.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(AppPalette.accent)
@@ -902,31 +918,26 @@ public struct SessionDetailView: View {
                     .padding(.top, 2)
 
                 TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
-                    .lineLimit(1...4)
+                    .lineLimit(isKeyboardActive ? 1...3 : 1...4)
                     .textInputAutocapitalization(.sentences)
                     .font(.subheadline.weight(.medium))
                     .focused($focusedComposerField, equals: .message)
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 10)
+            .padding(.vertical, isKeyboardActive ? 9 : 10)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(colorScheme == .dark ? 0.12 : 0.86),
-                                AppPalette.composerFieldBackground,
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppPalette.composerFieldBackground)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        focusedComposerField == .message
+                            ? AppPalette.accent.opacity(0.55)
+                            : AppPalette.composerFieldStroke.opacity(0.4),
+                        lineWidth: focusedComposerField == .message ? 1.5 : 1
                     )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(AppPalette.composerFieldStroke, lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.16 : 0.06), radius: 8, y: 2)
+            }
 
             HStack(spacing: 8) {
                 Button {
@@ -938,12 +949,8 @@ public struct SessionDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(AppPalette.controlSurface)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(AppPalette.controlSurfaceStroke, lineWidth: 1)
                         )
                 }
                 .buttonStyle(PressableScaleButtonStyle())
@@ -958,7 +965,7 @@ public struct SessionDetailView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(
                                     LinearGradient(
                                         colors: [
@@ -970,11 +977,7 @@ public struct SessionDetailView: View {
                                     )
                                 )
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(AppPalette.accent.opacity(0.28), lineWidth: 1)
-                        )
-                        .shadow(color: AppPalette.accent.opacity(0.34), radius: 8, y: 2)
+                        .shadow(color: AppPalette.accent.opacity(0.3), radius: 6, y: 2)
                 }
                 .buttonStyle(PressableScaleButtonStyle())
                 .disabled(isSending)
@@ -989,13 +992,18 @@ public struct SessionDetailView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(AppPalette.controlSurface)
                     )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(AppPalette.controlSurfaceStroke, lineWidth: 1)
-                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                focusedComposerField == .customModel
+                                    ? AppPalette.accent.opacity(0.55)
+                                    : AppPalette.composerFieldStroke.opacity(0.4),
+                                lineWidth: focusedComposerField == .customModel ? 1.5 : 1
+                            )
+                    }
             }
 
             if let error = viewModel.sendMessageErrorMessage {
@@ -1004,26 +1012,6 @@ public struct SessionDetailView: View {
                     .foregroundStyle(.red)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(colorScheme == .dark ? 0.06 : 0.8),
-                            AppPalette.chromeSurface,
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(AppPalette.chromeSurfaceStroke, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.2 : 0.04), radius: 10, y: 3)
     }
 
     private func submitDraftMessage(with steerMode: APISessionSteerMode) {
@@ -1838,10 +1826,6 @@ private struct DockChipModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(chipBackground)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(chipStroke, lineWidth: 1)
-            )
     }
 
     private var chipBackground: Color {
@@ -1850,15 +1834,6 @@ private struct DockChipModifier: ViewModifier {
             return AppPalette.controlSurface
         case .primary:
             return AppPalette.chipPrimaryBackground
-        }
-    }
-
-    private var chipStroke: Color {
-        switch tone {
-        case .neutral:
-            return AppPalette.controlSurfaceStroke
-        case .primary:
-            return AppPalette.chipPrimaryStroke
         }
     }
 
