@@ -143,21 +143,27 @@ public struct SessionDetailView: View {
         ScrollViewReader { scrollProxy in
             List {
                 Section("Session") {
-                    LabeledContent("Title") {
-                        Text(currentSessionTitle)
-                            .foregroundStyle(currentSessionHasDisplayTitle ? .primary : .secondary)
-                    }
-                    LabeledContent("ID") {
-                        Text(currentSession.id)
-                            .font(.footnote.monospaced())
-                    }
-                    LabeledContent("Status") {
-                        Text(currentSession.active ? "Active" : "Inactive")
-                            .foregroundStyle(currentSession.active ? Color.green : Color.secondary)
-                    }
-                    LabeledContent("Updated") {
-                        Text(SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt))
-                    }
+                    sessionSummaryRow(
+                        title: "Title",
+                        value: currentSessionTitle,
+                        valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
+                    )
+                    sessionSummaryRow(
+                        title: "ID",
+                        value: currentSession.id,
+                        valueFont: .footnote.monospaced(),
+                        valueColor: AppPalette.secondaryText
+                    )
+                    sessionSummaryRow(
+                        title: "Status",
+                        value: currentSession.active ? "Active" : "Inactive",
+                        valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
+                    )
+                    sessionSummaryRow(
+                        title: "Updated",
+                        value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
+                        valueColor: AppPalette.secondaryText
+                    )
                 }
 
                 Section("Messages") {
@@ -183,7 +189,24 @@ public struct SessionDetailView: View {
                         .padding(.vertical, 8)
                     } else if visibleTranscriptPresentations.isEmpty {
                         Text("No synced messages yet for this session")
-                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(AppPalette.chatToolBackground)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+                            )
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(
+                                EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
+                            )
                     } else {
                         ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
                             SessionTranscriptMessageRow(
@@ -647,6 +670,41 @@ public struct SessionDetailView: View {
             return currentSessionDisplayTitle
         }
         return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
+    }
+
+    private func sessionSummaryRow(
+        title: String,
+        value: String,
+        valueFont: Font = .subheadline.weight(.semibold),
+        valueColor: Color = AppPalette.primaryText
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(AppPalette.secondaryText)
+            Spacer(minLength: 0)
+            Text(value)
+                .font(valueFont)
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppPalette.chatToolBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
+        )
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(
+            EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+        )
     }
 
     private var transcriptBackground: some View {
@@ -1817,25 +1875,40 @@ private struct SessionTranscriptLiveStatusRow: View {
     @State private var isExpanded = false
 
     var body: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                isExpanded.toggle()
-            }
-        } label: {
-            HStack(spacing: 8) {
-                LivePulseDot(size: 7)
-                LiveStatusShimmerText(
-                    text: statusText,
-                    lineLimit: isExpanded ? 4 : 1
-                )
+        VStack(alignment: .leading, spacing: 5) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    LivePulseDot(size: 7)
+                        .padding(.top, 4)
+                    LiveStatusShimmerText(
+                        text: statusText,
+                        lineLimit: 1
+                    )
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 3)
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Spacer(minLength: 0)
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Text(statusText)
+                    .font(.footnote)
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .lineSpacing(1.5)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 15)
+                    .padding(.trailing, 4)
+                    .transition(.opacity)
             }
         }
-        .buttonStyle(.plain)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
@@ -1929,17 +2002,18 @@ private struct SessionTranscriptLogLine: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
         } else if isCollapsibleReferenceLogEntry {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 4) {
                 Button {
                     onReferenceToggle?()
-                    withAnimation(.easeInOut(duration: 0.18)) {
+                    withAnimation(.easeOut(duration: 0.18)) {
                         isExpanded.toggle()
                     }
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(alignment: .top, spacing: 6) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+                            .padding(.top, 1)
                         Text(collapsibleTitle)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(AppPalette.secondaryText)
@@ -1972,15 +2046,9 @@ private struct SessionTranscriptLogLine: View {
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 16)
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.985, anchor: .topLeading)),
-                            removal: .opacity
-                        )
-                    )
+                    .transition(.opacity)
                 }
             }
-            .clipped()
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
