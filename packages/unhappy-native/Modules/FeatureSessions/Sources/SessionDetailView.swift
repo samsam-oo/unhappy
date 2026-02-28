@@ -1090,6 +1090,10 @@ public struct SessionDetailView: View {
         }
     }
 
+    private var quickToolsScrollIdentity: String {
+        "\(session.id)-\(supportsReasoningEffortOverride)-\(availableModelOverrideOptions.count)"
+    }
+
     private var quickToolsBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -1123,6 +1127,7 @@ public struct SessionDetailView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
         }
+        .id(quickToolsScrollIdentity)
         .overlay(alignment: .leading) {
             LinearGradient(
                 colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
