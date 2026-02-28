@@ -1792,11 +1792,18 @@ private struct SessionTranscriptLogLine: View {
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.leading, 16)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity
+                        )
+                    )
                 }
             }
             .padding(.horizontal, 2)
             .padding(.vertical, 1)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxHeight: .infinity, alignment: .topLeading)
         } else if isMainMessageEntry {
             VStack(alignment: .leading, spacing: 4) {
                 if let title = entry.title, !title.isEmpty {
