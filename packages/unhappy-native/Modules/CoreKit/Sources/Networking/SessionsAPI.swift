@@ -1205,7 +1205,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
                 sessionID: sessionID,
                 command: "codex-list-threads",
                 params: params,
-                allowMachineFallback: false
+                allowMachineFallback: true
             )
 
             let page = try SessionsAPI.decodeCodexThreadsPageResponse(data)
@@ -1256,7 +1256,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
                 sessionID: sessionID,
                 command: "claude-list-sessions",
                 params: params,
-                allowMachineFallback: false
+                allowMachineFallback: true
             )
 
             let page = try SessionsAPI.decodeClaudeSessionsPageResponse(data)

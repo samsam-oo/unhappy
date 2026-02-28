@@ -996,17 +996,31 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
+        let result: any;
+        const params = {
+            cwd: cwd && cwd.length > 0 ? cwd : undefined,
+            limit
+        };
         const sessionTarget = findConnectedSession(userId, sessionId);
-        if (!sessionTarget) {
-            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
-        }
-        const result = await invokePublicCommand(sessionTarget, {
-            command: 'codex-list-threads',
-            params: {
-                cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'codex-list-threads',
+                params
+            });
+        } else {
+            const machineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!machineId) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
             }
-        });
+            const machineTarget = findConnectedMachine(userId, machineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'codex-list-threads',
+                params
+            });
+        }
 
         if (!result?.success) {
             return reply.code(502).send({
@@ -1047,17 +1061,31 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Session not found' });
         }
 
+        let result: any;
+        const params = {
+            cwd: cwd && cwd.length > 0 ? cwd : undefined,
+            limit
+        };
         const sessionTarget = findConnectedSession(userId, sessionId);
-        if (!sessionTarget) {
-            return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
-        }
-        const result = await invokePublicCommand(sessionTarget, {
-            command: 'claude-list-sessions',
-            params: {
-                cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit
+        if (sessionTarget) {
+            result = await invokePublicCommand(sessionTarget, {
+                command: 'claude-list-sessions',
+                params
+            });
+        } else {
+            const machineId = await findConnectedMachineForSession(userId, sessionId);
+            if (!machineId) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
             }
-        });
+            const machineTarget = findConnectedMachine(userId, machineId);
+            if (!machineTarget) {
+                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
+            }
+            result = await invokePublicCommand(machineTarget, {
+                command: 'claude-list-sessions',
+                params
+            });
+        }
 
         if (!result?.success) {
             return reply.code(502).send({

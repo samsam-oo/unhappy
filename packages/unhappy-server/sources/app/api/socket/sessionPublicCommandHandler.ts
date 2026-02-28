@@ -7,6 +7,7 @@ type SessionPublicCommandInput = {
     sessionId?: string;
     command?: string;
     params?: unknown;
+    allowMachineFallback?: boolean;
 };
 
 type InvokeResult =
@@ -28,6 +29,11 @@ const ALLOWED_SESSION_COMMANDS = new Set<string>([
     "ripgrep",
     "difftastic",
     "killSession",
+    "codex-list-threads",
+    "claude-list-sessions",
+]);
+
+const MACHINE_FALLBACK_COMMANDS = new Set<string>([
     "codex-list-threads",
     "claude-list-sessions",
 ]);
@@ -87,6 +93,34 @@ async function invokeSessionCommand(
     };
 }
 
+async function invokeMachineFallbackCommand(
+    userId: string,
+    sessionId: string,
+    command: string,
+    params: unknown
+): Promise<InvokeResult> {
+    const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
+    if (!fallbackMachineId) {
+        return {
+            ok: false,
+            statusCode: 409,
+            error: "Machine daemon is not connected",
+        };
+    }
+
+    const machineTarget = findConnectedMachine(userId, fallbackMachineId);
+    if (!machineTarget) {
+        return {
+            ok: false,
+            statusCode: 409,
+            error: "Machine daemon is not connected",
+        };
+    }
+
+    const result = await invokePublicCommand(machineTarget, { command, params });
+    return { ok: true, result };
+}
+
 function success(body: any) {
     return { ok: true, body };
 }
@@ -119,6 +153,7 @@ export function sessionPublicCommandHandler(userId: string, socket: Socket) {
                     callback(failure(400, "Unsupported session command"));
                     return;
                 }
+                const allowMachineFallback = data?.allowMachineFallback === true;
 
                 const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
                 if (!sessionExists) {
@@ -181,12 +216,25 @@ export function sessionPublicCommandHandler(userId: string, socket: Socket) {
                     return;
                 }
 
-                const invoked = await invokeSessionCommand(
+                let invoked = await invokeSessionCommand(
                     userId,
                     sessionId,
                     command,
                     data?.params ?? {}
                 );
+
+                if (
+                    !invoked.ok &&
+                    allowMachineFallback &&
+                    MACHINE_FALLBACK_COMMANDS.has(command)
+                ) {
+                    invoked = await invokeMachineFallbackCommand(
+                        userId,
+                        sessionId,
+                        command,
+                        data?.params ?? {}
+                    );
+                }
 
                 if (!invoked.ok) {
                     if (command === "killSession" && invoked.error === "Session RPC is not connected") {
