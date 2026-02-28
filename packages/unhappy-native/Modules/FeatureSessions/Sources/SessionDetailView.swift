@@ -24,15 +24,6 @@ public struct SessionDetailView: View {
         case customModel
     }
 
-    private enum SessionQuickToolsAnchor: String {
-        case model
-        case effort
-        case info
-        case files
-        case review
-        case worktree
-    }
-
     private struct CachedTranscriptPresentation: Equatable {
         let sourceMessage: APISessionMessage
         let dataEncryptionKey: String?
@@ -121,7 +112,6 @@ public struct SessionDetailView: View {
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var subAgentInProgressCount = 0
-    @State private var quickToolsScrollPositionID: String? = SessionQuickToolsAnchor.model.rawValue
     @GestureState private var isInteractingWithBottomDock = false
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
@@ -561,7 +551,7 @@ public struct SessionDetailView: View {
     @ViewBuilder
     private var sessionSectionContent: some View {
         HStack(spacing: 6) {
-            Image(systemName: "rectangle.text.magnifyingglass")
+            Image(systemName: "doc.text.magnifyingglass")
                 .font(.caption2)
                 .foregroundStyle(AppPalette.secondaryText)
             Text("Session")
@@ -1104,11 +1094,9 @@ public struct SessionDetailView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 modelMenuButton
-                    .id(SessionQuickToolsAnchor.model.rawValue)
 
                 if supportsReasoningEffortOverride {
                     effortMenuButton
-                        .id(SessionQuickToolsAnchor.effort.rawValue)
                 }
 
                 quickToolButton(
@@ -1116,32 +1104,25 @@ public struct SessionDetailView: View {
                     systemImage: "info.circle",
                     tool: .info
                 )
-                .id(SessionQuickToolsAnchor.info.rawValue)
                 quickToolButton(
                     title: "Files",
                     systemImage: "doc.text",
                     tool: .files
                 )
-                .id(SessionQuickToolsAnchor.files.rawValue)
                 quickToolButton(
                     title: "Diff",
                     systemImage: "doc.text.magnifyingglass",
                     tool: .review
                 )
-                .id(SessionQuickToolsAnchor.review.rawValue)
                 quickToolButton(
                     title: "Worktree",
                     systemImage: "checkmark.circle",
                     tool: .worktree
                 )
-                .id(SessionQuickToolsAnchor.worktree.rawValue)
             }
-            .padding(.horizontal, 0)
+            .padding(.horizontal, 6)
             .padding(.vertical, 4)
-            .scrollTargetLayout()
         }
-        .scrollTargetBehavior(.viewAligned)
-        .scrollPosition(id: $quickToolsScrollPositionID, anchor: .leading)
         .overlay(alignment: .leading) {
             LinearGradient(
                 colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
@@ -1159,12 +1140,6 @@ public struct SessionDetailView: View {
             )
             .frame(width: 14)
             .allowsHitTesting(false)
-        }
-        .onChange(of: supportsReasoningEffortOverride) { _, enabled in
-            guard !enabled else { return }
-            if quickToolsScrollPositionID == SessionQuickToolsAnchor.effort.rawValue {
-                quickToolsScrollPositionID = SessionQuickToolsAnchor.model.rawValue
-            }
         }
     }
 
