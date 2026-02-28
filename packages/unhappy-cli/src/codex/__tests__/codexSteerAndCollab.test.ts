@@ -348,6 +348,89 @@ describe('Codex turn/steer and collab forwarding', () => {
     );
   });
 
+  it('runs onThreadReady between thread/start and turn/start', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    anyClient.connected = true;
+
+    const callOrder: string[] = [];
+    anyClient.callRpc = vi.fn(async (method: string) => {
+      callOrder.push(method);
+      if (method === 'thread/start') {
+        return { thread: { id: 'thread-start-1' } };
+      }
+      if (method === 'turn/start') {
+        return { turn: { id: 'turn-start-1', status: 'completed' } };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    let seenState: any = null;
+    await client.startSession(
+      {
+        prompt: 'hello',
+        cwd: '/repo',
+        sandbox: 'workspace-write',
+        'approval-policy': 'on-request',
+      },
+      {
+        onThreadReady: (state) => {
+          callOrder.push('onThreadReady');
+          seenState = state;
+        },
+      },
+    );
+
+    expect(callOrder).toEqual(['thread/start', 'onThreadReady', 'turn/start']);
+    expect(seenState).toMatchObject({
+      mode: 'start',
+      threadId: 'thread-start-1',
+    });
+  });
+
+  it('runs onThreadReady between thread/resume and turn/start', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    anyClient.connected = true;
+    anyClient.preferredResumeThreadId = 'thread-resume-1';
+
+    const callOrder: string[] = [];
+    anyClient.callRpc = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      callOrder.push(method);
+      if (method === 'thread/resume') {
+        expect(params.threadId).toBe('thread-resume-1');
+        return { thread: { id: 'thread-resume-1' } };
+      }
+      if (method === 'turn/start') {
+        return { turn: { id: 'turn-resume-1', status: 'completed' } };
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+
+    let seenState: any = null;
+    await client.startSession(
+      {
+        prompt: 'continue',
+        cwd: '/repo',
+        sandbox: 'workspace-write',
+        'approval-policy': 'on-request',
+      },
+      {
+        onThreadReady: (state) => {
+          callOrder.push('onThreadReady');
+          seenState = state;
+        },
+      },
+    );
+
+    expect(callOrder).toEqual(['thread/resume', 'onThreadReady', 'turn/start']);
+    expect(seenState).toMatchObject({
+      mode: 'resume',
+      threadId: 'thread-resume-1',
+      resumedFromThreadId: 'thread-resume-1',
+    });
+  });
+
   it('sets thread name via thread/name/set when session exists', async () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;

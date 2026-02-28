@@ -414,11 +414,7 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content);
 
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message?.usage) {
@@ -430,7 +426,7 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    sendCodexMessage(body: any) {
+    sendCodexMessage(body: any, options?: { localId?: string }) {
         let content = {
             role: 'agent',
             content: {
@@ -441,18 +437,7 @@ export class ApiSessionClient extends EventEmitter {
                 sentFrom: 'cli'
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-
-        // Check if socket is connected before sending
-        if (!this.socket.connected) {
-            logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
-            // TODO: Consider implementing message queue or HTTP fallback for reliability
-        }
-
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content, options);
     }
 
     /**
@@ -462,7 +447,11 @@ export class ApiSessionClient extends EventEmitter {
      * @param provider - The agent provider sending the message (e.g., 'gemini', 'codex', 'claude')
      * @param body - The message payload (type: 'message' | 'reasoning' | 'tool-call' | 'tool-result')
      */
-    sendAgentMessage(provider: 'gemini' | 'codex' | 'claude' | 'opencode', body: ACPMessageData) {
+    sendAgentMessage(
+        provider: 'gemini' | 'codex' | 'claude' | 'opencode',
+        body: ACPMessageData,
+        options?: { localId?: string },
+    ) {
         let content = {
             role: 'agent',
             content: {
@@ -477,11 +466,21 @@ export class ApiSessionClient extends EventEmitter {
 
         logger.debug(`[SOCKET] Sending ACP message from ${provider}:`, { type: body.type, hasMessage: 'message' in body });
 
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content, options);
+    }
+
+    sendAgentOutputMessage(data: unknown, options?: { localId?: string }) {
+        const content: MessageContent = {
+            role: 'agent',
+            content: {
+                type: 'output',
+                data,
+            },
+            meta: {
+                sentFrom: 'cli',
+            },
+        };
+        this.emitEncryptedMessage(content, options);
     }
 
     sendSessionEvent(event: {
@@ -501,11 +500,7 @@ export class ApiSessionClient extends EventEmitter {
                 data: event
             }
         };
-        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
-        this.socket.emit('message', {
-            sid: this.sessionId,
-            message: encrypted
-        });
+        this.emitEncryptedMessage(content);
     }
 
     /**
@@ -916,5 +911,25 @@ export class ApiSessionClient extends EventEmitter {
             }
         }
         return Date.now() / 1000;
+    }
+
+    private emitEncryptedMessage(
+        content: MessageContent | Record<string, unknown>,
+        options?: { localId?: string },
+    ): void {
+        // Check if socket is connected before sending
+        if (!this.socket.connected) {
+            logger.debug('[API] Socket not connected, cannot send message. Message will be lost');
+            // TODO: Consider implementing message queue or HTTP fallback for reliability
+        }
+
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, content));
+        const localId =
+            typeof options?.localId === 'string' ? options.localId.trim() : '';
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted,
+            ...(localId ? { localId } : {}),
+        });
     }
 }

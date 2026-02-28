@@ -25,12 +25,16 @@ import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { listCodexModels } from '@/modules/common/listModels';
 import { render } from 'ink';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import React from 'react';
-import { CodexAppServerClient } from './codexAppServerClient';
+import {
+  CodexAppServerClient,
+  type CodexThreadBootstrapState,
+} from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
 import { DiffProcessor } from './utils/diffProcessor';
 import {
@@ -193,6 +197,217 @@ function extractExecOutputChunk(msg: any): string | null {
   }
 
   return null;
+}
+
+const MAX_RESUME_BACKFILL_MESSAGES = 1200;
+
+type ResumeBackfillMessage = {
+  localId: string;
+  data: Record<string, unknown>;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function extractTranscriptText(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => extractTranscriptText(item))
+      .filter((item): item is string => !!item);
+    if (parts.length === 0) return null;
+    return parts.join('\n');
+  }
+  if (!isRecord(value)) return null;
+
+  const directFields = [value.text, value.input_text, value.message];
+  for (const candidate of directFields) {
+    const extracted = extractTranscriptText(candidate);
+    if (extracted) return extracted;
+  }
+
+  if ('content' in value) {
+    return extractTranscriptText(value.content);
+  }
+
+  return null;
+}
+
+function shouldSkipResumeBootstrapUserMessage(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized.startsWith('# agents.md instructions for')) return true;
+  if (normalized.startsWith('<environment_context>')) return true;
+  if (normalized.startsWith('<permissions instructions>')) return true;
+  if (normalized.startsWith('<collaboration_mode>')) return true;
+  return false;
+}
+
+function normalizeTranscriptUserContent(content: unknown): unknown {
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return content;
+  }
+
+  return content.map((item) => {
+    if (!isRecord(item)) return item;
+    const type = typeof item.type === 'string' ? item.type.toLowerCase() : '';
+    if (
+      (type === 'output_text' || type === 'text') &&
+      typeof item.text === 'string'
+    ) {
+      return {
+        type: 'input_text',
+        text: item.text,
+      };
+    }
+    return item;
+  });
+}
+
+function normalizeTranscriptAssistantContent(content: unknown): unknown[] | null {
+  if (Array.isArray(content)) {
+    const normalized = content
+      .map((item) => {
+        if (typeof item === 'string') {
+          const text = item.trim();
+          return text.length > 0 ? { type: 'text', text } : null;
+        }
+        if (!isRecord(item)) return item;
+        const type = typeof item.type === 'string' ? item.type.toLowerCase() : '';
+        if ((type === 'output_text' || type === 'input_text') && typeof item.text === 'string') {
+          return {
+            type: 'text',
+            text: item.text,
+          };
+        }
+        return item;
+      })
+      .filter((item) => item !== null);
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  if (typeof content === 'string') {
+    const text = content.trim();
+    if (!text) return null;
+    return [{ type: 'text', text }];
+  }
+
+  if (isRecord(content)) {
+    const text = extractTranscriptText(content);
+    if (text) {
+      return [{ type: 'text', text }];
+    }
+    return [content];
+  }
+
+  return null;
+}
+
+function buildResumeBackfillMessage(
+  payload: Record<string, unknown>,
+  lineNumber: number,
+  resumeFile: string,
+): ResumeBackfillMessage | null {
+  if (payload.type !== 'message') return null;
+  const role = typeof payload.role === 'string' ? payload.role.toLowerCase() : '';
+  if (role !== 'user' && role !== 'assistant') return null;
+
+  const rawContent = payload.content;
+  if (role === 'user') {
+    const previewText = extractTranscriptText(rawContent);
+    if (!previewText || shouldSkipResumeBootstrapUserMessage(previewText)) {
+      return null;
+    }
+  }
+
+  let normalizedContent: unknown = rawContent;
+  if (role === 'assistant') {
+    const normalizedAssistantContent = normalizeTranscriptAssistantContent(rawContent);
+    if (!normalizedAssistantContent || normalizedAssistantContent.length === 0) {
+      return null;
+    }
+    normalizedContent = normalizedAssistantContent;
+  } else {
+    normalizedContent = normalizeTranscriptUserContent(rawContent);
+  }
+
+  const backfillEnvelope = {
+    type: role,
+    message: {
+      content: normalizedContent ?? rawContent,
+    },
+  };
+
+  const payloadId =
+    typeof payload.id === 'string' ? payload.id.trim() : '';
+  const digest = createHash('sha1')
+    .update(`${resumeFile}:${lineNumber}:${role}:${payloadId}`)
+    .digest('hex')
+    .slice(0, 20);
+
+  return {
+    localId: `codex-resume-${digest}`,
+    data: backfillEnvelope,
+  };
+}
+
+async function loadResumeBackfillMessages(
+  resumeFile: string,
+): Promise<ResumeBackfillMessage[]> {
+  const messages: ResumeBackfillMessage[] = [];
+  if (!resumeFile || !fs.existsSync(resumeFile)) {
+    return messages;
+  }
+
+  const reader = createInterface({
+    input: fs.createReadStream(resumeFile, { encoding: 'utf8' }),
+    crlfDelay: Infinity,
+  });
+  let lineNumber = 0;
+
+  try {
+    for await (const rawLine of reader) {
+      lineNumber += 1;
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+
+      const envelope = isRecord(parsed) ? parsed : null;
+      if (!envelope || envelope.type !== 'response_item') continue;
+
+      const payload = isRecord(envelope.payload) ? envelope.payload : null;
+      if (!payload) continue;
+
+      const backfillMessage = buildResumeBackfillMessage(
+        payload,
+        lineNumber,
+        resumeFile,
+      );
+      if (!backfillMessage) continue;
+
+      messages.push(backfillMessage);
+      if (messages.length > MAX_RESUME_BACKFILL_MESSAGES) {
+        messages.shift();
+      }
+    }
+  } finally {
+    reader.close();
+  }
+
+  return messages;
 }
 
 /**
@@ -1080,6 +1295,77 @@ export async function runCodex(opts: {
       }
     }
   }
+
+  const importedResumeTranscriptKeys = new Set<string>();
+  const backfillResumeTranscriptIfNeeded = async (
+    threadState: CodexThreadBootstrapState,
+    hintedResumeFile: string | null,
+  ): Promise<void> => {
+    if (threadState.mode !== 'resume') return;
+    const threadId =
+      typeof threadState.threadId === 'string'
+        ? threadState.threadId.trim()
+        : '';
+    if (!threadId) return;
+
+    let resumeFile =
+      typeof hintedResumeFile === 'string' ? hintedResumeFile.trim() : '';
+    if (!resumeFile || !fs.existsSync(resumeFile)) {
+      const discovered = findCodexResumeFileWithFallbacks(threadId);
+      resumeFile = discovered ? discovered.trim() : '';
+    }
+    if (!resumeFile || !fs.existsSync(resumeFile)) {
+      logger.debug('[Codex] Resume transcript import skipped (file not found)', {
+        threadId,
+      });
+      return;
+    }
+
+    const importKey = `${session.sessionId}:${threadId}:${resumeFile}`;
+    if (importedResumeTranscriptKeys.has(importKey)) {
+      return;
+    }
+    importedResumeTranscriptKeys.add(importKey);
+
+    try {
+      const backfillMessages = await loadResumeBackfillMessages(resumeFile);
+      if (backfillMessages.length === 0) {
+        logger.debug('[Codex] Resume transcript import found no eligible messages', {
+          threadId,
+          resumeFile,
+        });
+        return;
+      }
+
+      for (const message of backfillMessages) {
+        session.sendAgentOutputMessage(message.data, { localId: message.localId });
+      }
+      await session.flush();
+      messageBuffer.addMessage(
+        `Loaded ${backfillMessages.length} prior messages`,
+        'status',
+      );
+
+      void upsertCodexResumeEntry(cwd, {
+        codexSessionId: threadId,
+        codexHomeDir: getEffectiveCodexHomeDir(),
+        resumeFile,
+        updatedAt: Date.now(),
+      }).catch((error) => {
+        logger.debug('[Codex] Failed to persist resume transcript path after import', error);
+      });
+
+      logger.debug('[Codex] Imported resume transcript messages', {
+        threadId,
+        count: backfillMessages.length,
+        resumeFile,
+      });
+    } catch (error) {
+      importedResumeTranscriptKeys.delete(importKey);
+      logger.debug('[Codex] Resume transcript import failed', error);
+    }
+  };
+
   permissionHandler = new CodexPermissionHandler(session);
   const reasoningProcessor = new ReasoningProcessor((message) => {
     // Stream reasoning deltas as terminal-output so mobile can append in real-time.
@@ -1706,6 +1992,9 @@ export async function runCodex(opts: {
 
           const startResp = await client.startSession(startConfig, {
             signal: abortController.signal,
+            onThreadReady: async (threadState) => {
+              await backfillResumeTranscriptIfNeeded(threadState, resumeFile);
+            },
           });
           // Codex may return a tool-level error response (isError=true) without emitting streamed events.
           // If we don't surface it, the mobile/web UI looks like it "hangs" with no response.
