@@ -38,13 +38,20 @@ async function findConnectedMachineForSession(userId: string, sessionId: string)
     return null;
 }
 
-function resolveSessionApiUpdatedAt(createdAt: Date, latestMessageCreatedAt?: Date): number {
+function resolveSessionApiUpdatedAt(
+    createdAt: Date,
+    latestMessage?: { createdAt: Date; updatedAt: Date }
+): number {
     // Keep API ordering stable by anchoring to message activity instead of Session.updatedAt,
     // which is bumped by metadata/state/presence writes due Prisma @updatedAt.
-    if (!latestMessageCreatedAt) {
+    if (!latestMessage) {
         return createdAt.getTime();
     }
-    return Math.max(createdAt.getTime(), latestMessageCreatedAt.getTime());
+    const latestMessageAt = Math.max(
+        latestMessage.createdAt.getTime(),
+        latestMessage.updatedAt.getTime()
+    );
+    return Math.max(createdAt.getTime(), latestMessageAt);
 }
 
 export function sessionRoutes(app: Fastify) {
@@ -105,7 +112,8 @@ export function sessionRoutes(app: Fastify) {
                     orderBy: { createdAt: 'desc' },
                     take: 1,
                     select: {
-                        createdAt: true
+                        createdAt: true,
+                        updatedAt: true
                     }
                 }
             }
@@ -117,7 +125,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: v.seq,
                 displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]?.createdAt),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
@@ -178,7 +186,8 @@ export function sessionRoutes(app: Fastify) {
                     orderBy: { createdAt: 'desc' },
                     take: 1,
                     select: {
-                        createdAt: true
+                        createdAt: true,
+                        updatedAt: true
                     }
                 }
             }
@@ -190,7 +199,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: v.seq,
                 displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]?.createdAt),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
@@ -267,7 +276,8 @@ export function sessionRoutes(app: Fastify) {
                     orderBy: { createdAt: 'desc' },
                     take: 1,
                     select: {
-                        createdAt: true
+                        createdAt: true,
+                        updatedAt: true
                     }
                 }
             }
@@ -290,7 +300,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: v.seq,
                 displayName: v.displayName,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]?.createdAt),
+                updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
@@ -340,7 +350,8 @@ export function sessionRoutes(app: Fastify) {
                     orderBy: { createdAt: 'desc' },
                     take: 1,
                     select: {
-                        createdAt: true
+                        createdAt: true,
+                        updatedAt: true
                     }
                 }
             }
@@ -360,7 +371,7 @@ export function sessionRoutes(app: Fastify) {
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
-                    updatedAt: resolveSessionApiUpdatedAt(session.createdAt, session.messages[0]?.createdAt),
+                    updatedAt: resolveSessionApiUpdatedAt(session.createdAt, session.messages[0]),
                     lastMessage: null
                 }
             });
