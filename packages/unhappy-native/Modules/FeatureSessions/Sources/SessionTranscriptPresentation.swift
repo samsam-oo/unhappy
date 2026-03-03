@@ -38,6 +38,7 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
     let sourceType: String?
     let toolName: String?
     let isSidechain: Bool
+    let threadID: String?
 }
 
 struct SessionTranscriptMessagePresentation: Equatable, Sendable {
@@ -684,6 +685,8 @@ enum SessionTranscriptPresentationBuilder {
         }
 
         let type = normalizedText(dictionary["type"]) ?? "unknown"
+        let isSidechain = extractIsSidechain(from: dictionary)
+        let threadID = extractThreadID(from: dictionary)
         switch type {
         case "message", "reasoning":
             let text =
@@ -702,7 +705,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .text,
                     title: type == "reasoning" ? "Reasoning" : nil,
                     body: text,
-                    sourceType: type
+                    sourceType: type,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "thinking":
@@ -714,7 +719,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .thinking,
                     title: "Thinking",
                     body: text,
-                    sourceType: type
+                    sourceType: type,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "tool-call":
@@ -734,7 +741,9 @@ enum SessionTranscriptPresentationBuilder {
                     body: body,
                     toolUseID: toolUseID,
                     sourceType: type,
-                    toolName: name
+                    toolName: name,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "tool-result", "tool-call-result":
@@ -753,7 +762,9 @@ enum SessionTranscriptPresentationBuilder {
                     body: stringifyToolResultContent(dictionary["output"] ?? dictionary["content"]),
                     toolUseID: toolUseID,
                     sourceType: type,
-                    toolName: name
+                    toolName: name,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "terminal-output":
@@ -769,7 +780,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .raw,
                     title: nil,
                     body: output,
-                    sourceType: type
+                    sourceType: type,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "tool-stream":
@@ -783,7 +796,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .raw,
                     title: nil,
                     body: output,
-                    sourceType: type
+                    sourceType: type,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "permission-request":
@@ -796,7 +811,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .event,
                     title: "Approval needed: \(tool)",
                     body: description,
-                    sourceType: type
+                    sourceType: type,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "task_started":
@@ -807,7 +824,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .thinking,
                     title: nil,
                     body: "Thinking…",
-                    sourceType: type
+                    sourceType: type,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         case "task_complete", "turn_aborted":
@@ -822,7 +841,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .raw,
                     title: "Agent \(type)",
                     body: stringify(dictionary),
-                    sourceType: type
+                    sourceType: type,
+                    isSidechain: isSidechain,
+                    threadID: threadID
                 )
             ]
         }
@@ -837,7 +858,8 @@ enum SessionTranscriptPresentationBuilder {
         toolUseID: String? = nil,
         sourceType: String? = nil,
         toolName: String? = nil,
-        isSidechain: Bool = false
+        isSidechain: Bool = false,
+        threadID: String? = nil
     ) -> SessionTranscriptEntry {
         let cleanedBody = sanitizeText(body)
         let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -855,6 +877,11 @@ enum SessionTranscriptPresentationBuilder {
         let normalizedToolName = cleanedToolName?.isEmpty == false
             ? cleanedToolName
             : nil
+        let cleanedThreadID = threadID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedThreadID = cleanedThreadID?.isEmpty == false
+            ? cleanedThreadID
+            : nil
         return SessionTranscriptEntry(
             id: id,
             role: role,
@@ -864,13 +891,27 @@ enum SessionTranscriptPresentationBuilder {
             toolUseID: toolUseID,
             sourceType: normalizedSourceType,
             toolName: normalizedToolName,
-            isSidechain: isSidechain
+            isSidechain: isSidechain,
+            threadID: normalizedThreadID
         )
     }
 
     private static func extractIsSidechain(from dictionary: [String: Any]) -> Bool {
+        if let explicit = dictionary["isSidechain"] as? Bool, explicit {
+            return true
+        }
+        if let explicit = dictionary["sidechain"] as? Bool, explicit {
+            return true
+        }
         return normalizedText(dictionary["parent_tool_use_id"]) != nil ||
             normalizedText(dictionary["parentToolUseId"]) != nil
+    }
+
+    private static func extractThreadID(from dictionary: [String: Any]) -> String? {
+        return normalizedText(dictionary["thread_id"]) ??
+            normalizedText(dictionary["threadId"]) ??
+            normalizedText(dictionary["session_id"]) ??
+            normalizedText(dictionary["sessionId"])
     }
 
     private static func extractToolUseID(from dictionary: [String: Any]) -> String? {

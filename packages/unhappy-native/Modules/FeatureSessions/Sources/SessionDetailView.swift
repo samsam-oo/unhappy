@@ -2360,7 +2360,7 @@ public struct SessionDetailView: View {
         func matchesSidechain(_ entry: SessionTranscriptEntry) -> Bool {
             switch self {
             case .codex:
-                return false
+                return entry.isSidechain
             case .claude:
                 return entry.isSidechain
             }
