@@ -1162,7 +1162,7 @@ public struct SessionDetailView: View {
             Image(systemName: "person.2.fill")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppPalette.liveActivity)
-            Text("멀티 에이전트 진행중")
+            Text("\(subAgentInProgressCount)개 진행중")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppPalette.liveActivity)
         }
