@@ -33,6 +33,7 @@ import { createInterface } from 'node:readline';
 import React from 'react';
 import {
   CodexAppServerClient,
+  type CodexThreadSummary,
   type CodexThreadBootstrapState,
 } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
@@ -1132,6 +1133,81 @@ export async function runCodex(opts: {
     client.setPreferredResumeThreadId(storedSessionIdForResume);
   }
 
+  const migratedThreadNameById = new Set<string>();
+  const syncSessionTitleFromThreadSummary = async (
+    threadIdRaw: string | null | undefined,
+    options?: {
+      recentThreads?: CodexThreadSummary[];
+      source?: string;
+    },
+  ): Promise<void> => {
+    const threadId =
+      typeof threadIdRaw === 'string' && threadIdRaw.trim()
+        ? threadIdRaw.trim()
+        : '';
+    if (!threadId || migratedThreadNameById.has(threadId)) {
+      return;
+    }
+
+    const findThreadName = (rows: CodexThreadSummary[]): string => {
+      const matched = rows.find((row) => row.id === threadId);
+      return typeof matched?.name === 'string' ? matched.name.trim() : '';
+    };
+
+    let threadName = findThreadName(options?.recentThreads ?? []);
+    if (!threadName) {
+      try {
+        const rows = await client.listRecentThreadsByCwd(cwd, { limit: 100 });
+        threadName = findThreadName(rows);
+      } catch (error) {
+        logger.debug(
+          '[Codex] Failed to fetch thread summaries for title migration',
+          error,
+        );
+        return;
+      }
+    }
+    if (!threadName) {
+      return;
+    }
+
+    const metadataSnapshot =
+      session.getMetadataSnapshot() as Record<string, unknown> | null;
+    const currentName =
+      typeof metadataSnapshot?.name === 'string'
+        ? metadataSnapshot.name.trim()
+        : '';
+    const summaryRecord =
+      metadataSnapshot &&
+      typeof metadataSnapshot.summary === 'object' &&
+      metadataSnapshot.summary
+        ? (metadataSnapshot.summary as Record<string, unknown>)
+        : null;
+    const currentSummaryText =
+      typeof summaryRecord?.text === 'string' ? summaryRecord.text.trim() : '';
+
+    if (currentName === threadName && currentSummaryText === threadName) {
+      migratedThreadNameById.add(threadId);
+      return;
+    }
+
+    const now = Date.now();
+    session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      name: threadName,
+      summary: {
+        text: threadName,
+        updatedAt: now,
+      },
+    }));
+    migratedThreadNameById.add(threadId);
+    logger.debug('[Codex] Migrated session title from Codex thread summary', {
+      source: options?.source ?? 'unknown',
+      threadId,
+      threadName,
+    });
+  };
+
   async function persistAndReportCodexIdentifiersIfNeeded(source: string) {
     const sessionId = client.getSessionId();
     const conversationId = client.getConversationId();
@@ -1178,6 +1254,10 @@ export async function runCodex(opts: {
     } catch (e) {
       logger.debug('[Codex] Failed to report codex identifiers to metadata', e);
     }
+
+    void syncSessionTitleFromThreadSummary(sessionId, {
+      source: `persist:${source}`,
+    });
   }
 
   // Helper: find Codex session transcript for a given sessionId
@@ -1884,6 +1964,13 @@ export async function runCodex(opts: {
         'status',
       );
     }
+    await syncSessionTitleFromThreadSummary(
+      explicitResumeThreadId ?? storedSessionIdForResume,
+      {
+        recentThreads,
+        source: 'startup',
+      },
+    );
 
     let wasCreated = false;
     let pending: QueuedMessage | null = null;

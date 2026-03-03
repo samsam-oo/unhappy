@@ -418,4 +418,44 @@ describe('runCodex auto-compaction recovery', () => {
     });
     expect(mockState.session.flush).toHaveBeenCalled();
   });
+
+  it('migrates resumed thread name into session metadata on startup', async () => {
+    mockState.queueBatches.length = 0;
+    mockState.queueBatches.push({
+      message: 'continue',
+      mode: { permissionMode: 'default' },
+      isolate: false,
+      hash: 'resume-name-1',
+    });
+
+    mockState.client.listRecentThreadsByCwd.mockImplementation(async () => [
+      {
+        id: 'thread-1',
+        name: 'Migrated Resume Title',
+        cwd: '/tmp/workspace',
+      },
+    ] as any);
+
+    mockState.client.startSession.mockReset();
+    mockState.client.startSession.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      structuredContent: { threadId: 'thread-1', content: 'ok' },
+    });
+    mockState.client.continueSession.mockReset();
+    mockState.client.continueSession.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      structuredContent: { threadId: 'thread-1', content: 'ok' },
+    });
+
+    await runCodex({
+      credentials: {} as any,
+      startedBy: 'terminal',
+      resume: true,
+      clearResume: false,
+      resumeThreadId: 'thread-1',
+    });
+
+    const metadata = mockState.session.getMetadataSnapshot();
+    expect(metadata.name).toBe('Migrated Resume Title');
+  });
 });
