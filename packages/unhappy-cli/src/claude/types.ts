@@ -21,7 +21,6 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
   // User message - validates uuid and message.content
   z.object({
     type: z.literal("user"),
-    isSidechain: z.boolean().optional(),
     isMeta: z.boolean().optional(),
     uuid: z.string(), // Used in getMessageKey()
     message: z.object({

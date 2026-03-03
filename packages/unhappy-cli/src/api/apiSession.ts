@@ -383,7 +383,10 @@ export class ApiSessionClient extends EventEmitter {
         const summaryUpdatedAt = Date.now();
 
         // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
+        const hasParentToolUseId = typeof (body as any).parent_tool_use_id === 'string' &&
+            (body as any).parent_tool_use_id.trim() !== '';
+
+        if (body.type === 'user' && typeof body.message.content === 'string' && !hasParentToolUseId && body.isMeta !== true) {
             content = {
                 role: 'user',
                 content: {
