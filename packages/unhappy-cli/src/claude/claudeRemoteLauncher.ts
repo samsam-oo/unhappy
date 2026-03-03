@@ -10,6 +10,11 @@ import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
+import {
+    filterTranscriptSDKMessage,
+    hasSidechainParentToolUseId,
+    isTaskToolName,
+} from "./utils/subagentTranscriptFilter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
@@ -122,6 +127,97 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // Handle messages
     let planModeToolCalls = new Set<string>();
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
+    const activeSubagentTaskToolCallIds = new Set<string>();
+    type CollabIndicatorState = 'in_progress' | 'completed' | null;
+    let collabStatusState: CollabIndicatorState = null;
+    let collabStatusUpdatedAt = 0;
+    let collabStatusCount = 0;
+    const applyCollabStatus = (next: CollabIndicatorState) => {
+        const nextCount = next === 'in_progress' ? activeSubagentTaskToolCallIds.size : 0;
+        const changedState = next !== collabStatusState;
+        const changedCount = nextCount !== collabStatusCount;
+        if (!changedState && !changedCount) return;
+
+        collabStatusState = next;
+        collabStatusCount = nextCount;
+        collabStatusUpdatedAt = Date.now();
+
+        if (next === 'in_progress') {
+            messageBuffer.addMessage('Multi-agent running', 'status');
+        } else if (next === 'completed') {
+            messageBuffer.addMessage('Multi-agent completed', 'status');
+        }
+
+        session.client.updateAgentState((currentState) => {
+            const state = currentState ?? {};
+            if (!next) {
+                return {
+                    ...state,
+                    collab: undefined,
+                };
+            }
+            return {
+                ...state,
+                collab: {
+                    state: next,
+                    updatedAt: collabStatusUpdatedAt,
+                    activeCount: nextCount,
+                },
+            };
+        });
+    };
+    const syncCollabStatusIndicator = () => {
+        if (activeSubagentTaskToolCallIds.size > 0) {
+            applyCollabStatus('in_progress');
+        } else if (collabStatusState === 'in_progress') {
+            applyCollabStatus('completed');
+        }
+    };
+    const trackSubagentTaskCalls = (message: SDKMessage) => {
+        let changed = false;
+        if (message.type === 'assistant') {
+            const assistant = message as SDKAssistantMessage;
+            if (assistant.message.content && Array.isArray(assistant.message.content)) {
+                for (const block of assistant.message.content) {
+                    const toolUseId =
+                        typeof block.id === 'string' && block.id.trim().length > 0
+                            ? block.id
+                            : null;
+                    if (
+                        block.type === 'tool_use' &&
+                        isTaskToolName(block.name) &&
+                        toolUseId
+                    ) {
+                        if (!activeSubagentTaskToolCallIds.has(toolUseId)) {
+                            activeSubagentTaskToolCallIds.add(toolUseId);
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        } else if (message.type === 'user') {
+            const user = message as SDKUserMessage;
+            if (user.message.content && Array.isArray(user.message.content)) {
+                for (const block of user.message.content) {
+                    const toolUseId =
+                        typeof block.tool_use_id === 'string' &&
+                        block.tool_use_id.trim().length > 0
+                            ? block.tool_use_id
+                            : null;
+                    if (
+                        block.type === 'tool_result' &&
+                        toolUseId &&
+                        activeSubagentTaskToolCallIds.delete(toolUseId)
+                    ) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if (changed) {
+            syncCollabStatusIndicator();
+        }
+    };
 
     function onMessage(message: SDKMessage) {
 
@@ -130,6 +226,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
         // Write to permission handler for tool id resolving
         permissionHandler.onMessage(message);
+        trackSubagentTaskCalls(message);
 
         // Detect plan mode tool call
         if (message.type === 'assistant') {
@@ -203,7 +300,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             }
         }
 
-        const logMessage = sdkToLogConverter.convert(msg);
+        const transcriptMessage = filterTranscriptSDKMessage(
+            msg,
+            activeSubagentTaskToolCallIds
+        );
+        if (!transcriptMessage) {
+            return;
+        }
+
+        const logMessage = sdkToLogConverter.convert(transcriptMessage);
         if (logMessage) {
             // Add permissions field to tool result content
             if (logMessage.type === 'user' && logMessage.message?.content) {
@@ -247,8 +352,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             }
 
             // Queue message with optional delay for tool calls
-            if (logMessage.type === 'assistant' && message.type === 'assistant') {
-                const assistantMsg = message as SDKAssistantMessage;
+            if (logMessage.type === 'assistant' && transcriptMessage.type === 'assistant') {
+                const assistantMsg = transcriptMessage as SDKAssistantMessage;
                 const toolCallIds: string[] = [];
 
                 if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
@@ -261,7 +366,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
                 if (toolCallIds.length > 0) {
                     // Check if this is a sidechain tool call (has parent_tool_use_id)
-                    const isSidechain = assistantMsg.parent_tool_use_id !== undefined;
+                    const isSidechain = hasSidechainParentToolUseId(assistantMsg);
 
                     if (!isSidechain) {
                         // Top-level tool call - queue with delay
@@ -276,21 +381,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
             // Queue all other messages immediately (no delay)
             messageQueue.enqueue(logMessage);
-        }
-
-        // Insert a fake message to start the sidechain
-        if (message.type === 'assistant') {
-            let umessage = message as SDKAssistantMessage;
-            if (umessage.message.content && Array.isArray(umessage.message.content)) {
-                for (let c of umessage.message.content) {
-                    if (c.type === 'tool_use' && c.name === 'Task' && c.input && typeof (c.input as any).prompt === 'string') {
-                        const logMessage2 = sdkToLogConverter.convertSidechainUserMessage(c.id!, (c.input as any).prompt);
-                        if (logMessage2) {
-                            messageQueue.enqueue(logMessage2);
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -442,6 +532,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
                 // Terminate all ongoing tool calls
                 for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
+                    if (parentToolCallId || activeSubagentTaskToolCallIds.has(toolCallId)) {
+                        continue;
+                    }
                     const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
                     if (converted) {
                         logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);
@@ -449,6 +542,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     }
                 }
                 ongoingToolCalls.clear();
+                if (activeSubagentTaskToolCallIds.size > 0) {
+                    activeSubagentTaskToolCallIds.clear();
+                    syncCollabStatusIndicator();
+                }
 
                 // Flush any remaining messages in the queue
                 logger.debug('[remote]: flushing message queue');
