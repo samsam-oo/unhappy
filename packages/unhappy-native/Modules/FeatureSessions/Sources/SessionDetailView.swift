@@ -2249,6 +2249,10 @@ public struct SessionDetailView: View {
             filteredEntries.reserveCapacity(presentation.entries.count)
 
             for entry in presentation.entries {
+                if isSubagentSidechainEntry(entry) {
+                    continue
+                }
+
                 if let status = subagentStatusSignal(for: entry) {
                     switch status {
                     case .inProgress:
@@ -2300,6 +2304,10 @@ public struct SessionDetailView: View {
         return (filteredPresentations, inProgressCount)
     }
 
+    private func isSubagentSidechainEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        return subagentAdapters.contains { $0.matchesSidechain(entry) }
+    }
+
     private func isSubagentToolCallEntry(_ entry: SessionTranscriptEntry) -> Bool {
         guard entry.kind == .toolCall else { return false }
         return subagentAdapters.contains { $0.matchesToolCall(entry) }
@@ -2349,6 +2357,15 @@ public struct SessionDetailView: View {
         case codex
         case claude
 
+        func matchesSidechain(_ entry: SessionTranscriptEntry) -> Bool {
+            switch self {
+            case .codex:
+                return false
+            case .claude:
+                return entry.isSidechain
+            }
+        }
+
         func matchesToolCall(_ entry: SessionTranscriptEntry) -> Bool {
             switch self {
             case .codex:
@@ -2363,9 +2380,7 @@ public struct SessionDetailView: View {
                     "interrupt_agent",
                 ].contains(toolName)
             case .claude:
-                guard Self.normalizedToken(entry.toolName) == "task" else { return false }
-                let body = Self.normalizedBody(entry.body)
-                return body.contains("subagent_type")
+                return Self.normalizedToken(entry.toolName) == "task"
             }
         }
 
@@ -2383,7 +2398,9 @@ public struct SessionDetailView: View {
                     "interrupt_agent",
                 ].contains(toolName)
             case .claude:
-                guard Self.normalizedToken(entry.toolName) == "task" else { return false }
+                if Self.normalizedToken(entry.toolName) == "task" {
+                    return true
+                }
                 let body = Self.normalizedBody(entry.body)
                 return body.contains("subagent_notification") || body.contains("sub-agent")
             }
