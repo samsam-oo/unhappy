@@ -164,20 +164,54 @@ struct SessionTranscriptPresentationTests {
     }
 
     @Test
-    func outputUserSidechainToolResultIsMarkedAsSidechain() {
+    func outputUserToolResultWithParentToolUseIdIsMarkedAsSidechain() {
         let payload: [String: Any] = [
             "role": "agent",
             "content": [
                 "type": "output",
                 "data": [
                     "type": "user",
-                    "isSidechain": true,
+                    "parentToolUseId": "toolu_parent_task_0",
                     "message": [
                         "role": "user",
                         "content": [
                             [
                                 "type": "tool_result",
                                 "tool_use_id": "toolu_subagent_2",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].isSidechain == true)
+    }
+
+    @Test
+    func outputUserToolResultWithParentToolUseIDIsMarkedAsSidechain() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "parent_tool_use_id": "toolu_parent_task_1",
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_subagent_3",
                                 "content": "done",
                             ],
                         ],

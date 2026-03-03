@@ -869,15 +869,8 @@ enum SessionTranscriptPresentationBuilder {
     }
 
     private static func extractIsSidechain(from dictionary: [String: Any]) -> Bool {
-        if let boolValue = dictionary["isSidechain"] as? Bool {
-            return boolValue
-        }
-
-        guard let textValue = normalizedText(dictionary["isSidechain"])?.lowercased() else {
-            return false
-        }
-
-        return textValue == "true" || textValue == "1" || textValue == "yes"
+        return normalizedText(dictionary["parent_tool_use_id"]) != nil ||
+            normalizedText(dictionary["parentToolUseId"]) != nil
     }
 
     private static func extractToolUseID(from dictionary: [String: Any]) -> String? {
