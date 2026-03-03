@@ -115,6 +115,20 @@ enum SessionPayloadValueResolver {
         return false
     }
 
+    static func firstDictionary(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> [String: Any]? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let dictionary = value as? [String: Any], !dictionary.isEmpty {
+                return dictionary
+            }
+        }
+        return nil
+    }
+
     private static func firstValue(in object: Any, matching keys: Set<String>) -> Any? {
         if let dictionary = object as? [String: Any] {
             for (rawKey, value) in dictionary {

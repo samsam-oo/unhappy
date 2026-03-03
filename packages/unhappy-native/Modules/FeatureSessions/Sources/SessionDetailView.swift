@@ -30,6 +30,13 @@ public struct SessionDetailView: View {
         let presentation: SessionTranscriptMessagePresentation
     }
 
+    private struct PendingPermissionRequest: Identifiable, Equatable {
+        let id: String
+        let callID: String
+        let toolName: String
+        let summary: String?
+    }
+
     private static let customModelOverrideOption = "__custom_model_override__"
     private static let modelPickerDefaultOption = "__model_default__"
     private static let modelPickerCustomOption = "__model_custom__"
@@ -114,6 +121,9 @@ public struct SessionDetailView: View {
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var subAgentInProgressCount = 0
+    @State private var respondingPermissionRequestID: String?
+    @State private var permissionActionStatusMessage: String?
+    @State private var permissionActionErrorMessage: String?
     @GestureState private var isInteractingWithBottomDock = false
     @FocusState private var focusedComposerField: SessionComposerFocusField?
 
@@ -551,6 +561,146 @@ public struct SessionDetailView: View {
         return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
     }
 
+    private var pendingPermissionRequests: [PendingPermissionRequest] {
+        let sources = [decodedSessionAgentState, decodedSessionMetadata]
+        let requestMap = SessionPayloadValueResolver.firstDictionary(
+            in: sources,
+            keys: [
+                "requests",
+                "pendingRequests",
+                "approvalRequestMap",
+                "permissionRequestMap",
+            ]
+        ) ?? [:]
+
+        var rows: [PendingPermissionRequest] = []
+        rows.reserveCapacity(requestMap.count)
+        for (rawRequestID, rawValue) in requestMap {
+            let requestID = rawRequestID.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !requestID.isEmpty else { continue }
+            guard let requestPayload = rawValue as? [String: Any] else {
+                rows.append(
+                    PendingPermissionRequest(
+                        id: requestID,
+                        callID: requestID,
+                        toolName: "Tool",
+                        summary: nil
+                    )
+                )
+                continue
+            }
+
+            let callID = SessionPayloadValueResolver.firstString(
+                in: [requestPayload],
+                keys: ["callId", "toolCallId", "id"]
+            ) ?? requestID
+            let toolName = SessionPayloadValueResolver.firstString(
+                in: [requestPayload],
+                keys: ["toolName", "tool", "name"]
+            ) ?? "Tool"
+            let summary = permissionSummary(from: requestPayload)
+            rows.append(
+                PendingPermissionRequest(
+                    id: requestID,
+                    callID: callID,
+                    toolName: toolName,
+                    summary: summary
+                )
+            )
+        }
+
+        return rows.sorted { lhs, rhs in
+            lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
+        }
+    }
+
+    private func permissionSummary(from requestPayload: [String: Any]) -> String? {
+        if let summary = SessionPayloadValueResolver.firstString(
+            in: [requestPayload],
+            keys: ["reason", "message", "description", "prompt"]
+        ) {
+            let normalized = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalized.isEmpty {
+                return clippedSummary(normalized)
+            }
+        }
+
+        if let input = SessionPayloadValueResolver.firstDictionary(
+            in: [requestPayload],
+            keys: ["input", "arguments", "args", "payload"]
+        ) {
+            if let command = SessionPayloadValueResolver.firstString(
+                in: [input],
+                keys: ["cmd", "command", "query", "q", "url", "path"]
+            ) {
+                return clippedSummary(command)
+            }
+            if JSONSerialization.isValidJSONObject(input),
+               let data = try? JSONSerialization.data(withJSONObject: input, options: []),
+               let text = String(data: data, encoding: .utf8) {
+                return clippedSummary(text)
+            }
+        }
+
+        return nil
+    }
+
+    private func clippedSummary(_ raw: String, limit: Int = 180) -> String {
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalized.count > limit else { return normalized }
+        return String(normalized.prefix(limit)) + "…"
+    }
+
+    private func respondToPermissionRequest(
+        _ requestID: String,
+        approved: Bool
+    ) {
+        guard respondingPermissionRequestID == nil else { return }
+        let normalizedRequestID = requestID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedRequestID.isEmpty else { return }
+
+        respondingPermissionRequestID = normalizedRequestID
+        permissionActionStatusMessage = nil
+        permissionActionErrorMessage = nil
+
+        let currentSessionID = currentSession.id
+        Task {
+            let toolsViewModel = makeSessionToolsViewModel()
+            toolsViewModel.permissionRequestID = normalizedRequestID
+            toolsViewModel.permissionDecision = approved ? .approvedForSession : .denied
+            toolsViewModel.permissionMode = .default
+            toolsViewModel.permissionAllowTools = ""
+            await toolsViewModel.submitPermissionDecision(
+                sessionID: currentSessionID,
+                serverURLString: serverURLString,
+                token: token
+            )
+
+            let actionError = toolsViewModel.permissionErrorMessage?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let actionError, !actionError.isEmpty {
+                respondingPermissionRequestID = nil
+                permissionActionStatusMessage = nil
+                permissionActionErrorMessage = actionError
+                return
+            }
+
+            respondingPermissionRequestID = nil
+            permissionActionErrorMessage = nil
+            permissionActionStatusMessage = approved ? "Approved permission request" : "Denied permission request"
+
+            await viewModel.load(
+                serverURLString: serverURLString,
+                token: token
+            )
+            await viewModel.loadMessages(
+                for: currentSessionID,
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
+    }
+
     @ViewBuilder
     private var sessionSectionContent: some View {
         HStack(spacing: 6) {
@@ -609,6 +759,102 @@ public struct SessionDetailView: View {
         .listRowInsets(
             EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
         )
+
+        if !pendingPermissionRequests.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.caption)
+                        .foregroundStyle(Color.orange)
+                    Text("Approval Required")
+                        .font(.caption2.monospaced().weight(.bold))
+                        .foregroundStyle(AppPalette.secondaryText)
+                        .textCase(.uppercase)
+                }
+
+                ForEach(pendingPermissionRequests) { request in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text(request.toolName)
+                                .font(.subheadline.monospaced().weight(.semibold))
+                                .foregroundStyle(AppPalette.primaryText)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer(minLength: 0)
+                            Text(request.callID)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(AppPalette.secondaryText)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+
+                        if let summary = request.summary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(AppPalette.secondaryText)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        HStack(spacing: 8) {
+                            let isResponding = respondingPermissionRequestID == request.id
+                            Button {
+                                respondToPermissionRequest(request.id, approved: true)
+                            } label: {
+                                if isResponding {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Text("Approve")
+                                        .font(.caption.weight(.semibold))
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(respondingPermissionRequestID != nil)
+
+                            Button(role: .destructive) {
+                                respondToPermissionRequest(request.id, approved: false)
+                            } label: {
+                                Text("Deny")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(respondingPermissionRequestID != nil)
+                        }
+                    }
+
+                    if request.id != pendingPermissionRequests.last?.id {
+                        Divider().opacity(0.22)
+                    }
+                }
+
+                if let status = permissionActionStatusMessage, !status.isEmpty {
+                    Text(status)
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                }
+                if let error = permissionActionErrorMessage, !error.isEmpty {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(AppPalette.chatToolBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.orange.opacity(0.45), lineWidth: 1)
+            )
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(
+                EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+            )
+        }
     }
 
     private func sessionSummaryPanelRow(
