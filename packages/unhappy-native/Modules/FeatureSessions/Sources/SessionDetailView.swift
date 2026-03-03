@@ -125,7 +125,6 @@ public struct SessionDetailView: View {
     @State private var scrollToBottomRequestID = UUID()
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
-    @State private var transcriptSubAgentInProgressCount = 0
     @State private var respondingPermissionRequestID: String?
     @State private var isRecoveringDisconnectedSession = false
     @State private var permissionActionStatusMessage: String?
@@ -565,7 +564,7 @@ public struct SessionDetailView: View {
 
     private var subAgentInProgressCount: Int {
         guard currentSession.active else { return 0 }
-        return max(transcriptSubAgentInProgressCount, collabInProgressCountFromAgentState)
+        return collabInProgressCountFromAgentState
     }
 
     private var pendingPermissionRequests: [PendingPermissionRequest] {
@@ -2072,16 +2071,11 @@ public struct SessionDetailView: View {
             }
         }
 
-        let filtered = filterSubagentEntriesAndCount(in: nextPresentations)
-        let mergedPresentations = coalesceStreamingEntries(in: filtered.presentations)
+        let mergedPresentations = coalesceStreamingEntries(in: nextPresentations)
         let visiblePresentations = filterReasoningEntries(in: mergedPresentations)
         transcriptPresentationCache = nextCache
         if cachedVisibleTranscriptPresentations != visiblePresentations {
             cachedVisibleTranscriptPresentations = visiblePresentations
-        }
-        let normalizedInProgressCount = currentSession.active ? filtered.inProgressCount : 0
-        if transcriptSubAgentInProgressCount != normalizedInProgressCount {
-            transcriptSubAgentInProgressCount = normalizedInProgressCount
         }
     }
 
@@ -2487,63 +2481,6 @@ public struct SessionDetailView: View {
         return normalized == "codexreasoning" ||
             normalized == "geminireasoning" ||
             normalized == "think"
-    }
-
-    private func filterSubagentEntriesAndCount(
-        in presentations: [SessionTranscriptMessagePresentation]
-    ) -> (presentations: [SessionTranscriptMessagePresentation], inProgressCount: Int) {
-        var filteredPresentations: [SessionTranscriptMessagePresentation] = []
-        filteredPresentations.reserveCapacity(presentations.count)
-        var activeSubagentToolUseIDs: Set<String> = []
-        var anonymousActiveSubagentToolCalls = 0
-        var inProgressCount = 0
-
-        for presentation in presentations {
-            var filteredEntries: [SessionTranscriptEntry] = []
-            filteredEntries.reserveCapacity(presentation.entries.count)
-
-            for entry in presentation.entries {
-                if entry.isSidechain {
-                    switch entry.kind {
-                    case .toolCall:
-                        if let toolUseID = entry.toolUseID {
-                            activeSubagentToolUseIDs.insert(toolUseID)
-                        } else {
-                            anonymousActiveSubagentToolCalls += 1
-                        }
-                        inProgressCount = activeSubagentToolUseIDs.count + anonymousActiveSubagentToolCalls
-                    case .toolResult:
-                        if let toolUseID = entry.toolUseID {
-                            activeSubagentToolUseIDs.remove(toolUseID)
-                        } else if anonymousActiveSubagentToolCalls > 0 {
-                            anonymousActiveSubagentToolCalls -= 1
-                        }
-                        inProgressCount = activeSubagentToolUseIDs.count + anonymousActiveSubagentToolCalls
-                    default:
-                        break
-                    }
-                    continue
-                }
-
-                filteredEntries.append(entry)
-            }
-
-            guard !filteredEntries.isEmpty else { continue }
-            if filteredEntries == presentation.entries {
-                filteredPresentations.append(presentation)
-                continue
-            }
-            filteredPresentations.append(
-                SessionTranscriptMessagePresentation(
-                    messageID: presentation.messageID,
-                    sequenceText: presentation.sequenceText,
-                    createdAtText: presentation.createdAtText,
-                    entries: filteredEntries
-                )
-            )
-        }
-
-        return (filteredPresentations, inProgressCount)
     }
 
     private func normalizedNonNegativeInt(from value: Any?) -> Int? {
