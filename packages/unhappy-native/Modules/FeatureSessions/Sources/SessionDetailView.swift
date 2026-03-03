@@ -2340,17 +2340,26 @@ public struct SessionDetailView: View {
             return false
         }
 
-        let exactMatches: Set<String> = [
+        let subagentToolTitles = [
             "run task",
             "spawn agent",
             "send input",
             "resume agent",
             "close agent",
             "wait",
+            "wait for agents",
+            "message agent",
+            "interrupt agent",
         ]
-        if exactMatches.contains(normalizedTitle) {
+
+        if subagentToolTitles.contains(where: { title in
+            normalizedTitle == title ||
+                normalizedTitle == "\(title) result" ||
+                normalizedTitle.hasPrefix("\(title) ")
+        }) {
             return true
         }
+
         return normalizedTitle.contains("sub-agent") ||
             normalizedTitle.contains("subagent") ||
             normalizedTitle.contains("multi-agent") ||
