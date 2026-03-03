@@ -1069,7 +1069,7 @@ public struct SessionDetailView: View {
 
     private var bottomInsetContent: some View {
         VStack(spacing: isKeyboardActive ? 6 : 8) {
-            if subAgentInProgressCount > 0 && !isKeyboardActive {
+            if subAgentInProgressCount > 0 {
                 subAgentLiveBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -1159,25 +1159,25 @@ public struct SessionDetailView: View {
 
     private var subAgentLiveBar: some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(AppPalette.liveActivity)
-                .frame(width: 8, height: 8)
-            Text("\(subAgentInProgressCount) sub-agents")
-                .font(.caption.weight(.bold))
+            Image(systemName: "person.2.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AppPalette.liveActivity)
+            Text("멀티 에이전트 진행중")
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppPalette.liveActivity)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(AppPalette.liveActivityMuted)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(AppPalette.liveActivity.opacity(0.4), lineWidth: 1)
         )
         .padding(.horizontal, 12)
-        .shadow(color: AppPalette.liveActivity.opacity(0.25), radius: 8, y: 2)
+        .shadow(color: AppPalette.liveActivity.opacity(0.2), radius: 6, y: 2)
     }
 
     private var composerBar: some View {
@@ -2126,6 +2126,16 @@ public struct SessionDetailView: View {
             filteredEntries.reserveCapacity(presentation.entries.count)
 
             for entry in presentation.entries {
+                if let status = subagentStatusSignal(for: entry) {
+                    switch status {
+                    case .inProgress:
+                        inProgressCount = max(inProgressCount, 1)
+                    case .completed:
+                        inProgressCount = 0
+                    }
+                    continue
+                }
+
                 if isSubagentToolCallEntry(entry) {
                     if let toolUseID = entry.toolUseID {
                         activeSubagentToolUseIDs.insert(toolUseID)
@@ -2203,6 +2213,46 @@ public struct SessionDetailView: View {
         (entry.title ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
+    }
+
+    private enum SubagentStatusSignal {
+        case inProgress
+        case completed
+    }
+
+    private func subagentStatusSignal(for entry: SessionTranscriptEntry) -> SubagentStatusSignal? {
+        let normalizedBody = entry.body
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedTitle = normalizedEntryTitle(entry)
+
+        let inProgressPhrases = [
+            "sub-agent in progress",
+            "sub agent in progress",
+            "sub-agent running",
+            "multi-agent running",
+            "multi agent running",
+            "multi-agent in progress",
+            "multi agent in progress",
+            "subagent_notification: running",
+            "subagent_notification: in_progress",
+        ]
+        let completedPhrases = [
+            "sub-agent completed",
+            "sub agent completed",
+            "multi-agent completed",
+            "multi agent completed",
+            "subagent_notification: completed",
+            "subagent_notification: done",
+        ]
+
+        if inProgressPhrases.contains(where: { normalizedBody == $0 || normalizedTitle == $0 || normalizedBody.contains($0) }) {
+            return .inProgress
+        }
+        if completedPhrases.contains(where: { normalizedBody == $0 || normalizedTitle == $0 || normalizedBody.contains($0) }) {
+            return .completed
+        }
+        return nil
     }
 }
 
