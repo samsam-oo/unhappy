@@ -160,6 +160,75 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries[0].kind == .toolResult)
         #expect(presentation.entries[0].toolUseID == "toolu_subagent_1")
         #expect(presentation.entries[0].sourceType == "tool_result")
+        #expect(presentation.entries[0].isSidechain == false)
+    }
+
+    @Test
+    func outputUserSidechainToolResultIsMarkedAsSidechain() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "isSidechain": true,
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_subagent_2",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].isSidechain == true)
+    }
+
+    @Test
+    func outputUserToolResultKeepsExplicitToolName() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_task_2",
+                                "name": "Task",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].toolName == "task")
     }
 
     @Test

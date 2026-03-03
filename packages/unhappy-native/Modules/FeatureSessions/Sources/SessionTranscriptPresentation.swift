@@ -37,6 +37,7 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
     let toolUseID: String?
     let sourceType: String?
     let toolName: String?
+    let isSidechain: Bool
 }
 
 struct SessionTranscriptMessagePresentation: Equatable, Sendable {
@@ -332,11 +333,21 @@ enum SessionTranscriptPresentationBuilder {
             ]
         }
 
+        let isSidechain = extractIsSidechain(from: dictionary)
+
         switch type {
         case "assistant":
-            return parseAssistantMessage(dictionary["message"], messageID: messageID)
+            return parseAssistantMessage(
+                dictionary["message"],
+                messageID: messageID,
+                isSidechain: isSidechain
+            )
         case "user":
-            return parseOutputUserMessage(dictionary["message"], messageID: messageID)
+            return parseOutputUserMessage(
+                dictionary["message"],
+                messageID: messageID,
+                isSidechain: isSidechain
+            )
         case "summary":
             let summary = normalizedText(dictionary["summary"]) ?? stringify(dictionary["summary"])
             return [
@@ -345,7 +356,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .event,
                     title: "Summary",
-                    body: summary
+                    body: summary,
+                    isSidechain: isSidechain
                 )
             ]
         case "result", "system":
@@ -355,7 +367,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .system,
                     kind: .event,
                     title: type.capitalized,
-                    body: stringify(dictionary)
+                    body: stringify(dictionary),
+                    isSidechain: isSidechain
                 )
             ]
         default:
@@ -365,7 +378,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .raw,
                     title: "Output \(type)",
-                    body: stringify(dictionary)
+                    body: stringify(dictionary),
+                    isSidechain: isSidechain
                 )
             ]
         }
@@ -373,7 +387,8 @@ enum SessionTranscriptPresentationBuilder {
 
     private static func parseAssistantMessage(
         _ messageValue: Any?,
-        messageID: String
+        messageID: String,
+        isSidechain: Bool = false
     ) -> [SessionTranscriptEntry] {
         guard let message = messageValue as? [String: Any] else {
             return [
@@ -382,7 +397,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .raw,
                     title: "Assistant",
-                    body: stringify(messageValue)
+                    body: stringify(messageValue),
+                    isSidechain: isSidechain
                 )
             ]
         }
@@ -394,7 +410,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .raw,
                     title: "Assistant",
-                    body: stringify(message)
+                    body: stringify(message),
+                    isSidechain: isSidechain
                 )
             ]
         }
@@ -410,7 +427,8 @@ enum SessionTranscriptPresentationBuilder {
                         role: .agent,
                         kind: .raw,
                         title: "Chunk",
-                        body: stringify(item)
+                        body: stringify(item),
+                        isSidechain: isSidechain
                     )
                 )
                 continue
@@ -426,7 +444,8 @@ enum SessionTranscriptPresentationBuilder {
                         kind: .text,
                         title: nil,
                         body: text,
-                        sourceType: type
+                        sourceType: type,
+                        isSidechain: isSidechain
                     )
                 )
             case "thinking":
@@ -438,7 +457,8 @@ enum SessionTranscriptPresentationBuilder {
                         kind: .thinking,
                         title: "Thinking",
                         body: text,
-                        sourceType: type
+                        sourceType: type,
+                        isSidechain: isSidechain
                     )
                 )
             case "tool_use", "tool-call":
@@ -457,7 +477,8 @@ enum SessionTranscriptPresentationBuilder {
                         body: inputText,
                         toolUseID: toolUseID,
                         sourceType: type,
-                        toolName: name
+                        toolName: name,
+                        isSidechain: isSidechain
                     )
                 )
             case "tool_result", "tool-call-result":
@@ -474,7 +495,8 @@ enum SessionTranscriptPresentationBuilder {
                         body: outputText,
                         toolUseID: toolUseID,
                         sourceType: type,
-                        toolName: linkedToolName
+                        toolName: linkedToolName,
+                        isSidechain: isSidechain
                     )
                 )
             default:
@@ -484,7 +506,8 @@ enum SessionTranscriptPresentationBuilder {
                         role: .agent,
                         kind: .raw,
                         title: "Chunk \(type)",
-                        body: stringify(chunk)
+                        body: stringify(chunk),
+                        isSidechain: isSidechain
                     )
                 )
             }
@@ -494,7 +517,8 @@ enum SessionTranscriptPresentationBuilder {
 
     private static func parseOutputUserMessage(
         _ messageValue: Any?,
-        messageID: String
+        messageID: String,
+        isSidechain: Bool = false
     ) -> [SessionTranscriptEntry] {
         guard let message = messageValue as? [String: Any] else {
             return [
@@ -503,7 +527,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .user,
                     kind: .raw,
                     title: "User output",
-                    body: stringify(messageValue)
+                    body: stringify(messageValue),
+                    isSidechain: isSidechain
                 )
             ]
         }
@@ -515,7 +540,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .user,
                     kind: .text,
                     title: nil,
-                    body: contentString
+                    body: contentString,
+                    isSidechain: isSidechain
                 )
             ]
         }
@@ -528,6 +554,7 @@ enum SessionTranscriptPresentationBuilder {
                        let type = (chunk["type"] as? String)?.lowercased() {
                         if type == "tool_result" {
                             let toolUseID = extractToolUseID(from: chunk)
+                            let toolName = normalizedText(chunk["name"])
                             entries.append(
                                 makeEntry(
                                     id: "\(messageID)-output-user-\(index)",
@@ -536,7 +563,9 @@ enum SessionTranscriptPresentationBuilder {
                                     title: "Tool result",
                                     body: stringifyToolResultContent(chunk["content"]),
                                     toolUseID: toolUseID,
-                                    sourceType: type
+                                    sourceType: type,
+                                    toolName: toolName,
+                                    isSidechain: isSidechain
                                 )
                             )
                             continue
@@ -554,7 +583,8 @@ enum SessionTranscriptPresentationBuilder {
                                     role: .user,
                                     kind: .text,
                                     title: nil,
-                                    body: text
+                                    body: text,
+                                    isSidechain: isSidechain
                                 )
                             )
                             continue
@@ -568,7 +598,8 @@ enum SessionTranscriptPresentationBuilder {
                                     role: .user,
                                     kind: .text,
                                     title: nil,
-                                    body: imagePlaceholderText(index: imageIndex)
+                                    body: imagePlaceholderText(index: imageIndex),
+                                    isSidechain: isSidechain
                                 )
                             )
                             continue
@@ -581,7 +612,8 @@ enum SessionTranscriptPresentationBuilder {
                             role: .agent,
                             kind: .raw,
                             title: "Chunk",
-                            body: stringify(item)
+                            body: stringify(item),
+                            isSidechain: isSidechain
                         )
                     )
                 }
@@ -594,7 +626,8 @@ enum SessionTranscriptPresentationBuilder {
                 role: .user,
                 kind: .raw,
                 title: "User output",
-                body: stringify(message)
+                body: stringify(message),
+                isSidechain: isSidechain
             )
         ]
     }
@@ -803,7 +836,8 @@ enum SessionTranscriptPresentationBuilder {
         body: String,
         toolUseID: String? = nil,
         sourceType: String? = nil,
-        toolName: String? = nil
+        toolName: String? = nil,
+        isSidechain: Bool = false
     ) -> SessionTranscriptEntry {
         let cleanedBody = sanitizeText(body)
         let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -829,8 +863,21 @@ enum SessionTranscriptPresentationBuilder {
             body: normalized,
             toolUseID: toolUseID,
             sourceType: normalizedSourceType,
-            toolName: normalizedToolName
+            toolName: normalizedToolName,
+            isSidechain: isSidechain
         )
+    }
+
+    private static func extractIsSidechain(from dictionary: [String: Any]) -> Bool {
+        if let boolValue = dictionary["isSidechain"] as? Bool {
+            return boolValue
+        }
+
+        guard let textValue = normalizedText(dictionary["isSidechain"])?.lowercased() else {
+            return false
+        }
+
+        return textValue == "true" || textValue == "1" || textValue == "yes"
     }
 
     private static func extractToolUseID(from dictionary: [String: Any]) -> String? {
