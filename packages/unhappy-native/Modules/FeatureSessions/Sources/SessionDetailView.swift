@@ -2302,11 +2302,7 @@ public struct SessionDetailView: View {
 
     private func isSubagentToolCallEntry(_ entry: SessionTranscriptEntry) -> Bool {
         guard entry.kind == .toolCall else { return false }
-        let normalizedTitle = normalizedEntryTitle(entry)
-        if subagentToolTitleMatches(normalizedTitle) {
-            return true
-        }
-        return subagentMarkersMatch(entry)
+        return subagentAdapters.contains { $0.matchesToolCall(entry) }
     }
 
     private func isSubagentToolResultEntry(
@@ -2319,95 +2315,16 @@ public struct SessionDetailView: View {
             return true
         }
 
-        let normalizedTitle = normalizedEntryTitle(entry)
-        if subagentToolTitleMatches(normalizedTitle) {
-            return true
-        }
-        return subagentMarkersMatch(entry)
+        return subagentAdapters.contains { $0.matchesToolResult(entry) }
     }
 
     private func isSubagentNarrativeEntry(_ entry: SessionTranscriptEntry) -> Bool {
         switch entry.kind {
         case .text, .thinking, .raw, .event:
-            return subagentMarkersMatch(entry)
+            return subagentAdapters.contains { $0.matchesNarrative(entry) }
         default:
             return false
         }
-    }
-
-    private func subagentToolTitleMatches(_ normalizedTitle: String) -> Bool {
-        if normalizedTitle.isEmpty {
-            return false
-        }
-
-        let subagentToolTitles = [
-            "run task",
-            "spawn agent",
-            "send input",
-            "resume agent",
-            "close agent",
-            "wait",
-            "wait for agents",
-            "message agent",
-            "interrupt agent",
-        ]
-
-        if subagentToolTitles.contains(where: { title in
-            normalizedTitle == title ||
-                normalizedTitle == "\(title) result" ||
-                normalizedTitle.hasPrefix("\(title) ")
-        }) {
-            return true
-        }
-
-        return normalizedTitle.contains("sub-agent") ||
-            normalizedTitle.contains("subagent") ||
-            normalizedTitle.contains("multi-agent") ||
-            normalizedTitle.contains("multi agent")
-    }
-
-    private func subagentMarkersMatch(_ entry: SessionTranscriptEntry) -> Bool {
-        let normalizedTitle = normalizedEntryTitle(entry)
-        let normalizedBody = entry.body
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-
-        let markers = [
-            "spawn_agent",
-            "send_input",
-            "resume_agent",
-            "close_agent",
-            "subagent_notification",
-            "subagent_type",
-            "sub-agent",
-            "sub agent",
-            "subagent",
-            "multi-agent",
-            "multi agent",
-            "collab_",
-            "collabagents",
-            "collabagent",
-            "receiver_thread_id",
-            "receiver_thread_ids",
-            "sender_thread_id",
-            "new_thread_id",
-            "\"agent_id\"",
-            "\"agentid\"",
-            "\"agent_type\"",
-            "\"agenttype\"",
-        ]
-
-        if markers.contains(where: { normalizedTitle.contains($0) || normalizedBody.contains($0) }) {
-            return true
-        }
-
-        return subagentToolTitleMatches(normalizedTitle)
-    }
-
-    private func normalizedEntryTitle(_ entry: SessionTranscriptEntry) -> String {
-        (entry.title ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
     }
 
     private enum SubagentStatusSignal {
@@ -2416,38 +2333,128 @@ public struct SessionDetailView: View {
     }
 
     private func subagentStatusSignal(for entry: SessionTranscriptEntry) -> SubagentStatusSignal? {
-        let normalizedBody = entry.body
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        let normalizedTitle = normalizedEntryTitle(entry)
-
-        let inProgressPhrases = [
-            "sub-agent in progress",
-            "sub agent in progress",
-            "sub-agent running",
-            "multi-agent running",
-            "multi agent running",
-            "multi-agent in progress",
-            "multi agent in progress",
-            "subagent_notification: running",
-            "subagent_notification: in_progress",
-        ]
-        let completedPhrases = [
-            "sub-agent completed",
-            "sub agent completed",
-            "multi-agent completed",
-            "multi agent completed",
-            "subagent_notification: completed",
-            "subagent_notification: done",
-        ]
-
-        if inProgressPhrases.contains(where: { normalizedBody == $0 || normalizedTitle == $0 || normalizedBody.contains($0) }) {
-            return .inProgress
-        }
-        if completedPhrases.contains(where: { normalizedBody == $0 || normalizedTitle == $0 || normalizedBody.contains($0) }) {
-            return .completed
+        for adapter in subagentAdapters {
+            if let signal = adapter.statusSignal(for: entry) {
+                return signal
+            }
         }
         return nil
+    }
+
+    private var subagentAdapters: [SubagentAdapter] {
+        SubagentAdapter.allCases
+    }
+
+    private enum SubagentAdapter: CaseIterable {
+        case codex
+        case claude
+
+        func matchesToolCall(_ entry: SessionTranscriptEntry) -> Bool {
+            switch self {
+            case .codex:
+                guard let toolName = Self.normalizedToken(entry.toolName) else { return false }
+                return [
+                    "spawn_agent",
+                    "send_input",
+                    "resume_agent",
+                    "close_agent",
+                    "wait",
+                    "message_agent",
+                    "interrupt_agent",
+                ].contains(toolName)
+            case .claude:
+                guard Self.normalizedToken(entry.toolName) == "task" else { return false }
+                let body = Self.normalizedBody(entry.body)
+                return body.contains("subagent_type")
+            }
+        }
+
+        func matchesToolResult(_ entry: SessionTranscriptEntry) -> Bool {
+            switch self {
+            case .codex:
+                guard let toolName = Self.normalizedToken(entry.toolName) else { return false }
+                return [
+                    "spawn_agent",
+                    "send_input",
+                    "resume_agent",
+                    "close_agent",
+                    "wait",
+                    "message_agent",
+                    "interrupt_agent",
+                ].contains(toolName)
+            case .claude:
+                guard Self.normalizedToken(entry.toolName) == "task" else { return false }
+                let body = Self.normalizedBody(entry.body)
+                return body.contains("subagent_notification") || body.contains("sub-agent")
+            }
+        }
+
+        func matchesNarrative(_ entry: SessionTranscriptEntry) -> Bool {
+            let body = Self.normalizedBody(entry.body)
+            switch self {
+            case .codex:
+                guard let sourceType = Self.normalizedToken(entry.sourceType) else { return false }
+                return [
+                    "collab_waiting_begin",
+                    "collab_waiting_end",
+                    "collabtoolcall",
+                    "collab_agent_tool_call",
+                ].contains(sourceType)
+            case .claude:
+                return body.contains("subagent_notification") ||
+                    body.contains("sub-agent in progress") ||
+                    body.contains("sub-agent completed")
+            }
+        }
+
+        func statusSignal(for entry: SessionTranscriptEntry) -> SubagentStatusSignal? {
+            switch self {
+            case .codex:
+                guard let sourceType = Self.normalizedToken(entry.sourceType) else { return nil }
+                if sourceType == "collab_waiting_begin" {
+                    return .inProgress
+                }
+                if sourceType == "collab_waiting_end" {
+                    return .completed
+                }
+                guard sourceType == "collabtoolcall" || sourceType == "collab_agent_tool_call" else {
+                    return nil
+                }
+                let body = Self.normalizedBody(entry.body)
+                if ["inprogress", "in_progress", "running", "pending"].contains(where: { body.contains($0) }) {
+                    return .inProgress
+                }
+                if ["completed", "failed", "errored", "error", "shutdown"].contains(where: { body.contains($0) }) {
+                    return .completed
+                }
+                return nil
+            case .claude:
+                let body = Self.normalizedBody(entry.body)
+                if body.contains("subagent_notification: running") || body.contains("subagent_notification: in_progress") {
+                    return .inProgress
+                }
+                if body.contains("subagent_notification: completed") || body.contains("subagent_notification: done") {
+                    return .completed
+                }
+                return nil
+            }
+        }
+
+        private static func normalizedToken(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let normalized = value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+                .replacingOccurrences(of: "-", with: "_")
+                .replacingOccurrences(of: " ", with: "_")
+            return normalized.isEmpty ? nil : normalized
+        }
+
+        private static func normalizedBody(_ value: String) -> String {
+            value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+        }
     }
 }
 

@@ -35,6 +35,8 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
     let title: String?
     let body: String
     let toolUseID: String?
+    let sourceType: String?
+    let toolName: String?
 }
 
 struct SessionTranscriptMessagePresentation: Equatable, Sendable {
@@ -423,7 +425,8 @@ enum SessionTranscriptPresentationBuilder {
                         role: .agent,
                         kind: .text,
                         title: nil,
-                        body: text
+                        body: text,
+                        sourceType: type
                     )
                 )
             case "thinking":
@@ -434,7 +437,8 @@ enum SessionTranscriptPresentationBuilder {
                         role: .agent,
                         kind: .thinking,
                         title: "Thinking",
-                        body: text
+                        body: text,
+                        sourceType: type
                     )
                 )
             case "tool_use", "tool-call":
@@ -451,7 +455,9 @@ enum SessionTranscriptPresentationBuilder {
                         kind: .toolCall,
                         title: toolDisplayName(name),
                         body: inputText,
-                        toolUseID: toolUseID
+                        toolUseID: toolUseID,
+                        sourceType: type,
+                        toolName: name
                     )
                 )
             case "tool_result", "tool-call-result":
@@ -466,7 +472,9 @@ enum SessionTranscriptPresentationBuilder {
                         kind: .toolResult,
                         title: title,
                         body: outputText,
-                        toolUseID: toolUseID
+                        toolUseID: toolUseID,
+                        sourceType: type,
+                        toolName: linkedToolName
                     )
                 )
             default:
@@ -527,7 +535,8 @@ enum SessionTranscriptPresentationBuilder {
                                     kind: .toolResult,
                                     title: "Tool result",
                                     body: stringifyToolResultContent(chunk["content"]),
-                                    toolUseID: toolUseID
+                                    toolUseID: toolUseID,
+                                    sourceType: type
                                 )
                             )
                             continue
@@ -609,7 +618,8 @@ enum SessionTranscriptPresentationBuilder {
                     title: type == "message"
                         ? nil
                         : type.replacingOccurrences(of: "_", with: " ").capitalized,
-                    body: body
+                    body: body,
+                    sourceType: type
                 )
             ]
         }
@@ -658,7 +668,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .text,
                     title: type == "reasoning" ? "Reasoning" : nil,
-                    body: text
+                    body: text,
+                    sourceType: type
                 )
             ]
         case "thinking":
@@ -669,7 +680,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .thinking,
                     title: "Thinking",
-                    body: text
+                    body: text,
+                    sourceType: type
                 )
             ]
         case "tool-call":
@@ -687,7 +699,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .toolCall,
                     title: title,
                     body: body,
-                    toolUseID: toolUseID
+                    toolUseID: toolUseID,
+                    sourceType: type,
+                    toolName: name
                 )
             ]
         case "tool-result", "tool-call-result":
@@ -704,7 +718,9 @@ enum SessionTranscriptPresentationBuilder {
                     kind: .toolResult,
                     title: title,
                     body: stringifyToolResultContent(dictionary["output"] ?? dictionary["content"]),
-                    toolUseID: toolUseID
+                    toolUseID: toolUseID,
+                    sourceType: type,
+                    toolName: name
                 )
             ]
         case "terminal-output":
@@ -719,7 +735,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .raw,
                     title: nil,
-                    body: output
+                    body: output,
+                    sourceType: type
                 )
             ]
         case "tool-stream":
@@ -732,7 +749,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .raw,
                     title: nil,
-                    body: output
+                    body: output,
+                    sourceType: type
                 )
             ]
         case "permission-request":
@@ -744,7 +762,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .system,
                     kind: .event,
                     title: "Approval needed: \(tool)",
-                    body: description
+                    body: description,
+                    sourceType: type
                 )
             ]
         case "task_started":
@@ -754,7 +773,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .thinking,
                     title: nil,
-                    body: "Thinking…"
+                    body: "Thinking…",
+                    sourceType: type
                 )
             ]
         case "task_complete", "turn_aborted":
@@ -768,7 +788,8 @@ enum SessionTranscriptPresentationBuilder {
                     role: .agent,
                     kind: .raw,
                     title: "Agent \(type)",
-                    body: stringify(dictionary)
+                    body: stringify(dictionary),
+                    sourceType: type
                 )
             ]
         }
@@ -780,19 +801,35 @@ enum SessionTranscriptPresentationBuilder {
         kind: SessionTranscriptEntryKind,
         title: String?,
         body: String,
-        toolUseID: String? = nil
+        toolUseID: String? = nil,
+        sourceType: String? = nil,
+        toolName: String? = nil
     ) -> SessionTranscriptEntry {
         let cleanedBody = sanitizeText(body)
         let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = trimmed.isEmpty ? " " : trimBody(trimmed)
         let cleanedTitle = title.map(sanitizeText)
+        let cleanedSourceType = sourceType?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedSourceType = cleanedSourceType?.isEmpty == false
+            ? cleanedSourceType
+            : nil
+        let cleanedToolName = toolName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let normalizedToolName = cleanedToolName?.isEmpty == false
+            ? cleanedToolName
+            : nil
         return SessionTranscriptEntry(
             id: id,
             role: role,
             kind: kind,
             title: cleanedTitle,
             body: normalized,
-            toolUseID: toolUseID
+            toolUseID: toolUseID,
+            sourceType: normalizedSourceType,
+            toolName: normalizedToolName
         )
     }
 

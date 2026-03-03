@@ -30,6 +30,7 @@ struct SessionTranscriptPresentationTests {
 
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].body == "Process exited unexpectedly")
+        #expect(presentation.entries[0].sourceType == "message")
     }
 
     @Test
@@ -72,6 +73,8 @@ struct SessionTranscriptPresentationTests {
 
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].title == "Read Files")
+        #expect(presentation.entries[0].sourceType == "tool-call")
+        #expect(presentation.entries[0].toolName == "read")
     }
 
     @Test
@@ -112,8 +115,12 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries.count == 2)
         #expect(presentation.entries[0].title == "Run Task")
         #expect(presentation.entries[0].toolUseID == "toolu_task_1")
+        #expect(presentation.entries[0].sourceType == "tool_use")
+        #expect(presentation.entries[0].toolName == "task")
         #expect(presentation.entries[1].title == "Run Task Result")
         #expect(presentation.entries[1].toolUseID == "toolu_task_1")
+        #expect(presentation.entries[1].sourceType == "tool_result")
+        #expect(presentation.entries[1].toolName == "task")
     }
 
     @Test
@@ -152,6 +159,7 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].kind == .toolResult)
         #expect(presentation.entries[0].toolUseID == "toolu_subagent_1")
+        #expect(presentation.entries[0].sourceType == "tool_result")
     }
 
     @Test
