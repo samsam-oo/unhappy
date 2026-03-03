@@ -125,7 +125,7 @@ public struct SessionDetailView: View {
     @State private var scrollToBottomRequestID = UUID()
     @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
-    @State private var subAgentInProgressCount = 0
+    @State private var transcriptSubAgentInProgressCount = 0
     @State private var respondingPermissionRequestID: String?
     @State private var isRecoveringDisconnectedSession = false
     @State private var permissionActionStatusMessage: String?
@@ -226,10 +226,7 @@ public struct SessionDetailView: View {
                     serverURLString: serverURLString,
                     token: token
                 )
-                refreshTranscriptPresentationCache(
-                    messages: viewModel.selectedSessionMessages,
-                    dataEncryptionKey: currentSession.dataEncryptionKey
-                )
+                refreshTranscriptPresentationCacheForCurrentState()
                 scrollTranscriptToBottom(using: scrollProxy, animated: false)
             }
             .onChange(of: viewModel.selectedSessionMessages) { _, messages in
@@ -238,11 +235,8 @@ public struct SessionDetailView: View {
                     dataEncryptionKey: currentSession.dataEncryptionKey
                 )
             }
-            .onChange(of: currentSession.dataEncryptionKey) { _, dataEncryptionKey in
-                refreshTranscriptPresentationCache(
-                    messages: viewModel.selectedSessionMessages,
-                    dataEncryptionKey: dataEncryptionKey
-                )
+            .onChange(of: currentSession.dataEncryptionKey) { _, _ in
+                refreshTranscriptPresentationCacheForCurrentState()
             }
             .onChange(of: visibleTranscriptMessageIDs) { oldIDs, newIDs in
                 handleVisibleTranscriptMessageIDsChange(
@@ -565,6 +559,11 @@ public struct SessionDetailView: View {
             return currentSessionDisplayTitle
         }
         return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
+    }
+
+    private var subAgentInProgressCount: Int {
+        guard currentSession.active else { return 0 }
+        return max(transcriptSubAgentInProgressCount, collabInProgressCountFromAgentState)
     }
 
     private var pendingPermissionRequests: [PendingPermissionRequest] {
@@ -1896,6 +1895,45 @@ public struct SessionDetailView: View {
         )
     }
 
+    private var collabInProgressCountFromAgentState: Int {
+        let sources = [decodedSessionAgentState, decodedSessionMetadata]
+        guard let collabState = SessionPayloadValueResolver.firstDictionary(
+            in: sources,
+            keys: [
+                "collab",
+                "collaboration",
+                "multiAgent",
+                "multi_agent",
+            ]
+        ) else {
+            return 0
+        }
+
+        let activeCountKeys = [
+            "activeCount",
+            "active_count",
+            "inProgressCount",
+            "in_progress_count",
+            "runningCount",
+            "running_count",
+            "count",
+        ]
+        for key in activeCountKeys {
+            if let activeCount = normalizedNonNegativeInt(from: collabState[key]), activeCount > 0 {
+                return activeCount
+            }
+        }
+
+        let state = SessionPayloadValueResolver.firstString(
+            in: [collabState],
+            keys: ["state", "status", "phase"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if state == "in_progress" || state == "inprogress" || state == "running" {
+            return 1
+        }
+        return 0
+    }
+
     private var resolvedCurrentModelLabel: String? {
         SessionPayloadValueResolver.firstString(
             in: [decodedSessionAgentState, decodedSessionMetadata],
@@ -2026,9 +2064,16 @@ public struct SessionDetailView: View {
             cachedVisibleTranscriptPresentations = visiblePresentations
         }
         let normalizedInProgressCount = currentSession.active ? filtered.inProgressCount : 0
-        if subAgentInProgressCount != normalizedInProgressCount {
-            subAgentInProgressCount = normalizedInProgressCount
+        if transcriptSubAgentInProgressCount != normalizedInProgressCount {
+            transcriptSubAgentInProgressCount = normalizedInProgressCount
         }
+    }
+
+    private func refreshTranscriptPresentationCacheForCurrentState() {
+        refreshTranscriptPresentationCache(
+            messages: viewModel.selectedSessionMessages,
+            dataEncryptionKey: currentSession.dataEncryptionKey
+        )
     }
 
     private var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {
@@ -2483,6 +2528,20 @@ public struct SessionDetailView: View {
         }
 
         return (filteredPresentations, inProgressCount)
+    }
+
+    private func normalizedNonNegativeInt(from value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return max(0, intValue)
+        }
+        if let number = value as? NSNumber {
+            return max(0, number.intValue)
+        }
+        if let string = value as? String,
+           let parsed = Int(string.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return max(0, parsed)
+        }
+        return nil
     }
 }
 
