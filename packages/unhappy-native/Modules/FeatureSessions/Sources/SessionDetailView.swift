@@ -199,7 +199,9 @@ public struct SessionDetailView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 bottomInsetContent
             }
-            .defaultScrollAnchor(.bottom)
+            // Keep auto-follow behavior via explicit scroll requests below.
+            // Avoid defaultScrollAnchor on List because rapid shrink/grow updates can trigger
+            // UICollectionView target index assertions on some iOS versions.
             .toolbar(.hidden, for: .tabBar)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -1817,19 +1819,31 @@ public struct SessionDetailView: View {
 
     private func scrollTranscriptToBottom(
         using proxy: ScrollViewProxy,
-        animated: Bool = true
+        animated: Bool = false
     ) {
-        // Schedule on the next runloop to let List reconcile its backing collection view first.
+        let snapshotCount = visibleTranscriptMessageIDs.count
+        // Schedule after two runloop turns so List can reconcile backing UICollectionView.
+        // This reduces invalid target index-path assertions during rapid stream updates.
         DispatchQueue.main.async {
-            let action = {
-                proxy.scrollTo(Self.transcriptBottomAnchorID, anchor: .bottom)
-            }
-            if animated {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    action()
+            DispatchQueue.main.async {
+                guard shouldFollowTranscript else { return }
+                // Skip stale requests when the transcript just shrank.
+                guard visibleTranscriptMessageIDs.count >= snapshotCount else { return }
+
+                let action = {
+                    proxy.scrollTo(Self.transcriptBottomAnchorID, anchor: .bottom)
                 }
-            } else {
-                action()
+                if animated {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        action()
+                    }
+                } else {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        action()
+                    }
+                }
             }
         }
     }
