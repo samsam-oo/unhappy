@@ -1393,14 +1393,41 @@ export class CodexAppServerClient {
     ) {
       const item = params.item;
       if (item.type === 'agentMessage' && typeof item.text === 'string') {
+        const inferredThreadId = getFirstNonEmptyString([
+          params.threadId,
+          params.thread_id,
+          item.threadId,
+          item.thread_id,
+          item.sessionId,
+          item.session_id,
+        ]);
+        const inferredConversationId = getFirstNonEmptyString([
+          params.conversationId,
+          params.conversation_id,
+          item.conversationId,
+          item.conversation_id,
+          inferredThreadId,
+          this.conversationId,
+        ]);
+        const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
+        if (inferredThreadId) {
+          this.updateIdentifiersFromEvent({ thread_id: inferredThreadId });
+        }
+        if (inferredConversationId) {
+          this.updateIdentifiersFromEvent({ conversation_id: inferredConversationId });
+        }
         const shouldForward = !this.shouldSuppressAgentMessage({
           message: item.text,
-          turnId: params.turnId,
-          conversationId:
-            typeof params.threadId === 'string' ? params.threadId : this.conversationId,
+          turnId,
+          conversationId: inferredConversationId,
         });
         if (shouldForward) {
-          this.handler?.({ type: 'agent_message', message: item.text });
+          this.handler?.({
+            type: 'agent_message',
+            message: item.text,
+            ...(inferredThreadId ? { thread_id: inferredThreadId } : {}),
+            ...(inferredConversationId ? { conversation_id: inferredConversationId } : {}),
+          });
         } else {
           logger.debug('[CodexAppServer] Suppressed duplicate agent_message from item/completed');
         }
@@ -1412,12 +1439,26 @@ export class CodexAppServerClient {
       typeof params.delta === 'string' &&
       !this.sawLegacyCodexEvents
     ) {
+      const item = isRecord(params.item) ? params.item : null;
+      const threadId = getFirstNonEmptyString([
+        params.threadId,
+        params.thread_id,
+        item?.threadId,
+        item?.thread_id,
+        item?.sessionId,
+        item?.session_id,
+      ]);
+      const itemId = getFirstNonEmptyString([params.itemId, params.item_id, item?.id]);
+      const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ thread_id: threadId });
+      }
       this.handler?.({
         type: 'agent_message_delta',
         delta: params.delta,
-        item_id: params.itemId,
-        turn_id: params.turnId,
-        thread_id: params.threadId,
+        ...(itemId ? { item_id: itemId } : {}),
+        ...(turnId ? { turn_id: turnId } : {}),
+        ...(threadId ? { thread_id: threadId } : {}),
       });
     }
   }
@@ -1430,9 +1471,13 @@ export class CodexAppServerClient {
 
     // v2 stream: item_started/item_completed with `item.type = collabAgentToolCall`
     const item = isRecord(params.item) ? params.item : null;
-    if (item && item.type === 'collabAgentToolCall') {
+    const itemType = getFirstNonEmptyString([item?.type])?.toLowerCase();
+    if (
+      item &&
+      (itemType === 'collabagenttoolcall' || itemType === 'collab_agent_tool_call')
+    ) {
       const statusRaw =
-        typeof item.status === 'string' ? item.status.toLowerCase() : '';
+        getFirstNonEmptyString([item.status, item.state])?.toLowerCase() ?? '';
       const looksInProgress =
         statusRaw === 'inprogress' ||
         statusRaw === 'in_progress' ||
@@ -1441,24 +1486,40 @@ export class CodexAppServerClient {
         methodLower === 'item_started' ||
         methodLower.endsWith('/started');
 
-      const receiverThreadIds = Array.isArray(item.receiverThreadIds)
-        ? item.receiverThreadIds.filter(
+      const rawReceiverThreadIds = Array.isArray(item.receiverThreadIds)
+        ? item.receiverThreadIds
+        : Array.isArray(item.receiver_thread_ids)
+          ? item.receiver_thread_ids
+          : [];
+      const receiverThreadIds = rawReceiverThreadIds
+        .filter(
             (value): value is string =>
               typeof value === 'string' && value.trim().length > 0,
           )
-        : undefined;
+        .map((value) => value.trim());
+      const directReceiverThreadId = getFirstNonEmptyString([
+        item.receiverThreadId,
+        item.receiver_thread_id,
+      ]);
+      if (directReceiverThreadId && !receiverThreadIds.includes(directReceiverThreadId)) {
+        receiverThreadIds.push(directReceiverThreadId);
+      }
+      const senderThreadId = getFirstNonEmptyString([
+        item.senderThreadId,
+        item.sender_thread_id,
+      ]);
+      const newThreadId = getFirstNonEmptyString([item.newThreadId, item.new_thread_id]);
+      const threadId = getFirstNonEmptyString([params.threadId, params.thread_id, senderThreadId]);
 
       const syntheticEvent = {
         type: looksInProgress ? 'collab_waiting_begin' : 'collab_waiting_end',
         call_id:
-          typeof item.id === 'string' && item.id.trim()
-            ? item.id
-            : undefined,
-        sender_thread_id:
-          typeof item.senderThreadId === 'string' && item.senderThreadId.trim()
-            ? item.senderThreadId
-            : undefined,
-        receiver_thread_ids: receiverThreadIds,
+          getFirstNonEmptyString([item.id, item.callId, item.call_id]) ?? undefined,
+        ...(threadId ? { thread_id: threadId } : {}),
+        ...(senderThreadId ? { sender_thread_id: senderThreadId } : {}),
+        ...(receiverThreadIds.length > 0 ? { receiver_thread_ids: receiverThreadIds } : {}),
+        ...(receiverThreadIds.length > 0 ? { receiver_thread_id: receiverThreadIds[0] } : {}),
+        ...(newThreadId ? { new_thread_id: newThreadId } : {}),
         tool: item.tool,
         status: item.status,
       };

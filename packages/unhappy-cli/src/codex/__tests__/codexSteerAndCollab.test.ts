@@ -97,6 +97,41 @@ describe('Codex turn/steer and collab forwarding', () => {
     });
   });
 
+  it('maps snake_case collabAgentToolCall payloads and preserves thread linkage fields', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'item/started',
+      params: {
+        thread_id: 'thread-main',
+        item: {
+          type: 'collab_agent_tool_call',
+          call_id: 'call-v2-2',
+          status: 'running',
+          sender_thread_id: 'thread-main',
+          receiver_thread_id: 'thread-sub-1',
+          new_thread_id: 'thread-sub-2',
+          receiver_thread_ids: ['thread-sub-2', 'thread-sub-3'],
+          tool: 'spawn',
+        },
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      type: 'collab_waiting_begin',
+      call_id: 'call-v2-2',
+      thread_id: 'thread-main',
+      sender_thread_id: 'thread-main',
+      receiver_thread_id: 'thread-sub-2',
+      receiver_thread_ids: ['thread-sub-2', 'thread-sub-3', 'thread-sub-1'],
+      new_thread_id: 'thread-sub-2',
+    });
+  });
+
   it('handles item/tool/requestUserInput by sending a structured answer map', async () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;
@@ -253,6 +288,33 @@ describe('Codex turn/steer and collab forwarding', () => {
       item_id: 'item-1',
       turn_id: 'turn-1',
       thread_id: 'thread-1',
+    });
+  });
+
+  it('forwards item/completed agent messages with thread identifiers', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'item/completed',
+      params: {
+        thread_id: 'thread-sub-1',
+        turn_id: 'turn-sub-1',
+        item: {
+          type: 'agentMessage',
+          text: 'sub-agent update',
+        },
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      type: 'agent_message',
+      message: 'sub-agent update',
+      thread_id: 'thread-sub-1',
+      conversation_id: 'thread-sub-1',
     });
   });
 
