@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { mapToClaudeMode } from './permissionMode';
-import type { PermissionMode } from '@/api/types';
+import { ALL_PERMISSION_MODES } from '@/utils/permissionModeAdapter';
 
 describe('mapToClaudeMode', () => {
     describe('Codex modes are mapped to Claude equivalents', () => {
+        it('maps passthrough → default', () => {
+            expect(mapToClaudeMode('passthrough')).toBe('default');
+        });
+
         it('maps yolo → bypassPermissions', () => {
             expect(mapToClaudeMode('yolo')).toBe('bypassPermissions');
         });
@@ -35,16 +39,11 @@ describe('mapToClaudeMode', () => {
         });
     });
 
-    describe('all 7 PermissionMode values are handled', () => {
-        const allModes: PermissionMode[] = [
-            'default', 'acceptEdits', 'bypassPermissions', 'plan',  // Claude modes
-            'read-only', 'safe-yolo', 'yolo'  // Codex modes
-        ];
-
+    describe('all 8 PermissionMode values are handled', () => {
         it('returns a valid Claude mode for every PermissionMode', () => {
             const validClaudeModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
 
-            allModes.forEach(mode => {
+            ALL_PERMISSION_MODES.forEach(mode => {
                 const result = mapToClaudeMode(mode);
                 expect(validClaudeModes).toContain(result);
             });

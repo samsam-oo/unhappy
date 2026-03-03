@@ -11,6 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+import { isPermissionMode } from '@/utils/permissionModeAdapter';
 import axios from 'axios';
 
 /**
@@ -194,13 +195,7 @@ export class ApiSessionClient extends EventEmitter {
                     const normalizedPermissionMode =
                         rawPermissionMode === null
                             ? undefined
-                            : rawPermissionMode === 'default' ||
-                                rawPermissionMode === 'acceptEdits' ||
-                                rawPermissionMode === 'bypassPermissions' ||
-                                rawPermissionMode === 'plan' ||
-                                rawPermissionMode === 'read-only' ||
-                                rawPermissionMode === 'safe-yolo' ||
-                                rawPermissionMode === 'yolo'
+                            : isPermissionMode(rawPermissionMode)
                                 ? rawPermissionMode
                                 : undefined;
 

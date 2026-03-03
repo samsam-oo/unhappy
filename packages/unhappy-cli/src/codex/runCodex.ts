@@ -20,6 +20,10 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
+import {
+  mapPermissionModeToCodexOverrides,
+  resolvePermissionModeWithAdapter,
+} from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -522,6 +526,7 @@ export async function runCodex(opts: {
       ...(currentState?.mode ?? {}),
       model: opts.model,
       effort: opts.reasoningEffort,
+      permissionMode: undefined,
     },
   }));
 
@@ -594,13 +599,18 @@ export async function runCodex(opts: {
     undefined;
   let currentModel: string | undefined = opts.model;
   let currentEffort: ReasoningEffortMode | undefined = opts.reasoningEffort;
-  const syncAgentModeState = (model: string | undefined, effort: ReasoningEffortMode | undefined) => {
+  const syncAgentModeState = (
+    model: string | undefined,
+    effort: ReasoningEffortMode | undefined,
+    permissionMode: import('@/api/types').PermissionMode | undefined,
+  ) => {
     session.updateAgentState((currentState) => ({
       ...currentState,
       mode: {
         ...(currentState?.mode ?? {}),
         model,
         effort,
+        permissionMode,
       },
     }));
   };
@@ -615,15 +625,28 @@ export async function runCodex(opts: {
   let injectedInstructionsIntoPrompt = false;
 
   session.onUserMessage((message) => {
-    // Resolve permission mode (accept all modes, will be mapped in switch statement)
+    // Resolve permission mode (accept all modes; backend mapping is handled by adapter)
     let messagePermissionMode = currentPermissionMode;
-    if (message.meta?.permissionMode) {
-      messagePermissionMode = message.meta
-        .permissionMode as import('@/api/types').PermissionMode;
-      currentPermissionMode = messagePermissionMode;
-      logger.debug(
-        `[Codex] Permission mode updated from user message to: ${currentPermissionMode}`,
-      );
+    const hasPermissionModeOverride =
+      message.meta &&
+      Object.prototype.hasOwnProperty.call(message.meta, 'permissionMode');
+    if (hasPermissionModeOverride) {
+      const resolvedPermissionMode = resolvePermissionModeWithAdapter({
+        target: 'codex',
+        currentMode: currentPermissionMode,
+        rawRequestedMode: message.meta?.permissionMode,
+      });
+      if (resolvedPermissionMode.kind === 'invalid') {
+        logger.debug(
+          `[Codex] Invalid permission mode received: ${String(message.meta?.permissionMode)}`,
+        );
+      } else {
+        messagePermissionMode = resolvedPermissionMode.effectiveMode;
+        currentPermissionMode = resolvedPermissionMode.nextCurrentMode;
+        logger.debug(
+          `[Codex] Permission mode updated from user message to: ${currentPermissionMode}`,
+        );
+      }
     } else {
       logger.debug(
         `[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`,
@@ -672,7 +695,7 @@ export async function runCodex(opts: {
         `[Codex] User message received with no effort override, using current: ${currentEffort || 'default'}`,
       );
     }
-    syncAgentModeState(currentModel, currentEffort);
+    syncAgentModeState(currentModel, currentEffort, messagePermissionMode);
 
     // Resolve custom system prompt; explicit null resets to default (undefined)
     let messageCustomSystemPrompt = currentCustomSystemPrompt;
@@ -1636,6 +1659,16 @@ export async function runCodex(opts: {
     }
     return false;
   };
+  const shouldSuppressTranscriptToolingNoise = (
+    threadID: string | null,
+    isSidechain: boolean,
+  ): boolean => {
+    if (isSidechain) return true;
+    // Some app-server tooling notifications don't carry thread_id.
+    // During active collab, suppress these details at daemon level.
+    if (activeCollabKeys.size > 0 && !threadID) return true;
+    return false;
+  };
   type CollabIndicatorState = 'in_progress' | 'completed' | null;
   let collabStatusState: CollabIndicatorState = null;
   let collabStatusUpdatedAt = 0;
@@ -1864,6 +1897,9 @@ export async function runCodex(opts: {
     if (msg.type === 'agent_message') {
       const threadID = threadIDForMessage(msg);
       const isSidechain = isSubagentMessage(msg);
+      if (isSidechain) {
+        return;
+      }
       session.sendCodexMessage({
         type: 'message',
         message: msg.message,
@@ -1881,6 +1917,9 @@ export async function runCodex(opts: {
       rememberExecCallId(canonicalCallId);
       const threadID = threadIDForMessage(msg);
       const isSidechain = isSubagentMessage(msg);
+      if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+        return;
+      }
       session.sendCodexMessage({
         type: 'tool-call',
         name: 'CodexBash',
@@ -1897,6 +1936,9 @@ export async function runCodex(opts: {
       forgetExecCallId(canonicalCallId);
       const threadID = threadIDForMessage(msg);
       const isSidechain = isSubagentMessage(msg);
+      if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+        return;
+      }
       session.sendCodexMessage({
         type: 'tool-call-result',
         callId: canonicalCallId,
@@ -1923,6 +1965,9 @@ export async function runCodex(opts: {
         if (canonicalCallId) {
           const threadID = threadIDForMessage(msg);
           const isSidechain = isSubagentMessage(msg);
+          if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+            return;
+          }
           session.sendCodexMessage({
             type: 'terminal-output',
             callId: canonicalCallId,
@@ -2124,51 +2169,11 @@ export async function runCodex(opts: {
       messageBuffer.addMessage(message.message, 'user');
 
       try {
-        // Map permission mode to approval policy and sandbox for startSession
-        const approvalPolicy = (() => {
-          switch (message.mode.permissionMode) {
-            // Codex native modes
-            case 'default':
-              return 'untrusted' as const; // Ask for non-trusted commands
-            case 'read-only':
-              return 'never' as const; // Never ask, read-only enforced by sandbox
-            case 'safe-yolo':
-              return 'on-failure' as const; // Auto-run, ask only on failure
-            case 'yolo':
-              return 'on-failure' as const; // Auto-run, ask only on failure
-            // Defensive fallback for Claude-specific modes (backward compatibility)
-            case 'bypassPermissions':
-              return 'on-failure' as const; // Full access: map to yolo behavior
-            case 'acceptEdits':
-              return 'on-request' as const; // Let model decide (closest to auto-approve edits)
-            case 'plan':
-              return 'untrusted' as const; // Conservative: ask for non-trusted
-            default:
-              return 'untrusted' as const; // Safe fallback
-          }
-        })();
-        const sandbox = (() => {
-          switch (message.mode.permissionMode) {
-            // Codex native modes
-            case 'default':
-              return 'workspace-write' as const; // Can write in workspace
-            case 'read-only':
-              return 'read-only' as const; // Read-only filesystem
-            case 'safe-yolo':
-              return 'workspace-write' as const; // Can write in workspace
-            case 'yolo':
-              return 'danger-full-access' as const; // Full system access
-            // Defensive fallback for Claude-specific modes
-            case 'bypassPermissions':
-              return 'danger-full-access' as const; // Full access: map to yolo
-            case 'acceptEdits':
-              return 'workspace-write' as const; // Can edit files in workspace
-            case 'plan':
-              return 'workspace-write' as const; // Can write for planning
-            default:
-              return 'workspace-write' as const; // Safe default
-          }
-        })();
+        const permissionOverrides = mapPermissionModeToCodexOverrides(
+          message.mode.permissionMode,
+        );
+        const approvalPolicy = permissionOverrides.approvalPolicy;
+        const sandbox = permissionOverrides.sandbox;
         const codexReasoningEffort = resolveCodexTurnEffort(message.mode);
 
         if (!wasCreated) {
@@ -2199,8 +2204,6 @@ export async function runCodex(opts: {
               }
               return base + maybeInject;
             })(),
-            sandbox,
-            'approval-policy': approvalPolicy,
             config: {
               mcp_servers: mcpServers,
               ...(codexReasoningEffort !== undefined
@@ -2208,6 +2211,12 @@ export async function runCodex(opts: {
                 : {}),
             },
           };
+          if (sandbox !== undefined) {
+            startConfig.sandbox = sandbox;
+          }
+          if (approvalPolicy !== undefined) {
+            startConfig['approval-policy'] = approvalPolicy;
+          }
           if (message.mode.model) {
             startConfig.model = message.mode.model;
           }

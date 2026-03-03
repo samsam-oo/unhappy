@@ -25,6 +25,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
+import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -249,24 +250,29 @@ export async function runGemini(opts: {
   session.onUserMessage((message) => {
     // Resolve permission mode (validate) - same as Codex
     let messagePermissionMode = currentPermissionMode;
-    if (message.meta?.permissionMode) {
-      const validModes: PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-      ];
-      if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
-        messagePermissionMode = message.meta.permissionMode as PermissionMode;
-        currentPermissionMode = messagePermissionMode;
-        // Update permission handler with new mode
-        updatePermissionMode(messagePermissionMode);
+    const hasPermissionModeOverride =
+      message.meta &&
+      Object.prototype.hasOwnProperty.call(message.meta, 'permissionMode');
+    if (hasPermissionModeOverride) {
+      const resolvedPermissionMode = resolvePermissionModeWithAdapter({
+        target: 'gemini',
+        currentMode: currentPermissionMode,
+        rawRequestedMode: message.meta?.permissionMode,
+      });
+      if (resolvedPermissionMode.kind === 'invalid') {
         logger.debug(
-          `[Gemini] Permission mode updated from user message to: ${currentPermissionMode}`,
+          `[Gemini] Invalid permission mode received: ${String(message.meta?.permissionMode)}`,
         );
       } else {
+        messagePermissionMode = resolvedPermissionMode.effectiveMode;
+        currentPermissionMode = resolvedPermissionMode.nextCurrentMode;
+        if (currentPermissionMode) {
+          updatePermissionMode(currentPermissionMode);
+        }
         logger.debug(
-          `[Gemini] Invalid permission mode received: ${message.meta.permissionMode}`,
+          resolvedPermissionMode.kind === 'passthrough'
+            ? `[Gemini] Permission mode passthrough from user message, keeping current: ${currentPermissionMode}`
+            : `[Gemini] Permission mode updated from user message to: ${currentPermissionMode}`,
         );
       }
     } else {
