@@ -1426,6 +1426,20 @@ export async function runCodex(opts: {
     }
   };
 
+  // For explicit "resume thread" launches (mobile/web picker), import transcript
+  // immediately so the UI shows existing history before the first new prompt.
+  if (explicitResumeThreadId) {
+    await backfillResumeTranscriptIfNeeded(
+      {
+        mode: 'resume',
+        threadId: explicitResumeThreadId,
+        resumedFromThreadId: explicitResumeThreadId,
+        resumePath: null,
+      },
+      storedResumeFileForResume,
+    );
+  }
+
   permissionHandler = new CodexPermissionHandler(session);
   const reasoningProcessor = new ReasoningProcessor((message) => {
     // Stream reasoning deltas as terminal-output so mobile can append in real-time.
