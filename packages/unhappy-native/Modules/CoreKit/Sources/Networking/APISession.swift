@@ -412,6 +412,7 @@ public enum APISessionMessagePermissionMode: String, Codable, CaseIterable, Send
     case acceptEdits
     case bypassPermissions
     case plan
+    case passthrough
     case readOnly = "read-only"
     case safeYolo = "safe-yolo"
     case yolo

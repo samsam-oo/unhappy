@@ -685,7 +685,17 @@ export function sessionRoutes(app: Fastify) {
             }),
             body: z.object({
                 text: z.string(),
-                steerMode: z.enum(['queue', 'immediate']).optional()
+                steerMode: z.enum(['queue', 'immediate']).optional(),
+                permissionMode: z.enum([
+                    'default',
+                    'acceptEdits',
+                    'bypassPermissions',
+                    'plan',
+                    'passthrough',
+                    'read-only',
+                    'safe-yolo',
+                    'yolo',
+                ]).optional()
             })
         },
         preHandler: app.authenticate
@@ -709,7 +719,8 @@ export function sessionRoutes(app: Fastify) {
             'sendMessage',
             {
                 text: normalizedText,
-                steerMode: request.body.steerMode
+                steerMode: request.body.steerMode,
+                permissionMode: request.body.permissionMode,
             }
         );
         if (!invoked.ok) {

@@ -6,14 +6,22 @@ import { UsageSchema } from '@/claude/types'
  * Must match MessageMetaSchema.permissionMode enum values
  *
  * Claude modes: default, acceptEdits, bypassPermissions, plan
- * Codex modes: read-only, safe-yolo, yolo
+ * Codex modes: passthrough, read-only, safe-yolo, yolo
  *
  * When calling Claude SDK, Codex modes are mapped at the SDK boundary:
  * - yolo → bypassPermissions
  * - safe-yolo → default
  * - read-only → default
  */
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
+export type PermissionMode =
+  | 'default'
+  | 'acceptEdits'
+  | 'bypassPermissions'
+  | 'plan'
+  | 'passthrough'
+  | 'read-only'
+  | 'safe-yolo'
+  | 'yolo'
 
 /**
  * Usage data type from Claude
@@ -241,7 +249,7 @@ export type SessionMessage = z.infer<typeof SessionMessageSchema>
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'passthrough', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
   steerMode: z.enum(['queue', 'immediate']).optional(), // Codex steer behavior for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
@@ -339,6 +347,7 @@ export type AgentState = {
   mode?: {
     model?: string
     effort?: string
+    permissionMode?: PermissionMode
     fallbackModel?: string
   }
   queue?: {

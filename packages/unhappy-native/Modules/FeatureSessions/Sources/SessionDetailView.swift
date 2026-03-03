@@ -1673,7 +1673,7 @@ public struct SessionDetailView: View {
         }
         switch flavor {
         case .codex:
-            return [.default, .readOnly, .safeYolo, .yolo]
+            return [.passthrough, .default, .readOnly, .safeYolo, .yolo]
         case .claude, .gemini:
             return [.default, .acceptEdits, .bypassPermissions, .plan]
         }
@@ -1990,6 +1990,8 @@ public struct SessionDetailView: View {
             return "Bypass"
         case .plan:
             return "Plan"
+        case .passthrough:
+            return "Passthrough"
         case .readOnly:
             return "Read Only"
         case .safeYolo:
