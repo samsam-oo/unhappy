@@ -202,6 +202,18 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
             return true
         }
 
+        if SessionPayloadDecoder.hasNonEmptyDictionary(
+            in: [agentState, metadata],
+            keys: [
+                "requests",
+                "pendingRequests",
+                "approvalRequestMap",
+                "permissionRequestMap",
+            ]
+        ) {
+            return true
+        }
+
         if let status = SessionPayloadDecoder.firstString(
             in: [agentState, metadata],
             keys: ["status", "state", "phase"]
@@ -645,6 +657,20 @@ private enum SessionPayloadDecoder {
         for object in objects {
             guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
             if let array = value as? [Any], !array.isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func hasNonEmptyDictionary(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> Bool {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let dictionary = value as? [String: Any], !dictionary.isEmpty {
                 return true
             }
         }
