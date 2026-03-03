@@ -1571,6 +1571,71 @@ export async function runCodex(opts: {
   client.setPermissionHandler(permissionHandler);
   const activeExecCallIds: string[] = [];
   const activeCollabKeys = new Set<string>();
+  const subagentThreadIDs = new Set<string>();
+  const normalizeThreadID = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+  const threadIDForMessage = (msg: any): string | null => {
+    return (
+      normalizeThreadID(msg?.thread_id) ??
+      normalizeThreadID(msg?.threadId) ??
+      normalizeThreadID(msg?.session_id) ??
+      normalizeThreadID(msg?.sessionId)
+    );
+  };
+  let primaryThreadID: string | null =
+    normalizeThreadID(explicitResumeThreadId) ??
+    normalizeThreadID(client.getSessionId()) ??
+    null;
+  const rememberPrimaryThreadID = (value: unknown) => {
+    const threadID = normalizeThreadID(value);
+    if (!threadID || primaryThreadID) return;
+    primaryThreadID = threadID;
+  };
+  const rememberSubagentThreadsFromCollab = (msg: any) => {
+    const senderThreadID =
+      normalizeThreadID(msg?.sender_thread_id) ??
+      normalizeThreadID(msg?.senderThreadId);
+    if (senderThreadID) {
+      rememberPrimaryThreadID(senderThreadID);
+    }
+
+    const directReceiver =
+      normalizeThreadID(msg?.receiver_thread_id) ??
+      normalizeThreadID(msg?.receiverThreadId);
+    if (directReceiver && directReceiver !== primaryThreadID) {
+      subagentThreadIDs.add(directReceiver);
+    }
+
+    const newThreadID =
+      normalizeThreadID(msg?.new_thread_id) ??
+      normalizeThreadID(msg?.newThreadId);
+    if (newThreadID && newThreadID !== primaryThreadID) {
+      subagentThreadIDs.add(newThreadID);
+    }
+
+    const receiverList = Array.isArray(msg?.receiver_thread_ids)
+      ? msg.receiver_thread_ids
+      : Array.isArray(msg?.receiverThreadIds)
+        ? msg.receiverThreadIds
+        : [];
+    for (const candidate of receiverList) {
+      const receiverThreadID = normalizeThreadID(candidate);
+      if (!receiverThreadID || receiverThreadID === primaryThreadID) continue;
+      subagentThreadIDs.add(receiverThreadID);
+    }
+  };
+  const isSubagentMessage = (msg: any): boolean => {
+    const threadID = threadIDForMessage(msg);
+    if (threadID) {
+      if (subagentThreadIDs.has(threadID)) return true;
+      if (primaryThreadID && threadID !== primaryThreadID) return true;
+      return false;
+    }
+    return activeCollabKeys.size > 0;
+  };
   type CollabIndicatorState = 'in_progress' | 'completed' | null;
   let collabStatusState: CollabIndicatorState = null;
   let collabStatusUpdatedAt = 0;
@@ -1648,6 +1713,7 @@ export async function runCodex(opts: {
         : typeof (msg as any)?.session_id === 'string'
           ? (msg as any).session_id
           : null;
+    rememberPrimaryThreadID(threadIdForLog);
 
     if (
       msgType === 'raw_response_item' ||
@@ -1667,6 +1733,7 @@ export async function runCodex(opts: {
 
     const collabEvent = extractCollabStatusEvent(msg);
     if (collabEvent) {
+      rememberSubagentThreadsFromCollab(msg);
       if (collabEvent.stage === 'in_progress') {
         activeCollabKeys.add(collabEvent.key);
       } else {
@@ -1795,10 +1862,14 @@ export async function runCodex(opts: {
       reasoningProcessor.complete(msg.text);
     }
     if (msg.type === 'agent_message') {
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
       session.sendCodexMessage({
         type: 'message',
         message: msg.message,
         id: randomUUID(),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
       });
     }
     if (
@@ -1808,23 +1879,31 @@ export async function runCodex(opts: {
       let { call_id, type, ...inputs } = msg;
       const canonicalCallId = client.canonicalizeToolCallId(call_id, inputs);
       rememberExecCallId(canonicalCallId);
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
       session.sendCodexMessage({
         type: 'tool-call',
         name: 'CodexBash',
         callId: canonicalCallId,
         input: inputs,
         id: randomUUID(),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
       });
     }
     if (msg.type === 'exec_command_end') {
       let { call_id, type, ...output } = msg;
       const canonicalCallId = client.canonicalizeToolCallId(call_id);
       forgetExecCallId(canonicalCallId);
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
       session.sendCodexMessage({
         type: 'tool-call-result',
         callId: canonicalCallId,
         output: output,
         id: randomUUID(),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
       });
     }
     if (isExecOutputStreamEvent(msg)) {
@@ -1842,11 +1921,15 @@ export async function runCodex(opts: {
           : getLatestExecCallId();
 
         if (canonicalCallId) {
+          const threadID = threadIDForMessage(msg);
+          const isSidechain = isSubagentMessage(msg);
           session.sendCodexMessage({
             type: 'terminal-output',
             callId: canonicalCallId,
             data: outputChunk,
             id: randomUUID(),
+            ...(threadID ? { thread_id: threadID } : {}),
+            ...(isSidechain ? { isSidechain: true } : {}),
           });
         }
       }

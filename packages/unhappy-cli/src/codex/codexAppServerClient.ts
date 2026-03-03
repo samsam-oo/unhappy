@@ -1170,7 +1170,10 @@ export class CodexAppServerClient {
 
     if (method.startsWith('codex/event/')) {
       this.sawLegacyCodexEvents = true;
-      const conversationId = params.conversationId;
+      const conversationId = getFirstNonEmptyString([
+        params.conversationId,
+        params.conversation_id,
+      ]);
       if (typeof conversationId === 'string' && conversationId.trim()) {
         this.conversationId = conversationId;
         if (!this.sessionId) this.sessionId = conversationId;
@@ -1178,23 +1181,63 @@ export class CodexAppServerClient {
 
       const msg = params.msg;
       if (msg !== undefined) {
-        this.updateIdentifiersFromEvent(msg);
-        this.toolCallIds.maybeRecordExecApproval(msg);
+        let forwardedMsg: unknown = msg;
+        if (isRecord(msg)) {
+          const inferredThreadId = getFirstNonEmptyString([
+            msg.thread_id,
+            msg.threadId,
+            msg.session_id,
+            msg.sessionId,
+            msg.conversation_id,
+            msg.conversationId,
+            params.threadId,
+            params.thread_id,
+            params.conversationId,
+            params.conversation_id,
+          ]);
+          const inferredConversationId = getFirstNonEmptyString([
+            msg.conversation_id,
+            msg.conversationId,
+            params.conversationId,
+            params.conversation_id,
+          ]);
+          const hasThreadId =
+            getFirstNonEmptyString([msg.thread_id, msg.threadId]) !== null;
+          const hasConversationId =
+            getFirstNonEmptyString([msg.conversation_id, msg.conversationId]) !== null;
+          if (
+            (!hasThreadId && inferredThreadId) ||
+            (!hasConversationId && inferredConversationId)
+          ) {
+            forwardedMsg = {
+              ...msg,
+              ...(!hasThreadId && inferredThreadId
+                ? { thread_id: inferredThreadId }
+                : {}),
+              ...(!hasConversationId && inferredConversationId
+                ? { conversation_id: inferredConversationId }
+                : {}),
+            };
+          }
+        }
+
+        this.updateIdentifiersFromEvent(forwardedMsg);
+        this.toolCallIds.maybeRecordExecApproval(forwardedMsg);
         let shouldForward = true;
         if (
-          isRecord(msg) &&
-          msg.type === 'agent_message' &&
-          typeof msg.message === 'string'
+          isRecord(forwardedMsg) &&
+          forwardedMsg.type === 'agent_message' &&
+          typeof forwardedMsg.message === 'string'
         ) {
           shouldForward = !this.shouldSuppressAgentMessage({
-            message: msg.message,
+            message: forwardedMsg.message,
             turnId: params.id,
             conversationId:
               typeof conversationId === 'string' ? conversationId : this.conversationId,
           });
         }
         if (shouldForward) {
-          this.handler?.(msg);
+          this.handler?.(forwardedMsg);
         } else {
           logger.debug('[CodexAppServer] Suppressed duplicate agent_message from codex/event');
         }
