@@ -7,7 +7,7 @@ struct SessionMessageSendUseCaseTests {
     @Test
     func sendMessageThrowsMissingText() async {
         let useCase = SessionMessageSendUseCase(
-            service: MessageService(result: .init(success: true, error: nil))
+            service: MessageService(result: .init(success: true, queueCount: nil, queuedMessages: nil, error: nil))
         )
 
         await #expect(throws: SessionMessageSendError.missingMessageText) {
@@ -16,7 +16,7 @@ struct SessionMessageSendUseCaseTests {
                 token: "token",
                 sessionID: "session-1",
                 text: " ",
-                steerMode: .queue
+                steerMode: APISessionSteerMode.queue
             )
         }
     }
@@ -24,7 +24,7 @@ struct SessionMessageSendUseCaseTests {
     @Test
     func sendMessageReturnsSuccessResult() async throws {
         let useCase = SessionMessageSendUseCase(
-            service: MessageService(result: .init(success: true, error: nil))
+            service: MessageService(result: .init(success: true, queueCount: nil, queuedMessages: nil, error: nil))
         )
 
         let result = try await useCase.sendMessage(
@@ -32,7 +32,7 @@ struct SessionMessageSendUseCaseTests {
             token: "token",
             sessionID: "session-1",
             text: "run tests",
-            steerMode: .immediate
+            steerMode: APISessionSteerMode.immediate
         )
 
         #expect(result.success == true)
@@ -48,6 +48,7 @@ private struct MessageService: SessionMessaging {
         sessionID: String,
         text: String,
         steerMode: APISessionSteerMode?,
+        permissionMode: APISessionMessagePermissionMode?,
         model: String?,
         resetModel: Bool,
         reasoningEffort: APISessionReasoningEffort?,

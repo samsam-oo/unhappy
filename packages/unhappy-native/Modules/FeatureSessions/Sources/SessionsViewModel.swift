@@ -532,6 +532,7 @@ public final class SessionsViewModel: ObservableObject {
         for sessionID: String,
         text: String,
         steerMode: APISessionSteerMode,
+        permissionMode: APISessionMessagePermissionMode? = nil,
         modelOverride: SessionMessageModelOverride = .inherit,
         effortOverride: SessionMessageEffortOverride = .inherit,
         serverURLString: String,
@@ -560,6 +561,7 @@ public final class SessionsViewModel: ObservableObject {
                 sessionID: sessionID,
                 text: text,
                 steerMode: steerMode,
+                permissionMode: permissionMode,
                 modelOverride: modelOverride,
                 effortOverride: effortOverride
             )

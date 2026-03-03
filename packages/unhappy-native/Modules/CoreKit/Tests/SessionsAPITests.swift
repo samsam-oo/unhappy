@@ -711,6 +711,23 @@ struct SessionsAPITests {
     }
 
     @Test
+    func sessionSendMessageRequestIncludesPermissionModeWhenProvided() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try SessionsAPI.makeSessionSendMessageRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            sessionID: "session-1",
+            text: "Run tests",
+            steerMode: .queue,
+            permissionMode: .yolo
+        )
+
+        let body = try #require(request.httpBody)
+        let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+        #expect(payload?["permissionMode"] as? String == "yolo")
+    }
+
+    @Test
     func decodeSessionCommandResponseParsesPayload() throws {
         let json = """
         {

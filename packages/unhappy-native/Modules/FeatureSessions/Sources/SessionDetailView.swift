@@ -42,6 +42,8 @@ public struct SessionDetailView: View {
     private static let modelPickerCustomOption = "__model_custom__"
     private static let modelPickerPresetPrefix = "__model_preset__:"
     private static let effortPickerPresetPrefix = "__effort_preset__:"
+    private static let permissionModePickerDefaultOption = "__permission_mode_default__"
+    private static let permissionModePickerPresetPrefix = "__permission_mode_preset__:"
     private static let transcriptBottomAnchorID = "__session_transcript_bottom__"
     private static let quickToolsFadeWidth: CGFloat = 16
     private static let quickToolsBarHeight: CGFloat = 36
@@ -115,6 +117,7 @@ public struct SessionDetailView: View {
     @State private var selectedModelOverrideOption = ""
     @State private var applyEffortOverride = false
     @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
+    @State private var selectedPermissionModeOverride: APISessionMessagePermissionMode?
     @State private var serverModelOverrideOptions: [String] = []
     @State private var shouldFollowTranscript = true
     @State private var scrollToBottomRequestID = UUID()
@@ -1042,7 +1045,7 @@ public struct SessionDetailView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, isKeyboardActive ? 8 : 10)
-        .padding(.bottom, 0)
+        .padding(.bottom, isKeyboardActive ? 4 : 8)
         .background(
             RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
                 .fill(bottomSheetSurfaceColor)
@@ -1386,6 +1389,7 @@ public struct SessionDetailView: View {
                 for: session.id,
                 text: text,
                 steerMode: steerMode,
+                permissionMode: selectedPermissionModeOverride,
                 modelOverride: modelOverride,
                 effortOverride: effortOverride,
                 serverURLString: serverURLString,
@@ -1459,6 +1463,8 @@ public struct SessionDetailView: View {
                 if supportsReasoningEffortOverride {
                     effortMenuButton
                 }
+
+                fileModeMenuButton
 
                 quickToolButton(
                     title: "Info",
@@ -1561,6 +1567,26 @@ public struct SessionDetailView: View {
         .tint(.primary)
     }
 
+    private var fileModeMenuButton: some View {
+        Menu {
+            ForEach(permissionModePickerOptions, id: \.id) { option in
+                Button {
+                    permissionModePickerSelection.wrappedValue = option.id
+                } label: {
+                    if permissionModePickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            Label(selectedFileModeLabel, systemImage: "doc.badge.gearshape")
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .tint(.primary)
+    }
+
     private func dockChipButton(
         title: String,
         systemImage: String,
@@ -1590,6 +1616,16 @@ public struct SessionDetailView: View {
     private var selectedReasoningOverrideLabel: String {
         guard applyEffortOverride else { return resolvedCurrentEffortLabel ?? "Auto" }
         return selectedEffortOverride.label
+    }
+
+    private var selectedFileModeLabel: String {
+        if let selectedPermissionModeOverride {
+            return permissionModeDisplayLabel(for: selectedPermissionModeOverride)
+        }
+        if let resolvedCurrentPermissionMode {
+            return permissionModeDisplayLabel(for: resolvedCurrentPermissionMode)
+        }
+        return "Default"
     }
 
     private struct PickerOption: Identifiable {
@@ -1628,6 +1664,36 @@ public struct SessionDetailView: View {
                 label: effort.label
             )
         }
+    }
+
+    private var availablePermissionModeOptions: [APISessionMessagePermissionMode] {
+        guard let flavor = parsedSessionFlavor else {
+            return [.default, .yolo]
+        }
+        switch flavor {
+        case .codex:
+            return [.default, .readOnly, .safeYolo, .yolo]
+        case .claude, .gemini:
+            return [.default, .acceptEdits, .bypassPermissions, .plan]
+        }
+    }
+
+    private var permissionModePickerOptions: [PickerOption] {
+        var options: [PickerOption] = [
+            PickerOption(
+                id: Self.permissionModePickerDefaultOption,
+                label: "Use current mode"
+            ),
+        ]
+        options.append(
+            contentsOf: availablePermissionModeOptions.map { mode in
+                PickerOption(
+                    id: Self.permissionModePickerPresetPrefix + mode.rawValue,
+                    label: permissionModeDisplayLabel(for: mode)
+                )
+            }
+        )
+        return options
     }
 
     private var modelPickerSelection: Binding<String> {
@@ -1677,6 +1743,26 @@ public struct SessionDetailView: View {
                 guard let selected = SessionComposerEffortSelection(rawValue: raw) else { return }
                 selectedEffortOverride = selected
                 applyEffortOverride = selected != .auto
+            }
+        )
+    }
+
+    private var permissionModePickerSelection: Binding<String> {
+        Binding(
+            get: {
+                guard let selectedPermissionModeOverride else {
+                    return Self.permissionModePickerDefaultOption
+                }
+                return Self.permissionModePickerPresetPrefix + selectedPermissionModeOverride.rawValue
+            },
+            set: { value in
+                if value == Self.permissionModePickerDefaultOption {
+                    selectedPermissionModeOverride = nil
+                    return
+                }
+                guard value.hasPrefix(Self.permissionModePickerPresetPrefix) else { return }
+                let raw = String(value.dropFirst(Self.permissionModePickerPresetPrefix.count))
+                selectedPermissionModeOverride = APISessionMessagePermissionMode(rawValue: raw)
             }
         )
     }
@@ -1834,6 +1920,43 @@ public struct SessionDetailView: View {
         }
         let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? nil : normalized
+    }
+
+    private var resolvedCurrentPermissionMode: APISessionMessagePermissionMode? {
+        guard let raw = SessionPayloadValueResolver.firstString(
+            in: [decodedSessionAgentState, decodedSessionMetadata],
+            keys: [
+                "permissionMode",
+                "permission_mode",
+                "approvalMode",
+                "approval_mode",
+                "fileMode",
+                "file_mode",
+            ]
+        ) else {
+            return nil
+        }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return APISessionMessagePermissionMode(rawValue: normalized)
+    }
+
+    private func permissionModeDisplayLabel(for mode: APISessionMessagePermissionMode) -> String {
+        switch mode {
+        case .default:
+            return "Default"
+        case .acceptEdits:
+            return "Accept Edits"
+        case .bypassPermissions:
+            return "Bypass"
+        case .plan:
+            return "Plan"
+        case .readOnly:
+            return "Read Only"
+        case .safeYolo:
+            return "Safe YOLO"
+        case .yolo:
+            return "YOLO"
+        }
     }
 
     private func loadServerModelOptions() async {

@@ -167,6 +167,9 @@ export class ApiSessionClient extends EventEmitter {
                     const hasEffortOverride =
                         data?.params &&
                         Object.prototype.hasOwnProperty.call(data.params, 'effort');
+                    const hasPermissionModeOverride =
+                        data?.params &&
+                        Object.prototype.hasOwnProperty.call(data.params, 'permissionMode');
                     const rawModel = hasModelOverride ? data?.params?.model : undefined;
                     const normalizedModel =
                         rawModel === null
@@ -184,6 +187,21 @@ export class ApiSessionClient extends EventEmitter {
                                 rawEffort === 'max' ||
                                 rawEffort === 'xhigh'
                                 ? rawEffort
+                                : undefined;
+                    const rawPermissionMode = hasPermissionModeOverride
+                        ? data?.params?.permissionMode
+                        : undefined;
+                    const normalizedPermissionMode =
+                        rawPermissionMode === null
+                            ? undefined
+                            : rawPermissionMode === 'default' ||
+                                rawPermissionMode === 'acceptEdits' ||
+                                rawPermissionMode === 'bypassPermissions' ||
+                                rawPermissionMode === 'plan' ||
+                                rawPermissionMode === 'read-only' ||
+                                rawPermissionMode === 'safe-yolo' ||
+                                rawPermissionMode === 'yolo'
+                                ? rawPermissionMode
                                 : undefined;
 
                     if (!this.socket.connected) {
@@ -207,6 +225,9 @@ export class ApiSessionClient extends EventEmitter {
                                 : {}),
                             ...(hasEffortOverride && normalizedEffort !== undefined
                                 ? { effort: normalizedEffort }
+                                : {}),
+                            ...(hasPermissionModeOverride && normalizedPermissionMode !== undefined
+                                ? { permissionMode: normalizedPermissionMode }
                                 : {})
                         }
                     };

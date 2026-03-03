@@ -1122,6 +1122,7 @@ private struct MockSessionMessageSender: SessionMessageSendingAction {
         sessionID: String,
         text: String,
         steerMode: APISessionSteerMode,
+        permissionMode: APISessionMessagePermissionMode?,
         modelOverride: SessionMessageModelOverride,
         effortOverride: SessionMessageEffortOverride
     ) async throws -> APISessionSendMessageResult {

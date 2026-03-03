@@ -327,7 +327,8 @@ public enum SessionsAPI {
         token: String,
         sessionID: String,
         text: String,
-        steerMode: APISessionSteerMode? = nil
+        steerMode: APISessionSteerMode? = nil,
+        permissionMode: APISessionMessagePermissionMode? = nil
     ) throws -> URLRequest {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else {
@@ -345,7 +346,11 @@ public enum SessionsAPI {
             token: token
         )
         request.httpBody = try JSONEncoder().encode(
-            SessionMessagePayload(text: normalizedText, steerMode: steerMode)
+            SessionMessagePayload(
+                text: normalizedText,
+                steerMode: steerMode,
+                permissionMode: permissionMode
+            )
         )
         return request
     }
@@ -809,6 +814,7 @@ private struct SessionSwitchPayload: Encodable {
 private struct SessionMessagePayload: Encodable {
     let text: String
     let steerMode: APISessionSteerMode?
+    let permissionMode: APISessionMessagePermissionMode?
 }
 
 private struct SessionBashPayload: Encodable {
@@ -955,6 +961,7 @@ public protocol SessionMessaging: Sendable {
         sessionID: String,
         text: String,
         steerMode: APISessionSteerMode?,
+        permissionMode: APISessionMessagePermissionMode?,
         model: String?,
         resetModel: Bool,
         reasoningEffort: APISessionReasoningEffort?,
@@ -1410,6 +1417,7 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         sessionID: String,
         text: String,
         steerMode: APISessionSteerMode?,
+        permissionMode: APISessionMessagePermissionMode?,
         model: String?,
         resetModel: Bool,
         reasoningEffort: APISessionReasoningEffort?,
@@ -1423,6 +1431,9 @@ public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching
         var params: [String: Any] = ["text": normalizedText]
         if let steerMode {
             params["steerMode"] = steerMode.rawValue
+        }
+        if let permissionMode {
+            params["permissionMode"] = permissionMode.rawValue
         }
         if resetModel {
             params["model"] = NSNull()

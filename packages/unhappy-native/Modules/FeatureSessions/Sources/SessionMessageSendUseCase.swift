@@ -8,6 +8,7 @@ public protocol SessionMessageSendingAction: Sendable {
         sessionID: String,
         text: String,
         steerMode: APISessionSteerMode,
+        permissionMode: APISessionMessagePermissionMode?,
         modelOverride: SessionMessageModelOverride,
         effortOverride: SessionMessageEffortOverride
     ) async throws -> APISessionSendMessageResult
@@ -43,6 +44,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
         let sessionID: String
         let text: String
         let steerMode: APISessionSteerMode
+        let permissionMode: APISessionMessagePermissionMode?
         let modelOverride: SessionMessageModelOverride
         let effortOverride: SessionMessageEffortOverride
     }
@@ -60,6 +62,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
         sessionID: String,
         text: String,
         steerMode: APISessionSteerMode,
+        permissionMode: APISessionMessagePermissionMode? = nil,
         modelOverride: SessionMessageModelOverride = .inherit,
         effortOverride: SessionMessageEffortOverride = .inherit
     ) async throws -> APISessionSendMessageResult {
@@ -94,6 +97,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
             sessionID: normalizedSessionID,
             text: normalizedText,
             steerMode: steerMode,
+            permissionMode: permissionMode,
             modelOverride: modelOverride,
             effortOverride: effortOverride
         )
@@ -132,6 +136,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
                 sessionID: normalizedSessionID,
                 text: normalizedText,
                 steerMode: steerMode,
+                permissionMode: permissionMode,
                 model: modelValue,
                 resetModel: resetModel,
                 reasoningEffort: effortValue,

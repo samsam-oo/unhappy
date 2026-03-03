@@ -407,6 +407,16 @@ public enum APISessionPermissionMode: String, Encodable, CaseIterable, Sendable 
     case plan
 }
 
+public enum APISessionMessagePermissionMode: String, Codable, CaseIterable, Sendable {
+    case `default`
+    case acceptEdits
+    case bypassPermissions
+    case plan
+    case readOnly = "read-only"
+    case safeYolo = "safe-yolo"
+    case yolo
+}
+
 public enum APISessionPermissionDecision: String, Encodable, CaseIterable, Sendable {
     case approved
     case approvedForSession = "approved_for_session"
