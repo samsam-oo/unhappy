@@ -768,35 +768,58 @@ enum SessionTranscriptPresentationBuilder {
                 )
             ]
         case "terminal-output":
-            guard let output = normalizedText(
-                stringifyToolResultContent(dictionary["data"] ?? dictionary["output"])
-            ) else {
+            let rawOutput = dictionary["data"] ?? dictionary["output"]
+            let output: String = {
+                if let direct = rawOutput as? String {
+                    return sanitizeText(direct)
+                }
+                return stringifyToolResultContent(rawOutput)
+            }()
+            if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return []
             }
+            let toolUseID = extractToolUseID(from: dictionary)
             return [
                 makeEntry(
                     id: "\(messageID)-acp-terminal",
                     role: .agent,
                     kind: .raw,
-                    title: nil,
+                    title: "Streaming output",
                     body: output,
+                    toolUseID: toolUseID,
                     sourceType: type,
+                    preserveWhitespace: true,
                     isSidechain: isSidechain,
                     threadID: threadID
                 )
             ]
         case "tool-stream":
-            guard let output = normalizedText(dictionary["output"] ?? dictionary["text"]) else {
+            let output: String = {
+                if let direct = dictionary["output"] as? String {
+                    return sanitizeText(direct)
+                }
+                if let direct = dictionary["text"] as? String {
+                    return sanitizeText(direct)
+                }
+                if let normalized = normalizedText(dictionary["output"] ?? dictionary["text"]) {
+                    return sanitizeText(normalized)
+                }
+                return ""
+            }()
+            if output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return []
             }
+            let toolUseID = extractToolUseID(from: dictionary)
             return [
                 makeEntry(
                     id: "\(messageID)-acp-tool-stream",
                     role: .agent,
                     kind: .raw,
-                    title: nil,
+                    title: "Streaming output",
                     body: output,
+                    toolUseID: toolUseID,
                     sourceType: type,
+                    preserveWhitespace: true,
                     isSidechain: isSidechain,
                     threadID: threadID
                 )
@@ -857,13 +880,22 @@ enum SessionTranscriptPresentationBuilder {
         body: String,
         toolUseID: String? = nil,
         sourceType: String? = nil,
+        preserveWhitespace: Bool = false,
         toolName: String? = nil,
         isSidechain: Bool = false,
         threadID: String? = nil
     ) -> SessionTranscriptEntry {
         let cleanedBody = sanitizeText(body)
-        let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalized = trimmed.isEmpty ? " " : trimBody(trimmed)
+        let normalizedBody: String = {
+            if preserveWhitespace {
+                if cleanedBody.isEmpty {
+                    return " "
+                }
+                return trimBody(cleanedBody)
+            }
+            let trimmed = cleanedBody.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? " " : trimBody(trimmed)
+        }()
         let cleanedTitle = title.map(sanitizeText)
         let cleanedSourceType = sourceType?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -887,7 +919,7 @@ enum SessionTranscriptPresentationBuilder {
             role: role,
             kind: kind,
             title: cleanedTitle,
-            body: normalized,
+            body: normalizedBody,
             toolUseID: toolUseID,
             sourceType: normalizedSourceType,
             toolName: normalizedToolName,

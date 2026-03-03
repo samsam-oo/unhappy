@@ -415,6 +415,32 @@ struct SessionTranscriptPresentationTests {
 
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].body == "Explored path")
+        #expect(presentation.entries[0].title == "Streaming output")
+    }
+
+    @Test
+    func terminalOutputPreservesCallID() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "terminal-output",
+                    "callId": "tool-stream-1",
+                    "data": " user",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].toolUseID == "tool-stream-1")
+        #expect(presentation.entries[0].body == " user")
     }
 
     private func makeAgentEventMessage(eventType: String, message: String?) -> APISessionMessage {

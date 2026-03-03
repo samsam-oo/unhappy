@@ -101,6 +101,8 @@ public struct SessionDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("unhappy.native.showReasoningDetails")
+    private var showReasoningDetails = false
     @State private var showDeleteConfirmation = false
     @State private var showRenameSheet = false
     @State private var showCodexThreadsSheet = false
@@ -2017,9 +2019,11 @@ public struct SessionDetailView: View {
         }
 
         let filtered = filterSubagentEntriesAndCount(in: nextPresentations)
+        let mergedPresentations = coalesceStreamingEntries(in: filtered.presentations)
+        let visiblePresentations = filterReasoningEntries(in: mergedPresentations)
         transcriptPresentationCache = nextCache
-        if cachedVisibleTranscriptPresentations != filtered.presentations {
-            cachedVisibleTranscriptPresentations = filtered.presentations
+        if cachedVisibleTranscriptPresentations != visiblePresentations {
+            cachedVisibleTranscriptPresentations = visiblePresentations
         }
         let normalizedInProgressCount = currentSession.active ? filtered.inProgressCount : 0
         if subAgentInProgressCount != normalizedInProgressCount {
@@ -2234,6 +2238,194 @@ public struct SessionDetailView: View {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private struct FlattenedTranscriptEntry {
+        let messageID: String
+        let sequenceText: String
+        let createdAtText: String
+        var entry: SessionTranscriptEntry
+    }
+
+    private func coalesceStreamingEntries(
+        in presentations: [SessionTranscriptMessagePresentation]
+    ) -> [SessionTranscriptMessagePresentation] {
+        var flattened: [FlattenedTranscriptEntry] = []
+        flattened.reserveCapacity(
+            presentations.reduce(into: 0) { partialResult, presentation in
+                partialResult += presentation.entries.count
+            }
+        )
+        var openStreamIndexByToolUseID: [String: Int] = [:]
+
+        for presentation in presentations {
+            for entry in presentation.entries {
+                if isStreamingReferenceEntry(entry) {
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID),
+                       let existingIndex = openStreamIndexByToolUseID[toolUseID],
+                       flattened.indices.contains(existingIndex) {
+                        let existing = flattened[existingIndex].entry
+                        let mergedBody = mergeStreamChunk(existing: existing.body, chunk: entry.body)
+                        if mergedBody != existing.body {
+                            flattened[existingIndex].entry = SessionTranscriptEntry(
+                                id: existing.id,
+                                role: existing.role,
+                                kind: existing.kind,
+                                title: existing.title,
+                                body: mergedBody,
+                                toolUseID: existing.toolUseID,
+                                sourceType: existing.sourceType,
+                                toolName: existing.toolName,
+                                isSidechain: existing.isSidechain,
+                                threadID: existing.threadID
+                            )
+                        }
+                        continue
+                    }
+
+                    let appendedIndex = flattened.count
+                    flattened.append(
+                        FlattenedTranscriptEntry(
+                            messageID: presentation.messageID,
+                            sequenceText: presentation.sequenceText,
+                            createdAtText: presentation.createdAtText,
+                            entry: entry
+                        )
+                    )
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                        openStreamIndexByToolUseID[toolUseID] = appendedIndex
+                    }
+                    continue
+                }
+
+                if entry.kind == .toolResult,
+                   let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                    openStreamIndexByToolUseID.removeValue(forKey: toolUseID)
+                }
+
+                flattened.append(
+                    FlattenedTranscriptEntry(
+                        messageID: presentation.messageID,
+                        sequenceText: presentation.sequenceText,
+                        createdAtText: presentation.createdAtText,
+                        entry: entry
+                    )
+                )
+            }
+        }
+
+        var coalesced: [SessionTranscriptMessagePresentation] = []
+        coalesced.reserveCapacity(presentations.count)
+
+        for flattenedEntry in flattened {
+            if let last = coalesced.last,
+               last.messageID == flattenedEntry.messageID {
+                var combinedEntries = last.entries
+                combinedEntries.append(flattenedEntry.entry)
+                coalesced[coalesced.count - 1] = SessionTranscriptMessagePresentation(
+                    messageID: last.messageID,
+                    sequenceText: last.sequenceText,
+                    createdAtText: last.createdAtText,
+                    entries: combinedEntries
+                )
+                continue
+            }
+
+            coalesced.append(
+                SessionTranscriptMessagePresentation(
+                    messageID: flattenedEntry.messageID,
+                    sequenceText: flattenedEntry.sequenceText,
+                    createdAtText: flattenedEntry.createdAtText,
+                    entries: [flattenedEntry.entry]
+                )
+            )
+        }
+
+        return coalesced
+    }
+
+    private func isStreamingReferenceEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        guard entry.kind == .raw else { return false }
+        guard let sourceType = entry.sourceType?.lowercased() else { return false }
+        return sourceType == "terminal-output" || sourceType == "tool-stream"
+    }
+
+    private func mergeStreamChunk(existing: String, chunk: String) -> String {
+        SessionStreamingOutputMerger.merge(existing: existing, chunk: chunk)
+    }
+
+    private func filterReasoningEntries(
+        in presentations: [SessionTranscriptMessagePresentation]
+    ) -> [SessionTranscriptMessagePresentation] {
+        guard !showReasoningDetails else { return presentations }
+
+        let reasoningToolUseIDs = collectReasoningToolUseIDs(in: presentations)
+        var filteredPresentations: [SessionTranscriptMessagePresentation] = []
+        filteredPresentations.reserveCapacity(presentations.count)
+
+        for presentation in presentations {
+            var keptEntries: [SessionTranscriptEntry] = []
+            keptEntries.reserveCapacity(presentation.entries.count)
+
+            for entry in presentation.entries {
+                let normalizedToolName = entry.toolName?.lowercased()
+                let normalizedSourceType = entry.sourceType?.lowercased()
+                let toolUseID = normalizedToolUseID(entry.toolUseID)
+                let isReasoningTool = isReasoningToolName(normalizedToolName)
+                let isReasoningStream = toolUseID.map { reasoningToolUseIDs.contains($0) } ?? false
+                let shouldHideReasoningEntry =
+                    entry.kind == .thinking ||
+                    normalizedSourceType == "reasoning" ||
+                    isReasoningTool ||
+                    isReasoningStream
+
+                if shouldHideReasoningEntry {
+                    continue
+                }
+
+                keptEntries.append(entry)
+            }
+
+            guard !keptEntries.isEmpty else { continue }
+            if keptEntries == presentation.entries {
+                filteredPresentations.append(presentation)
+            } else {
+                filteredPresentations.append(
+                    SessionTranscriptMessagePresentation(
+                        messageID: presentation.messageID,
+                        sequenceText: presentation.sequenceText,
+                        createdAtText: presentation.createdAtText,
+                        entries: keptEntries
+                    )
+                )
+            }
+        }
+
+        return filteredPresentations
+    }
+
+    private func collectReasoningToolUseIDs(
+        in presentations: [SessionTranscriptMessagePresentation]
+    ) -> Set<String> {
+        var ids: Set<String> = []
+        for presentation in presentations {
+            for entry in presentation.entries where entry.kind == .toolCall {
+                guard isReasoningToolName(entry.toolName) else { continue }
+                guard let toolUseID = normalizedToolUseID(entry.toolUseID) else { continue }
+                ids.insert(toolUseID)
+            }
+        }
+        return ids
+    }
+
+    private func isReasoningToolName(_ value: String?) -> Bool {
+        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !normalized.isEmpty else {
+            return false
+        }
+        return normalized == "codexreasoning" ||
+            normalized == "geminireasoning" ||
+            normalized == "think"
     }
 
     private func filterSubagentEntriesAndCount(
