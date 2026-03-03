@@ -975,6 +975,11 @@ public final class SessionsViewModel: ObservableObject {
             serverURLString: serverURLString,
             token: token
         )
+        await refreshSelectedSessionSnapshot(
+            sessionID: sessionID,
+            serverURLString: serverURLString,
+            token: token
+        )
 
         while !Task.isCancelled {
             do {
@@ -995,9 +1000,36 @@ public final class SessionsViewModel: ObservableObject {
                 showsLoadingState: false,
                 clearsMessagesOnFailure: false
             )
+            await refreshSelectedSessionSnapshot(
+                sessionID: sessionID,
+                serverURLString: serverURLString,
+                token: token
+            )
         }
 
         clearSelectedSessionMessagesPollingTaskIfNeeded(taskID: taskID)
+    }
+
+    private func refreshSelectedSessionSnapshot(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        do {
+            let rows = try await loader.loadSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            sessions = mergeLatestRows(rows, into: sessions)
+            refreshQueuedComposerMessagesCache(from: sessions)
+
+            // If the selected session vanished server-side, clear detail state immediately.
+            if selectedSessionID == sessionID && !sessions.contains(where: { $0.id == sessionID }) {
+                clearDetailSelectionIfNeeded(sessionID: sessionID)
+            }
+        } catch {
+            // Keep last known detail state; transient refresh failures should not clear the transcript UI.
+        }
     }
 
     private func clearSelectedSessionMessagesPollingTaskIfNeeded(taskID: UUID) {

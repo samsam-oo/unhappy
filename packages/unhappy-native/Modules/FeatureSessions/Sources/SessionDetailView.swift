@@ -1073,7 +1073,7 @@ public struct SessionDetailView: View {
                 subAgentLiveBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            if !pendingPermissionRequests.isEmpty && !isKeyboardActive {
+            if !pendingPermissionRequests.isEmpty {
                 approvalBottomSheet
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
