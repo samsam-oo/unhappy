@@ -122,6 +122,7 @@ public struct SessionDetailView: View {
     @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var subAgentInProgressCount = 0
     @State private var respondingPermissionRequestID: String?
+    @State private var isRecoveringDisconnectedSession = false
     @State private var permissionActionStatusMessage: String?
     @State private var permissionActionErrorMessage: String?
     @GestureState private var isInteractingWithBottomDock = false
@@ -614,6 +615,49 @@ public struct SessionDetailView: View {
         }
     }
 
+    private var resumeDirectoryForDisconnectedSession: String? {
+        let raw = SessionPayloadValueResolver.firstString(
+            in: [decodedSessionAgentState, decodedSessionMetadata],
+            keys: [
+                "cwd",
+                "path",
+                "directory",
+                "workingDirectory",
+                "workDir",
+                "projectPath",
+            ]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw, !raw.isEmpty else {
+            return nil
+        }
+        return raw
+    }
+
+    private var upstreamAgentSessionIDForResume: String? {
+        let raw = SessionPayloadValueResolver.firstString(
+            in: [decodedSessionAgentState, decodedSessionMetadata],
+            keys: [
+                "agentSessionId",
+                "agent_session_id",
+                "upstreamSessionId",
+                "upstream_session_id",
+            ]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let raw, !raw.isEmpty else {
+            return nil
+        }
+        return raw
+    }
+
+    private var canAutoResumeDisconnectedSession: Bool {
+        guard parsedSessionAgent != nil else { return false }
+        guard resumeDirectoryForDisconnectedSession != nil else { return false }
+        if parsedSessionAgent == .codex || parsedSessionAgent == .claude {
+            return upstreamAgentSessionIDForResume != nil
+        }
+        return true
+    }
+
     private func permissionSummary(from requestPayload: [String: Any]) -> String? {
         if let summary = SessionPayloadValueResolver.firstString(
             in: [requestPayload],
@@ -682,8 +726,22 @@ public struct SessionDetailView: View {
                 respondingPermissionRequestID = nil
                 permissionActionStatusMessage = nil
                 if actionError.lowercased().contains("session rpc is not connected") {
-                    permissionActionErrorMessage =
-                        "Session is disconnected. Resume or reopen this session, then try approval again."
+                    if canAutoResumeDisconnectedSession {
+                        isRecoveringDisconnectedSession = true
+                        let resumedSessionID = await recoverDisconnectedSessionForApproval()
+                        isRecoveringDisconnectedSession = false
+                        if let resumedSessionID, !resumedSessionID.isEmpty {
+                            permissionActionErrorMessage = nil
+                            permissionActionStatusMessage =
+                                "Session resumed into \(resumedSessionID). Open it and retry approval."
+                        } else {
+                            permissionActionErrorMessage =
+                                "Session is disconnected. Failed to auto-resume. Resume it manually, then retry approval."
+                        }
+                    } else {
+                        permissionActionErrorMessage =
+                            "Session is disconnected. Resume or reopen this session, then try approval again."
+                    }
                 } else {
                     permissionActionErrorMessage = actionError
                 }
@@ -703,6 +761,46 @@ public struct SessionDetailView: View {
                 serverURLString: serverURLString,
                 token: token
             )
+        }
+    }
+
+    private func recoverDisconnectedSessionForApproval() async -> String? {
+        guard let agent = parsedSessionAgent else {
+            return nil
+        }
+        guard let directory = resumeDirectoryForDisconnectedSession else {
+            return nil
+        }
+
+        let upstreamSessionID = upstreamAgentSessionIDForResume
+        let codexResumeThreadID = agent == .codex ? upstreamSessionID : nil
+        let claudeResumeSessionID = agent == .claude ? upstreamSessionID : nil
+        if agent == .codex && (codexResumeThreadID == nil || codexResumeThreadID?.isEmpty == true) {
+            return nil
+        }
+        if agent == .claude && (claudeResumeSessionID == nil || claudeResumeSessionID?.isEmpty == true) {
+            return nil
+        }
+
+        let spawnUseCase = SessionSpawnUseCase(service: URLSessionSessionsService())
+        do {
+            let response = try await spawnUseCase.spawnSession(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: currentSession.id,
+                directory: directory,
+                agent: agent,
+                codexResumeThreadID: codexResumeThreadID,
+                claudeResumeSessionID: claudeResumeSessionID,
+                approvedNewDirectoryCreation: true
+            )
+            await viewModel.load(
+                serverURLString: serverURLString,
+                token: token
+            )
+            return response.sessionID
+        } catch {
+            return nil
         }
     }
 
@@ -817,7 +915,7 @@ public struct SessionDetailView: View {
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(respondingPermissionRequestID != nil)
+                        .disabled(respondingPermissionRequestID != nil || isRecoveringDisconnectedSession)
 
                         Button(role: .destructive) {
                             respondToPermissionRequest(request.id, approved: false)
@@ -826,7 +924,7 @@ public struct SessionDetailView: View {
                                 .font(.caption.weight(.semibold))
                         }
                         .buttonStyle(.bordered)
-                        .disabled(respondingPermissionRequestID != nil)
+                        .disabled(respondingPermissionRequestID != nil || isRecoveringDisconnectedSession)
                     }
                 }
 
@@ -839,6 +937,15 @@ public struct SessionDetailView: View {
                 Text(status)
                     .font(.footnote)
                     .foregroundStyle(.green)
+            }
+            if isRecoveringDisconnectedSession {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Recovering disconnected session…")
+                        .font(.footnote)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
             }
             if let error = permissionActionErrorMessage, !error.isEmpty {
                 Text(error)
