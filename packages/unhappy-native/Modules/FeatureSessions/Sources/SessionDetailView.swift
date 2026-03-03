@@ -2131,42 +2131,15 @@ private struct SessionTranscriptMessageRow: View {
 
 private struct SessionTranscriptLiveStatusRow: View {
     let statusText: String
-    @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Button {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(alignment: .top, spacing: 8) {
-                    LivePulseDot(size: 7)
-                        .padding(.top, 4)
-                    LiveStatusShimmerText(
-                        text: statusText,
-                        lineLimit: 1
-                    )
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 3)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-
-            if isExpanded {
-                Text(statusText)
-                    .font(.footnote.monospaced())
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .lineSpacing(1.5)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.leading, 15)
-                    .padding(.trailing, 4)
-                    .transition(.opacity)
-            }
+        HStack(alignment: .top, spacing: 8) {
+            LivePulseDot(size: 7)
+                .padding(.top, 4)
+            LiveStatusShimmerText(
+                text: statusText,
+                lineLimit: 1
+            )
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
