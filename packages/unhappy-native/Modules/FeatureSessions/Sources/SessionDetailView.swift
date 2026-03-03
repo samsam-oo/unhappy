@@ -3174,21 +3174,42 @@ private struct SessionTranscriptLogLine: View {
 
 private struct LivePulseDot: View {
     let size: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isAnimating = false
 
     var body: some View {
         Circle()
             .fill(AppPalette.liveActivity)
             .frame(width: size, height: size)
+            .scaleEffect(reduceMotion ? 1 : (isAnimating ? 1.07 : 0.94))
+            .opacity(reduceMotion ? 1 : (isAnimating ? 1 : 0.82))
+            .shadow(
+                color: AppPalette.liveActivity.opacity(reduceMotion ? 0.12 : (isAnimating ? 0.26 : 0.14)),
+                radius: reduceMotion ? 0 : 4,
+                y: 0
+            )
             .overlay {
                 Circle()
                     .stroke(AppPalette.liveActivity.opacity(0.55), lineWidth: 1)
-                    .scaleEffect(isAnimating ? 2.1 : 1.0)
-                    .opacity(isAnimating ? 0 : 0.9)
+                    .scaleEffect(reduceMotion ? 1 : (isAnimating ? 1.32 : 1.0))
+                    .opacity(reduceMotion ? 0.2 : (isAnimating ? 0.08 : 0.32))
             }
             .onAppear {
+                guard !reduceMotion else {
+                    isAnimating = false
+                    return
+                }
                 isAnimating = false
-                withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
+                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) {
+                    isAnimating = true
+                }
+            }
+            .onChange(of: reduceMotion) { _, shouldReduceMotion in
+                if shouldReduceMotion {
+                    isAnimating = false
+                    return
+                }
+                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) {
                     isAnimating = true
                 }
             }
