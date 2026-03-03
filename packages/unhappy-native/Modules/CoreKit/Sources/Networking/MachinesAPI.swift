@@ -267,11 +267,43 @@ public enum MachinesAPI {
             )
         }
 
-        let rawModels = response.models ?? []
-        let rawReasoningEfforts = response.reasoningEfforts ?? []
+        func normalized(_ value: String?) -> String? {
+            guard let value else { return nil }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+
+        let modelCapabilities: [APIMachineModelCapability] = (response.modelMetadata ?? []).compactMap { row in
+            guard let id = normalized(row.id) ?? normalized(row.model) else {
+                return nil
+            }
+            let supportedReasoningEfforts = deduplicatedValues(
+                (row.supportedReasoningEfforts ?? [])
+                    .compactMap { normalized($0.reasoningEffort) }
+            )
+            return APIMachineModelCapability(
+                id: id,
+                model: normalized(row.model),
+                displayName: normalized(row.displayName),
+                description: normalized(row.description),
+                defaultReasoningEffort: normalized(row.defaultReasoningEffort),
+                supportedReasoningEfforts: supportedReasoningEfforts,
+                isDefault: row.isDefault,
+                supportsPersonality: row.supportsPersonality,
+                hidden: row.hidden,
+                upgrade: normalized(row.upgrade)
+            )
+        }
+
+        let rawModels = (response.models?.isEmpty == false)
+            ? (response.models ?? [])
+            : modelCapabilities.map(\.id)
+        let rawReasoningEfforts = (response.reasoningEfforts ?? [])
+            + modelCapabilities.flatMap(\.supportedReasoningEfforts)
         return APIMachineAgentCapabilities(
             models: deduplicatedValues(rawModels),
-            reasoningEfforts: deduplicatedValues(rawReasoningEfforts)
+            reasoningEfforts: deduplicatedValues(rawReasoningEfforts),
+            modelCapabilities: modelCapabilities
         )
     }
 
@@ -378,7 +410,75 @@ private struct MachinesListModelsResponse: Decodable {
     let success: Bool
     let models: [String]?
     let reasoningEfforts: [String]?
+    let modelMetadata: [MachinesModelMetadata]?
     let error: String?
+}
+
+private struct MachinesModelReasoningEffort: Decodable {
+    let reasoningEffort: String?
+    let description: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case reasoningEffort
+        case reasoning_effort
+        case effort
+        case description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reasoningEffort =
+            (try? container.decodeIfPresent(String.self, forKey: .reasoningEffort))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .reasoning_effort))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .effort))
+        description = try? container.decodeIfPresent(String.self, forKey: .description)
+    }
+}
+
+private struct MachinesModelMetadata: Decodable {
+    let id: String?
+    let model: String?
+    let displayName: String?
+    let description: String?
+    let hidden: Bool?
+    let isDefault: Bool?
+    let supportsPersonality: Bool?
+    let defaultReasoningEffort: String?
+    let supportedReasoningEfforts: [MachinesModelReasoningEffort]?
+    let upgrade: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case model
+        case displayName
+        case description
+        case hidden
+        case isDefault
+        case supportsPersonality
+        case defaultReasoningEffort
+        case default_reasoning_effort
+        case supportedReasoningEfforts
+        case supported_reasoning_efforts
+        case upgrade
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try? container.decodeIfPresent(String.self, forKey: .id)
+        model = try? container.decodeIfPresent(String.self, forKey: .model)
+        displayName = try? container.decodeIfPresent(String.self, forKey: .displayName)
+        description = try? container.decodeIfPresent(String.self, forKey: .description)
+        hidden = try? container.decodeIfPresent(Bool.self, forKey: .hidden)
+        isDefault = try? container.decodeIfPresent(Bool.self, forKey: .isDefault)
+        supportsPersonality = try? container.decodeIfPresent(Bool.self, forKey: .supportsPersonality)
+        defaultReasoningEffort =
+            (try? container.decodeIfPresent(String.self, forKey: .defaultReasoningEffort))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .default_reasoning_effort))
+        supportedReasoningEfforts =
+            (try? container.decodeIfPresent([MachinesModelReasoningEffort].self, forKey: .supportedReasoningEfforts))
+            ?? (try? container.decodeIfPresent([MachinesModelReasoningEffort].self, forKey: .supported_reasoning_efforts))
+        upgrade = try? container.decodeIfPresent(String.self, forKey: .upgrade)
+    }
 }
 
 private struct MachineSpawnPayload: Encodable {
@@ -502,10 +602,53 @@ public protocol MachineModelsListing: Sendable {
 public struct APIMachineAgentCapabilities: Equatable, Sendable {
     public let models: [String]
     public let reasoningEfforts: [String]
+    public let modelCapabilities: [APIMachineModelCapability]
 
-    public init(models: [String], reasoningEfforts: [String]) {
+    public init(
+        models: [String],
+        reasoningEfforts: [String],
+        modelCapabilities: [APIMachineModelCapability] = []
+    ) {
         self.models = models
         self.reasoningEfforts = reasoningEfforts
+        self.modelCapabilities = modelCapabilities
+    }
+}
+
+public struct APIMachineModelCapability: Equatable, Sendable {
+    public let id: String
+    public let model: String?
+    public let displayName: String?
+    public let description: String?
+    public let defaultReasoningEffort: String?
+    public let supportedReasoningEfforts: [String]
+    public let isDefault: Bool?
+    public let supportsPersonality: Bool?
+    public let hidden: Bool?
+    public let upgrade: String?
+
+    public init(
+        id: String,
+        model: String?,
+        displayName: String?,
+        description: String?,
+        defaultReasoningEffort: String?,
+        supportedReasoningEfforts: [String],
+        isDefault: Bool?,
+        supportsPersonality: Bool?,
+        hidden: Bool?,
+        upgrade: String?
+    ) {
+        self.id = id
+        self.model = model
+        self.displayName = displayName
+        self.description = description
+        self.defaultReasoningEffort = defaultReasoningEffort
+        self.supportedReasoningEfforts = supportedReasoningEfforts
+        self.isDefault = isDefault
+        self.supportsPersonality = supportsPersonality
+        self.hidden = hidden
+        self.upgrade = upgrade
     }
 }
 

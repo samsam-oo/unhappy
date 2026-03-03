@@ -213,6 +213,13 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
     public let archived: Bool?
     public let model: String?
     public let effort: APISessionReasoningEffort?
+    public let preview: String?
+    public let path: String?
+    public let source: String?
+    public let cliVersion: String?
+    public let modelProvider: String?
+    public let ephemeral: Bool?
+    public let statusType: String?
 
     public init(
         id: String,
@@ -222,7 +229,14 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         createdAt: String?,
         archived: Bool?,
         model: String? = nil,
-        effort: APISessionReasoningEffort? = nil
+        effort: APISessionReasoningEffort? = nil,
+        preview: String? = nil,
+        path: String? = nil,
+        source: String? = nil,
+        cliVersion: String? = nil,
+        modelProvider: String? = nil,
+        ephemeral: Bool? = nil,
+        statusType: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -232,6 +246,13 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         self.archived = archived
         self.model = model
         self.effort = effort
+        self.preview = preview
+        self.path = path
+        self.source = source
+        self.cliVersion = cliVersion
+        self.modelProvider = modelProvider
+        self.ephemeral = ephemeral
+        self.statusType = statusType
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -243,6 +264,18 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         case archived
         case model
         case effort
+        case preview
+        case path
+        case source
+        case cliVersion
+        case modelProvider
+        case ephemeral
+        case status
+        case statusType
+    }
+
+    private struct ThreadStatus: Decodable {
+        let type: String?
     }
 
     public init(from decoder: Decoder) throws {
@@ -261,6 +294,30 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         effort = decodeReasoningEffort(
             try? container.decodeIfPresent(String.self, forKey: .effort)
         )
+        preview = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .preview)
+        )
+        path = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .path)
+        )
+        source = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .source)
+        )
+        cliVersion = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .cliVersion)
+        )
+        modelProvider = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .modelProvider)
+        )
+        ephemeral = try? container.decodeIfPresent(Bool.self, forKey: .ephemeral)
+
+        let directStatusType = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .statusType)
+        )
+        let nestedStatusType = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(ThreadStatus.self, forKey: .status)?.type
+        )
+        statusType = directStatusType ?? nestedStatusType
     }
 }
 

@@ -380,7 +380,14 @@ struct SessionsAPITests {
               "cwd": "/tmp/work",
               "updatedAt": "2026-02-24T10:00:00.000Z",
               "createdAt": "2026-02-24T09:00:00.000Z",
-              "archived": false
+              "archived": false,
+              "preview": "Continue migration",
+              "path": "/Users/test/.codex/sessions/thread_1.jsonl",
+              "source": "cli",
+              "cliVersion": "0.107.0",
+              "modelProvider": "openai",
+              "ephemeral": false,
+              "status": { "type": "notLoaded" }
             }
           ]
         }
@@ -392,6 +399,12 @@ struct SessionsAPITests {
         #expect(threads.first?.id == "thread_1")
         #expect(threads.first?.name == "Feature Work")
         #expect(threads.first?.cwd == "/tmp/work")
+        #expect(threads.first?.preview == "Continue migration")
+        #expect(threads.first?.source == "cli")
+        #expect(threads.first?.cliVersion == "0.107.0")
+        #expect(threads.first?.modelProvider == "openai")
+        #expect(threads.first?.ephemeral == false)
+        #expect(threads.first?.statusType == "notLoaded")
     }
 
     @Test

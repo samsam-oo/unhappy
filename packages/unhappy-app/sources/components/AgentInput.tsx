@@ -500,7 +500,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Model dropdown state (loaded on demand)
     type ListModelsResponse =
-        | { success: true; models: string[] }
+        | {
+            success: true;
+            models: string[];
+            reasoningEfforts?: string[];
+            modelMetadata?: Array<{
+                id: string;
+                model?: string;
+                displayName?: string;
+                description?: string;
+                defaultReasoningEffort?: string;
+                supportedReasoningEfforts?: Array<{
+                    reasoningEffort: string;
+                    description?: string;
+                }>;
+            }>;
+        }
         | { success: false; error: string };
     const [availableModels, setAvailableModels] = React.useState<string[] | null>(null);
     const [isLoadingModels, setIsLoadingModels] = React.useState(false);

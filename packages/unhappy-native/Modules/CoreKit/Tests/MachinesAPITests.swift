@@ -224,6 +224,38 @@ struct MachinesAPITests {
     }
 
     @Test
+    func decodeAgentCapabilitiesResponseParsesModelMetadata() throws {
+        let json = """
+        {
+          "success": true,
+          "models": ["gpt-5.3-codex", "gpt-5.2-codex"],
+          "modelMetadata": [
+            {
+              "id": "gpt-5.3-codex",
+              "model": "gpt-5.3-codex",
+              "displayName": "gpt-5.3-codex",
+              "defaultReasoningEffort": "medium",
+              "supportedReasoningEfforts": [
+                { "reasoningEffort": "low" },
+                { "reasoningEffort": "high" },
+                { "reasoningEffort": "xhigh" }
+              ],
+              "isDefault": true
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let capabilities = try MachinesAPI.decodeAgentCapabilitiesResponse(json)
+
+        #expect(capabilities.models == ["gpt-5.3-codex", "gpt-5.2-codex"])
+        #expect(capabilities.reasoningEfforts == ["low", "high", "xhigh"])
+        #expect(capabilities.modelCapabilities.count == 1)
+        #expect(capabilities.modelCapabilities.first?.id == "gpt-5.3-codex")
+        #expect(capabilities.modelCapabilities.first?.isDefault == true)
+    }
+
+    @Test
     func decodeCodexThreadsResponseParsesRows() throws {
         let json = """
         {
@@ -237,7 +269,13 @@ struct MachinesAPITests {
               "createdAt": "2026-02-26T01:00:00.000Z",
               "archived": false,
               "model": "gpt-5-codex",
-              "effort": "xhigh"
+              "effort": "xhigh",
+              "preview": "Fix flaky tests",
+              "source": "cli",
+              "cliVersion": "0.107.0",
+              "modelProvider": "openai",
+              "ephemeral": false,
+              "status": { "type": "loaded" }
             }
           ]
         }
@@ -250,6 +288,12 @@ struct MachinesAPITests {
         #expect(rows.first?.name == "Bugfix")
         #expect(rows.first?.model == "gpt-5-codex")
         #expect(rows.first?.effort == .xhigh)
+        #expect(rows.first?.preview == "Fix flaky tests")
+        #expect(rows.first?.source == "cli")
+        #expect(rows.first?.cliVersion == "0.107.0")
+        #expect(rows.first?.modelProvider == "openai")
+        #expect(rows.first?.ephemeral == false)
+        #expect(rows.first?.statusType == "loaded")
     }
 
     @Test

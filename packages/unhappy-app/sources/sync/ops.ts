@@ -138,11 +138,22 @@ interface CodexThreadSummary {
     updatedAt?: string;
     createdAt?: string;
     archived?: boolean;
+    model?: string;
+    effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null;
+    preview?: string;
+    path?: string;
+    source?: string;
+    cliVersion?: string;
+    modelProvider?: string;
+    ephemeral?: boolean;
+    statusType?: string;
+    status?: Record<string, unknown>;
 }
 
 interface SessionCodexListThreadsRequest {
     cwd?: string;
     limit?: number;
+    cursor?: string;
 }
 
 interface SessionCodexListThreadsResponse {
