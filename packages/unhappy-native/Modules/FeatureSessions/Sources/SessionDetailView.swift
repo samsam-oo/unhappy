@@ -681,7 +681,12 @@ public struct SessionDetailView: View {
             if let actionError, !actionError.isEmpty {
                 respondingPermissionRequestID = nil
                 permissionActionStatusMessage = nil
-                permissionActionErrorMessage = actionError
+                if actionError.lowercased().contains("session rpc is not connected") {
+                    permissionActionErrorMessage =
+                        "Session is disconnected. Resume or reopen this session, then try approval again."
+                } else {
+                    permissionActionErrorMessage = actionError
+                }
                 return
             }
 
@@ -760,101 +765,102 @@ public struct SessionDetailView: View {
             EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
         )
 
-        if !pendingPermissionRequests.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.caption)
-                        .foregroundStyle(Color.orange)
-                    Text("Approval Required")
-                        .font(.caption2.monospaced().weight(.bold))
-                        .foregroundStyle(AppPalette.secondaryText)
-                        .textCase(.uppercase)
-                }
+    }
 
-                ForEach(pendingPermissionRequests) { request in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Text(request.toolName)
-                                .font(.subheadline.monospaced().weight(.semibold))
-                                .foregroundStyle(AppPalette.primaryText)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer(minLength: 0)
-                            Text(request.callID)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(AppPalette.secondaryText)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
+    private var approvalBottomSheet: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.caption)
+                    .foregroundStyle(Color.orange)
+                Text("Approval Required")
+                    .font(.caption2.monospaced().weight(.bold))
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .textCase(.uppercase)
+            }
 
-                        if let summary = request.summary, !summary.isEmpty {
-                            Text(summary)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(AppPalette.secondaryText)
-                                .lineLimit(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+            ForEach(pendingPermissionRequests) { request in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(request.toolName)
+                            .font(.subheadline.monospaced().weight(.semibold))
+                            .foregroundStyle(AppPalette.primaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 0)
+                        Text(request.callID)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
 
-                        HStack(spacing: 8) {
-                            let isResponding = respondingPermissionRequestID == request.id
-                            Button {
-                                respondToPermissionRequest(request.id, approved: true)
-                            } label: {
-                                if isResponding {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Text("Approve")
-                                        .font(.caption.weight(.semibold))
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(respondingPermissionRequestID != nil)
+                    if let summary = request.summary, !summary.isEmpty {
+                        Text(summary)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
-                            Button(role: .destructive) {
-                                respondToPermissionRequest(request.id, approved: false)
-                            } label: {
-                                Text("Deny")
+                    HStack(spacing: 8) {
+                        let isResponding = respondingPermissionRequestID == request.id
+                        Button {
+                            respondToPermissionRequest(request.id, approved: true)
+                        } label: {
+                            if isResponding {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Text("Approve")
                                     .font(.caption.weight(.semibold))
                             }
-                            .buttonStyle(.bordered)
-                            .disabled(respondingPermissionRequestID != nil)
                         }
-                    }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(respondingPermissionRequestID != nil)
 
-                    if request.id != pendingPermissionRequests.last?.id {
-                        Divider().opacity(0.22)
+                        Button(role: .destructive) {
+                            respondToPermissionRequest(request.id, approved: false)
+                        } label: {
+                            Text("Deny")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(respondingPermissionRequestID != nil)
                     }
                 }
 
-                if let status = permissionActionStatusMessage, !status.isEmpty {
-                    Text(status)
-                        .font(.footnote)
-                        .foregroundStyle(.green)
-                }
-                if let error = permissionActionErrorMessage, !error.isEmpty {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
+                if request.id != pendingPermissionRequests.last?.id {
+                    Divider().opacity(0.22)
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(AppPalette.chatToolBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color.orange.opacity(0.45), lineWidth: 1)
-            )
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .listRowInsets(
-                EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-            )
+
+            if let status = permissionActionStatusMessage, !status.isEmpty {
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+            if let error = permissionActionErrorMessage, !error.isEmpty {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(bottomSheetSurfaceColor)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.orange.opacity(0.45), lineWidth: 1)
+        )
+        .shadow(
+            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.36 : 0.10),
+            radius: 8,
+            y: 2
+        )
     }
 
     private func sessionSummaryPanelRow(
@@ -960,12 +966,17 @@ public struct SessionDetailView: View {
                 subAgentLiveBar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            if !pendingPermissionRequests.isEmpty && !isKeyboardActive {
+                approvalBottomSheet
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             bottomDock
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.bottom, isKeyboardActive ? 6 : 8)
         .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
+        .animation(.easeInOut(duration: 0.2), value: pendingPermissionRequests.count)
         .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
     }
 
