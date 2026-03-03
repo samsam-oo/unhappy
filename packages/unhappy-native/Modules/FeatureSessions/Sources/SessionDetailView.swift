@@ -2275,6 +2275,10 @@ public struct SessionDetailView: View {
                     continue
                 }
 
+                if isSubagentNarrativeEntry(entry) {
+                    continue
+                }
+
                 filteredEntries.append(entry)
             }
 
@@ -2299,15 +2303,10 @@ public struct SessionDetailView: View {
     private func isSubagentToolCallEntry(_ entry: SessionTranscriptEntry) -> Bool {
         guard entry.kind == .toolCall else { return false }
         let normalizedTitle = normalizedEntryTitle(entry)
-        if normalizedTitle.contains("run task") ||
-            normalizedTitle.contains("sub-agent") ||
-            normalizedTitle.contains("subagent") {
+        if subagentToolTitleMatches(normalizedTitle) {
             return true
         }
-
-        let normalizedBody = entry.body.lowercased()
-        return normalizedBody.contains("spawn_agent") ||
-            normalizedBody.contains("subagent_type")
+        return subagentMarkersMatch(entry)
     }
 
     private func isSubagentToolResultEntry(
@@ -2321,15 +2320,79 @@ public struct SessionDetailView: View {
         }
 
         let normalizedTitle = normalizedEntryTitle(entry)
-        if normalizedTitle.contains("run task") ||
-            normalizedTitle.contains("sub-agent") ||
-            normalizedTitle.contains("subagent") {
+        if subagentToolTitleMatches(normalizedTitle) {
+            return true
+        }
+        return subagentMarkersMatch(entry)
+    }
+
+    private func isSubagentNarrativeEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        switch entry.kind {
+        case .text, .thinking, .raw, .event:
+            return subagentMarkersMatch(entry)
+        default:
+            return false
+        }
+    }
+
+    private func subagentToolTitleMatches(_ normalizedTitle: String) -> Bool {
+        if normalizedTitle.isEmpty {
+            return false
+        }
+
+        let exactMatches: Set<String> = [
+            "run task",
+            "spawn agent",
+            "send input",
+            "resume agent",
+            "close agent",
+            "wait",
+        ]
+        if exactMatches.contains(normalizedTitle) {
+            return true
+        }
+        return normalizedTitle.contains("sub-agent") ||
+            normalizedTitle.contains("subagent") ||
+            normalizedTitle.contains("multi-agent") ||
+            normalizedTitle.contains("multi agent")
+    }
+
+    private func subagentMarkersMatch(_ entry: SessionTranscriptEntry) -> Bool {
+        let normalizedTitle = normalizedEntryTitle(entry)
+        let normalizedBody = entry.body
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let markers = [
+            "spawn_agent",
+            "send_input",
+            "resume_agent",
+            "close_agent",
+            "subagent_notification",
+            "subagent_type",
+            "sub-agent",
+            "sub agent",
+            "subagent",
+            "multi-agent",
+            "multi agent",
+            "collab_",
+            "collabagents",
+            "collabagent",
+            "receiver_thread_id",
+            "receiver_thread_ids",
+            "sender_thread_id",
+            "new_thread_id",
+            "\"agent_id\"",
+            "\"agentid\"",
+            "\"agent_type\"",
+            "\"agenttype\"",
+        ]
+
+        if markers.contains(where: { normalizedTitle.contains($0) || normalizedBody.contains($0) }) {
             return true
         }
 
-        let normalizedBody = entry.body.lowercased()
-        return normalizedBody.contains("spawn_agent") ||
-            normalizedBody.contains("subagent_notification")
+        return subagentToolTitleMatches(normalizedTitle)
     }
 
     private func normalizedEntryTitle(_ entry: SessionTranscriptEntry) -> String {
