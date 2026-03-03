@@ -1634,7 +1634,7 @@ export async function runCodex(opts: {
       if (primaryThreadID && threadID !== primaryThreadID) return true;
       return false;
     }
-    return activeCollabKeys.size > 0;
+    return false;
   };
   type CollabIndicatorState = 'in_progress' | 'completed' | null;
   let collabStatusState: CollabIndicatorState = null;

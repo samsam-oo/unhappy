@@ -2242,6 +2242,7 @@ public struct SessionDetailView: View {
         var filteredPresentations: [SessionTranscriptMessagePresentation] = []
         filteredPresentations.reserveCapacity(presentations.count)
         var activeSubagentToolUseIDs: Set<String> = []
+        var anonymousActiveSubagentToolCalls = 0
         var inProgressCount = 0
 
         for presentation in presentations {
@@ -2249,37 +2250,25 @@ public struct SessionDetailView: View {
             filteredEntries.reserveCapacity(presentation.entries.count)
 
             for entry in presentation.entries {
-                if isSubagentSidechainEntry(entry) {
-                    continue
-                }
-
-                if let status = subagentStatusSignal(for: entry) {
-                    switch status {
-                    case .inProgress:
-                        inProgressCount = max(inProgressCount, 1)
-                    case .completed:
-                        inProgressCount = 0
+                if entry.isSidechain {
+                    switch entry.kind {
+                    case .toolCall:
+                        if let toolUseID = entry.toolUseID {
+                            activeSubagentToolUseIDs.insert(toolUseID)
+                        } else {
+                            anonymousActiveSubagentToolCalls += 1
+                        }
+                        inProgressCount = activeSubagentToolUseIDs.count + anonymousActiveSubagentToolCalls
+                    case .toolResult:
+                        if let toolUseID = entry.toolUseID {
+                            activeSubagentToolUseIDs.remove(toolUseID)
+                        } else if anonymousActiveSubagentToolCalls > 0 {
+                            anonymousActiveSubagentToolCalls -= 1
+                        }
+                        inProgressCount = activeSubagentToolUseIDs.count + anonymousActiveSubagentToolCalls
+                    default:
+                        break
                     }
-                    continue
-                }
-
-                if isSubagentToolCallEntry(entry) {
-                    if let toolUseID = entry.toolUseID {
-                        activeSubagentToolUseIDs.insert(toolUseID)
-                    }
-                    inProgressCount += 1
-                    continue
-                }
-
-                if isSubagentToolResultEntry(entry, activeToolUseIDs: activeSubagentToolUseIDs) {
-                    if let toolUseID = entry.toolUseID {
-                        activeSubagentToolUseIDs.remove(toolUseID)
-                    }
-                    inProgressCount = max(0, inProgressCount - 1)
-                    continue
-                }
-
-                if isSubagentNarrativeEntry(entry) {
                     continue
                 }
 
@@ -2302,176 +2291,6 @@ public struct SessionDetailView: View {
         }
 
         return (filteredPresentations, inProgressCount)
-    }
-
-    private func isSubagentSidechainEntry(_ entry: SessionTranscriptEntry) -> Bool {
-        return subagentAdapters.contains { $0.matchesSidechain(entry) }
-    }
-
-    private func isSubagentToolCallEntry(_ entry: SessionTranscriptEntry) -> Bool {
-        guard entry.kind == .toolCall else { return false }
-        return subagentAdapters.contains { $0.matchesToolCall(entry) }
-    }
-
-    private func isSubagentToolResultEntry(
-        _ entry: SessionTranscriptEntry,
-        activeToolUseIDs: Set<String>
-    ) -> Bool {
-        guard entry.kind == .toolResult else { return false }
-        if let toolUseID = entry.toolUseID,
-           activeToolUseIDs.contains(toolUseID) {
-            return true
-        }
-
-        return subagentAdapters.contains { $0.matchesToolResult(entry) }
-    }
-
-    private func isSubagentNarrativeEntry(_ entry: SessionTranscriptEntry) -> Bool {
-        switch entry.kind {
-        case .text, .thinking, .raw, .event:
-            return subagentAdapters.contains { $0.matchesNarrative(entry) }
-        default:
-            return false
-        }
-    }
-
-    private enum SubagentStatusSignal {
-        case inProgress
-        case completed
-    }
-
-    private func subagentStatusSignal(for entry: SessionTranscriptEntry) -> SubagentStatusSignal? {
-        for adapter in subagentAdapters {
-            if let signal = adapter.statusSignal(for: entry) {
-                return signal
-            }
-        }
-        return nil
-    }
-
-    private var subagentAdapters: [SubagentAdapter] {
-        SubagentAdapter.allCases
-    }
-
-    private enum SubagentAdapter: CaseIterable {
-        case codex
-        case claude
-
-        func matchesSidechain(_ entry: SessionTranscriptEntry) -> Bool {
-            switch self {
-            case .codex:
-                return entry.isSidechain
-            case .claude:
-                return entry.isSidechain
-            }
-        }
-
-        func matchesToolCall(_ entry: SessionTranscriptEntry) -> Bool {
-            switch self {
-            case .codex:
-                guard let toolName = Self.normalizedToken(entry.toolName) else { return false }
-                return [
-                    "spawn_agent",
-                    "send_input",
-                    "resume_agent",
-                    "close_agent",
-                    "wait",
-                    "message_agent",
-                    "interrupt_agent",
-                ].contains(toolName)
-            case .claude:
-                return Self.normalizedToken(entry.toolName) == "task"
-            }
-        }
-
-        func matchesToolResult(_ entry: SessionTranscriptEntry) -> Bool {
-            switch self {
-            case .codex:
-                guard let toolName = Self.normalizedToken(entry.toolName) else { return false }
-                return [
-                    "spawn_agent",
-                    "send_input",
-                    "resume_agent",
-                    "close_agent",
-                    "wait",
-                    "message_agent",
-                    "interrupt_agent",
-                ].contains(toolName)
-            case .claude:
-                if Self.normalizedToken(entry.toolName) == "task" {
-                    return true
-                }
-                let body = Self.normalizedBody(entry.body)
-                return body.contains("subagent_notification") || body.contains("sub-agent")
-            }
-        }
-
-        func matchesNarrative(_ entry: SessionTranscriptEntry) -> Bool {
-            let body = Self.normalizedBody(entry.body)
-            switch self {
-            case .codex:
-                guard let sourceType = Self.normalizedToken(entry.sourceType) else { return false }
-                return [
-                    "collab_waiting_begin",
-                    "collab_waiting_end",
-                    "collabtoolcall",
-                    "collab_agent_tool_call",
-                ].contains(sourceType)
-            case .claude:
-                return body.contains("subagent_notification") ||
-                    body.contains("sub-agent in progress") ||
-                    body.contains("sub-agent completed")
-            }
-        }
-
-        func statusSignal(for entry: SessionTranscriptEntry) -> SubagentStatusSignal? {
-            switch self {
-            case .codex:
-                guard let sourceType = Self.normalizedToken(entry.sourceType) else { return nil }
-                if sourceType == "collab_waiting_begin" {
-                    return .inProgress
-                }
-                if sourceType == "collab_waiting_end" {
-                    return .completed
-                }
-                guard sourceType == "collabtoolcall" || sourceType == "collab_agent_tool_call" else {
-                    return nil
-                }
-                let body = Self.normalizedBody(entry.body)
-                if ["inprogress", "in_progress", "running", "pending"].contains(where: { body.contains($0) }) {
-                    return .inProgress
-                }
-                if ["completed", "failed", "errored", "error", "shutdown"].contains(where: { body.contains($0) }) {
-                    return .completed
-                }
-                return nil
-            case .claude:
-                let body = Self.normalizedBody(entry.body)
-                if body.contains("subagent_notification: running") || body.contains("subagent_notification: in_progress") {
-                    return .inProgress
-                }
-                if body.contains("subagent_notification: completed") || body.contains("subagent_notification: done") {
-                    return .completed
-                }
-                return nil
-            }
-        }
-
-        private static func normalizedToken(_ value: String?) -> String? {
-            guard let value else { return nil }
-            let normalized = value
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-                .replacingOccurrences(of: "-", with: "_")
-                .replacingOccurrences(of: " ", with: "_")
-            return normalized.isEmpty ? nil : normalized
-        }
-
-        private static func normalizedBody(_ value: String) -> String {
-            value
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .lowercased()
-        }
     }
 }
 
