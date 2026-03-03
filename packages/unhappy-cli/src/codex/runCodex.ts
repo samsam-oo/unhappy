@@ -944,9 +944,29 @@ export async function runCodex(opts: {
 
   // Model listing for UI dropdown (best-effort; cached per session process).
   let cachedModelList: Awaited<ReturnType<typeof listCodexModels>> | null = null;
+  const normalizeCodexReasoningEfforts = (values: string[] | undefined): string[] => {
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const value of values ?? []) {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      deduped.push(normalized);
+    }
+    const withoutAuto = deduped.filter((value) => value !== 'auto');
+    if (withoutAuto.length === 0) {
+      return ['auto', 'low', 'medium', 'high', 'xhigh'];
+    }
+    return ['auto', ...withoutAuto];
+  };
   session.rpcHandlerManager.registerHandler('list-models', async () => {
     if (cachedModelList?.success && cachedModelList.models.length > 0) {
-      return cachedModelList;
+      return {
+        ...cachedModelList,
+        reasoningEfforts: normalizeCodexReasoningEfforts(
+          cachedModelList.reasoningEfforts,
+        ),
+      };
     }
     cachedModelList = await listCodexModels();
     // Guard: never cache an "empty success" result; UI should show an error instead.
@@ -956,7 +976,15 @@ export async function runCodex(opts: {
         error: 'No Codex models returned',
       };
     }
-    return cachedModelList;
+    if (!cachedModelList.success) {
+      return cachedModelList;
+    }
+    return {
+      ...cachedModelList,
+      reasoningEfforts: normalizeCodexReasoningEfforts(
+        cachedModelList.reasoningEfforts,
+      ),
+    };
   });
 
   // Expose recent Codex thread history for UI surfaces that want to show/import legacy sessions.

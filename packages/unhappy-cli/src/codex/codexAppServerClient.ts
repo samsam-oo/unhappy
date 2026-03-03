@@ -86,6 +86,14 @@ export type CodexThreadSummary = {
   archived?: boolean;
   model?: string;
   effort?: CodexThreadSummaryEffort;
+  preview?: string;
+  path?: string;
+  source?: string;
+  cliVersion?: string;
+  modelProvider?: string;
+  ephemeral?: boolean;
+  statusType?: string;
+  status?: Record<string, unknown>;
 };
 
 export type CodexPermissionHandlerLike = {
@@ -179,6 +187,13 @@ function getFirstNonEmptyString(values: unknown[]): string | null {
       const trimmed = value.trim();
       if (trimmed.length > 0) return value;
     }
+  }
+  return null;
+}
+
+function getFirstRecord(values: unknown[]): Record<string, unknown> | null {
+  for (const value of values) {
+    if (isRecord(value)) return value;
   }
   return null;
 }
@@ -1150,6 +1165,7 @@ export class CodexAppServerClient {
 
   private handleServerNotification(notification: Record<string, unknown>): void {
     const method = typeof notification.method === 'string' ? notification.method : '';
+    const methodLower = method.toLowerCase();
     const params = isRecord(notification.params) ? notification.params : {};
 
     if (method.startsWith('codex/event/')) {
@@ -1228,6 +1244,49 @@ export class CodexAppServerClient {
           thread_name: threadName,
         });
       }
+      return;
+    }
+
+    // Newer app-server streams include thread status change notifications
+    // (`thread/status/changed` and similar variants).
+    if (
+      methodLower.includes('thread') &&
+      methodLower.includes('status') &&
+      (methodLower.includes('changed') || methodLower.includes('updated'))
+    ) {
+      const threadRecord = isRecord(params.thread) ? params.thread : null;
+      const statusRecord = getFirstRecord([
+        params.status,
+        params.threadStatus,
+        params.thread_status,
+        threadRecord?.status,
+      ]);
+      const threadId =
+        getFirstNonEmptyString([
+          params.threadId,
+          params.thread_id,
+          threadRecord?.id,
+          statusRecord?.threadId,
+          statusRecord?.thread_id,
+        ]) ?? undefined;
+      const statusType =
+        getFirstNonEmptyString([
+          statusRecord?.type,
+          params.statusType,
+          params.status_type,
+          params.state,
+        ]) ?? undefined;
+
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ threadId });
+      }
+
+      this.handler?.({
+        type: 'thread_status_changed',
+        thread_id: threadId ?? this.sessionId ?? undefined,
+        status_type: statusType,
+        status: statusRecord ?? undefined,
+      });
       return;
     }
 
@@ -1634,8 +1693,11 @@ export class CodexAppServerClient {
       if (!isRecord(row)) continue;
       const nestedThread = isRecord(row.thread) ? row.thread : null;
       const rowReasoning = isRecord(row.reasoning) ? row.reasoning : null;
+      const rowStatus = isRecord(row.status) ? row.status : null;
       const nestedReasoning =
         nestedThread && isRecord(nestedThread.reasoning) ? nestedThread.reasoning : null;
+      const nestedStatus =
+        nestedThread && isRecord(nestedThread.status) ? nestedThread.status : null;
       const configRecords: Array<Record<string, unknown>> = [
         row.config,
         row.threadConfig,
@@ -1756,6 +1818,49 @@ export class CodexAppServerClient {
               : undefined,
         model,
         effort,
+        preview:
+          getFirstNonEmptyString([row.preview, nestedThread?.preview]) ?? undefined,
+        path:
+          getFirstNonEmptyString([
+            row.path,
+            row.sessionPath,
+            row.session_path,
+            nestedThread?.path,
+            nestedThread?.sessionPath,
+            nestedThread?.session_path,
+          ]) ?? undefined,
+        source:
+          getFirstNonEmptyString([row.source, nestedThread?.source]) ?? undefined,
+        cliVersion:
+          getFirstNonEmptyString([
+            row.cliVersion,
+            row.cli_version,
+            nestedThread?.cliVersion,
+            nestedThread?.cli_version,
+          ]) ?? undefined,
+        modelProvider:
+          getFirstNonEmptyString([
+            row.modelProvider,
+            row.model_provider,
+            nestedThread?.modelProvider,
+            nestedThread?.model_provider,
+          ]) ?? undefined,
+        ephemeral:
+          typeof row.ephemeral === 'boolean'
+            ? row.ephemeral
+            : typeof nestedThread?.ephemeral === 'boolean'
+              ? nestedThread.ephemeral
+              : undefined,
+        statusType:
+          getFirstNonEmptyString([
+            rowStatus?.type,
+            row.statusType,
+            row.status_type,
+            nestedStatus?.type,
+            nestedThread?.statusType,
+            nestedThread?.status_type,
+          ]) ?? undefined,
+        status: getFirstRecord([rowStatus, nestedStatus]) ?? undefined,
       });
     }
 

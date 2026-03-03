@@ -298,6 +298,47 @@ describe('Codex turn/steer and collab forwarding', () => {
     expect(threadId).toBe('thread-from-items');
   });
 
+  it('parses enriched thread/list fields from newer app-server responses', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const callRpc = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'thread-rich-1',
+          cwd: '/repo',
+          preview: 'Investigate failing CI',
+          path: '/Users/test/.codex/sessions/2026/03/thread-rich-1.jsonl',
+          source: 'cli',
+          cliVersion: '0.107.0',
+          modelProvider: 'openai',
+          ephemeral: false,
+          model: 'gpt-5.3-codex',
+          status: { type: 'notLoaded' },
+        },
+      ],
+    });
+
+    anyClient.connected = true;
+    anyClient.callRpc = callRpc;
+
+    const rows = await client.listRecentThreadsByCwd('/repo', { limit: 20 });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 'thread-rich-1',
+      cwd: '/repo',
+      preview: 'Investigate failing CI',
+      path: '/Users/test/.codex/sessions/2026/03/thread-rich-1.jsonl',
+      source: 'cli',
+      cliVersion: '0.107.0',
+      modelProvider: 'openai',
+      ephemeral: false,
+      model: 'gpt-5.3-codex',
+      statusType: 'notLoaded',
+      status: { type: 'notLoaded' },
+    });
+  });
+
   it('falls back to latest thread/list result when preferred resume id fails', async () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;
@@ -542,6 +583,35 @@ describe('Codex turn/steer and collab forwarding', () => {
       type: 'thread_name_updated',
       thread_id: 'thread-xyz',
       thread_name: 'Renamed Session',
+    });
+  });
+
+  it('forwards thread status change notifications as thread_status_changed events', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'thread/status/changed',
+      params: {
+        threadId: 'thread-abc',
+        status: {
+          type: 'loaded',
+          reason: 'attached',
+        },
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      type: 'thread_status_changed',
+      thread_id: 'thread-abc',
+      status_type: 'loaded',
+      status: {
+        type: 'loaded',
+        reason: 'attached',
+      },
     });
   });
 });
