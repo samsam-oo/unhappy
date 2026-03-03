@@ -1578,6 +1578,10 @@ public struct SessionDetailView: View {
             return queuedCount == 1 ? "Queued 1 message" : "Queued \(queuedCount) messages"
         }
 
+        if hasPendingApprovalRequest {
+            return "Approval needed"
+        }
+
         if let latestAgentLiveStatusText {
             if shouldShowAgentLiveStatus {
                 return latestAgentLiveStatusText
@@ -1589,6 +1593,59 @@ public struct SessionDetailView: View {
         }
 
         return nil
+    }
+
+    private var hasPendingApprovalRequest: Bool {
+        let sources = [decodedSessionAgentState, decodedSessionMetadata]
+
+        if let explicit = SessionPayloadValueResolver.firstBool(
+            in: sources,
+            keys: [
+                "requiresUserApproval",
+                "needsApproval",
+                "approvalRequired",
+                "approvalPending",
+                "permissionPending",
+                "waitingApproval",
+                "awaitingApproval",
+            ]
+        ) {
+            return explicit
+        }
+
+        if SessionPayloadValueResolver.hasNonEmptyArray(
+            in: sources,
+            keys: [
+                "pendingPermissions",
+                "approvalRequests",
+                "permissionRequests",
+                "pendingApprovalRequests",
+            ]
+        ) {
+            return true
+        }
+
+        if SessionPayloadValueResolver.hasNonEmptyDictionary(
+            in: sources,
+            keys: [
+                "requests",
+                "pendingRequests",
+                "approvalRequestMap",
+                "permissionRequestMap",
+            ]
+        ) {
+            return true
+        }
+
+        if let status = SessionPayloadValueResolver.firstString(
+            in: sources,
+            keys: ["status", "state", "phase"]
+        )?.lowercased(),
+           status.contains("approval") || status.contains("permission") {
+            return true
+        }
+
+        return false
     }
 
     private var shouldShowAgentLiveStatus: Bool {
