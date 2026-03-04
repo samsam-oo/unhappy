@@ -1,0 +1,401 @@
+import SwiftUI
+import CoreKit
+
+struct SessionQuickToolPickerOption: Identifiable, Equatable {
+    let id: String
+    let label: String
+}
+
+struct SessionQuickToolsDockBar: View {
+    let supportsReasoningEffortOverride: Bool
+    let selectedModelOverrideLabel: String
+    let selectedReasoningOverrideLabel: String
+    let selectedFileModeLabel: String
+    let modelPickerOptions: [SessionQuickToolPickerOption]
+    let effortPickerOptions: [SessionQuickToolPickerOption]
+    let permissionModePickerOptions: [SessionQuickToolPickerOption]
+    let modelPickerSelection: Binding<String>
+    let effortPickerSelection: Binding<String>
+    let permissionModePickerSelection: Binding<String>
+    let sessionIdentity: String
+    let surfaceColor: Color
+    let onInfo: () -> Void
+    let onFiles: () -> Void
+    let onDiff: () -> Void
+    let onWorktree: () -> Void
+
+    private let quickToolsFadeWidth: CGFloat = 16
+    private let quickToolsBarHeight: CGFloat = 36
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 8) {
+                modelMenuButton
+
+                if supportsReasoningEffortOverride {
+                    effortMenuButton
+                }
+
+                fileModeMenuButton
+
+                dockChipButton(
+                    title: "Info",
+                    systemImage: "info.circle",
+                    action: onInfo
+                )
+                dockChipButton(
+                    title: "Files",
+                    systemImage: "doc.text",
+                    action: onFiles
+                )
+                dockChipButton(
+                    title: "Diff",
+                    systemImage: "doc.text.magnifyingglass",
+                    action: onDiff
+                )
+                dockChipButton(
+                    title: "Worktree",
+                    systemImage: "checkmark.circle",
+                    action: onWorktree
+                )
+            }
+            .padding(.horizontal, quickToolsFadeWidth)
+            .padding(.vertical, 4)
+        }
+        .defaultScrollAnchor(.leading)
+        .id(sessionIdentity)
+        .frame(height: quickToolsBarHeight)
+        .overlay(alignment: .leading) {
+            LinearGradient(
+                colors: [surfaceColor, surfaceColor.opacity(0)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: quickToolsFadeWidth)
+            .allowsHitTesting(false)
+        }
+        .overlay(alignment: .trailing) {
+            LinearGradient(
+                colors: [surfaceColor.opacity(0), surfaceColor],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: quickToolsFadeWidth)
+            .allowsHitTesting(false)
+        }
+    }
+
+    private var modelMenuButton: some View {
+        Menu {
+            ForEach(modelPickerOptions) { option in
+                Button {
+                    modelPickerSelection.wrappedValue = option.id
+                } label: {
+                    if modelPickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            Label(selectedModelOverrideLabel, systemImage: "cpu")
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .tint(.primary)
+    }
+
+    private var effortMenuButton: some View {
+        Menu {
+            ForEach(effortPickerOptions) { option in
+                Button {
+                    effortPickerSelection.wrappedValue = option.id
+                } label: {
+                    if effortPickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .tint(.primary)
+    }
+
+    private var fileModeMenuButton: some View {
+        Menu {
+            ForEach(permissionModePickerOptions) { option in
+                Button {
+                    permissionModePickerSelection.wrappedValue = option.id
+                } label: {
+                    if permissionModePickerSelection.wrappedValue == option.id {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+            }
+        } label: {
+            Label(selectedFileModeLabel, systemImage: "doc.badge.gearshape")
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .tint(.primary)
+    }
+
+    private func dockChipButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .buttonStyle(PressableScaleButtonStyle())
+    }
+}
+
+struct SessionCodexSessionsSheet: View {
+    @ObservedObject var viewModel: SessionsViewModel
+    let sessionID: String
+    let serverURLString: String
+    let token: String
+    @Binding var isPresented: Bool
+    @Binding var cwdFilterDraft: String
+    @Binding var resumeDirectoryDraft: String
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Path Filter") {
+                    TextField("Optional cwd path", text: $cwdFilterDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Apply Filter") {
+                        Task {
+                            await viewModel.loadCodexThreads(
+                                for: sessionID,
+                                serverURLString: serverURLString,
+                                token: token,
+                                cwd: normalizedCWD(from: cwdFilterDraft)
+                            )
+                        }
+                    }
+                    .disabled(viewModel.isLoadingCodexThreads)
+                }
+                Section("Resume") {
+                    TextField("Directory for resumed session", text: $resumeDirectoryDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("If empty, selected row cwd is used.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let status = viewModel.codexResumeStatusMessage {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(.green)
+                    }
+                    if let error = viewModel.codexResumeErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if viewModel.isLoadingCodexThreads {
+                    ProgressView("Loading Codex sessions…")
+                } else if let error = viewModel.selectedCodexThreadsErrorMessage {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Unable to load Codex sessions")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button("Retry") {
+                            Task {
+                                await viewModel.loadCodexThreads(
+                                    for: sessionID,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    cwd: normalizedCWD(from: cwdFilterDraft)
+                                )
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                } else if viewModel.selectedCodexThreads.isEmpty {
+                    Text("No existing Codex sessions")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.selectedCodexThreads) { thread in
+                        Button {
+                            let resumeDirectory =
+                                normalizedCWD(from: resumeDirectoryDraft)
+                                ?? normalizedCWD(from: thread.cwd ?? "")
+                                ?? normalizedCWD(from: cwdFilterDraft)
+                                ?? ""
+                            Task {
+                                await viewModel.resumeCodexThread(
+                                    from: sessionID,
+                                    codexResumeThreadID: thread.id,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    directory: resumeDirectory
+                                )
+                            }
+                        } label: {
+                            CodexThreadRow(
+                                thread: thread,
+                                isResuming: viewModel.codexResumeInProgressThreadID == thread.id
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(
+                            viewModel.isResumingCodexSession &&
+                                viewModel.codexResumeInProgressThreadID != thread.id
+                        )
+                    }
+                }
+            }
+            .navigationTitle("Codex Sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func normalizedCWD(from value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+struct SessionClaudeSessionsSheet: View {
+    @ObservedObject var viewModel: SessionsViewModel
+    let sessionID: String
+    let serverURLString: String
+    let token: String
+    @Binding var isPresented: Bool
+    @Binding var cwdFilterDraft: String
+    @Binding var resumeDirectoryDraft: String
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Path Filter") {
+                    TextField("Optional cwd path", text: $cwdFilterDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Apply Filter") {
+                        Task {
+                            await viewModel.loadClaudeSessions(
+                                for: sessionID,
+                                serverURLString: serverURLString,
+                                token: token,
+                                cwd: normalizedCWD(from: cwdFilterDraft)
+                            )
+                        }
+                    }
+                    .disabled(viewModel.isLoadingClaudeSessions)
+                }
+                Section("Resume") {
+                    TextField("Directory for resumed session", text: $resumeDirectoryDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("If empty, selected row cwd is used.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let status = viewModel.claudeResumeStatusMessage {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(.green)
+                    }
+                    if let error = viewModel.claudeResumeErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if viewModel.isLoadingClaudeSessions {
+                    ProgressView("Loading Claude sessions…")
+                } else if let error = viewModel.selectedClaudeSessionsErrorMessage {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Unable to load Claude sessions")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button("Retry") {
+                            Task {
+                                await viewModel.loadClaudeSessions(
+                                    for: sessionID,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    cwd: normalizedCWD(from: cwdFilterDraft)
+                                )
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                } else if viewModel.selectedClaudeSessions.isEmpty {
+                    Text("No existing Claude sessions")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.selectedClaudeSessions) { row in
+                        Button {
+                            let resumeDirectory =
+                                normalizedCWD(from: resumeDirectoryDraft)
+                                ?? normalizedCWD(from: row.cwd ?? "")
+                                ?? normalizedCWD(from: cwdFilterDraft)
+                                ?? ""
+                            Task {
+                                await viewModel.resumeClaudeSession(
+                                    from: sessionID,
+                                    claudeResumeSessionID: row.id,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    directory: resumeDirectory
+                                )
+                            }
+                        } label: {
+                            ClaudeSessionRow(
+                                session: row,
+                                isResuming: viewModel.claudeResumeInProgressSessionID == row.id
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(
+                            viewModel.isResumingClaudeSession &&
+                                viewModel.claudeResumeInProgressSessionID != row.id
+                        )
+                    }
+                }
+            }
+            .navigationTitle("Claude Sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        isPresented = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func normalizedCWD(from value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}

@@ -45,8 +45,6 @@ public struct SessionDetailView: View {
     private static let permissionModePickerDefaultOption = "__permission_mode_default__"
     private static let permissionModePickerPresetPrefix = "__permission_mode_preset__:"
     private static let transcriptBottomAnchorID = "__session_transcript_bottom__"
-    private static let quickToolsFadeWidth: CGFloat = 16
-    private static let quickToolsBarHeight: CGFloat = 36
 
     private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
@@ -446,215 +444,27 @@ public struct SessionDetailView: View {
     }
 
     private var codexSessionsSheet: some View {
-        NavigationStack {
-            List {
-                Section("Path Filter") {
-                    TextField("Optional cwd path", text: $codexCwdFilterDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Apply Filter") {
-                        Task {
-                            await viewModel.loadCodexThreads(
-                                for: session.id,
-                                serverURLString: serverURLString,
-                                token: token,
-                                cwd: normalizedCWD(from: codexCwdFilterDraft)
-                            )
-                        }
-                    }
-                    .disabled(viewModel.isLoadingCodexThreads)
-                }
-                Section("Resume") {
-                    TextField("Directory for resumed session", text: $codexResumeDirectoryDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Text("If empty, selected row cwd is used.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if let status = viewModel.codexResumeStatusMessage {
-                        Text(status)
-                            .font(.footnote)
-                            .foregroundStyle(.green)
-                    }
-                    if let error = viewModel.codexResumeErrorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                if viewModel.isLoadingCodexThreads {
-                    ProgressView("Loading Codex sessions…")
-                } else if let error = viewModel.selectedCodexThreadsErrorMessage {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Unable to load Codex sessions")
-                            .font(.headline)
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Retry") {
-                            Task {
-                                await viewModel.loadCodexThreads(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    cwd: normalizedCWD(from: codexCwdFilterDraft)
-                                )
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                } else if viewModel.selectedCodexThreads.isEmpty {
-                    Text("No existing Codex sessions")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.selectedCodexThreads) { thread in
-                        Button {
-                            let resumeDirectory =
-                                normalizedCWD(from: codexResumeDirectoryDraft)
-                                ?? normalizedCWD(from: thread.cwd ?? "")
-                                ?? normalizedCWD(from: codexCwdFilterDraft)
-                                ?? ""
-                            Task {
-                                await viewModel.resumeCodexThread(
-                                    from: session.id,
-                                    codexResumeThreadID: thread.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    directory: resumeDirectory
-                                )
-                            }
-                        } label: {
-                            CodexThreadRow(
-                                thread: thread,
-                                isResuming: viewModel.codexResumeInProgressThreadID == thread.id
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(
-                            viewModel.isResumingCodexSession &&
-                                viewModel.codexResumeInProgressThreadID != thread.id
-                        )
-                    }
-                }
-            }
-            .navigationTitle("Codex Sessions")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        showCodexThreadsSheet = false
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
+        SessionCodexSessionsSheet(
+            viewModel: viewModel,
+            sessionID: session.id,
+            serverURLString: serverURLString,
+            token: token,
+            isPresented: $showCodexThreadsSheet,
+            cwdFilterDraft: $codexCwdFilterDraft,
+            resumeDirectoryDraft: $codexResumeDirectoryDraft
+        )
     }
 
     private var claudeSessionsSheet: some View {
-        NavigationStack {
-            List {
-                Section("Path Filter") {
-                    TextField("Optional cwd path", text: $claudeCwdFilterDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Apply Filter") {
-                        Task {
-                            await viewModel.loadClaudeSessions(
-                                for: session.id,
-                                serverURLString: serverURLString,
-                                token: token,
-                                cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                            )
-                        }
-                    }
-                    .disabled(viewModel.isLoadingClaudeSessions)
-                }
-                Section("Resume") {
-                    TextField("Directory for resumed session", text: $claudeResumeDirectoryDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Text("If empty, selected row cwd is used.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if let status = viewModel.claudeResumeStatusMessage {
-                        Text(status)
-                            .font(.footnote)
-                            .foregroundStyle(.green)
-                    }
-                    if let error = viewModel.claudeResumeErrorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                if viewModel.isLoadingClaudeSessions {
-                    ProgressView("Loading Claude sessions…")
-                } else if let error = viewModel.selectedClaudeSessionsErrorMessage {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Unable to load Claude sessions")
-                            .font(.headline)
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Retry") {
-                            Task {
-                                await viewModel.loadClaudeSessions(
-                                    for: session.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                                )
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                } else if viewModel.selectedClaudeSessions.isEmpty {
-                    Text("No existing Claude sessions")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.selectedClaudeSessions) { row in
-                        Button {
-                            let resumeDirectory =
-                                normalizedCWD(from: claudeResumeDirectoryDraft)
-                                ?? normalizedCWD(from: row.cwd ?? "")
-                                ?? normalizedCWD(from: claudeCwdFilterDraft)
-                                ?? ""
-                            Task {
-                                await viewModel.resumeClaudeSession(
-                                    from: session.id,
-                                    claudeResumeSessionID: row.id,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    directory: resumeDirectory
-                                )
-                            }
-                        } label: {
-                            ClaudeSessionRow(
-                                session: row,
-                                isResuming: viewModel.claudeResumeInProgressSessionID == row.id
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(
-                            viewModel.isResumingClaudeSession &&
-                                viewModel.claudeResumeInProgressSessionID != row.id
-                        )
-                    }
-                }
-            }
-            .navigationTitle("Claude Sessions")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        showClaudeSessionsSheet = false
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
+        SessionClaudeSessionsSheet(
+            viewModel: viewModel,
+            sessionID: session.id,
+            serverURLString: serverURLString,
+            token: token,
+            isPresented: $showClaudeSessionsSheet,
+            cwdFilterDraft: $claudeCwdFilterDraft,
+            resumeDirectoryDraft: $claudeResumeDirectoryDraft
+        )
     }
 
     private var currentSession: APISession {
@@ -1258,150 +1068,36 @@ public struct SessionDetailView: View {
     }
 
     private var quickToolsBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 8) {
-                modelMenuButton
-
-                if supportsReasoningEffortOverride {
-                    effortMenuButton
-                }
-
-                fileModeMenuButton
-
-                quickToolButton(
-                    title: "Info",
-                    systemImage: "info.circle",
-                    tool: .info
-                )
-                quickToolButton(
-                    title: "Files",
-                    systemImage: "doc.text",
-                    tool: .files
-                )
-                quickToolButton(
-                    title: "Diff",
-                    systemImage: "doc.text.magnifyingglass",
-                    tool: .review
-                )
-                quickToolButton(
-                    title: "Worktree",
-                    systemImage: "checkmark.circle",
-                    tool: .worktree
-                )
+        SessionQuickToolsDockBar(
+            supportsReasoningEffortOverride: supportsReasoningEffortOverride,
+            selectedModelOverrideLabel: selectedModelOverrideLabel,
+            selectedReasoningOverrideLabel: selectedReasoningOverrideLabel,
+            selectedFileModeLabel: selectedFileModeLabel,
+            modelPickerOptions: modelPickerOptions,
+            effortPickerOptions: effortPickerOptions,
+            permissionModePickerOptions: permissionModePickerOptions,
+            modelPickerSelection: modelPickerSelection,
+            effortPickerSelection: effortPickerSelection,
+            permissionModePickerSelection: permissionModePickerSelection,
+            sessionIdentity: "\(session.id)-\(supportsReasoningEffortOverride)-\(serverModelOverrideOptions.count)",
+            surfaceColor: bottomSheetSurfaceColor,
+            onInfo: {
+                focusedComposerField = nil
+                presentedQuickTool = .info
+            },
+            onFiles: {
+                focusedComposerField = nil
+                presentedQuickTool = .files
+            },
+            onDiff: {
+                focusedComposerField = nil
+                presentedQuickTool = .review
+            },
+            onWorktree: {
+                focusedComposerField = nil
+                presentedQuickTool = .worktree
             }
-            .padding(.horizontal, Self.quickToolsFadeWidth)
-            .padding(.vertical, 4)
-        }
-        .defaultScrollAnchor(.leading)
-        .id("\(session.id)-\(supportsReasoningEffortOverride)-\(serverModelOverrideOptions.count)")
-        .frame(height: Self.quickToolsBarHeight)
-        .overlay(alignment: .leading) {
-            LinearGradient(
-                colors: [bottomSheetSurfaceColor, bottomSheetSurfaceColor.opacity(0)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: Self.quickToolsFadeWidth)
-            .allowsHitTesting(false)
-        }
-        .overlay(alignment: .trailing) {
-            LinearGradient(
-                colors: [bottomSheetSurfaceColor.opacity(0), bottomSheetSurfaceColor],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: Self.quickToolsFadeWidth)
-            .allowsHitTesting(false)
-        }
-    }
-
-    private func quickToolButton(
-        title: String,
-        systemImage: String,
-        tool: SessionQuickTool
-    ) -> some View {
-        dockChipButton(
-            title: title,
-            systemImage: systemImage
-        ) {
-            focusedComposerField = nil
-            presentedQuickTool = tool
-        }
-    }
-
-    private var modelMenuButton: some View {
-        Menu {
-            ForEach(modelPickerOptions, id: \.id) { option in
-                Button {
-                    modelPickerSelection.wrappedValue = option.id
-                } label: {
-                    if modelPickerSelection.wrappedValue == option.id {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            Label(selectedModelOverrideLabel, systemImage: "cpu")
-                .modifier(DockChipModifier(tone: .neutral))
-        }
-        .tint(.primary)
-    }
-
-    private var effortMenuButton: some View {
-        Menu {
-            ForEach(effortPickerOptions, id: \.id) { option in
-                Button {
-                    effortPickerSelection.wrappedValue = option.id
-                } label: {
-                    if effortPickerSelection.wrappedValue == option.id {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
-                .modifier(DockChipModifier(tone: .neutral))
-        }
-        .tint(.primary)
-    }
-
-    private var fileModeMenuButton: some View {
-        Menu {
-            ForEach(permissionModePickerOptions, id: \.id) { option in
-                Button {
-                    permissionModePickerSelection.wrappedValue = option.id
-                } label: {
-                    if permissionModePickerSelection.wrappedValue == option.id {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            Label(selectedFileModeLabel, systemImage: "doc.badge.gearshape")
-                .modifier(DockChipModifier(tone: .neutral))
-        }
-        .tint(.primary)
-    }
-
-    private func dockChipButton(
-        title: String,
-        systemImage: String,
-        isDisabled: Bool = false,
-        tone: DockChipTone = .neutral,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .modifier(DockChipModifier(tone: tone))
-        }
-        .buttonStyle(PressableScaleButtonStyle())
-        .disabled(isDisabled)
+        )
     }
 
     private var selectedModelOverrideLabel: String {
@@ -1430,28 +1126,23 @@ public struct SessionDetailView: View {
         return "Default"
     }
 
-    private struct PickerOption: Identifiable {
-        let id: String
-        let label: String
-    }
-
-    private var modelPickerOptions: [PickerOption] {
-        var options: [PickerOption] = [
-            PickerOption(
+    private var modelPickerOptions: [SessionQuickToolPickerOption] {
+        var options: [SessionQuickToolPickerOption] = [
+            SessionQuickToolPickerOption(
                 id: Self.modelPickerDefaultOption,
                 label: "Use current model"
             ),
         ]
         options.append(
             contentsOf: availableModelOverrideOptions.map { model in
-                PickerOption(
+                SessionQuickToolPickerOption(
                     id: Self.modelPickerPresetPrefix + model,
                     label: model
                 )
             }
         )
         options.append(
-            PickerOption(
+            SessionQuickToolPickerOption(
                 id: Self.modelPickerCustomOption,
                 label: "Custom model…"
             )
@@ -1459,9 +1150,9 @@ public struct SessionDetailView: View {
         return options
     }
 
-    private var effortPickerOptions: [PickerOption] {
+    private var effortPickerOptions: [SessionQuickToolPickerOption] {
         availableEffortSelections.map { effort in
-            PickerOption(
+            SessionQuickToolPickerOption(
                 id: Self.effortPickerPresetPrefix + effort.rawValue,
                 label: effort.label
             )
@@ -1480,16 +1171,16 @@ public struct SessionDetailView: View {
         }
     }
 
-    private var permissionModePickerOptions: [PickerOption] {
-        var options: [PickerOption] = [
-            PickerOption(
+    private var permissionModePickerOptions: [SessionQuickToolPickerOption] {
+        var options: [SessionQuickToolPickerOption] = [
+            SessionQuickToolPickerOption(
                 id: Self.permissionModePickerDefaultOption,
                 label: "Use current mode"
             ),
         ]
         options.append(
             contentsOf: availablePermissionModeOptions.map { mode in
-                PickerOption(
+                SessionQuickToolPickerOption(
                     id: Self.permissionModePickerPresetPrefix + mode.rawValue,
                     label: permissionModeDisplayLabel(for: mode)
                 )
