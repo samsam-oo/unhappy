@@ -36,298 +36,13 @@ public struct NewSessionView: View {
     public var body: some View {
         NavigationStack {
             Form {
-                Section("Machine") {
-                    if viewModel.isLoadingMachines {
-                        HStack {
-                            ProgressView()
-                            Text("Loading machines…")
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if viewModel.machines.isEmpty {
-                        Text("No machines available")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Picker("Machine", selection: machineSelectionBinding) {
-                            ForEach(viewModel.machines) { machine in
-                                Text(NewSessionMachinePresentation.displayName(for: machine)).tag(machine.id)
-                            }
-                        }
-                        .pickerStyle(.navigationLink)
-                    }
-                }
-
-                Section("Directory") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Selected Directory")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text(viewModel.directoryPath)
-                            .font(.footnote.monospaced())
-                            .textSelection(.enabled)
-                            .lineLimit(nil)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Button("Choose Folder") {
-                        directoryBrowserPathDraft = viewModel.directoryPath
-                        directoryBrowserFilterText = ""
-                        showDirectoryBrowserSheet = true
-                    }
-                    .disabled(viewModel.selectedMachineID == nil)
-
-                    if viewModel.isLoadingDirectory {
-                        HStack {
-                            ProgressView()
-                            Text("Loading directory…")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Section("Profiles") {
-                    if viewModel.profiles.isEmpty {
-                        Text("No saved profiles")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(viewModel.profiles) { profile in
-                            Button {
-                                Task {
-                                    await viewModel.applyProfile(
-                                        id: profile.id,
-                                        serverURLString: serverURLString,
-                                        token: token
-                                    )
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(profile.name)
-                                        .lineLimit(1)
-                                    Text("\(profile.agent.rawValue) • \(profile.directoryPath)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button("Delete", role: .destructive) {
-                                    Task {
-                                        await viewModel.deleteProfile(id: profile.id)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Button("Save Current As Profile") {
-                        draftProfileName = ""
-                        showSaveProfilePrompt = true
-                    }
-                }
-
-                Section("Agent") {
-                    Picker("Agent", selection: agentSelectionBinding) {
-                        Text("Claude").tag(APISessionSpawnAgent.claude)
-                        Text("Codex").tag(APISessionSpawnAgent.codex)
-                        Text("Gemini").tag(APISessionSpawnAgent.gemini)
-                    }
-                }
-
-                Section("Advanced") {
-                    if viewModel.isLoadingModels {
-                        HStack {
-                            ProgressView()
-                            Text("Loading models…")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Menu {
-                        Button("Default") {
-                            viewModel.setSelectedModel("")
-                        }
-                        ForEach(viewModel.availableModels, id: \.self) { model in
-                            Button(model) {
-                                viewModel.setSelectedModel(model)
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text("Model")
-                            Spacer()
-                            Text(selectedModelDisplayValue)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if let error = viewModel.modelsErrorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                        Button("Retry Models") {
-                            Task {
-                                await viewModel.loadModels(
-                                    serverURLString: serverURLString,
-                                    token: token
-                                )
-                            }
-                        }
-                        .font(.footnote)
-                    }
-
-                    Menu {
-                        ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
-                            Button(value.displayName) {
-                                viewModel.setSelectedReasoningEffort(value)
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text("Reasoning Effort")
-                            Spacer()
-                            Text(viewModel.selectedReasoningEffort.displayName)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
-                        showCodexThreadsSheet = true
-                        Task {
-                            await viewModel.loadCodexThreads(
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        }
-                    }
-                    .disabled(
-                        viewModel.selectedMachineID == nil ||
-                        viewModel.isLoadingCodexThreads ||
-                        viewModel.isLoadingMoreCodexThreads
-                    )
-                    if let error = viewModel.codexThreadsErrorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                    if !viewModel.codexResumeThreadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Selected Codex Session")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(viewModel.codexResumeThreadID)
-                                .font(.footnote.monospaced())
-                                .textSelection(.enabled)
-                            Button("Clear Codex Selection") {
-                                viewModel.clearCodexSelection()
-                            }
-                            .font(.footnote)
-                        }
-                    }
-
-                    Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : claudeSelectionButtonTitle) {
-                        showClaudeSessionsSheet = true
-                        Task {
-                            await viewModel.loadClaudeSessions(
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        }
-                    }
-                    .disabled(
-                        viewModel.selectedMachineID == nil ||
-                        viewModel.isLoadingClaudeSessions ||
-                        viewModel.isLoadingMoreClaudeSessions
-                    )
-                    if let error = viewModel.claudeSessionsErrorMessage {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                    if !viewModel.claudeResumeSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Selected Claude Session")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(viewModel.claudeResumeSessionID)
-                                .font(.footnote.monospaced())
-                                .textSelection(.enabled)
-                            Button("Clear Claude Selection") {
-                                viewModel.clearClaudeSelection()
-                            }
-                            .font(.footnote)
-                        }
-                    }
-
-                    TextField("Session token (optional)", text: $viewModel.sessionToken)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($focusedField, equals: .sessionToken)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Environment Variables (KEY=VALUE)")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $viewModel.environmentVariablesText)
-                            .font(.footnote.monospaced())
-                            .frame(minHeight: 96)
-                            .focused($focusedField, equals: .environmentVariables)
-                        Text("One variable per line. Empty lines and # comments are ignored.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section("Action") {
-                    Button(viewModel.isSpawning ? "Starting…" : primaryActionTitle) {
-                        Task {
-                            let success = await viewModel.startSession(
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                            if success {
-                                onSessionSpawned(viewModel.spawnedSessionID)
-                                dismiss()
-                            }
-                        }
-                    }
-                    .disabled(
-                        viewModel.isSpawning ||
-                        viewModel.selectedMachineID == nil ||
-                        viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    )
-
-                    if let approvalDirectory = viewModel.approvalDirectory {
-                        Text("Directory creation approval needed: \(approvalDirectory)")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Button("Create Directory And Continue") {
-                            Task {
-                                let success = await viewModel.continueWithDirectoryApproval(
-                                    serverURLString: serverURLString,
-                                    token: token
-                                )
-                                if success {
-                                    onSessionSpawned(viewModel.spawnedSessionID)
-                                    dismiss()
-                                }
-                            }
-                        }
-                        .disabled(viewModel.isSpawning)
-                    }
-                }
-
-                if let info = viewModel.infoMessage {
-                    Section("Status") {
-                        Text(info)
-                            .font(.footnote)
-                            .foregroundStyle(.green)
-                    }
-                }
-                if let error = viewModel.errorMessage {
-                    Section("Error") {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                }
+                machineSection
+                directorySection
+                profilesSection
+                agentSection
+                advancedSection
+                actionSection
+                statusSection
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("New Session")
@@ -349,331 +64,354 @@ public struct NewSessionView: View {
                 }
             }
             .sheet(isPresented: $showCodexThreadsSheet) {
-                NavigationStack {
-                    List {
-                        if viewModel.isLoadingCodexThreads && viewModel.codexThreads.isEmpty {
-                            ProgressView("Loading Codex sessions…")
-                        } else if viewModel.codexThreads.isEmpty {
-                            if let error = viewModel.codexThreadsErrorMessage {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Unable to load Codex sessions")
-                                        .font(.headline)
-                                    Text(error)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Button("Retry") {
-                                        Task {
-                                            await viewModel.loadCodexThreads(
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                            } else {
-                                ContentUnavailableView(
-                                    "No existing Codex sessions",
-                                    systemImage: "list.bullet",
-                                    description: Text("Start one in CLI first, then refresh here.")
-                                )
-                            }
-                        } else {
-                            ForEach(viewModel.codexThreads) { thread in
-                                Button {
-                                    viewModel.selectCodexThread(thread)
-                                    showCodexThreadsSheet = false
-                                    Task {
-                                        await viewModel.loadDirectory(
-                                            serverURLString: serverURLString,
-                                            token: token
-                                        )
-                                    }
-                                } label: {
-                                    CodexThreadSelectionRow(thread: thread)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            if viewModel.isLoadingMoreCodexThreads {
-                                HStack {
-                                    Spacer()
-                                    ProgressView("Loading more…")
-                                    Spacer()
-                                }
-                            } else if viewModel.codexThreadsHasNext {
-                                Button("Load More") {
-                                    Task {
-                                        await viewModel.loadMoreCodexThreads(
-                                            serverURLString: serverURLString,
-                                            token: token
-                                        )
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .center)
-                            }
-
-                            if let error = viewModel.codexThreadsErrorMessage {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Unable to load additional Codex sessions")
-                                        .font(.subheadline.weight(.semibold))
-                                    Text(error)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                    Button("Retry") {
-                                        Task {
-                                            await viewModel.loadMoreCodexThreads(
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                            }
-                        }
-                    }
-                    .navigationTitle("Codex Sessions")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") { showCodexThreadsSheet = false }
-                        }
-                    }
-                    .refreshable {
-                        await viewModel.loadCodexThreads(
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
+                NewSessionCodexSessionsSheet(
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    onClose: { showCodexThreadsSheet = false }
+                )
                 .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showDirectoryBrowserSheet) {
-                NavigationStack {
-                    VStack(spacing: 0) {
-                        Form {
-                            Section("Current Path") {
-                                TextField("Go to path", text: $directoryBrowserPathDraft)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .submitLabel(.done)
-                                    .disabled(
-                                        viewModel.selectedMachineID == nil ||
-                                        viewModel.isLoadingDirectory
-                                    )
-                                    .focused($focusedField, equals: .directoryPath)
-                                    .onSubmit {
-                                        Task {
-                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
-                                        }
-                                    }
-
-                                Button {
-                                    Task {
-                                        await goToParentDirectoryFromBrowser()
-                                    }
-                                } label: {
-                                    Label("Up One Level", systemImage: "folder")
-                                }
-                                .disabled(viewModel.selectedMachineID == nil || viewModel.isLoadingDirectory)
-                            }
-
-                            Section("Folders") {
-                                TextField("Filter folders", text: $directoryBrowserFilterText)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .focused($focusedField, equals: .directoryFilter)
-
-                                if viewModel.isLoadingDirectory {
-                                    HStack {
-                                        ProgressView()
-                                        Text("Loading folders…")
-                                            .foregroundStyle(.secondary)
-                                    }
-                                } else if let error = viewModel.errorMessage,
-                                          !error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(error)
-                                        .font(.footnote)
-                                        .foregroundStyle(.red)
-                                    Button("Retry") {
-                                        Task {
-                                            await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
-                                        }
-                                    }
-                                } else if filteredDirectoryBrowserEntries.isEmpty {
-                                    ContentUnavailableView(
-                                        "No folders found",
-                                        systemImage: "folder.badge.questionmark",
-                                        description: Text("Try a different path or clear the filter.")
-                                    )
-                                } else {
-                                    ForEach(filteredDirectoryBrowserEntries) { entry in
-                                        Button {
-                                            Task {
-                                                await viewModel.selectDirectoryEntry(
-                                                    entry,
-                                                    serverURLString: serverURLString,
-                                                    token: token
-                                                )
-                                                directoryBrowserPathDraft = viewModel.directoryPath
-                                            }
-                                        } label: {
-                                            HStack(spacing: 10) {
-                                                Image(systemName: "folder")
-                                                    .foregroundStyle(Color.accentColor)
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(entry.name)
-                                                        .lineLimit(1)
-                                                    Text(directoryEntryFullPath(entry))
-                                                        .font(.caption.monospaced())
-                                                        .foregroundStyle(.secondary)
-                                                        .lineLimit(1)
-                                                        .truncationMode(.middle)
-                                                }
-                                                Spacer()
-                                                Image(systemName: "chevron.right")
-                                                    .font(.caption)
-                                                    .foregroundStyle(.tertiary)
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                            }
-                        }
+                NewSessionDirectoryBrowserSheet(
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    isPresented: $showDirectoryBrowserSheet,
+                    directoryBrowserFilterText: $directoryBrowserFilterText,
+                    directoryBrowserPathDraft: $directoryBrowserPathDraft,
+                    focusedField: $focusedField,
+                    filteredDirectoryBrowserEntries: filteredDirectoryBrowserEntries,
+                    directoryEntryFullPath: directoryEntryFullPath,
+                    loadDirectoryFromBrowserPath: { path in
+                        await loadDirectoryFromBrowserPath(path)
+                    },
+                    goToParentDirectoryFromBrowser: {
+                        await goToParentDirectoryFromBrowser()
                     }
-                    .scrollDismissesKeyboard(.interactively)
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            focusedField = nil
-                        }
-                    )
-                    .navigationTitle("Choose Folder")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button("Close") { showDirectoryBrowserSheet = false }
-                        }
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Use This Folder") {
-                                showDirectoryBrowserSheet = false
-                            }
-                        }
-                    }
-                    .task {
-                        if directoryBrowserPathDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            directoryBrowserPathDraft = viewModel.directoryPath
-                        }
-                        await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
-                    }
-                }
+                )
                 .presentationDetents([.large])
             }
             .sheet(isPresented: $showClaudeSessionsSheet) {
-                NavigationStack {
-                    List {
-                        if viewModel.isLoadingClaudeSessions && viewModel.claudeSessions.isEmpty {
-                            ProgressView("Loading Claude sessions…")
-                        } else if viewModel.claudeSessions.isEmpty {
-                            if let error = viewModel.claudeSessionsErrorMessage {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Unable to load Claude sessions")
-                                        .font(.headline)
-                                    Text(error)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Button("Retry") {
-                                        Task {
-                                            await viewModel.loadClaudeSessions(
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                            } else {
-                                ContentUnavailableView(
-                                    "No existing Claude sessions",
-                                    systemImage: "list.bullet.rectangle",
-                                    description: Text("Start one in CLI first, then refresh here.")
-                                )
-                            }
-                        } else {
-                            ForEach(viewModel.claudeSessions) { session in
-                                Button {
-                                    viewModel.selectClaudeSession(session)
-                                    showClaudeSessionsSheet = false
-                                    Task {
-                                        await viewModel.loadDirectory(
-                                            serverURLString: serverURLString,
-                                            token: token
-                                        )
-                                    }
-                                } label: {
-                                    ClaudeSessionSelectionRow(session: session)
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            if viewModel.isLoadingMoreClaudeSessions {
-                                HStack {
-                                    Spacer()
-                                    ProgressView("Loading more…")
-                                    Spacer()
-                                }
-                            } else if viewModel.claudeSessionsHasNext {
-                                Button("Load More") {
-                                    Task {
-                                        await viewModel.loadMoreClaudeSessions(
-                                            serverURLString: serverURLString,
-                                            token: token
-                                        )
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .center)
-                            }
-
-                            if let error = viewModel.claudeSessionsErrorMessage {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Unable to load additional Claude sessions")
-                                        .font(.subheadline.weight(.semibold))
-                                    Text(error)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                    Button("Retry") {
-                                        Task {
-                                            await viewModel.loadMoreClaudeSessions(
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                            }
-                        }
-                    }
-                    .navigationTitle("Claude Sessions")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") { showClaudeSessionsSheet = false }
-                        }
-                    }
-                    .refreshable {
-                        await viewModel.loadClaudeSessions(
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
+                NewSessionClaudeSessionsSheet(
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    onClose: { showClaudeSessionsSheet = false }
+                )
                 .presentationDetents([.medium, .large])
             }
             .task(id: "\(serverURLString)|\(token)") {
                 viewModel.setInitialSelectedAgent(defaultAgent)
                 await viewModel.loadMachines(serverURLString: serverURLString, token: token)
+            }
+        }
+    }
+
+    private var machineSection: some View {
+        Section("Machine") {
+            if viewModel.isLoadingMachines {
+                HStack {
+                    ProgressView()
+                    Text("Loading machines…")
+                        .foregroundStyle(.secondary)
+                }
+            } else if viewModel.machines.isEmpty {
+                Text("No machines available")
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Machine", selection: machineSelectionBinding) {
+                    ForEach(viewModel.machines) { machine in
+                        Text(NewSessionMachinePresentation.displayName(for: machine)).tag(machine.id)
+                    }
+                }
+                .pickerStyle(.navigationLink)
+            }
+        }
+    }
+
+    private var directorySection: some View {
+        Section("Directory") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Selected Directory")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(viewModel.directoryPath)
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button("Choose Folder") {
+                directoryBrowserPathDraft = viewModel.directoryPath
+                directoryBrowserFilterText = ""
+                showDirectoryBrowserSheet = true
+            }
+            .disabled(viewModel.selectedMachineID == nil)
+
+            if viewModel.isLoadingDirectory {
+                HStack {
+                    ProgressView()
+                    Text("Loading directory…")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var profilesSection: some View {
+        Section("Profiles") {
+            if viewModel.profiles.isEmpty {
+                Text("No saved profiles")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(viewModel.profiles) { profile in
+                    Button {
+                        Task {
+                            await viewModel.applyProfile(
+                                id: profile.id,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(profile.name)
+                                .lineLimit(1)
+                            Text("\(profile.agent.rawValue) • \(profile.directoryPath)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button("Delete", role: .destructive) {
+                            Task {
+                                await viewModel.deleteProfile(id: profile.id)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button("Save Current As Profile") {
+                draftProfileName = ""
+                showSaveProfilePrompt = true
+            }
+        }
+    }
+
+    private var agentSection: some View {
+        Section("Agent") {
+            Picker("Agent", selection: agentSelectionBinding) {
+                Text("Claude").tag(APISessionSpawnAgent.claude)
+                Text("Codex").tag(APISessionSpawnAgent.codex)
+                Text("Gemini").tag(APISessionSpawnAgent.gemini)
+            }
+        }
+    }
+
+    private var advancedSection: some View {
+        Section("Advanced") {
+            if viewModel.isLoadingModels {
+                HStack {
+                    ProgressView()
+                    Text("Loading models…")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Menu {
+                Button("Default") {
+                    viewModel.setSelectedModel("")
+                }
+                ForEach(viewModel.availableModels, id: \.self) { model in
+                    Button(model) {
+                        viewModel.setSelectedModel(model)
+                    }
+                }
+            } label: {
+                HStack {
+                    Text("Model")
+                    Spacer()
+                    Text(selectedModelDisplayValue)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let error = viewModel.modelsErrorMessage {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                Button("Retry Models") {
+                    Task {
+                        await viewModel.loadModels(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .font(.footnote)
+            }
+
+            Menu {
+                ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
+                    Button(value.displayName) {
+                        viewModel.setSelectedReasoningEffort(value)
+                    }
+                }
+            } label: {
+                HStack {
+                    Text("Reasoning Effort")
+                    Spacer()
+                    Text(viewModel.selectedReasoningEffort.displayName)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
+                showCodexThreadsSheet = true
+                Task {
+                    await viewModel.loadCodexThreads(
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                }
+            }
+            .disabled(
+                viewModel.selectedMachineID == nil ||
+                viewModel.isLoadingCodexThreads ||
+                viewModel.isLoadingMoreCodexThreads
+            )
+            if let error = viewModel.codexThreadsErrorMessage {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+            if !viewModel.codexResumeThreadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Selected Codex Session")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(viewModel.codexResumeThreadID)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                    Button("Clear Codex Selection") {
+                        viewModel.clearCodexSelection()
+                    }
+                    .font(.footnote)
+                }
+            }
+
+            Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : claudeSelectionButtonTitle) {
+                showClaudeSessionsSheet = true
+                Task {
+                    await viewModel.loadClaudeSessions(
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                }
+            }
+            .disabled(
+                viewModel.selectedMachineID == nil ||
+                viewModel.isLoadingClaudeSessions ||
+                viewModel.isLoadingMoreClaudeSessions
+            )
+            if let error = viewModel.claudeSessionsErrorMessage {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+            if !viewModel.claudeResumeSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Selected Claude Session")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(viewModel.claudeResumeSessionID)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                    Button("Clear Claude Selection") {
+                        viewModel.clearClaudeSelection()
+                    }
+                    .font(.footnote)
+                }
+            }
+
+            TextField("Session token (optional)", text: $viewModel.sessionToken)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($focusedField, equals: .sessionToken)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Environment Variables (KEY=VALUE)")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $viewModel.environmentVariablesText)
+                    .font(.footnote.monospaced())
+                    .frame(minHeight: 96)
+                    .focused($focusedField, equals: .environmentVariables)
+                Text("One variable per line. Empty lines and # comments are ignored.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var actionSection: some View {
+        Section("Action") {
+            Button(viewModel.isSpawning ? "Starting…" : primaryActionTitle) {
+                Task {
+                    let success = await viewModel.startSession(
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                    if success {
+                        onSessionSpawned(viewModel.spawnedSessionID)
+                        dismiss()
+                    }
+                }
+            }
+            .disabled(
+                viewModel.isSpawning ||
+                viewModel.selectedMachineID == nil ||
+                viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+
+            if let approvalDirectory = viewModel.approvalDirectory {
+                Text("Directory creation approval needed: \(approvalDirectory)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button("Create Directory And Continue") {
+                    Task {
+                        let success = await viewModel.continueWithDirectoryApproval(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        if success {
+                            onSessionSpawned(viewModel.spawnedSessionID)
+                            dismiss()
+                        }
+                    }
+                }
+                .disabled(viewModel.isSpawning)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statusSection: some View {
+        if let info = viewModel.infoMessage {
+            Section("Status") {
+                Text(info)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        }
+        if let error = viewModel.errorMessage {
+            Section("Error") {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
             }
         }
     }
@@ -806,63 +544,11 @@ public struct NewSessionView: View {
     }
 }
 
-private struct CodexThreadSelectionRow: View {
-    let thread: APICodexThreadSummary
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            Text(thread.id)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if let cwd = normalized(thread.cwd) {
-                Text(cwd)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var title: String {
-        normalized(thread.name) ?? "Untitled"
-    }
-}
-
-private enum FocusedField: Hashable {
+enum FocusedField: Hashable {
     case sessionToken
     case environmentVariables
     case directoryPath
     case directoryFilter
-}
-
-private struct ClaudeSessionSelectionRow: View {
-    let session: APIClaudeSessionSummary
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(session.id)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            if let cwd = normalized(session.cwd) {
-                Text(cwd)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            if let updatedAt = normalized(session.updatedAt) {
-                Text(updatedAt)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.vertical, 4)
-    }
 }
 
 private func normalized(_ value: String?) -> String? {
