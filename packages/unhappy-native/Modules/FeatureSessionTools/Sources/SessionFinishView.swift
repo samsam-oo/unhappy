@@ -35,117 +35,17 @@ public struct SessionFinishView: View {
 
     public var body: some View {
         List {
-            Section("Auto Detect") {
-                Button(isExecuting ? "Detecting…" : "Detect From Current Session") {
-                    Task { await detectFromCurrentSession() }
-                }
-                .disabled(isExecuting)
-                Text("Detects current worktree path, branch, and main branch automatically.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Repository Paths") {
-                TextField("Base repo path", text: $baseRepoPath)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("Worktree path", text: $worktreePath)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
-
-            Section("Branches") {
-                TextField("Worktree branch", text: $worktreeBranch)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                TextField("Main branch", text: $mainBranch)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Toggle("Push after merge", isOn: $pushAfterMerge)
-            }
-
-            Section("Status") {
-                Button(isExecuting ? "Checking…" : "Check Worktree Status") {
-                    Task { await checkWorktreeStatus() }
-                }
-                .disabled(isExecuting || normalizedOptional(worktreePath) == nil)
-            }
-
-            Section("Commit") {
-                TextField("Commit message", text: $commitMessage, axis: .vertical)
-                    .lineLimit(2...4)
-                Button(isExecuting ? "Committing…" : "Commit All Changes") {
-                    Task { await commitChanges() }
-                }
-                .disabled(
-                    isExecuting ||
-                    normalizedOptional(worktreePath) == nil ||
-                    normalizedOptional(commitMessage) == nil
-                )
-            }
-
-            Section("Merge") {
-                Button(isExecuting ? "Merging…" : "Merge Branch Into Main") {
-                    Task { await mergeBranch() }
-                }
-                .disabled(
-                    isExecuting ||
-                    normalizedOptional(baseRepoPath) == nil ||
-                    normalizedOptional(worktreeBranch) == nil ||
-                    normalizedOptional(mainBranch) == nil
-                )
-            }
-
-            Section("Pull Request") {
-                Button(isExecuting ? "Creating PR…" : "Create Pull Request") {
-                    Task { await createPullRequest() }
-                }
-                .disabled(
-                    isExecuting ||
-                    normalizedOptional(baseRepoPath) == nil ||
-                    normalizedOptional(worktreePath) == nil ||
-                    normalizedOptional(worktreeBranch) == nil ||
-                    normalizedOptional(mainBranch) == nil
-                )
-            }
-
-            Section("Danger Zone") {
-                Button("Delete Worktree", role: .destructive) {
-                    showDeleteConfirmation = true
-                }
-                .disabled(
-                    isExecuting ||
-                    normalizedOptional(baseRepoPath) == nil ||
-                    normalizedOptional(worktreePath) == nil ||
-                    normalizedOptional(worktreeBranch) == nil
-                )
-                Text("Deletes worktree folder and local/remote branch. Ensure no active process still uses this path.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let statusMessage {
-                Section("Result") {
-                    Text(statusMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.green)
-                }
-            }
-            if let errorMessage {
-                Section("Error") {
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-            }
-            if !lastOutput.isEmpty {
-                Section("Output") {
-                    Text(lastOutput)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .lineLimit(nil)
-                }
-            }
+            autoDetectSection
+            repositoryPathsSection
+            branchesSection
+            statusSection
+            commitSection
+            mergeSection
+            pullRequestSection
+            dangerZoneSection
+            resultSection
+            errorSection
+            outputSection
         }
         .navigationTitle("Finish")
         .navigationBarTitleDisplayMode(.inline)
@@ -162,6 +62,145 @@ public struct SessionFinishView: View {
                 Text("This operation removes the worktree and deletes the branch.")
             }
         )
+    }
+
+    private var autoDetectSection: some View {
+        Section("Auto Detect") {
+            Button(isExecuting ? "Detecting…" : "Detect From Current Session") {
+                Task { await detectFromCurrentSession() }
+            }
+            .disabled(isExecuting)
+            Text("Detects current worktree path, branch, and main branch automatically.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var repositoryPathsSection: some View {
+        Section("Repository Paths") {
+            TextField("Base repo path", text: $baseRepoPath)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            TextField("Worktree path", text: $worktreePath)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+    }
+
+    private var branchesSection: some View {
+        Section("Branches") {
+            TextField("Worktree branch", text: $worktreeBranch)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            TextField("Main branch", text: $mainBranch)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Toggle("Push after merge", isOn: $pushAfterMerge)
+        }
+    }
+
+    private var statusSection: some View {
+        Section("Status") {
+            Button(isExecuting ? "Checking…" : "Check Worktree Status") {
+                Task { await checkWorktreeStatus() }
+            }
+            .disabled(isExecuting || normalizedOptional(worktreePath) == nil)
+        }
+    }
+
+    private var commitSection: some View {
+        Section("Commit") {
+            TextField("Commit message", text: $commitMessage, axis: .vertical)
+                .lineLimit(2...4)
+            Button(isExecuting ? "Committing…" : "Commit All Changes") {
+                Task { await commitChanges() }
+            }
+            .disabled(
+                isExecuting ||
+                normalizedOptional(worktreePath) == nil ||
+                normalizedOptional(commitMessage) == nil
+            )
+        }
+    }
+
+    private var mergeSection: some View {
+        Section("Merge") {
+            Button(isExecuting ? "Merging…" : "Merge Branch Into Main") {
+                Task { await mergeBranch() }
+            }
+            .disabled(
+                isExecuting ||
+                normalizedOptional(baseRepoPath) == nil ||
+                normalizedOptional(worktreeBranch) == nil ||
+                normalizedOptional(mainBranch) == nil
+            )
+        }
+    }
+
+    private var pullRequestSection: some View {
+        Section("Pull Request") {
+            Button(isExecuting ? "Creating PR…" : "Create Pull Request") {
+                Task { await createPullRequest() }
+            }
+            .disabled(
+                isExecuting ||
+                normalizedOptional(baseRepoPath) == nil ||
+                normalizedOptional(worktreePath) == nil ||
+                normalizedOptional(worktreeBranch) == nil ||
+                normalizedOptional(mainBranch) == nil
+            )
+        }
+    }
+
+    private var dangerZoneSection: some View {
+        Section("Danger Zone") {
+            Button("Delete Worktree", role: .destructive) {
+                showDeleteConfirmation = true
+            }
+            .disabled(
+                isExecuting ||
+                normalizedOptional(baseRepoPath) == nil ||
+                normalizedOptional(worktreePath) == nil ||
+                normalizedOptional(worktreeBranch) == nil
+            )
+            Text("Deletes worktree folder and local/remote branch. Ensure no active process still uses this path.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var resultSection: some View {
+        if let statusMessage {
+            Section("Result") {
+                Text(statusMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var errorSection: some View {
+        if let errorMessage {
+            Section("Error") {
+                Text(errorMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var outputSection: some View {
+        if !lastOutput.isEmpty {
+            Section("Output") {
+                Text(lastOutput)
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                    .lineLimit(nil)
+            }
+        }
     }
 
     private func detectFromCurrentSession() async {
