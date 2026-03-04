@@ -37,164 +37,208 @@ public struct SessionsView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if viewModel.isLoading {
-                    ProgressView("Loading sessions…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Unable to load sessions")
-                            .font(.headline)
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else if visibleSessions.isEmpty {
-                    Text("No sessions")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                } else {
-                    List {
-                        ForEach(visibleSessions) { session in
-                            NavigationLink {
-                                SessionDetailView(
-                                    session: session,
-                                    viewModel: viewModel,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    makeSessionToolsViewModel: makeSessionToolsViewModel
-                                )
-                            } label: {
-                                SessionsRow(
-                                    session: session,
-                                    isDeleting: viewModel.isDeleting(sessionID: session.id)
-                                )
-                            }
-                            .disabled(viewModel.isDeleting(sessionID: session.id))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    pendingDeleteSession = session
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
-
-                        if viewModel.hasMoreSessions {
-                            HStack {
-                                Spacer()
-                                if viewModel.isLoadingMoreSessions {
-                                    ProgressView("Loading more…")
-                                        .font(.footnote)
-                                } else {
-                                    Button("Load more") {
-                                        Task {
-                                            await viewModel.loadMoreSessions(
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
-                                        }
-                                    }
-                                    .font(.footnote.weight(.semibold))
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 6)
-                            .listRowSeparator(.hidden)
-                        }
-                    }
-                    .listStyle(.plain)
+        NavigationSplitView {
+            sidebarContent
+                .navigationTitle("Sessions")
+                .toolbar { sessionsToolbarContent }
+                .refreshable {
+                    await viewModel.load(serverURLString: serverURLString, token: token)
                 }
-            }
-            .navigationTitle("Sessions")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        SessionRecentView(
-                            viewModel: viewModel,
+        } detail: {
+            splitDetailPlaceholder
+        }
+        .navigationSplitViewStyle(.balanced)
+        .task(id: "\(serverURLString)|\(token)") {
+            await viewModel.load(
+                serverURLString: serverURLString,
+                token: token
+            )
+            await viewModel.startPolling(
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
+        .task(id: sessionsChangeTaskID) {
+            await onSessionsChanged(viewModel.sessions)
+        }
+        .alert(
+            "Delete session?",
+            isPresented: Binding(
+                get: { pendingDeleteSession != nil },
+                set: { shouldPresent in
+                    if !shouldPresent {
+                        pendingDeleteSession = nil
+                    }
+                }
+            ),
+            actions: {
+                Button("Cancel", role: .cancel) {
+                    pendingDeleteSession = nil
+                }
+                Button("Delete", role: .destructive) {
+                    guard let session = pendingDeleteSession else { return }
+                    pendingDeleteSession = nil
+                    Task {
+                        await viewModel.deleteSession(
+                            sessionID: session.id,
                             serverURLString: serverURLString,
-                            token: token,
-                            makeSessionToolsViewModel: makeSessionToolsViewModel
+                            token: token
                         )
-                    } label: {
-                        Label("Recent", systemImage: "clock")
                     }
-                    .accessibilityLabel("Recent Sessions")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isPresentingNewSession = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                    .accessibilityLabel("New Session")
-                }
+            },
+            message: {
+                Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
             }
-            .task(id: "\(serverURLString)|\(token)") {
-                await viewModel.load(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                await viewModel.startPolling(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-            }
-            .task(id: sessionsChangeTaskID) {
-                await onSessionsChanged(viewModel.sessions)
-            }
-            .refreshable {
-                await viewModel.load(serverURLString: serverURLString, token: token)
-            }
-            .alert(
-                "Delete session?",
-                isPresented: Binding(
-                    get: { pendingDeleteSession != nil },
-                    set: { shouldPresent in
-                        if !shouldPresent {
-                            pendingDeleteSession = nil
-                        }
+        )
+        .sheet(isPresented: $isPresentingNewSession) {
+            NewSessionView(
+                serverURLString: serverURLString,
+                token: token,
+                defaultAgent: defaultNewSessionAgent,
+                makeViewModel: makeNewSessionViewModel,
+                onSessionSpawned: { _ in
+                    Task {
+                        await viewModel.load(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
                     }
-                ),
-                actions: {
-                    Button("Cancel", role: .cancel) {
-                        pendingDeleteSession = nil
-                    }
-                    Button("Delete", role: .destructive) {
-                        guard let session = pendingDeleteSession else { return }
-                        pendingDeleteSession = nil
-                        Task {
-                            await viewModel.deleteSession(
-                                sessionID: session.id,
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        }
-                    }
-                },
-                message: {
-                    Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
                 }
             )
-            .sheet(isPresented: $isPresentingNewSession) {
-                NewSessionView(
-                    serverURLString: serverURLString,
-                    token: token,
-                    defaultAgent: defaultNewSessionAgent,
-                    makeViewModel: makeNewSessionViewModel,
-                    onSessionSpawned: { _ in
+        }
+    }
+
+    @ViewBuilder
+    private var splitDetailPlaceholder: some View {
+        if viewModel.isLoading {
+            ProgressView("Loading sessions…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if visibleSessions.isEmpty {
+            Text("No sessions")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        } else {
+            VStack(spacing: 10) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("Select a Session")
+                    .font(.headline)
+                Text("Choose a chat from the left list to open details.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarContent: some View {
+        VStack(spacing: 0) {
+            if viewModel.isLoading {
+                ProgressView("Loading sessions…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Unable to load sessions")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else if visibleSessions.isEmpty {
+                Text("No sessions")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else {
+                sessionsNavigationList
+            }
+        }
+    }
+
+    private var sessionsNavigationList: some View {
+        List {
+            ForEach(visibleSessions) { session in
+                NavigationLink {
+                    SessionDetailView(
+                        session: session,
+                        viewModel: viewModel,
+                        serverURLString: serverURLString,
+                        token: token,
+                        makeSessionToolsViewModel: makeSessionToolsViewModel
+                    )
+                } label: {
+                    SessionsRow(
+                        session: session,
+                        isDeleting: viewModel.isDeleting(sessionID: session.id)
+                    )
+                }
+                .disabled(viewModel.isDeleting(sessionID: session.id))
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        pendingDeleteSession = session
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+
+            loadMoreRow
+        }
+        .listStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var loadMoreRow: some View {
+        if viewModel.hasMoreSessions {
+            HStack {
+                Spacer()
+                if viewModel.isLoadingMoreSessions {
+                    ProgressView("Loading more…")
+                        .font(.footnote)
+                } else {
+                    Button("Load more") {
                         Task {
-                            await viewModel.load(
+                            await viewModel.loadMoreSessions(
                                 serverURLString: serverURLString,
                                 token: token
                             )
                         }
                     }
-                )
+                    .font(.footnote.weight(.semibold))
+                }
+                Spacer()
             }
+            .padding(.vertical, 6)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sessionsToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            NavigationLink {
+                SessionRecentView(
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            } label: {
+                Label("Recent", systemImage: "clock")
+            }
+            .accessibilityLabel("Recent Sessions")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                isPresentingNewSession = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+            }
+            .accessibilityLabel("New Session")
         }
     }
 
