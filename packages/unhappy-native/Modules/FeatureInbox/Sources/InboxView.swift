@@ -27,6 +27,8 @@ public struct InboxView: View {
                 }
         } detail: {
             splitDetailPlaceholder
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(detailCanvasColor)
         }
         .navigationSplitViewStyle(.balanced)
         .task(id: "\(serverURLString)|\(token)") {
@@ -40,21 +42,25 @@ public struct InboxView: View {
 
     @ViewBuilder
     private var sidebarContent: some View {
-        if viewModel.isLoading {
-            ProgressView("Loading inbox…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage = viewModel.errorMessage {
-            ContentUnavailableView(
-                "Unable to load inbox",
-                systemImage: "tray.full",
-                description: Text(errorMessage)
-            )
-        } else if viewModel.isEmpty {
-            emptySidebarState
-        } else {
-            inboxListContent
-                .listStyle(.plain)
+        Group {
+            if viewModel.isLoading {
+                ProgressView("Loading inbox…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage = viewModel.errorMessage {
+                ContentUnavailableView(
+                    "Unable to load inbox",
+                    systemImage: "tray.full",
+                    description: Text(errorMessage)
+                )
+            } else if viewModel.isEmpty {
+                emptySidebarState
+            } else {
+                inboxListContent
+                    .listStyle(.plain)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(sidebarCanvasColor)
     }
 
     @ViewBuilder
@@ -81,7 +87,8 @@ public struct InboxView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 24)
         .padding(.horizontal, 20)
     }
 
@@ -122,6 +129,8 @@ public struct InboxView: View {
             sentRequestsSection
             friendsSection
         }
+        .scrollContentBackground(.hidden)
+        .background(sidebarCanvasColor)
     }
 
     @ToolbarContentBuilder
@@ -255,6 +264,14 @@ public struct InboxView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
+    }
+
+    private var sidebarCanvasColor: Color {
+        Color(uiColor: .systemBackground)
+    }
+
+    private var detailCanvasColor: Color {
+        Color(uiColor: .systemGroupedBackground)
     }
 }
 

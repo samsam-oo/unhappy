@@ -34,6 +34,8 @@ public struct SettingsView: View {
                 .navigationTitle("Settings")
         } detail: {
             splitDetailPlaceholder
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(detailCanvasColor)
         }
         .navigationSplitViewStyle(.balanced)
     }
@@ -140,6 +142,8 @@ public struct SettingsView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(sidebarCanvasColor)
     }
 
     private var splitDetailPlaceholder: some View {
@@ -155,6 +159,14 @@ public struct SettingsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         .padding(24)
+    }
+
+    private var sidebarCanvasColor: Color {
+        Color(uiColor: .systemBackground)
+    }
+
+    private var detailCanvasColor: Color {
+        Color(uiColor: .systemGroupedBackground)
     }
 }
 

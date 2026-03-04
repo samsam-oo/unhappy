@@ -47,6 +47,8 @@ public struct SessionsView: View {
                 }
         } detail: {
             splitDetailPlaceholder
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(detailCanvasColor)
         }
         .navigationSplitViewStyle(.balanced)
         .task(id: "\(serverURLString)|\(token)") {
@@ -144,6 +146,8 @@ public struct SessionsView: View {
                 sessionsNavigationList
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(sidebarCanvasColor)
     }
 
     private var emptySidebarState: some View {
@@ -238,6 +242,8 @@ public struct SessionsView: View {
             loadMoreRow
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(sidebarCanvasColor)
     }
 
     @ViewBuilder
@@ -304,6 +310,14 @@ public struct SessionsView: View {
                 "\(session.id)|\(session.active ? 1 : 0)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
             }
             .joined(separator: ",")
+    }
+
+    private var sidebarCanvasColor: Color {
+        Color(uiColor: .systemBackground)
+    }
+
+    private var detailCanvasColor: Color {
+        Color(uiColor: .systemGroupedBackground)
     }
 }
 
