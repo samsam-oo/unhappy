@@ -34,83 +34,7 @@ public struct InboxView: View {
                         description: Text("Notifications and pending requests will appear here.")
                     )
                 } else {
-                    List {
-                        if !viewModel.feedItems.isEmpty {
-                            Section("Updates") {
-                                ForEach(viewModel.feedItems) { item in
-                                    if let userID = item.relatedUserID {
-                                        NavigationLink {
-                                            InboxUserProfileView(userID: userID, viewModel: viewModel)
-                                        } label: {
-                                            feedRow(item: item)
-                                        }
-                                    } else {
-                                        feedRow(item: item)
-                                    }
-                                }
-                            }
-                        }
-
-                        if !viewModel.friendRequests.isEmpty {
-                            Section("Pending Requests") {
-                                ForEach(viewModel.friendRequests) { friend in
-                                    NavigationLink {
-                                        InboxUserProfileView(userID: friend.id, viewModel: viewModel)
-                                    } label: {
-                                        friendRow(friend: friend)
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button("Reject", role: .destructive) {
-                                            Task { await viewModel.rejectFriendRequest(userID: friend.id) }
-                                        }
-                                        .disabled(viewModel.isApplyingFriendAction)
-
-                                        Button("Accept") {
-                                            Task { await viewModel.acceptFriendRequest(userID: friend.id) }
-                                        }
-                                        .tint(.green)
-                                        .disabled(viewModel.isApplyingFriendAction)
-                                    }
-                                }
-                            }
-                        }
-
-                        if !viewModel.requestedFriends.isEmpty {
-                            Section("Sent Requests") {
-                                ForEach(viewModel.requestedFriends) { friend in
-                                    NavigationLink {
-                                        InboxUserProfileView(userID: friend.id, viewModel: viewModel)
-                                    } label: {
-                                        friendRow(friend: friend)
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button("Cancel", role: .destructive) {
-                                            Task { await viewModel.cancelFriendRequest(userID: friend.id) }
-                                        }
-                                        .disabled(viewModel.isApplyingFriendAction)
-                                    }
-                                }
-                            }
-                        }
-
-                        if !viewModel.friends.isEmpty {
-                            Section("Friends") {
-                                ForEach(viewModel.friends) { friend in
-                                    NavigationLink {
-                                        InboxUserProfileView(userID: friend.id, viewModel: viewModel)
-                                    } label: {
-                                        friendRow(friend: friend)
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        Button("Remove", role: .destructive) {
-                                            Task { await viewModel.removeFriend(userID: friend.id) }
-                                        }
-                                        .disabled(viewModel.isApplyingFriendAction)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    inboxListContent
                     .listStyle(.insetGrouped)
                     .refreshable {
                         await viewModel.load()
@@ -142,6 +66,103 @@ public struct InboxView: View {
                     token: token
                 )
                 await viewModel.load()
+            }
+        }
+    }
+
+    private var inboxListContent: some View {
+        List {
+            updatesSection
+            pendingRequestsSection
+            sentRequestsSection
+            friendsSection
+        }
+    }
+
+    @ViewBuilder
+    private var updatesSection: some View {
+        if !viewModel.feedItems.isEmpty {
+            Section("Updates") {
+                ForEach(viewModel.feedItems) { item in
+                    if let userID = item.relatedUserID {
+                        NavigationLink {
+                            InboxUserProfileView(userID: userID, viewModel: viewModel)
+                        } label: {
+                            feedRow(item: item)
+                        }
+                    } else {
+                        feedRow(item: item)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var pendingRequestsSection: some View {
+        if !viewModel.friendRequests.isEmpty {
+            Section("Pending Requests") {
+                ForEach(viewModel.friendRequests) { friend in
+                    NavigationLink {
+                        InboxUserProfileView(userID: friend.id, viewModel: viewModel)
+                    } label: {
+                        friendRow(friend: friend)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Reject", role: .destructive) {
+                            Task { await viewModel.rejectFriendRequest(userID: friend.id) }
+                        }
+                        .disabled(viewModel.isApplyingFriendAction)
+
+                        Button("Accept") {
+                            Task { await viewModel.acceptFriendRequest(userID: friend.id) }
+                        }
+                        .tint(.green)
+                        .disabled(viewModel.isApplyingFriendAction)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sentRequestsSection: some View {
+        if !viewModel.requestedFriends.isEmpty {
+            Section("Sent Requests") {
+                ForEach(viewModel.requestedFriends) { friend in
+                    NavigationLink {
+                        InboxUserProfileView(userID: friend.id, viewModel: viewModel)
+                    } label: {
+                        friendRow(friend: friend)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Cancel", role: .destructive) {
+                            Task { await viewModel.cancelFriendRequest(userID: friend.id) }
+                        }
+                        .disabled(viewModel.isApplyingFriendAction)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var friendsSection: some View {
+        if !viewModel.friends.isEmpty {
+            Section("Friends") {
+                ForEach(viewModel.friends) { friend in
+                    NavigationLink {
+                        InboxUserProfileView(userID: friend.id, viewModel: viewModel)
+                    } label: {
+                        friendRow(friend: friend)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Remove", role: .destructive) {
+                            Task { await viewModel.removeFriend(userID: friend.id) }
+                        }
+                        .disabled(viewModel.isApplyingFriendAction)
+                    }
+                }
             }
         }
     }

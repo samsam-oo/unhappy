@@ -28,168 +28,13 @@ public struct MachineDetailView: View {
         let presentation = MachineDetailPresentationBuilder.make(from: machine)
         let machineDisplayName = MachineDisplayNameResolver.displayName(for: machine)
         List {
-            Section("Machine") {
-                LabeledContent("Name") {
-                    Text(machineDisplayName)
-                        .lineLimit(1)
-                }
-                LabeledContent("ID") {
-                    Text(machine.id)
-                        .font(.footnote.monospaced())
-                }
-                LabeledContent("Status") {
-                    Text(machine.active ? "Online" : "Offline")
-                        .foregroundStyle(machine.active ? Color.green : Color.secondary)
-                }
-                LabeledContent("Active At") {
-                    Text(presentation.activeAtText)
-                }
-                LabeledContent("Created At") {
-                    Text(presentation.createdAtText)
-                }
-                LabeledContent("Updated At") {
-                    Text(presentation.updatedAtText)
-                }
-            }
-
-            Section("Daemon Diagnostics") {
-                LabeledContent("Daemon State Version") {
-                    Text(presentation.daemonStateVersionText)
-                }
-
-                if !presentation.daemonStateFields.isEmpty {
-                    ForEach(presentation.daemonStateFields) { field in
-                        LabeledContent(field.key) {
-                            Text(field.value)
-                                .font(.footnote.monospaced())
-                                .lineLimit(2)
-                        }
-                    }
-                }
-
-                if let daemonStatePreview = presentation.daemonStatePreview {
-                    Text(daemonStatePreview)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                    if presentation.daemonStateTruncated {
-                        Text("Daemon state preview truncated")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("No daemon state payload")
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Metadata Diagnostics") {
-                LabeledContent("Metadata Version") {
-                    Text(presentation.metadataVersionText)
-                }
-                if !presentation.metadataFields.isEmpty {
-                    ForEach(presentation.metadataFields) { field in
-                        LabeledContent(field.key) {
-                            Text(field.value)
-                                .font(.footnote.monospaced())
-                                .lineLimit(2)
-                        }
-                    }
-                }
-
-                Text(presentation.metadataPreview)
-                    .font(.footnote.monospaced())
-                    .textSelection(.enabled)
-                if presentation.metadataTruncated {
-                    Text("Metadata preview truncated")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Spawn Session") {
-                TextField("Directory", text: $directory)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Picker("Agent", selection: $selectedAgent) {
-                    Text("Claude").tag(APISessionSpawnAgent.claude)
-                    Text("Codex").tag(APISessionSpawnAgent.codex)
-                    Text("Gemini").tag(APISessionSpawnAgent.gemini)
-                }
-
-                Button("Start Session") {
-                    Task {
-                        await viewModel.spawnSession(
-                            machineID: machine.id,
-                            directory: directory,
-                            serverURLString: serverURLString,
-                            token: token,
-                            agent: selectedAgent
-                        )
-                    }
-                }
-                .disabled(
-                    viewModel.isSpawning(machineID: machine.id) ||
-                    directory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
-
-                if let approvalDirectory = viewModel.approvalDirectory(machineID: machine.id) {
-                    Text("Directory creation approval needed: \(approvalDirectory)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Button("Create Directory And Continue") {
-                        Task {
-                            await viewModel.spawnSession(
-                                machineID: machine.id,
-                                directory: approvalDirectory,
-                                serverURLString: serverURLString,
-                                token: token,
-                                agent: selectedAgent,
-                                approvedNewDirectoryCreation: true
-                            )
-                        }
-                    }
-                    .disabled(viewModel.isSpawning(machineID: machine.id))
-                }
-
-                if let sessionID = viewModel.spawnedSessionID(machineID: machine.id) {
-                    Text("Spawned session: \(sessionID)")
-                        .font(.footnote)
-                        .foregroundStyle(.green)
-                }
-            }
-
-            Section("Daemon") {
-                Button("Update Daemon") {
-                    Task {
-                        await viewModel.updateDaemon(
-                            machineID: machine.id,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
-                .disabled(viewModel.isUpdating(machineID: machine.id))
-
-                Button("Stop Daemon", role: .destructive) {
-                    showStopDaemonConfirmation = true
-                }
-                .disabled(viewModel.isStopping(machineID: machine.id))
-            }
-
-            if let status = viewModel.status(machineID: machine.id) {
-                Section("Status") {
-                    Text(status)
-                        .font(.footnote)
-                        .foregroundStyle(.green)
-                }
-            }
-            if let error = viewModel.error(machineID: machine.id) {
-                Section("Error") {
-                    Text(error)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                }
-            }
+            machineSection(machineDisplayName: machineDisplayName, presentation: presentation)
+            daemonDiagnosticsSection(presentation: presentation)
+            metadataDiagnosticsSection(presentation: presentation)
+            spawnSessionSection
+            daemonSection
+            statusSection
+            errorSection
         }
         .navigationTitle(machineDisplayName == machine.id ? "Machine" : machineDisplayName)
         .navigationBarTitleDisplayMode(.inline)
@@ -211,6 +56,191 @@ public struct MachineDetailView: View {
             message: {
                 Text("This stops the machine daemon process.")
             }
+        )
+    }
+
+    private func machineSection(
+        machineDisplayName: String,
+        presentation: MachineDetailPresentation
+    ) -> some View {
+        Section("Machine") {
+            LabeledContent("Name") {
+                Text(machineDisplayName)
+                    .lineLimit(1)
+            }
+            LabeledContent("ID") {
+                Text(machine.id)
+                    .font(.footnote.monospaced())
+            }
+            LabeledContent("Status") {
+                Text(machine.active ? "Online" : "Offline")
+                    .foregroundStyle(machine.active ? Color.green : Color.secondary)
+            }
+            LabeledContent("Active At") {
+                Text(presentation.activeAtText)
+            }
+            LabeledContent("Created At") {
+                Text(presentation.createdAtText)
+            }
+            LabeledContent("Updated At") {
+                Text(presentation.updatedAtText)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func daemonDiagnosticsSection(
+        presentation: MachineDetailPresentation
+    ) -> some View {
+        Section("Daemon Diagnostics") {
+            LabeledContent("Daemon State Version") {
+                Text(presentation.daemonStateVersionText)
+            }
+
+            if !presentation.daemonStateFields.isEmpty {
+                ForEach(presentation.daemonStateFields) { field in
+                    LabeledContent(field.key) {
+                        Text(field.value)
+                            .font(.footnote.monospaced())
+                            .lineLimit(2)
+                    }
+                }
+            }
+
+            if let daemonStatePreview = presentation.daemonStatePreview {
+                Text(daemonStatePreview)
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                if presentation.daemonStateTruncated {
+                    Text("Daemon state preview truncated")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("No daemon state payload")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func metadataDiagnosticsSection(
+        presentation: MachineDetailPresentation
+    ) -> some View {
+        Section("Metadata Diagnostics") {
+            LabeledContent("Metadata Version") {
+                Text(presentation.metadataVersionText)
+            }
+            if !presentation.metadataFields.isEmpty {
+                ForEach(presentation.metadataFields) { field in
+                    LabeledContent(field.key) {
+                        Text(field.value)
+                            .font(.footnote.monospaced())
+                            .lineLimit(2)
+                    }
+                }
+            }
+
+            Text(presentation.metadataPreview)
+                .font(.footnote.monospaced())
+                .textSelection(.enabled)
+            if presentation.metadataTruncated {
+                Text("Metadata preview truncated")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var spawnSessionSection: some View {
+        Section("Spawn Session") {
+            TextField("Directory", text: $directory)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Picker("Agent", selection: $selectedAgent) {
+                Text("Claude").tag(APISessionSpawnAgent.claude)
+                Text("Codex").tag(APISessionSpawnAgent.codex)
+                Text("Gemini").tag(APISessionSpawnAgent.gemini)
+            }
+
+            Button("Start Session") {
+                Task { await spawnSession(directory: directory, approvedNewDirectoryCreation: false) }
+            }
+            .disabled(
+                viewModel.isSpawning(machineID: machine.id) ||
+                directory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+
+            if let approvalDirectory = viewModel.approvalDirectory(machineID: machine.id) {
+                Text("Directory creation approval needed: \(approvalDirectory)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button("Create Directory And Continue") {
+                    Task { await spawnSession(directory: approvalDirectory, approvedNewDirectoryCreation: true) }
+                }
+                .disabled(viewModel.isSpawning(machineID: machine.id))
+            }
+
+            if let sessionID = viewModel.spawnedSessionID(machineID: machine.id) {
+                Text("Spawned session: \(sessionID)")
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+
+    private var daemonSection: some View {
+        Section("Daemon") {
+            Button("Update Daemon") {
+                Task { await updateDaemon() }
+            }
+            .disabled(viewModel.isUpdating(machineID: machine.id))
+
+            Button("Stop Daemon", role: .destructive) {
+                showStopDaemonConfirmation = true
+            }
+            .disabled(viewModel.isStopping(machineID: machine.id))
+        }
+    }
+
+    @ViewBuilder
+    private var statusSection: some View {
+        if let status = viewModel.status(machineID: machine.id) {
+            Section("Status") {
+                Text(status)
+                    .font(.footnote)
+                    .foregroundStyle(.green)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var errorSection: some View {
+        if let error = viewModel.error(machineID: machine.id) {
+            Section("Error") {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private func spawnSession(directory: String, approvedNewDirectoryCreation: Bool) async {
+        await viewModel.spawnSession(
+            machineID: machine.id,
+            directory: directory,
+            serverURLString: serverURLString,
+            token: token,
+            agent: selectedAgent,
+            approvedNewDirectoryCreation: approvedNewDirectoryCreation
+        )
+    }
+
+    private func updateDaemon() async {
+        await viewModel.updateDaemon(
+            machineID: machine.id,
+            serverURLString: serverURLString,
+            token: token
         )
     }
 }
