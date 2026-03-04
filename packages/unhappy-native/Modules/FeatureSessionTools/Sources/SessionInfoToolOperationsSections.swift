@@ -9,6 +9,15 @@ struct SessionInfoToolOperationsSections: View {
     @ObservedObject var viewModel: SessionToolsViewModel
 
     var body: some View {
+        taskControlSection
+        permissionSection
+        executionModeSection
+        bashSection
+        ripgrepSection
+        difftasticSection
+    }
+
+    private var taskControlSection: some View {
         Section("Task Control") {
             TextField("Abort reason (optional)", text: $viewModel.abortReason)
                 .textInputAutocapitalization(.never)
@@ -35,7 +44,9 @@ struct SessionInfoToolOperationsSections: View {
                     .foregroundStyle(.red)
             }
         }
+    }
 
+    private var permissionSection: some View {
         Section("Permission") {
             TextField("Permission request ID", text: $viewModel.permissionRequestID)
                 .textInputAutocapitalization(.never)
@@ -79,7 +90,9 @@ struct SessionInfoToolOperationsSections: View {
                     .foregroundStyle(.red)
             }
         }
+    }
 
+    private var executionModeSection: some View {
         Section("Execution Mode") {
             Picker("Target", selection: $viewModel.switchTarget) {
                 ForEach(APISessionSwitchTarget.allCases, id: \.self) { target in
@@ -109,7 +122,9 @@ struct SessionInfoToolOperationsSections: View {
                     .foregroundStyle(.red)
             }
         }
+    }
 
+    private var bashSection: some View {
         Section("Bash") {
             TextField("Command", text: $viewModel.bashCommand, axis: .vertical)
                 .lineLimit(2...4)
@@ -162,7 +177,9 @@ struct SessionInfoToolOperationsSections: View {
                 }
             }
         }
+    }
 
+    private var ripgrepSection: some View {
         Section("Ripgrep") {
             TextField("Args (e.g. TODO Sources)", text: $viewModel.ripgrepArgs)
                 .textInputAutocapitalization(.never)
@@ -212,7 +229,9 @@ struct SessionInfoToolOperationsSections: View {
                 }
             }
         }
+    }
 
+    private var difftasticSection: some View {
         Section("Difftastic") {
             TextField("Args (e.g. --display inline HEAD~1 HEAD)", text: $viewModel.difftasticArgs)
                 .textInputAutocapitalization(.never)
