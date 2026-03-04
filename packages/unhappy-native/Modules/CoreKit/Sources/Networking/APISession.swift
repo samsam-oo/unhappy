@@ -185,22 +185,48 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
-        if let container = try? decoder.singleValueContainer(),
-           let encoded = try? container.decode(String.self) {
+        if let encoded = Self.decodeSingleValueString(from: decoder) {
             self = APIEncryptedMessageContent(t: "encrypted", c: encoded)
             return
         }
 
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedType = (try? container.decodeIfPresent(String.self, forKey: .t))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .type))
-            ?? "encrypted"
-        let decodedPayload = (try? container.decodeIfPresent(String.self, forKey: .c))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .payload))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .text))
-            ?? ""
+        let decodedType = Self.decodeType(from: container)
+        let decodedPayload = Self.decodePayload(from: container)
 
         self = APIEncryptedMessageContent(t: decodedType, c: decodedPayload)
+    }
+
+    private static func decodeSingleValueString(from decoder: Decoder) -> String? {
+        guard let container = try? decoder.singleValueContainer() else { return nil }
+        return try? container.decode(String.self)
+    }
+
+    private static func decodeType(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) -> String {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .t) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: .type) {
+            return value
+        }
+        return "encrypted"
+    }
+
+    private static func decodePayload(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) -> String {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .c) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: .payload) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: .text) {
+            return value
+        }
+        return ""
     }
 }
 
