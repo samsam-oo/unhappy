@@ -19,7 +19,7 @@ public struct SessionDetailView: View {
         case gemini
     }
 
-    private enum SessionComposerFocusField: Hashable {
+    enum SessionComposerFocusField: Hashable {
         case message
         case customModel
     }
@@ -925,181 +925,43 @@ public struct SessionDetailView: View {
 
     @ViewBuilder
     private var sessionSectionContent: some View {
-        SessionListSectionBadgeRow(
-            iconSystemName: "doc.text.magnifyingglass",
-            title: "Session"
+        SessionSummarySectionRows(
+            title: currentSessionTitle,
+            titleIsPrimary: currentSessionHasDisplayTitle,
+            sessionID: currentSession.id,
+            statusText: currentSession.active ? "Active" : "Inactive",
+            isActive: currentSession.active,
+            updatedText: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt)
         )
-        .sessionListRow(insets: SessionListRowInsets.badge)
-
-        SessionSurfaceCard(cornerRadius: 10) {
-            VStack(spacing: 0) {
-                sessionSummaryPanelRow(
-                    title: "Title",
-                    value: currentSessionTitle,
-                    valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
-                )
-                Divider().opacity(0.28)
-                sessionSummaryPanelRow(
-                    title: "ID",
-                    value: currentSession.id,
-                    valueFont: .footnote.monospaced(),
-                    valueColor: AppPalette.secondaryText
-                )
-                Divider().opacity(0.28)
-                sessionSummaryPanelRow(
-                    title: "Status",
-                    value: currentSession.active ? "Active" : "Inactive",
-                    valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
-                )
-                Divider().opacity(0.28)
-                sessionSummaryPanelRow(
-                    title: "Updated",
-                    value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
-                    valueColor: AppPalette.secondaryText
-                )
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-        }
-        .sessionListRow(insets: SessionListRowInsets.sectionCard)
     }
 
     private var approvalBottomSheet: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.caption)
-                    .foregroundStyle(Color.orange)
-                Text("Approval Required")
-                    .font(.caption2.monospaced().weight(.bold))
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .textCase(.uppercase)
+        SessionApprovalBottomSheet(
+            requests: approvalRequestRowModels,
+            respondingRequestID: respondingPermissionRequestID,
+            isRecoveringDisconnectedSession: isRecoveringDisconnectedSession,
+            statusMessage: permissionActionStatusMessage,
+            errorMessage: permissionActionErrorMessage,
+            surfaceColor: bottomSheetSurfaceColor,
+            shadowColor: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.36 : 0.10),
+            onApprove: { requestID in
+                respondToPermissionRequest(requestID, approved: true)
+            },
+            onDeny: { requestID in
+                respondToPermissionRequest(requestID, approved: false)
             }
-
-            ForEach(pendingPermissionRequests) { request in
-                approvalRequestRow(request)
-
-                if request.id != pendingPermissionRequests.last?.id {
-                    Divider().opacity(0.22)
-                }
-            }
-
-            if let status = permissionActionStatusMessage, !status.isEmpty {
-                Text(status)
-                    .font(.footnote)
-                    .foregroundStyle(.green)
-            }
-            if isRecoveringDisconnectedSession {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Recovering disconnected session…")
-                        .font(.footnote)
-                        .foregroundStyle(AppPalette.secondaryText)
-                }
-            }
-            if let error = permissionActionErrorMessage, !error.isEmpty {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(bottomSheetSurfaceColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.orange.opacity(0.45), lineWidth: 1)
-        )
-        .shadow(
-            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.36 : 0.10),
-            radius: 8,
-            y: 2
         )
     }
 
-    @ViewBuilder
-    private func approvalRequestRow(_ request: PendingPermissionRequest) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text(request.toolName)
-                    .font(.subheadline.monospaced().weight(.semibold))
-                    .foregroundStyle(AppPalette.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 0)
-                Text(request.callID)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-
-            if let summary = request.summary, !summary.isEmpty {
-                Text(summary)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            approvalRequestActionButtons(for: request)
+    private var approvalRequestRowModels: [SessionApprovalRequestRowModel] {
+        pendingPermissionRequests.map { request in
+            SessionApprovalRequestRowModel(
+                id: request.id,
+                callID: request.callID,
+                toolName: request.toolName,
+                summary: request.summary
+            )
         }
-    }
-
-    private func approvalRequestActionButtons(for request: PendingPermissionRequest) -> some View {
-        let isResponding = respondingPermissionRequestID == request.id
-        let disableActions = respondingPermissionRequestID != nil || isRecoveringDisconnectedSession
-
-        return HStack(spacing: 8) {
-            Button {
-                respondToPermissionRequest(request.id, approved: true)
-            } label: {
-                if isResponding {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text("Approve")
-                        .font(.caption.weight(.semibold))
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(disableActions)
-
-            Button(role: .destructive) {
-                respondToPermissionRequest(request.id, approved: false)
-            } label: {
-                Text("Deny")
-                    .font(.caption.weight(.semibold))
-            }
-            .buttonStyle(.bordered)
-            .disabled(disableActions)
-        }
-    }
-
-    private func sessionSummaryPanelRow(
-        title: String,
-        value: String,
-        valueFont: Font = .subheadline.monospaced().weight(.semibold),
-        valueColor: Color = AppPalette.primaryText
-    ) -> some View {
-        HStack(spacing: 12) {
-            Text(title)
-                .font(.caption.monospaced().weight(.semibold))
-                .foregroundStyle(AppPalette.secondaryText)
-            Spacer(minLength: 0)
-            Text(value)
-                .font(valueFont)
-                .foregroundStyle(valueColor)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .multilineTextAlignment(.trailing)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
     }
 
     private var transcriptBackground: some View {
@@ -1180,7 +1042,7 @@ public struct SessionDetailView: View {
     private var bottomInsetContent: some View {
         VStack(spacing: isKeyboardActive ? 6 : 8) {
             if subAgentInProgressCount > 0 {
-                subAgentLiveBar
+                SessionSubAgentLiveBar(count: subAgentInProgressCount)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             if !pendingPermissionRequests.isEmpty {
@@ -1267,201 +1129,34 @@ public struct SessionDetailView: View {
         }
     }
 
-    private var subAgentLiveBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "person.2.fill")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppPalette.liveActivity)
-            Text("\(subAgentInProgressCount)개 진행중")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppPalette.liveActivity)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(AppPalette.liveActivityMuted)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(AppPalette.liveActivity.opacity(0.4), lineWidth: 1)
-        )
-        .padding(.horizontal, 12)
-        .shadow(color: AppPalette.liveActivity.opacity(0.2), radius: 6, y: 2)
-    }
-
     private var composerBar: some View {
-        VStack(alignment: .leading, spacing: isKeyboardActive ? 8 : 10) {
-            let isSending = viewModel.isSendingMessage(sessionID: session.id)
-            let queuedComposerMessages = viewModel.queuedComposerMessages(for: currentSession.id)
-
-            if !queuedComposerMessages.isEmpty {
-                VStack(alignment: .leading, spacing: isKeyboardActive ? 6 : 8) {
-                    let visibleQueuedMessages = Array(queuedComposerMessages.suffix(3))
-                    let hiddenCount = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
-                    let visibleStartIndex = max(0, queuedComposerMessages.count - visibleQueuedMessages.count)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: "square.stack.3d.up")
-                            .font(.caption2)
-                            .foregroundStyle(AppPalette.secondaryText)
-                        Text("Steer Stack")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppPalette.secondaryText)
-                        if hiddenCount > 0 {
-                            Text("+\(hiddenCount)")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(AppPalette.secondaryText)
-                        }
-                        Spacer(minLength: 0)
-                        Text(queuedComposerMessages.count == 1 ? "1 queued" : "\(queuedComposerMessages.count) queued")
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                    }
-
-                    if !isKeyboardActive {
-                        ForEach(Array(visibleQueuedMessages.enumerated()), id: \.offset) { index, text in
-                            let queueIndex = visibleStartIndex + index
-                            HStack(spacing: 8) {
-                                Image(systemName: "clock")
-                                    .font(.caption2)
-                                    .foregroundStyle(AppPalette.secondaryText)
-                                Text(text)
-                                    .font(.footnote)
-                                    .lineLimit(1)
-                                    .foregroundStyle(AppPalette.primaryText)
-                                Spacer(minLength: 0)
-                                Button("Edit") {
-                                    let restored = viewModel.takeQueuedComposerMessage(
-                                        for: currentSession.id,
-                                        at: queueIndex
-                                    ) ?? text
-                                    draftMessage = restored
-                                    focusedComposerField = .message
-                                }
-                                .buttonStyle(.borderless)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color.accentColor)
-                            }
-
-                            if index < visibleQueuedMessages.count - 1 {
-                                Rectangle()
-                                    .fill(AppPalette.chromeDivider.opacity(0.7))
-                                    .frame(height: 1)
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AppPalette.controlSurface.opacity(colorScheme == .dark ? 0.72 : 0.9))
-                )
+        SessionComposerInputPanel(
+            isKeyboardActive: isKeyboardActive,
+            colorScheme: colorScheme,
+            isSending: viewModel.isSendingMessage(sessionID: session.id),
+            queuedComposerMessages: viewModel.queuedComposerMessages(for: currentSession.id),
+            applyModelOverride: applyModelOverride,
+            selectedModelOverrideOption: selectedModelOverrideOption,
+            customModelOverrideOption: Self.customModelOverrideOption,
+            sendErrorMessage: viewModel.sendMessageErrorMessage,
+            focusedComposerField: $focusedComposerField,
+            draftMessage: $draftMessage,
+            modelOverrideDraft: $modelOverrideDraft,
+            onQueue: {
+                submitDraftMessage(with: .queue)
+            },
+            onSend: {
+                submitDraftMessage(with: .immediate)
+            },
+            onEditQueuedMessage: { queueIndex, fallbackText in
+                let restored = viewModel.takeQueuedComposerMessage(
+                    for: currentSession.id,
+                    at: queueIndex
+                ) ?? fallbackText
+                draftMessage = restored
+                focusedComposerField = .message
             }
-
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "terminal.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppPalette.accent)
-                    .frame(width: 18, height: 18)
-                    .padding(.top, 2)
-
-                TextField("Ask for follow-up changes", text: $draftMessage, axis: .vertical)
-                    .lineLimit(isKeyboardActive ? 1...3 : 1...4)
-                    .textInputAutocapitalization(.sentences)
-                    .font(.subheadline.weight(.medium))
-                    .focused($focusedComposerField, equals: .message)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, isKeyboardActive ? 9 : 10)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AppPalette.composerFieldBackground)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(
-                        focusedComposerField == .message
-                            ? AppPalette.accent.opacity(0.55)
-                            : AppPalette.composerFieldStroke.opacity(0.4),
-                        lineWidth: focusedComposerField == .message ? 1.5 : 1
-                    )
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    submitDraftMessage(with: .queue)
-                } label: {
-                    Label("Queue", systemImage: "clock")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppPalette.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(AppPalette.controlSurface)
-                        )
-                }
-                .buttonStyle(PressableScaleButtonStyle())
-                .disabled(isSending)
-
-                Button {
-                    submitDraftMessage(with: .immediate)
-                } label: {
-                    Label(isSending ? "Sending…" : "Send", systemImage: "paperplane.fill")
-                        .font(.footnote.weight(.bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            AppPalette.sendGradientTop,
-                                            AppPalette.sendGradientBottom,
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        )
-                        .shadow(color: AppPalette.accent.opacity(0.3), radius: 6, y: 2)
-                }
-                .buttonStyle(PressableScaleButtonStyle())
-                .disabled(isSending)
-            }
-
-            if applyModelOverride && selectedModelOverrideOption == Self.customModelOverrideOption {
-                TextField("Custom model id", text: $modelOverrideDraft)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.footnote.monospaced())
-                    .focused($focusedComposerField, equals: .customModel)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(AppPalette.controlSurface)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(
-                                focusedComposerField == .customModel
-                                    ? AppPalette.accent.opacity(0.55)
-                                    : AppPalette.composerFieldStroke.opacity(0.4),
-                                lineWidth: focusedComposerField == .customModel ? 1.5 : 1
-                            )
-                    }
-            }
-
-            if let error = viewModel.sendMessageErrorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-        }
+        )
     }
 
     private func submitDraftMessage(with steerMode: APISessionSteerMode) {
