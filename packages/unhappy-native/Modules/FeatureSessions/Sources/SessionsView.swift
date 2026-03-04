@@ -166,7 +166,8 @@ public struct SessionsView: View {
             .buttonStyle(.borderedProminent)
             .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 24)
         .padding(.horizontal, 20)
     }
 
