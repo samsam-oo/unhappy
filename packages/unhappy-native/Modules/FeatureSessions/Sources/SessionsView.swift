@@ -41,6 +41,7 @@ public struct SessionsView: View {
             sidebarContent
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
                 .navigationTitle("Sessions")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar { sessionsToolbarContent }
                 .refreshable {
                     await viewModel.load(serverURLString: serverURLString, token: token)

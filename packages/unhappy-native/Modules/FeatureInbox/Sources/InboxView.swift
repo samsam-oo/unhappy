@@ -21,6 +21,7 @@ public struct InboxView: View {
             sidebarContent
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
                 .navigationTitle("Inbox")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar { inboxToolbarContent }
                 .refreshable {
                     await viewModel.load()
@@ -76,20 +77,21 @@ public struct InboxView: View {
     }
 
     private var emptySidebarState: some View {
-        VStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             Image(systemName: "tray")
-                .font(.system(size: 26, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text("No inbox items")
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
             Text("Notifications and requests will appear here.")
-                .font(.subheadline)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .multilineTextAlignment(.leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, 24)
-        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 6)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var emptyDetailState: some View {
