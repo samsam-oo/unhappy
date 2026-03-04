@@ -394,42 +394,21 @@ public struct SessionDetailView: View {
     }
 
     private var renameSessionSheet: some View {
-        NavigationStack {
-            Form {
-                Section("Session Title") {
-                    TextField("Session title", text: $renameDraft)
-                        .textInputAutocapitalization(.never)
-                    Text("Leave empty to clear the custom title.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+        SessionRenameSheet(
+            isPresented: $showRenameSheet,
+            renameDraft: $renameDraft,
+            isRenaming: viewModel.isRenaming(sessionID: session.id),
+            onSave: { nextTitle in
+                Task {
+                    await viewModel.setSessionTitle(
+                        sessionID: currentSession.id,
+                        title: nextTitle.isEmpty ? nil : nextTitle,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
                 }
             }
-            .navigationTitle("Rename Session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        showRenameSheet = false
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        let nextTitle = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                        showRenameSheet = false
-                        Task {
-                            await viewModel.setSessionTitle(
-                                sessionID: currentSession.id,
-                                title: nextTitle.isEmpty ? nil : nextTitle,
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        }
-                    }
-                    .disabled(viewModel.isRenaming(sessionID: session.id))
-                }
-            }
-        }
-        .presentationDetents([.medium])
+        )
     }
 
     private func quickToolSheet(for tool: SessionQuickTool) -> some View {
@@ -890,53 +869,44 @@ public struct SessionDetailView: View {
 
     @ViewBuilder
     private var toolbarTrailingContent: some View {
-        if viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id) {
-            ProgressView()
-        } else {
-            Menu {
-                Button("List Codex Sessions", systemImage: "list.bullet") {
-                    showCodexThreadsSheet = true
-                    if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        codexResumeDirectoryDraft = codexCwdFilterDraft
-                    }
-                    Task {
-                        await viewModel.loadCodexThreads(
-                            for: session.id,
-                            serverURLString: serverURLString,
-                            token: token,
-                            cwd: normalizedCWD(from: codexCwdFilterDraft)
-                        )
-                    }
+        SessionToolbarTrailingMenu(
+            isBusy: viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id),
+            onListCodexSessions: {
+                showCodexThreadsSheet = true
+                if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    codexResumeDirectoryDraft = codexCwdFilterDraft
                 }
-                Button("List Claude Sessions", systemImage: "list.bullet.rectangle") {
-                    showClaudeSessionsSheet = true
-                    if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        claudeResumeDirectoryDraft = claudeCwdFilterDraft
-                    }
-                    Task {
-                        await viewModel.loadClaudeSessions(
-                            for: session.id,
-                            serverURLString: serverURLString,
-                            token: token,
-                            cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                        )
-                    }
+                Task {
+                    await viewModel.loadCodexThreads(
+                        for: session.id,
+                        serverURLString: serverURLString,
+                        token: token,
+                        cwd: normalizedCWD(from: codexCwdFilterDraft)
+                    )
                 }
-                Button("Rename", systemImage: "pencil") {
-                    renameDraft = currentSession.displayName ?? ""
-                    showRenameSheet = true
+            },
+            onListClaudeSessions: {
+                showClaudeSessionsSheet = true
+                if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    claudeResumeDirectoryDraft = claudeCwdFilterDraft
                 }
-                Button("Delete", systemImage: "trash", role: .destructive) {
-                    showDeleteConfirmation = true
+                Task {
+                    await viewModel.loadClaudeSessions(
+                        for: session.id,
+                        serverURLString: serverURLString,
+                        token: token,
+                        cwd: normalizedCWD(from: claudeCwdFilterDraft)
+                    )
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .frame(width: 28, height: 28)
+            },
+            onRename: {
+                renameDraft = currentSession.displayName ?? ""
+                showRenameSheet = true
+            },
+            onDelete: {
+                showDeleteConfirmation = true
             }
-            .buttonStyle(PressableScaleButtonStyle())
-        }
+        )
     }
 
     private var composerBar: some View {

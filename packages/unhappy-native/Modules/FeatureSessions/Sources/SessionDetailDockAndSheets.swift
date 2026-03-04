@@ -399,3 +399,68 @@ struct SessionClaudeSessionsSheet: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 }
+
+struct SessionRenameSheet: View {
+    @Binding var isPresented: Bool
+    @Binding var renameDraft: String
+    let isRenaming: Bool
+    let onSave: (String) -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Session Title") {
+                    TextField("Session title", text: $renameDraft)
+                        .textInputAutocapitalization(.never)
+                    Text("Leave empty to clear the custom title.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Rename Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        isPresented = false
+                        onSave(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+                    }
+                    .disabled(isRenaming)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+struct SessionToolbarTrailingMenu: View {
+    let isBusy: Bool
+    let onListCodexSessions: () -> Void
+    let onListClaudeSessions: () -> Void
+    let onRename: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        if isBusy {
+            ProgressView()
+        } else {
+            Menu {
+                Button("List Codex Sessions", systemImage: "list.bullet", action: onListCodexSessions)
+                Button("List Claude Sessions", systemImage: "list.bullet.rectangle", action: onListClaudeSessions)
+                Button("Rename", systemImage: "pencil", action: onRename)
+                Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(PressableScaleButtonStyle())
+        }
+    }
+}
