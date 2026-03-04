@@ -148,93 +148,137 @@ public struct SessionDetailView: View {
 
     public var body: some View {
         ScrollViewReader { scrollProxy in
-            let messagesSectionRows = MessagesSectionRows(
-                isLoading: viewModel.isLoadingSessionMessages,
-                errorMessage: viewModel.selectedSessionErrorMessage,
-                visibleTranscriptPresentations: visibleTranscriptPresentations,
-                liveStatusText: liveStatusText,
-                transcriptBottomAnchorID: Self.transcriptBottomAnchorID,
-                onReferenceToggle: {
-                    shouldFollowTranscript = false
-                },
-                onRetry: {
-                    Task {
-                        await viewModel.loadMessages(
-                            for: session.id,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
+            decoratedSessionRoot(
+                transcriptListContent(using: scrollProxy)
             )
-            List {
-                Section {
-                    sessionSectionContent
-                }
+        }
+    }
 
-                Section {
-                    messagesSectionRows
+    private func transcriptListContent(using scrollProxy: ScrollViewProxy) -> some View {
+        let messagesSectionRows = makeMessagesSectionRows()
+        let listBase = transcriptListBase(messagesSectionRows: messagesSectionRows)
+        return applyTranscriptLifecycleHandlers(to: listBase, using: scrollProxy)
+    }
+
+    private func makeMessagesSectionRows() -> MessagesSectionRows {
+        MessagesSectionRows(
+            isLoading: viewModel.isLoadingSessionMessages,
+            errorMessage: viewModel.selectedSessionErrorMessage,
+            visibleTranscriptPresentations: visibleTranscriptPresentations,
+            liveStatusText: liveStatusText,
+            transcriptBottomAnchorID: Self.transcriptBottomAnchorID,
+            onReferenceToggle: {
+                shouldFollowTranscript = false
+            },
+            onRetry: {
+                Task {
+                    await viewModel.loadMessages(
+                        for: session.id,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(transcriptBackground)
-            .scrollDismissesKeyboard(.immediately)
-            .scrollDisabled(isInteractingWithBottomDock)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    focusedComposerField = nil
-                }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8).onChanged { value in
-                    // Only treat mostly-vertical drags as transcript scrolling.
-                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                    focusedComposerField = nil
-                    guard shouldFollowTranscript else { return }
-                    shouldFollowTranscript = false
-                }
-            )
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                bottomInsetContent
+        )
+    }
+
+    private func transcriptListBase(messagesSectionRows: MessagesSectionRows) -> some View {
+        List {
+            Section {
+                sessionSectionContent
             }
-            // Keep auto-follow behavior via explicit scroll requests below.
-            // Avoid defaultScrollAnchor on List because rapid shrink/grow updates can trigger
-            // UICollectionView target index assertions on some iOS versions.
-            .toolbar(.hidden, for: .tabBar)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    topBarTitleView
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    toolbarTrailingContent
-                }
+
+            Section {
+                messagesSectionRows
             }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(transcriptBackground)
+        .scrollDismissesKeyboard(.immediately)
+        .scrollDisabled(isInteractingWithBottomDock)
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                focusedComposerField = nil
+            }
+        )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8).onChanged { value in
+                // Only treat mostly-vertical drags as transcript scrolling.
+                guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                focusedComposerField = nil
+                guard shouldFollowTranscript else { return }
+                shouldFollowTranscript = false
+            }
+        )
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomInsetContent
+        }
+        // Keep auto-follow behavior via explicit scroll requests below.
+        // Avoid defaultScrollAnchor on List because rapid shrink/grow updates can trigger
+        // UICollectionView target index assertions on some iOS versions.
+        .toolbar(.hidden, for: .tabBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                topBarTitleView
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                toolbarTrailingContent
+            }
+        }
+    }
+
+    private func applyTranscriptLifecycleHandlers<Content: View>(
+        to content: Content,
+        using scrollProxy: ScrollViewProxy
+    ) -> some View {
+        let appearanceHandled = applyTranscriptAppearanceHandlers(
+            to: content,
+            using: scrollProxy
+        )
+        return applyTranscriptStateChangeHandlers(
+            to: appearanceHandled,
+            using: scrollProxy
+        )
+    }
+
+    private func applyTranscriptAppearanceHandlers<Content: View>(
+        to content: Content,
+        using scrollProxy: ScrollViewProxy
+    ) -> some View {
+        content
             .onAppear {
-                if !availableEffortSelections.contains(selectedEffortOverride),
-                   let first = availableEffortSelections.first {
-                    selectedEffortOverride = first
-                }
-                if serverModelOverrideOptions.isEmpty {
-                    Task {
-                        await loadServerModelOptions()
-                    }
-                }
-                viewModel.startSelectedSessionMessagesPolling(
-                    for: session.id,
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                refreshTranscriptPresentationCacheForCurrentState()
-                scrollTranscriptToBottom(using: scrollProxy, animated: false)
+                handleTranscriptOnAppear(using: scrollProxy)
             }
+            .onDisappear {
+                viewModel.stopSelectedSessionMessagesPolling()
+                viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
+            }
+    }
+
+    private func applyTranscriptStateChangeHandlers<Content: View>(
+        to content: Content,
+        using scrollProxy: ScrollViewProxy
+    ) -> some View {
+        let cacheHandled = applyTranscriptCacheChangeHandlers(
+            to: content,
+            using: scrollProxy
+        )
+        return applyTranscriptScrollChangeHandlers(
+            to: cacheHandled,
+            using: scrollProxy
+        )
+    }
+
+    private func applyTranscriptCacheChangeHandlers<Content: View>(
+        to content: Content,
+        using scrollProxy: ScrollViewProxy
+    ) -> some View {
+        content
             .onChange(of: viewModel.selectedSessionMessages) { _, messages in
-                refreshTranscriptPresentationCache(
-                    messages: messages,
-                    dataEncryptionKey: currentSession.dataEncryptionKey
-                )
+                handleSelectedSessionMessagesChange(messages)
             }
             .onChange(of: currentSession.dataEncryptionKey) { _, _ in
                 refreshTranscriptPresentationCacheForCurrentState()
@@ -246,79 +290,209 @@ public struct SessionDetailView: View {
                     using: scrollProxy
                 )
             }
+    }
+
+    private func applyTranscriptScrollChangeHandlers<Content: View>(
+        to content: Content,
+        using scrollProxy: ScrollViewProxy
+    ) -> some View {
+        content
             .onChange(of: scrollToBottomRequestID) { _, _ in
                 scrollTranscriptToBottom(using: scrollProxy)
             }
             .onChange(of: focusedComposerField) { _, focusedField in
-                guard focusedField != nil else { return }
-                shouldFollowTranscript = true
-                scrollTranscriptToBottom(using: scrollProxy)
+                handleFocusedComposerFieldChange(
+                    focusedField,
+                    using: scrollProxy
+                )
             }
             .onChange(of: viewModel.isLoadingSessionMessages) { wasLoading, isLoading in
-                guard wasLoading && !isLoading else { return }
-                shouldFollowTranscript = true
-                scrollTranscriptToBottom(using: scrollProxy, animated: false)
+                handleLoadingSessionMessagesChange(
+                    wasLoading: wasLoading,
+                    isLoading: isLoading,
+                    using: scrollProxy
+                )
             }
-            .onDisappear {
-                viewModel.stopSelectedSessionMessagesPolling()
-                viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
+    }
+
+    private func handleSelectedSessionMessagesChange(_ messages: [APISessionMessage]) {
+        refreshTranscriptPresentationCache(
+            messages: messages,
+            dataEncryptionKey: currentSession.dataEncryptionKey
+        )
+    }
+
+    private func handleFocusedComposerFieldChange(
+        _ focusedField: SessionComposerFocusField?,
+        using scrollProxy: ScrollViewProxy
+    ) {
+        guard focusedField != nil else { return }
+        shouldFollowTranscript = true
+        scrollTranscriptToBottom(using: scrollProxy)
+    }
+
+    private func handleLoadingSessionMessagesChange(
+        wasLoading: Bool,
+        isLoading: Bool,
+        using scrollProxy: ScrollViewProxy
+    ) {
+        guard wasLoading && !isLoading else { return }
+        shouldFollowTranscript = true
+        scrollTranscriptToBottom(using: scrollProxy, animated: false)
+    }
+
+    private func handleTranscriptOnAppear(using scrollProxy: ScrollViewProxy) {
+        if !availableEffortSelections.contains(selectedEffortOverride),
+           let first = availableEffortSelections.first {
+            selectedEffortOverride = first
+        }
+        if serverModelOverrideOptions.isEmpty {
+            Task {
+                await loadServerModelOptions()
             }
+        }
+        viewModel.startSelectedSessionMessagesPolling(
+            for: session.id,
+            serverURLString: serverURLString,
+            token: token
+        )
+        refreshTranscriptPresentationCacheForCurrentState()
+        scrollTranscriptToBottom(using: scrollProxy, animated: false)
+    }
+
+    private func decoratedSessionRoot<Content: View>(_ content: Content) -> some View {
+        content
             .sheet(isPresented: $showRenameSheet) {
-            NavigationStack {
-                Form {
-                    Section("Session Title") {
-                        TextField("Session title", text: $renameDraft)
-                            .textInputAutocapitalization(.never)
-                        Text("Leave empty to clear the custom title.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .navigationTitle("Rename Session")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") {
-                            showRenameSheet = false
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Save") {
-                            let nextTitle = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            showRenameSheet = false
-                            Task {
-                                await viewModel.setSessionTitle(
-                                    sessionID: currentSession.id,
-                                    title: nextTitle.isEmpty ? nil : nextTitle,
-                                    serverURLString: serverURLString,
-                                    token: token
-                                )
-                            }
-                        }
-                        .disabled(viewModel.isRenaming(sessionID: session.id))
-                    }
-                }
-            }
-            .presentationDetents([.medium])
+                renameSessionSheet
             }
             .sheet(item: $presentedQuickTool) { tool in
-            NavigationStack {
-                quickToolDestinationView(tool)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") { presentedQuickTool = nil }
-                        }
-                    }
-            }
+                quickToolSheet(for: tool)
             }
             .sheet(isPresented: $showCodexThreadsSheet) {
-            NavigationStack {
-                List {
-                    Section("Path Filter") {
-                        TextField("Optional cwd path", text: $codexCwdFilterDraft)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button("Apply Filter") {
+                codexSessionsSheet
+            }
+            .sheet(isPresented: $showClaudeSessionsSheet) {
+                claudeSessionsSheet
+            }
+            .alert(
+                "Delete session?",
+                isPresented: $showDeleteConfirmation,
+                actions: {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Delete", role: .destructive) {
+                        Task {
+                            await viewModel.deleteSession(
+                                sessionID: currentSession.id,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                            if !viewModel.sessions.contains(where: { $0.id == currentSession.id }) {
+                                dismiss()
+                            }
+                        }
+                    }
+                }
+            )
+    }
+
+    private var renameSessionSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Session Title") {
+                    TextField("Session title", text: $renameDraft)
+                        .textInputAutocapitalization(.never)
+                    Text("Leave empty to clear the custom title.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Rename Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        showRenameSheet = false
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        let nextTitle = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                        showRenameSheet = false
+                        Task {
+                            await viewModel.setSessionTitle(
+                                sessionID: currentSession.id,
+                                title: nextTitle.isEmpty ? nil : nextTitle,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
+                    }
+                    .disabled(viewModel.isRenaming(sessionID: session.id))
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func quickToolSheet(for tool: SessionQuickTool) -> some View {
+        NavigationStack {
+            quickToolDestinationView(tool)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { presentedQuickTool = nil }
+                    }
+                }
+        }
+    }
+
+    private var codexSessionsSheet: some View {
+        NavigationStack {
+            List {
+                Section("Path Filter") {
+                    TextField("Optional cwd path", text: $codexCwdFilterDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Apply Filter") {
+                        Task {
+                            await viewModel.loadCodexThreads(
+                                for: session.id,
+                                serverURLString: serverURLString,
+                                token: token,
+                                cwd: normalizedCWD(from: codexCwdFilterDraft)
+                            )
+                        }
+                    }
+                    .disabled(viewModel.isLoadingCodexThreads)
+                }
+                Section("Resume") {
+                    TextField("Directory for resumed session", text: $codexResumeDirectoryDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("If empty, selected row cwd is used.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let status = viewModel.codexResumeStatusMessage {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(.green)
+                    }
+                    if let error = viewModel.codexResumeErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if viewModel.isLoadingCodexThreads {
+                    ProgressView("Loading Codex sessions…")
+                } else if let error = viewModel.selectedCodexThreadsErrorMessage {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Unable to load Codex sessions")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button("Retry") {
                             Task {
                                 await viewModel.loadCodexThreads(
                                     for: session.id,
@@ -328,102 +502,103 @@ public struct SessionDetailView: View {
                                 )
                             }
                         }
-                        .disabled(viewModel.isLoadingCodexThreads)
                     }
-                    Section("Resume") {
-                        TextField("Directory for resumed session", text: $codexResumeDirectoryDraft)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Text("If empty, selected row cwd is used.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        if let status = viewModel.codexResumeStatusMessage {
-                            Text(status)
-                                .font(.footnote)
-                                .foregroundStyle(.green)
-                        }
-                        if let error = viewModel.codexResumeErrorMessage {
-                            Text(error)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-                    }
-
-                    if viewModel.isLoadingCodexThreads {
-                        ProgressView("Loading Codex sessions…")
-                    } else if let error = viewModel.selectedCodexThreadsErrorMessage {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Unable to load Codex sessions")
-                                .font(.headline)
-                            Text(error)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Button("Retry") {
-                                Task {
-                                    await viewModel.loadCodexThreads(
-                                        for: session.id,
-                                        serverURLString: serverURLString,
-                                        token: token,
-                                        cwd: normalizedCWD(from: codexCwdFilterDraft)
-                                    )
-                                }
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    } else if viewModel.selectedCodexThreads.isEmpty {
-                        Text("No existing Codex sessions")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(viewModel.selectedCodexThreads) { thread in
-                            Button {
-                                let resumeDirectory =
-                                    normalizedCWD(from: codexResumeDirectoryDraft)
-                                    ?? normalizedCWD(from: thread.cwd ?? "")
-                                    ?? normalizedCWD(from: codexCwdFilterDraft)
-                                    ?? ""
-                                Task {
-                                    await viewModel.resumeCodexThread(
-                                        from: session.id,
-                                        codexResumeThreadID: thread.id,
-                                        serverURLString: serverURLString,
-                                        token: token,
-                                        directory: resumeDirectory
-                                    )
-                                }
-                            } label: {
-                                CodexThreadRow(
-                                    thread: thread,
-                                    isResuming: viewModel.codexResumeInProgressThreadID == thread.id
+                    .padding(.vertical, 8)
+                } else if viewModel.selectedCodexThreads.isEmpty {
+                    Text("No existing Codex sessions")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.selectedCodexThreads) { thread in
+                        Button {
+                            let resumeDirectory =
+                                normalizedCWD(from: codexResumeDirectoryDraft)
+                                ?? normalizedCWD(from: thread.cwd ?? "")
+                                ?? normalizedCWD(from: codexCwdFilterDraft)
+                                ?? ""
+                            Task {
+                                await viewModel.resumeCodexThread(
+                                    from: session.id,
+                                    codexResumeThreadID: thread.id,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    directory: resumeDirectory
                                 )
                             }
-                            .buttonStyle(.plain)
-                            .disabled(
-                                viewModel.isResumingCodexSession &&
-                                    viewModel.codexResumeInProgressThreadID != thread.id
+                        } label: {
+                            CodexThreadRow(
+                                thread: thread,
+                                isResuming: viewModel.codexResumeInProgressThreadID == thread.id
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(
+                            viewModel.isResumingCodexSession &&
+                                viewModel.codexResumeInProgressThreadID != thread.id
+                        )
+                    }
+                }
+            }
+            .navigationTitle("Codex Sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        showCodexThreadsSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var claudeSessionsSheet: some View {
+        NavigationStack {
+            List {
+                Section("Path Filter") {
+                    TextField("Optional cwd path", text: $claudeCwdFilterDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Apply Filter") {
+                        Task {
+                            await viewModel.loadClaudeSessions(
+                                for: session.id,
+                                serverURLString: serverURLString,
+                                token: token,
+                                cwd: normalizedCWD(from: claudeCwdFilterDraft)
                             )
                         }
                     }
+                    .disabled(viewModel.isLoadingClaudeSessions)
                 }
-                .navigationTitle("Codex Sessions")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") {
-                            showCodexThreadsSheet = false
-                        }
+                Section("Resume") {
+                    TextField("Directory for resumed session", text: $claudeResumeDirectoryDraft)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("If empty, selected row cwd is used.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if let status = viewModel.claudeResumeStatusMessage {
+                        Text(status)
+                            .font(.footnote)
+                            .foregroundStyle(.green)
+                    }
+                    if let error = viewModel.claudeResumeErrorMessage {
+                        Text(error)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
                     }
                 }
-            }
-            .presentationDetents([.medium, .large])
-            }
-            .sheet(isPresented: $showClaudeSessionsSheet) {
-            NavigationStack {
-                List {
-                    Section("Path Filter") {
-                        TextField("Optional cwd path", text: $claudeCwdFilterDraft)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Button("Apply Filter") {
+
+                if viewModel.isLoadingClaudeSessions {
+                    ProgressView("Loading Claude sessions…")
+                } else if let error = viewModel.selectedClaudeSessionsErrorMessage {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Unable to load Claude sessions")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button("Retry") {
                             Task {
                                 await viewModel.loadClaudeSessions(
                                     for: session.id,
@@ -433,114 +608,53 @@ public struct SessionDetailView: View {
                                 )
                             }
                         }
-                        .disabled(viewModel.isLoadingClaudeSessions)
                     }
-                    Section("Resume") {
-                        TextField("Directory for resumed session", text: $claudeResumeDirectoryDraft)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Text("If empty, selected row cwd is used.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        if let status = viewModel.claudeResumeStatusMessage {
-                            Text(status)
-                                .font(.footnote)
-                                .foregroundStyle(.green)
-                        }
-                        if let error = viewModel.claudeResumeErrorMessage {
-                            Text(error)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-                    }
-
-                    if viewModel.isLoadingClaudeSessions {
-                        ProgressView("Loading Claude sessions…")
-                    } else if let error = viewModel.selectedClaudeSessionsErrorMessage {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Unable to load Claude sessions")
-                                .font(.headline)
-                            Text(error)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Button("Retry") {
-                                Task {
-                                    await viewModel.loadClaudeSessions(
-                                        for: session.id,
-                                        serverURLString: serverURLString,
-                                        token: token,
-                                        cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                                    )
-                                }
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    } else if viewModel.selectedClaudeSessions.isEmpty {
-                        Text("No existing Claude sessions")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(viewModel.selectedClaudeSessions) { row in
-                            Button {
-                                let resumeDirectory =
-                                    normalizedCWD(from: claudeResumeDirectoryDraft)
-                                    ?? normalizedCWD(from: row.cwd ?? "")
-                                    ?? normalizedCWD(from: claudeCwdFilterDraft)
-                                    ?? ""
-                                Task {
-                                    await viewModel.resumeClaudeSession(
-                                        from: session.id,
-                                        claudeResumeSessionID: row.id,
-                                        serverURLString: serverURLString,
-                                        token: token,
-                                        directory: resumeDirectory
-                                    )
-                                }
-                            } label: {
-                                ClaudeSessionRow(
-                                    session: row,
-                                    isResuming: viewModel.claudeResumeInProgressSessionID == row.id
+                    .padding(.vertical, 8)
+                } else if viewModel.selectedClaudeSessions.isEmpty {
+                    Text("No existing Claude sessions")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.selectedClaudeSessions) { row in
+                        Button {
+                            let resumeDirectory =
+                                normalizedCWD(from: claudeResumeDirectoryDraft)
+                                ?? normalizedCWD(from: row.cwd ?? "")
+                                ?? normalizedCWD(from: claudeCwdFilterDraft)
+                                ?? ""
+                            Task {
+                                await viewModel.resumeClaudeSession(
+                                    from: session.id,
+                                    claudeResumeSessionID: row.id,
+                                    serverURLString: serverURLString,
+                                    token: token,
+                                    directory: resumeDirectory
                                 )
                             }
-                            .buttonStyle(.plain)
-                            .disabled(
-                                viewModel.isResumingClaudeSession &&
-                                    viewModel.claudeResumeInProgressSessionID != row.id
+                        } label: {
+                            ClaudeSessionRow(
+                                session: row,
+                                isResuming: viewModel.claudeResumeInProgressSessionID == row.id
                             )
                         }
-                    }
-                }
-                .navigationTitle("Claude Sessions")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") {
-                            showClaudeSessionsSheet = false
-                        }
-                    }
-                }
-            }
-            .presentationDetents([.medium, .large])
-            }
-            .alert(
-            "Delete session?",
-            isPresented: $showDeleteConfirmation,
-            actions: {
-                Button("Cancel", role: .cancel) {}
-                Button("Delete", role: .destructive) {
-                    Task {
-                        await viewModel.deleteSession(
-                            sessionID: currentSession.id,
-                            serverURLString: serverURLString,
-                            token: token
+                        .buttonStyle(.plain)
+                        .disabled(
+                            viewModel.isResumingClaudeSession &&
+                                viewModel.claudeResumeInProgressSessionID != row.id
                         )
-                        if !viewModel.sessions.contains(where: { $0.id == currentSession.id }) {
-                            dismiss()
-                        }
                     }
                 }
             }
-            )
+            .navigationTitle("Claude Sessions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        showClaudeSessionsSheet = false
+                    }
+                }
+            }
         }
+        .presentationDetents([.medium, .large])
     }
 
     private var currentSession: APISession {
@@ -811,63 +925,43 @@ public struct SessionDetailView: View {
 
     @ViewBuilder
     private var sessionSectionContent: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.caption2)
-                .foregroundStyle(AppPalette.secondaryText)
-            Text("Session")
-                .font(.caption2.monospaced().weight(.bold))
-                .foregroundStyle(AppPalette.secondaryText)
-                .textCase(.uppercase)
-        }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 2)
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
+        SessionListSectionBadgeRow(
+            iconSystemName: "doc.text.magnifyingglass",
+            title: "Session"
+        )
+        .sessionListRow(insets: SessionListRowInsets.badge)
 
-        VStack(spacing: 0) {
-            sessionSummaryPanelRow(
-                title: "Title",
-                value: currentSessionTitle,
-                valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
-            )
-            Divider().opacity(0.28)
-            sessionSummaryPanelRow(
-                title: "ID",
-                value: currentSession.id,
-                valueFont: .footnote.monospaced(),
-                valueColor: AppPalette.secondaryText
-            )
-            Divider().opacity(0.28)
-            sessionSummaryPanelRow(
-                title: "Status",
-                value: currentSession.active ? "Active" : "Inactive",
-                valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
-            )
-            Divider().opacity(0.28)
-            sessionSummaryPanelRow(
-                title: "Updated",
-                value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
-                valueColor: AppPalette.secondaryText
-            )
+        SessionSurfaceCard(cornerRadius: 10) {
+            VStack(spacing: 0) {
+                sessionSummaryPanelRow(
+                    title: "Title",
+                    value: currentSessionTitle,
+                    valueColor: currentSessionHasDisplayTitle ? AppPalette.primaryText : AppPalette.secondaryText
+                )
+                Divider().opacity(0.28)
+                sessionSummaryPanelRow(
+                    title: "ID",
+                    value: currentSession.id,
+                    valueFont: .footnote.monospaced(),
+                    valueColor: AppPalette.secondaryText
+                )
+                Divider().opacity(0.28)
+                sessionSummaryPanelRow(
+                    title: "Status",
+                    value: currentSession.active ? "Active" : "Inactive",
+                    valueColor: currentSession.active ? AppPalette.liveActivity : AppPalette.secondaryText
+                )
+                Divider().opacity(0.28)
+                sessionSummaryPanelRow(
+                    title: "Updated",
+                    value: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt),
+                    valueColor: AppPalette.secondaryText
+                )
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(AppPalette.chatToolBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-        )
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(
-            EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-        )
-
+        .sessionListRow(insets: SessionListRowInsets.sectionCard)
     }
 
     private var approvalBottomSheet: some View {
@@ -883,55 +977,7 @@ public struct SessionDetailView: View {
             }
 
             ForEach(pendingPermissionRequests) { request in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
-                        Text(request.toolName)
-                            .font(.subheadline.monospaced().weight(.semibold))
-                            .foregroundStyle(AppPalette.primaryText)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 0)
-                        Text(request.callID)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-
-                    if let summary = request.summary, !summary.isEmpty {
-                        Text(summary)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .lineLimit(3)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack(spacing: 8) {
-                        let isResponding = respondingPermissionRequestID == request.id
-                        Button {
-                            respondToPermissionRequest(request.id, approved: true)
-                        } label: {
-                            if isResponding {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Text("Approve")
-                                    .font(.caption.weight(.semibold))
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(respondingPermissionRequestID != nil || isRecoveringDisconnectedSession)
-
-                        Button(role: .destructive) {
-                            respondToPermissionRequest(request.id, approved: false)
-                        } label: {
-                            Text("Deny")
-                                .font(.caption.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(respondingPermissionRequestID != nil || isRecoveringDisconnectedSession)
-                    }
-                }
+                approvalRequestRow(request)
 
                 if request.id != pendingPermissionRequests.last?.id {
                     Divider().opacity(0.22)
@@ -973,6 +1019,65 @@ public struct SessionDetailView: View {
             radius: 8,
             y: 2
         )
+    }
+
+    @ViewBuilder
+    private func approvalRequestRow(_ request: PendingPermissionRequest) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(request.toolName)
+                    .font(.subheadline.monospaced().weight(.semibold))
+                    .foregroundStyle(AppPalette.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Spacer(minLength: 0)
+                Text(request.callID)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+
+            if let summary = request.summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            approvalRequestActionButtons(for: request)
+        }
+    }
+
+    private func approvalRequestActionButtons(for request: PendingPermissionRequest) -> some View {
+        let isResponding = respondingPermissionRequestID == request.id
+        let disableActions = respondingPermissionRequestID != nil || isRecoveringDisconnectedSession
+
+        return HStack(spacing: 8) {
+            Button {
+                respondToPermissionRequest(request.id, approved: true)
+            } label: {
+                if isResponding {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Approve")
+                        .font(.caption.weight(.semibold))
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(disableActions)
+
+            Button(role: .destructive) {
+                respondToPermissionRequest(request.id, approved: false)
+            } label: {
+                Text("Deny")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.bordered)
+            .disabled(disableActions)
+        }
     }
 
     private func sessionSummaryPanelRow(
@@ -2071,8 +2176,13 @@ public struct SessionDetailView: View {
             }
         }
 
-        let mergedPresentations = coalesceStreamingEntries(in: nextPresentations)
-        let visiblePresentations = filterReasoningEntries(in: mergedPresentations)
+        let mergedPresentations = SessionTranscriptProcessing.coalesceStreamingEntries(
+            in: nextPresentations
+        )
+        let visiblePresentations = SessionTranscriptProcessing.filterReasoningEntries(
+            in: mergedPresentations,
+            showReasoningDetails: showReasoningDetails
+        )
         transcriptPresentationCache = nextCache
         if cachedVisibleTranscriptPresentations != visiblePresentations {
             cachedVisibleTranscriptPresentations = visiblePresentations
@@ -2095,16 +2205,9 @@ public struct SessionDetailView: View {
     }
 
     private var latestAgentThinkingEntry: SessionTranscriptEntry? {
-        for presentation in visibleTranscriptPresentations.reversed() {
-            for entry in presentation.entries.reversed() {
-                guard entry.role == .agent else { continue }
-                if entry.kind == .thinking {
-                    return entry
-                }
-                return nil
-            }
-        }
-        return nil
+        SessionTranscriptLiveStatusEvaluator.latestAgentThinkingEntry(
+            in: visibleTranscriptPresentations
+        )
     }
 
     private var liveStatusText: String? {
@@ -2142,56 +2245,10 @@ public struct SessionDetailView: View {
     }
 
     private var hasPendingApprovalRequest: Bool {
-        let sources = [decodedSessionAgentState, decodedSessionMetadata]
-
-        if let explicit = SessionPayloadValueResolver.firstBool(
-            in: sources,
-            keys: [
-                "requiresUserApproval",
-                "needsApproval",
-                "approvalRequired",
-                "approvalPending",
-                "permissionPending",
-                "waitingApproval",
-                "awaitingApproval",
-            ]
-        ) {
-            return explicit
-        }
-
-        if SessionPayloadValueResolver.hasNonEmptyArray(
-            in: sources,
-            keys: [
-                "pendingPermissions",
-                "approvalRequests",
-                "permissionRequests",
-                "pendingApprovalRequests",
-            ]
-        ) {
-            return true
-        }
-
-        if SessionPayloadValueResolver.hasNonEmptyDictionary(
-            in: sources,
-            keys: [
-                "requests",
-                "pendingRequests",
-                "approvalRequestMap",
-                "permissionRequestMap",
-            ]
-        ) {
-            return true
-        }
-
-        if let status = SessionPayloadValueResolver.firstString(
-            in: sources,
-            keys: ["status", "state", "phase"]
-        )?.lowercased(),
-           status.contains("approval") || status.contains("permission") {
-            return true
-        }
-
-        return false
+        SessionApprovalStateEvaluator.hasPendingApprovalRequest(
+            agentState: decodedSessionAgentState,
+            metadata: decodedSessionMetadata
+        )
     }
 
     private var shouldShowAgentLiveStatus: Bool {
@@ -2205,282 +2262,15 @@ public struct SessionDetailView: View {
     }
 
     private var latestAgentLiveStatusText: String? {
-        for presentation in visibleTranscriptPresentations.reversed() {
-            for entry in presentation.entries.reversed() {
-                guard entry.role == .agent else { continue }
-                if entry.kind == .thinking {
-                    let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return body.isEmpty ? "Thinking…" : body
-                }
-                if entry.kind == .text {
-                    return nil
-                }
-                if let status = liveStatusText(from: entry) {
-                    return status
-                }
-                return nil
-            }
-        }
-        return nil
-    }
-
-    private func liveStatusText(from entry: SessionTranscriptEntry) -> String? {
-        guard entry.kind == .toolCall || entry.kind == .raw || entry.kind == .event else {
-            return nil
-        }
-
-        let title = (entry.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedTitle = title.lowercased()
-        let normalizedBody = body.lowercased()
-        let statusKeywords = [
-            "planning",
-            "explored",
-            "summarizing",
-            "finalizing",
-            "calling",
-            "crafting",
-            "loading",
-            "retry",
-            "updating",
-            "thinking",
-            "image #",
-        ]
-        let isStatusLike = statusKeywords.contains {
-            normalizedTitle.contains($0) || normalizedBody.contains($0)
-        }
-        guard isStatusLike else { return nil }
-
-        if !title.isEmpty {
-            return title
-        }
-        guard !body.isEmpty else { return nil }
-        if body.count > 120 {
-            return String(body.prefix(120)) + "…"
-        }
-        return body
+        SessionTranscriptLiveStatusEvaluator.latestAgentLiveStatusText(
+            in: visibleTranscriptPresentations
+        )
     }
 
     private var hasOutstandingAgentToolCalls: Bool {
-        var outstandingToolUseIDs: Set<String> = []
-        var anonymousOutstandingCalls = 0
-
-        for presentation in visibleTranscriptPresentations {
-            for entry in presentation.entries where entry.role == .agent {
-                switch entry.kind {
-                case .toolCall:
-                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
-                        outstandingToolUseIDs.insert(toolUseID)
-                    } else {
-                        anonymousOutstandingCalls += 1
-                    }
-                case .toolResult:
-                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
-                        outstandingToolUseIDs.remove(toolUseID)
-                    } else if anonymousOutstandingCalls > 0 {
-                        anonymousOutstandingCalls -= 1
-                    }
-                default:
-                    continue
-                }
-            }
-        }
-
-        return !outstandingToolUseIDs.isEmpty || anonymousOutstandingCalls > 0
-    }
-
-    private func normalizedToolUseID(_ raw: String?) -> String? {
-        guard let raw else { return nil }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private struct FlattenedTranscriptEntry {
-        let messageID: String
-        let sequenceText: String
-        let createdAtText: String
-        var entry: SessionTranscriptEntry
-    }
-
-    private func coalesceStreamingEntries(
-        in presentations: [SessionTranscriptMessagePresentation]
-    ) -> [SessionTranscriptMessagePresentation] {
-        var flattened: [FlattenedTranscriptEntry] = []
-        flattened.reserveCapacity(
-            presentations.reduce(into: 0) { partialResult, presentation in
-                partialResult += presentation.entries.count
-            }
+        SessionTranscriptLiveStatusEvaluator.hasOutstandingAgentToolCalls(
+            in: visibleTranscriptPresentations
         )
-        var openStreamIndexByToolUseID: [String: Int] = [:]
-
-        for presentation in presentations {
-            for entry in presentation.entries {
-                if isStreamingReferenceEntry(entry) {
-                    if let toolUseID = normalizedToolUseID(entry.toolUseID),
-                       let existingIndex = openStreamIndexByToolUseID[toolUseID],
-                       flattened.indices.contains(existingIndex) {
-                        let existing = flattened[existingIndex].entry
-                        let mergedBody = mergeStreamChunk(existing: existing.body, chunk: entry.body)
-                        if mergedBody != existing.body {
-                            flattened[existingIndex].entry = SessionTranscriptEntry(
-                                id: existing.id,
-                                role: existing.role,
-                                kind: existing.kind,
-                                title: existing.title,
-                                body: mergedBody,
-                                toolUseID: existing.toolUseID,
-                                sourceType: existing.sourceType,
-                                toolName: existing.toolName,
-                                isSidechain: existing.isSidechain,
-                                threadID: existing.threadID
-                            )
-                        }
-                        continue
-                    }
-
-                    let appendedIndex = flattened.count
-                    flattened.append(
-                        FlattenedTranscriptEntry(
-                            messageID: presentation.messageID,
-                            sequenceText: presentation.sequenceText,
-                            createdAtText: presentation.createdAtText,
-                            entry: entry
-                        )
-                    )
-                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
-                        openStreamIndexByToolUseID[toolUseID] = appendedIndex
-                    }
-                    continue
-                }
-
-                if entry.kind == .toolResult,
-                   let toolUseID = normalizedToolUseID(entry.toolUseID) {
-                    openStreamIndexByToolUseID.removeValue(forKey: toolUseID)
-                }
-
-                flattened.append(
-                    FlattenedTranscriptEntry(
-                        messageID: presentation.messageID,
-                        sequenceText: presentation.sequenceText,
-                        createdAtText: presentation.createdAtText,
-                        entry: entry
-                    )
-                )
-            }
-        }
-
-        var coalesced: [SessionTranscriptMessagePresentation] = []
-        coalesced.reserveCapacity(presentations.count)
-
-        for flattenedEntry in flattened {
-            if let last = coalesced.last,
-               last.messageID == flattenedEntry.messageID {
-                var combinedEntries = last.entries
-                combinedEntries.append(flattenedEntry.entry)
-                coalesced[coalesced.count - 1] = SessionTranscriptMessagePresentation(
-                    messageID: last.messageID,
-                    sequenceText: last.sequenceText,
-                    createdAtText: last.createdAtText,
-                    entries: combinedEntries
-                )
-                continue
-            }
-
-            coalesced.append(
-                SessionTranscriptMessagePresentation(
-                    messageID: flattenedEntry.messageID,
-                    sequenceText: flattenedEntry.sequenceText,
-                    createdAtText: flattenedEntry.createdAtText,
-                    entries: [flattenedEntry.entry]
-                )
-            )
-        }
-
-        return coalesced
-    }
-
-    private func isStreamingReferenceEntry(_ entry: SessionTranscriptEntry) -> Bool {
-        guard entry.kind == .raw else { return false }
-        guard let sourceType = entry.sourceType?.lowercased() else { return false }
-        return sourceType == "terminal-output" || sourceType == "tool-stream"
-    }
-
-    private func mergeStreamChunk(existing: String, chunk: String) -> String {
-        SessionStreamingOutputMerger.merge(existing: existing, chunk: chunk)
-    }
-
-    private func filterReasoningEntries(
-        in presentations: [SessionTranscriptMessagePresentation]
-    ) -> [SessionTranscriptMessagePresentation] {
-        guard !showReasoningDetails else { return presentations }
-
-        let reasoningToolUseIDs = collectReasoningToolUseIDs(in: presentations)
-        var filteredPresentations: [SessionTranscriptMessagePresentation] = []
-        filteredPresentations.reserveCapacity(presentations.count)
-
-        for presentation in presentations {
-            var keptEntries: [SessionTranscriptEntry] = []
-            keptEntries.reserveCapacity(presentation.entries.count)
-
-            for entry in presentation.entries {
-                let normalizedToolName = entry.toolName?.lowercased()
-                let normalizedSourceType = entry.sourceType?.lowercased()
-                let toolUseID = normalizedToolUseID(entry.toolUseID)
-                let isReasoningTool = isReasoningToolName(normalizedToolName)
-                let isReasoningStream = toolUseID.map { reasoningToolUseIDs.contains($0) } ?? false
-                let shouldHideReasoningEntry =
-                    entry.kind == .thinking ||
-                    normalizedSourceType == "reasoning" ||
-                    isReasoningTool ||
-                    isReasoningStream
-
-                if shouldHideReasoningEntry {
-                    continue
-                }
-
-                keptEntries.append(entry)
-            }
-
-            guard !keptEntries.isEmpty else { continue }
-            if keptEntries == presentation.entries {
-                filteredPresentations.append(presentation)
-            } else {
-                filteredPresentations.append(
-                    SessionTranscriptMessagePresentation(
-                        messageID: presentation.messageID,
-                        sequenceText: presentation.sequenceText,
-                        createdAtText: presentation.createdAtText,
-                        entries: keptEntries
-                    )
-                )
-            }
-        }
-
-        return filteredPresentations
-    }
-
-    private func collectReasoningToolUseIDs(
-        in presentations: [SessionTranscriptMessagePresentation]
-    ) -> Set<String> {
-        var ids: Set<String> = []
-        for presentation in presentations {
-            for entry in presentation.entries where entry.kind == .toolCall {
-                guard isReasoningToolName(entry.toolName) else { continue }
-                guard let toolUseID = normalizedToolUseID(entry.toolUseID) else { continue }
-                ids.insert(toolUseID)
-            }
-        }
-        return ids
-    }
-
-    private func isReasoningToolName(_ value: String?) -> Bool {
-        guard let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-              !normalized.isEmpty else {
-            return false
-        }
-        return normalized == "codexreasoning" ||
-            normalized == "geminireasoning" ||
-            normalized == "think"
     }
 
     private func normalizedNonNegativeInt(from value: Any?) -> Int? {
@@ -2495,759 +2285,5 @@ public struct SessionDetailView: View {
             return max(0, parsed)
         }
         return nil
-    }
-}
-
-private enum DockChipTone {
-    case neutral
-    case primary
-}
-
-private struct PressableScaleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-    }
-}
-
-private struct DockChipModifier: ViewModifier {
-    let tone: DockChipTone
-
-    func body(content: Content) -> some View {
-        content
-            .font(.caption.monospaced().weight(.semibold))
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .foregroundStyle(foreground)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(chipBackground)
-            )
-    }
-
-    private var chipBackground: Color {
-        switch tone {
-        case .neutral:
-            return AppPalette.controlSurface
-        case .primary:
-            return AppPalette.chipPrimaryBackground
-        }
-    }
-
-    private var foreground: Color {
-        switch tone {
-        case .neutral:
-            return AppPalette.primaryText
-        case .primary:
-            return .white
-        }
-    }
-}
-
-private struct CodexThreadRow: View {
-    private static let formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let fallbackFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
-    let thread: APICodexThreadSummary
-    let isResuming: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(threadName)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer()
-                if isResuming {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text("Resume")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
-                }
-            }
-            Text(thread.id)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if let dateText {
-                Text(dateText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var threadName: String {
-        let trimmed = thread.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let trimmed, !trimmed.isEmpty {
-            return trimmed
-        }
-        return "Untitled"
-    }
-
-    private var dateText: String? {
-        let candidate = thread.updatedAt ?? thread.createdAt
-        guard let candidate else { return nil }
-        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
-            return candidate
-        }
-        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
-    }
-}
-
-private struct ClaudeSessionRow: View {
-    private static let formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let fallbackFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
-    let session: APIClaudeSessionSummary
-    let isResuming: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(session.id)
-                    .font(.caption.monospaced())
-                    .lineLimit(1)
-                Spacer()
-                if isResuming {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text("Resume")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
-                }
-            }
-            if let cwd = session.cwd, !cwd.isEmpty {
-                Text(cwd)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            if let dateText {
-                Text(dateText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var dateText: String? {
-        let candidate = session.updatedAt ?? session.createdAt
-        guard let candidate else { return nil }
-        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
-            return candidate
-        }
-        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
-    }
-}
-
-private struct MessagesSectionRows: View {
-    let isLoading: Bool
-    let errorMessage: String?
-    let visibleTranscriptPresentations: [SessionTranscriptMessagePresentation]
-    let liveStatusText: String?
-    let transcriptBottomAnchorID: String
-    let onReferenceToggle: () -> Void
-    let onRetry: () -> Void
-
-    var body: some View {
-        messageSectionBadge
-        if isLoading {
-            TranscriptLoadingCard()
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(
-                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-                )
-        } else if let errorMessage {
-            TranscriptErrorCard(error: errorMessage, onRetry: onRetry)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(
-                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-                )
-        } else if visibleTranscriptPresentations.isEmpty {
-            Text("No synced messages yet for this session")
-                .font(.footnote)
-                .foregroundStyle(AppPalette.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 14)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(AppPalette.chatToolBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(AppPalette.chatBubbleStroke, lineWidth: 1)
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(
-                    EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-                )
-        } else {
-            ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
-                SessionTranscriptMessageRow(
-                    presentation: presentation,
-                    onReferenceToggle: onReferenceToggle
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(
-                    EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-                )
-            }
-        }
-
-        if let liveStatusText {
-            SessionTranscriptLiveStatusRow(statusText: liveStatusText)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(
-                    EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-                )
-        }
-
-        Color.clear
-            .frame(height: 1)
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-            .id(transcriptBottomAnchorID)
-    }
-
-    private var messageSectionBadge: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.caption2)
-                .foregroundStyle(AppPalette.secondaryText)
-            Text("Messages")
-                .font(.caption2.monospaced().weight(.bold))
-                .foregroundStyle(AppPalette.secondaryText)
-                .textCase(.uppercase)
-        }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 2)
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14))
-    }
-}
-
-private struct TranscriptLoadingCard: View {
-    var body: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-                .tint(AppPalette.accent)
-            Text("Loading messages…")
-                .font(.footnote.monospaced())
-                .foregroundStyle(AppPalette.secondaryText)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
-    }
-}
-
-private struct TranscriptErrorCard: View {
-    let error: String
-    let onRetry: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.orange)
-                Text("Unable to load messages")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(AppPalette.primaryText)
-            }
-
-            Text(error)
-                .font(.caption.monospaced())
-                .foregroundStyle(AppPalette.secondaryText)
-                .lineSpacing(1.5)
-
-            Button(action: onRetry) {
-                Label("Retry", systemImage: "arrow.clockwise")
-                    .modifier(DockChipModifier(tone: .neutral))
-            }
-            .buttonStyle(PressableScaleButtonStyle())
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
-    }
-}
-
-private struct SessionTranscriptMessageRow: View {
-    let presentation: SessionTranscriptMessagePresentation
-    let onReferenceToggle: (() -> Void)?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: showsTimestamp ? 8 : 3) {
-            if showsTimestamp {
-                HStack {
-                    Spacer()
-                    Text(presentation.createdAtText)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(AppPalette.secondaryText.opacity(0.9))
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(presentation.entries) { entry in
-                    SessionTranscriptLogLine(
-                        entry: entry,
-                        onReferenceToggle: onReferenceToggle
-                    )
-                }
-            }
-        }
-        .padding(.vertical, 1)
-    }
-
-    private var showsTimestamp: Bool {
-        presentation.entries.contains { entry in
-            guard entry.role == .user || entry.role == .agent else { return false }
-            return entry.kind == .text || entry.kind == .thinking
-        }
-    }
-}
-
-private struct SessionTranscriptLiveStatusRow: View {
-    let statusText: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            LivePulseDot(size: 7)
-                .padding(.top, 4)
-            LiveStatusShimmerText(
-                text: statusText,
-                lineLimit: 1
-            )
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct LiveStatusShimmerText: View {
-    let text: String
-    let lineLimit: Int
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var phase: CGFloat = 0
-
-    var body: some View {
-        Text(text)
-            .font(.footnote)
-            .foregroundStyle(AppPalette.secondaryText)
-            .lineLimit(lineLimit)
-            .overlay {
-                if !reduceMotion {
-                    GeometryReader { proxy in
-                        let width = proxy.size.width
-                        let bandWidth = max(18, width * 0.24)
-                        let highlightOpacity = colorScheme == .dark ? 0.40 : 0.34
-
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0),
-                                .init(color: .white.opacity(highlightOpacity), location: 0.5),
-                                .init(color: .clear, location: 1)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(width: bandWidth, height: proxy.size.height * 1.7)
-                        .rotationEffect(.degrees(14))
-                        .offset(
-                            x: (phase * (width + bandWidth * 2)) - bandWidth,
-                            y: -proxy.size.height * 0.35
-                        )
-                    }
-                    .mask(
-                        Text(text)
-                            .font(.footnote)
-                            .lineLimit(lineLimit)
-                    )
-                    .blendMode(.screen)
-                    .allowsHitTesting(false)
-                    .onAppear {
-                        phase = 0
-                        withAnimation(.linear(duration: 1.75).repeatForever(autoreverses: false)) {
-                            phase = 1
-                        }
-                    }
-                }
-            }
-    }
-}
-
-private struct SessionTranscriptLogLine: View {
-    let entry: SessionTranscriptEntry
-    let onReferenceToggle: (() -> Void)?
-    @State private var isExpanded = false
-
-    var body: some View {
-        if isSystemEvent {
-            HStack(spacing: 6) {
-                Image(systemName: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(AppPalette.secondaryText)
-                Text(systemEventText)
-                    .font(.caption)
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(AppPalette.chatToolBackground)
-            )
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.vertical, 2)
-        } else if isCollapsibleReferenceLogEntry {
-            VStack(alignment: .leading, spacing: 4) {
-                Button {
-                    onReferenceToggle?()
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        isExpanded.toggle()
-                    }
-                } label: {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(AppPalette.terminalLineTool)
-                            .padding(.top, 1)
-                        Text(collapsibleTitle)
-                            .font(.caption2.monospaced().weight(.semibold))
-                            .foregroundStyle(AppPalette.terminalLineTool)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 2)
-                }
-                .buttonStyle(.plain)
-
-                if isExpanded {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.body)
-                            .font(bodyFont)
-                            .foregroundStyle(.primary)
-                            .textSelection(.enabled)
-                            .lineLimit(nil)
-                            .lineSpacing(1.5)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .padding(.leading, 14)
-                    .padding(.top, 1)
-                    .overlay(alignment: .leading) {
-                        Rectangle()
-                            .fill(AppPalette.terminalLineTool.opacity(0.45))
-                            .frame(width: 1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .transition(.opacity)
-                }
-            }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else if isMainMessageEntry {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 7) {
-                    Circle()
-                        .fill(roleColor)
-                        .frame(width: 6, height: 6)
-                    Text(roleLabel)
-                        .font(.caption2.monospaced().weight(.semibold))
-                        .foregroundStyle(roleColor)
-                    if let title = entry.title, !title.isEmpty {
-                        Text(title)
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                }
-
-                Text(entry.body)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(AppPalette.primaryText)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
-                    .lineSpacing(2.2)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .fill(roleColor.opacity(0.45))
-                    .frame(width: 2)
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                if let title = entry.title, !title.isEmpty {
-                    Text(title)
-                        .font(.caption2.monospaced().weight(.semibold))
-                        .foregroundStyle(AppPalette.terminalLineTool)
-                }
-                Text(entry.body)
-                    .font(bodyFont)
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
-                    .lineSpacing(1.5)
-            }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 1)
-            .frame(
-                maxWidth: .infinity,
-                alignment: .leading
-            )
-        }
-    }
-
-    private var isSystemEvent: Bool {
-        entry.role == .system && entry.kind == .event
-    }
-
-    private var systemEventText: String {
-        if let title = entry.title, !title.isEmpty {
-            return "\(title): \(entry.body)"
-        }
-        return entry.body
-    }
-
-    private var bubbleColor: Color {
-        if entry.role == .user {
-            return AppPalette.chatUserBubble
-        }
-        return AppPalette.chatAgentBubble
-    }
-
-    private var roleLabel: String {
-        entry.role == .user ? "user" : "assistant"
-    }
-
-    private var roleColor: Color {
-        entry.role == .user ? AppPalette.terminalLineUser : AppPalette.terminalLineAgent
-    }
-
-    private var isCollapsibleToolEntry: Bool {
-        entry.kind == .toolCall || entry.kind == .toolResult || isEditFilesEntry
-    }
-
-    private var isCollapsibleReferenceLogEntry: Bool {
-        isCollapsibleToolEntry || entry.kind == .raw
-    }
-
-    private var isMainMessageEntry: Bool {
-        guard entry.role == .user || entry.role == .agent else { return false }
-        switch entry.kind {
-        case .text, .thinking:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private var collapsibleTitle: String {
-        if isEditFilesEntry {
-            return "Edit files"
-        }
-        if let title = entry.title, !title.isEmpty {
-            return title
-        }
-        switch entry.kind {
-        case .toolCall:
-            return "Tool call"
-        case .toolResult:
-            return "Tool result"
-        default:
-            return "Details"
-        }
-    }
-
-    private var isEditFilesEntry: Bool {
-        let normalizedTitle = (entry.title ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        if normalizedTitle.contains("edit files") {
-            return true
-        }
-
-        let normalizedBody = entry.body.lowercased()
-        return normalizedBody.contains("apply_patch") || normalizedBody.contains("*** begin patch")
-    }
-
-    private var bodyFont: Font {
-        switch entry.kind {
-        case .toolCall, .toolResult, .raw:
-            return .footnote.monospaced()
-        default:
-            return .subheadline
-        }
-    }
-}
-
-private struct LivePulseDot: View {
-    let size: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isAnimating = false
-
-    var body: some View {
-        Circle()
-            .fill(AppPalette.liveActivity)
-            .frame(width: size, height: size)
-            .scaleEffect(reduceMotion ? 1 : (isAnimating ? 1.07 : 0.94))
-            .opacity(reduceMotion ? 1 : (isAnimating ? 1 : 0.82))
-            .shadow(
-                color: AppPalette.liveActivity.opacity(reduceMotion ? 0.12 : (isAnimating ? 0.26 : 0.14)),
-                radius: reduceMotion ? 0 : 4,
-                y: 0
-            )
-            .overlay {
-                Circle()
-                    .stroke(AppPalette.liveActivity.opacity(0.55), lineWidth: 1)
-                    .scaleEffect(reduceMotion ? 1 : (isAnimating ? 1.32 : 1.0))
-                    .opacity(reduceMotion ? 0.2 : (isAnimating ? 0.08 : 0.32))
-            }
-            .onAppear {
-                guard !reduceMotion else {
-                    isAnimating = false
-                    return
-                }
-                isAnimating = false
-                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) {
-                    isAnimating = true
-                }
-            }
-            .onChange(of: reduceMotion) { _, shouldReduceMotion in
-                if shouldReduceMotion {
-                    isAnimating = false
-                    return
-                }
-                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) {
-                    isAnimating = true
-                }
-            }
-    }
-}
-
-private struct SessionMessageDetailView: View {
-    let presentation: SessionMessageDetailPresentation
-
-    var body: some View {
-        List {
-            Section("Overview") {
-                LabeledContent("Sequence") {
-                    Text(presentation.sequenceText)
-                        .font(.footnote.monospaced())
-                }
-                LabeledContent("Message ID") {
-                    Text(presentation.id)
-                        .font(.footnote.monospaced())
-                        .lineLimit(1)
-                }
-                if let localID = presentation.localID {
-                    LabeledContent("Local ID") {
-                        Text(localID)
-                            .font(.footnote.monospaced())
-                            .lineLimit(1)
-                    }
-                }
-            }
-
-            Section("Timestamps") {
-                LabeledContent("Created") {
-                    Text(presentation.createdAtText)
-                }
-                LabeledContent("Updated") {
-                    Text(presentation.updatedAtText)
-                }
-            }
-
-            Section("Content") {
-                if let contentType = presentation.contentType {
-                    LabeledContent("Type") {
-                        Text(contentType)
-                            .font(.footnote.monospaced())
-                    }
-                    LabeledContent("Payload Size") {
-                        Text("\(presentation.payloadCharacterCount) chars")
-                            .font(.footnote.monospaced())
-                    }
-                    if let payloadPreview = presentation.payloadPreview {
-                        Text(payloadPreview)
-                            .font(.footnote.monospaced())
-                            .textSelection(.enabled)
-                            .lineLimit(nil)
-                    }
-                    if presentation.payloadTruncated {
-                        Text("Payload preview is truncated to first \(SessionMessageDetailPresentationBuilder.payloadPreviewLimit) chars.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !presentation.payloadFields.isEmpty {
-                        Divider()
-                        Text("Parsed Fields")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        ForEach(presentation.payloadFields) { field in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(field.key)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(field.value)
-                                    .font(.footnote.monospaced())
-                                    .textSelection(.enabled)
-                                    .lineLimit(nil)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                } else {
-                    Text("No content payload")
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .navigationTitle("Message")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
