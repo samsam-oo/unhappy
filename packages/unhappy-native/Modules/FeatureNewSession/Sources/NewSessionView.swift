@@ -40,9 +40,29 @@ public struct NewSessionView: View {
                 directorySection
                 profilesSection
                 agentSection
-                advancedSection
-                actionSection
-                statusSection
+                NewSessionAdvancedSection(
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    showCodexThreadsSheet: $showCodexThreadsSheet,
+                    showClaudeSessionsSheet: $showClaudeSessionsSheet,
+                    focusedField: $focusedField,
+                    selectedModelDisplayValue: selectedModelDisplayValue,
+                    codexSelectionButtonTitle: codexSelectionButtonTitle,
+                    claudeSelectionButtonTitle: claudeSelectionButtonTitle
+                )
+                NewSessionActionSection(
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    primaryActionTitle: primaryActionTitle,
+                    onSpawned: onSessionSpawned,
+                    onDismiss: { dismiss() }
+                )
+                NewSessionStatusSections(
+                    infoMessage: viewModel.infoMessage,
+                    errorMessage: viewModel.errorMessage
+                )
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("New Session")
@@ -208,210 +228,6 @@ public struct NewSessionView: View {
                 Text("Claude").tag(APISessionSpawnAgent.claude)
                 Text("Codex").tag(APISessionSpawnAgent.codex)
                 Text("Gemini").tag(APISessionSpawnAgent.gemini)
-            }
-        }
-    }
-
-    private var advancedSection: some View {
-        Section("Advanced") {
-            if viewModel.isLoadingModels {
-                HStack {
-                    ProgressView()
-                    Text("Loading models…")
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Menu {
-                Button("Default") {
-                    viewModel.setSelectedModel("")
-                }
-                ForEach(viewModel.availableModels, id: \.self) { model in
-                    Button(model) {
-                        viewModel.setSelectedModel(model)
-                    }
-                }
-            } label: {
-                HStack {
-                    Text("Model")
-                    Spacer()
-                    Text(selectedModelDisplayValue)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if let error = viewModel.modelsErrorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                Button("Retry Models") {
-                    Task {
-                        await viewModel.loadModels(
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
-                .font(.footnote)
-            }
-
-            Menu {
-                ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
-                    Button(value.displayName) {
-                        viewModel.setSelectedReasoningEffort(value)
-                    }
-                }
-            } label: {
-                HStack {
-                    Text("Reasoning Effort")
-                    Spacer()
-                    Text(viewModel.selectedReasoningEffort.displayName)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
-                showCodexThreadsSheet = true
-                Task {
-                    await viewModel.loadCodexThreads(
-                        serverURLString: serverURLString,
-                        token: token
-                    )
-                }
-            }
-            .disabled(
-                viewModel.selectedMachineID == nil ||
-                viewModel.isLoadingCodexThreads ||
-                viewModel.isLoadingMoreCodexThreads
-            )
-            if let error = viewModel.codexThreadsErrorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-            if !viewModel.codexResumeThreadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Selected Codex Session")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.codexResumeThreadID)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                    Button("Clear Codex Selection") {
-                        viewModel.clearCodexSelection()
-                    }
-                    .font(.footnote)
-                }
-            }
-
-            Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : claudeSelectionButtonTitle) {
-                showClaudeSessionsSheet = true
-                Task {
-                    await viewModel.loadClaudeSessions(
-                        serverURLString: serverURLString,
-                        token: token
-                    )
-                }
-            }
-            .disabled(
-                viewModel.selectedMachineID == nil ||
-                viewModel.isLoadingClaudeSessions ||
-                viewModel.isLoadingMoreClaudeSessions
-            )
-            if let error = viewModel.claudeSessionsErrorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-            if !viewModel.claudeResumeSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Selected Claude Session")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.claudeResumeSessionID)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                    Button("Clear Claude Selection") {
-                        viewModel.clearClaudeSelection()
-                    }
-                    .font(.footnote)
-                }
-            }
-
-            TextField("Session token (optional)", text: $viewModel.sessionToken)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($focusedField, equals: .sessionToken)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Environment Variables (KEY=VALUE)")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                TextEditor(text: $viewModel.environmentVariablesText)
-                    .font(.footnote.monospaced())
-                    .frame(minHeight: 96)
-                    .focused($focusedField, equals: .environmentVariables)
-                Text("One variable per line. Empty lines and # comments are ignored.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var actionSection: some View {
-        Section("Action") {
-            Button(viewModel.isSpawning ? "Starting…" : primaryActionTitle) {
-                Task {
-                    let success = await viewModel.startSession(
-                        serverURLString: serverURLString,
-                        token: token
-                    )
-                    if success {
-                        onSessionSpawned(viewModel.spawnedSessionID)
-                        dismiss()
-                    }
-                }
-            }
-            .disabled(
-                viewModel.isSpawning ||
-                viewModel.selectedMachineID == nil ||
-                viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            )
-
-            if let approvalDirectory = viewModel.approvalDirectory {
-                Text("Directory creation approval needed: \(approvalDirectory)")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Button("Create Directory And Continue") {
-                    Task {
-                        let success = await viewModel.continueWithDirectoryApproval(
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                        if success {
-                            onSessionSpawned(viewModel.spawnedSessionID)
-                            dismiss()
-                        }
-                    }
-                }
-                .disabled(viewModel.isSpawning)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusSection: some View {
-        if let info = viewModel.infoMessage {
-            Section("Status") {
-                Text(info)
-                    .font(.footnote)
-                    .foregroundStyle(.green)
-            }
-        }
-        if let error = viewModel.errorMessage {
-            Section("Error") {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
             }
         }
     }
