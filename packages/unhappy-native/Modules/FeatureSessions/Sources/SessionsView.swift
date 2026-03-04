@@ -39,6 +39,7 @@ public struct SessionsView: View {
     public var body: some View {
         NavigationSplitView {
             sidebarContent
+                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
                 .navigationTitle("Sessions")
                 .toolbar { sessionsToolbarContent }
                 .refreshable {
@@ -115,21 +116,9 @@ public struct SessionsView: View {
             ProgressView("Loading sessions…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if visibleSessions.isEmpty {
-            Text("No sessions")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            emptyDetailState
         } else {
-            VStack(spacing: 10) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("Select a Session")
-                    .font(.headline)
-                Text("Choose a chat from the left list to open details.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            chooseSessionDetailState
         }
     }
 
@@ -150,13 +139,72 @@ public struct SessionsView: View {
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             } else if visibleSessions.isEmpty {
-                Text("No sessions")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                emptySidebarState
             } else {
                 sessionsNavigationList
             }
         }
+    }
+
+    private var emptySidebarState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("No sessions yet")
+                .font(.headline)
+            Text("Create a new session to start coding.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                isPresentingNewSession = true
+            } label: {
+                Label("New Session", systemImage: "plus.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 20)
+    }
+
+    private var emptyDetailState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "terminal.fill")
+                .font(.system(size: 38, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("No sessions")
+                .font(.title3.weight(.semibold))
+            Text("Create a session from the left panel to begin.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Button {
+                isPresentingNewSession = true
+            } label: {
+                Label("Create Session", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(24)
+    }
+
+    private var chooseSessionDetailState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "bubble.left.and.bubble.right.fill")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Select a Session")
+                .font(.headline)
+            Text("Choose a chat from the left panel to open details.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(24)
     }
 
     private var sessionsNavigationList: some View {
