@@ -4,7 +4,7 @@ import FeatureSessionTools
 
 @MainActor
 public struct SessionDetailView: View {
-    private enum SessionQuickTool: String, Identifiable {
+    enum SessionQuickTool: String, Identifiable {
         case info
         case files
         case review
@@ -13,7 +13,7 @@ public struct SessionDetailView: View {
         var id: String { rawValue }
     }
 
-    private enum SessionComposerFlavor: String {
+    enum SessionComposerFlavor: String {
         case codex
         case claude
         case gemini
@@ -24,29 +24,29 @@ public struct SessionDetailView: View {
         case customModel
     }
 
-    private struct CachedTranscriptPresentation: Equatable {
+    struct CachedTranscriptPresentation: Equatable {
         let sourceMessage: APISessionMessage
         let dataEncryptionKey: String?
         let presentation: SessionTranscriptMessagePresentation
     }
 
-    private struct PendingPermissionRequest: Identifiable, Equatable {
+    struct PendingPermissionRequest: Identifiable, Equatable {
         let id: String
         let callID: String
         let toolName: String
         let summary: String?
     }
 
-    private static let customModelOverrideOption = "__custom_model_override__"
-    private static let modelPickerDefaultOption = "__model_default__"
-    private static let modelPickerCustomOption = "__model_custom__"
-    private static let modelPickerPresetPrefix = "__model_preset__:"
-    private static let effortPickerPresetPrefix = "__effort_preset__:"
-    private static let permissionModePickerDefaultOption = "__permission_mode_default__"
-    private static let permissionModePickerPresetPrefix = "__permission_mode_preset__:"
-    private static let transcriptBottomAnchorID = "__session_transcript_bottom__"
+    static let customModelOverrideOption = "__custom_model_override__"
+    static let modelPickerDefaultOption = "__model_default__"
+    static let modelPickerCustomOption = "__model_custom__"
+    static let modelPickerPresetPrefix = "__model_preset__:"
+    static let effortPickerPresetPrefix = "__effort_preset__:"
+    static let permissionModePickerDefaultOption = "__permission_mode_default__"
+    static let permissionModePickerPresetPrefix = "__permission_mode_preset__:"
+    static let transcriptBottomAnchorID = "__session_transcript_bottom__"
 
-    private enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
+    enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
         case auto
         case low
         case medium
@@ -97,38 +97,38 @@ public struct SessionDetailView: View {
     let token: String
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) var colorScheme
     @AppStorage("unhappy.native.showReasoningDetails")
-    private var showReasoningDetails = false
-    @State private var showDeleteConfirmation = false
-    @State private var showRenameSheet = false
-    @State private var showCodexThreadsSheet = false
-    @State private var showClaudeSessionsSheet = false
-    @State private var renameDraft = ""
-    @State private var codexCwdFilterDraft = ""
-    @State private var codexResumeDirectoryDraft = ""
-    @State private var claudeCwdFilterDraft = ""
-    @State private var claudeResumeDirectoryDraft = ""
-    @State private var draftMessage = ""
-    @State private var presentedQuickTool: SessionQuickTool?
-    @State private var applyModelOverride = false
-    @State private var modelOverrideDraft = ""
-    @State private var selectedModelOverrideOption = ""
-    @State private var applyEffortOverride = false
-    @State private var selectedEffortOverride: SessionComposerEffortSelection = .auto
-    @State private var selectedPermissionModeOverride: APISessionMessagePermissionMode?
-    @State private var serverModelOverrideOptions: [String] = []
-    @State private var shouldFollowTranscript = true
-    @State private var scrollToBottomRequestID = UUID()
-    @State private var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
-    @State private var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
-    @State private var respondingPermissionRequestID: String?
-    @State private var isRecoveringDisconnectedSession = false
-    @State private var permissionActionStatusMessage: String?
-    @State private var permissionActionErrorMessage: String?
-    @GestureState private var isInteractingWithBottomDock = false
-    @FocusState private var focusedComposerField: SessionComposerFocusField?
+    var showReasoningDetails = false
+    @State var showDeleteConfirmation = false
+    @State var showRenameSheet = false
+    @State var showCodexThreadsSheet = false
+    @State var showClaudeSessionsSheet = false
+    @State var renameDraft = ""
+    @State var codexCwdFilterDraft = ""
+    @State var codexResumeDirectoryDraft = ""
+    @State var claudeCwdFilterDraft = ""
+    @State var claudeResumeDirectoryDraft = ""
+    @State var draftMessage = ""
+    @State var presentedQuickTool: SessionQuickTool?
+    @State var applyModelOverride = false
+    @State var modelOverrideDraft = ""
+    @State var selectedModelOverrideOption = ""
+    @State var applyEffortOverride = false
+    @State var selectedEffortOverride: SessionComposerEffortSelection = .auto
+    @State var selectedPermissionModeOverride: APISessionMessagePermissionMode?
+    @State var serverModelOverrideOptions: [String] = []
+    @State var shouldFollowTranscript = true
+    @State var scrollToBottomRequestID = UUID()
+    @State var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
+    @State var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
+    @State var respondingPermissionRequestID: String?
+    @State var isRecoveringDisconnectedSession = false
+    @State var permissionActionStatusMessage: String?
+    @State var permissionActionErrorMessage: String?
+    @GestureState var isInteractingWithBottomDock = false
+    @FocusState var focusedComposerField: SessionComposerFocusField?
 
     public init(
         session: APISession,
@@ -152,13 +152,13 @@ public struct SessionDetailView: View {
         }
     }
 
-    private func transcriptListContent(using scrollProxy: ScrollViewProxy) -> some View {
+    func transcriptListContent(using scrollProxy: ScrollViewProxy) -> some View {
         let messagesSectionRows = makeMessagesSectionRows()
         let listBase = transcriptListBase(messagesSectionRows: messagesSectionRows)
         return applyTranscriptLifecycleHandlers(to: listBase, using: scrollProxy)
     }
 
-    private func makeMessagesSectionRows() -> MessagesSectionRows {
+    func makeMessagesSectionRows() -> MessagesSectionRows {
         MessagesSectionRows(
             isLoading: viewModel.isLoadingSessionMessages,
             errorMessage: viewModel.selectedSessionErrorMessage,
@@ -180,7 +180,7 @@ public struct SessionDetailView: View {
         )
     }
 
-    private func transcriptListBase(messagesSectionRows: MessagesSectionRows) -> some View {
+    func transcriptListBase(messagesSectionRows: MessagesSectionRows) -> some View {
         List {
             Section {
                 sessionSectionContent
@@ -228,7 +228,7 @@ public struct SessionDetailView: View {
         }
     }
 
-    private func applyTranscriptLifecycleHandlers<Content: View>(
+    func applyTranscriptLifecycleHandlers<Content: View>(
         to content: Content,
         using scrollProxy: ScrollViewProxy
     ) -> some View {
@@ -242,7 +242,7 @@ public struct SessionDetailView: View {
         )
     }
 
-    private func applyTranscriptAppearanceHandlers<Content: View>(
+    func applyTranscriptAppearanceHandlers<Content: View>(
         to content: Content,
         using scrollProxy: ScrollViewProxy
     ) -> some View {
@@ -256,7 +256,7 @@ public struct SessionDetailView: View {
             }
     }
 
-    private func applyTranscriptStateChangeHandlers<Content: View>(
+    func applyTranscriptStateChangeHandlers<Content: View>(
         to content: Content,
         using scrollProxy: ScrollViewProxy
     ) -> some View {
@@ -270,7 +270,7 @@ public struct SessionDetailView: View {
         )
     }
 
-    private func applyTranscriptCacheChangeHandlers<Content: View>(
+    func applyTranscriptCacheChangeHandlers<Content: View>(
         to content: Content,
         using scrollProxy: ScrollViewProxy
     ) -> some View {
@@ -290,7 +290,7 @@ public struct SessionDetailView: View {
             }
     }
 
-    private func applyTranscriptScrollChangeHandlers<Content: View>(
+    func applyTranscriptScrollChangeHandlers<Content: View>(
         to content: Content,
         using scrollProxy: ScrollViewProxy
     ) -> some View {
@@ -313,14 +313,14 @@ public struct SessionDetailView: View {
             }
     }
 
-    private func handleSelectedSessionMessagesChange(_ messages: [APISessionMessage]) {
+    func handleSelectedSessionMessagesChange(_ messages: [APISessionMessage]) {
         refreshTranscriptPresentationCache(
             messages: messages,
             dataEncryptionKey: currentSession.dataEncryptionKey
         )
     }
 
-    private func handleFocusedComposerFieldChange(
+    func handleFocusedComposerFieldChange(
         _ focusedField: SessionComposerFocusField?,
         using scrollProxy: ScrollViewProxy
     ) {
@@ -329,7 +329,7 @@ public struct SessionDetailView: View {
         scrollTranscriptToBottom(using: scrollProxy)
     }
 
-    private func handleLoadingSessionMessagesChange(
+    func handleLoadingSessionMessagesChange(
         wasLoading: Bool,
         isLoading: Bool,
         using scrollProxy: ScrollViewProxy
@@ -339,7 +339,7 @@ public struct SessionDetailView: View {
         scrollTranscriptToBottom(using: scrollProxy, animated: false)
     }
 
-    private func handleTranscriptOnAppear(using scrollProxy: ScrollViewProxy) {
+    func handleTranscriptOnAppear(using scrollProxy: ScrollViewProxy) {
         if !availableEffortSelections.contains(selectedEffortOverride),
            let first = availableEffortSelections.first {
             selectedEffortOverride = first
@@ -358,7 +358,7 @@ public struct SessionDetailView: View {
         scrollTranscriptToBottom(using: scrollProxy, animated: false)
     }
 
-    private func decoratedSessionRoot<Content: View>(_ content: Content) -> some View {
+    func decoratedSessionRoot<Content: View>(_ content: Content) -> some View {
         content
             .sheet(isPresented: $showRenameSheet) {
                 renameSessionSheet
@@ -393,7 +393,7 @@ public struct SessionDetailView: View {
             )
     }
 
-    private var renameSessionSheet: some View {
+    var renameSessionSheet: some View {
         SessionRenameSheet(
             isPresented: $showRenameSheet,
             renameDraft: $renameDraft,
@@ -411,7 +411,7 @@ public struct SessionDetailView: View {
         )
     }
 
-    private func quickToolSheet(for tool: SessionQuickTool) -> some View {
+    func quickToolSheet(for tool: SessionQuickTool) -> some View {
         NavigationStack {
             quickToolDestinationView(tool)
                 .toolbar {
@@ -422,7 +422,7 @@ public struct SessionDetailView: View {
         }
     }
 
-    private var codexSessionsSheet: some View {
+    var codexSessionsSheet: some View {
         SessionCodexSessionsSheet(
             viewModel: viewModel,
             sessionID: session.id,
@@ -434,7 +434,7 @@ public struct SessionDetailView: View {
         )
     }
 
-    private var claudeSessionsSheet: some View {
+    var claudeSessionsSheet: some View {
         SessionClaudeSessionsSheet(
             viewModel: viewModel,
             sessionID: session.id,
@@ -446,1200 +446,4 @@ public struct SessionDetailView: View {
         )
     }
 
-    private var currentSession: APISession {
-        viewModel.sessions.first(where: { $0.id == session.id }) ?? session
-    }
-
-    private var currentSessionDisplayTitle: String? {
-        SessionDisplayTitleResolver.resolvedDisplayTitle(for: currentSession)
-    }
-
-    private var currentSessionHasDisplayTitle: Bool {
-        currentSessionDisplayTitle != nil
-    }
-
-    private var currentSessionTitle: String {
-        if let currentSessionDisplayTitle {
-            return currentSessionDisplayTitle
-        }
-        return SessionDisplayTitleResolver.fallbackTitle(for: currentSession)
-    }
-
-    private var subAgentInProgressCount: Int {
-        guard currentSession.active else { return 0 }
-        return collabInProgressCountFromAgentState
-    }
-
-    private var pendingPermissionRequests: [PendingPermissionRequest] {
-        let sources = [decodedSessionAgentState, decodedSessionMetadata]
-        let requestMap = SessionPayloadValueResolver.firstDictionary(
-            in: sources,
-            keys: [
-                "requests",
-                "pendingRequests",
-                "approvalRequestMap",
-                "permissionRequestMap",
-            ]
-        ) ?? [:]
-
-        var rows: [PendingPermissionRequest] = []
-        rows.reserveCapacity(requestMap.count)
-        for (rawRequestID, rawValue) in requestMap {
-            let requestID = rawRequestID.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !requestID.isEmpty else { continue }
-            guard let requestPayload = rawValue as? [String: Any] else {
-                rows.append(
-                    PendingPermissionRequest(
-                        id: requestID,
-                        callID: requestID,
-                        toolName: "Tool",
-                        summary: nil
-                    )
-                )
-                continue
-            }
-
-            let callID = SessionPayloadValueResolver.firstString(
-                in: [requestPayload],
-                keys: ["callId", "toolCallId", "id"]
-            ) ?? requestID
-            let toolName = SessionPayloadValueResolver.firstString(
-                in: [requestPayload],
-                keys: ["toolName", "tool", "name"]
-            ) ?? "Tool"
-            let summary = permissionSummary(from: requestPayload)
-            rows.append(
-                PendingPermissionRequest(
-                    id: requestID,
-                    callID: callID,
-                    toolName: toolName,
-                    summary: summary
-                )
-            )
-        }
-
-        return rows.sorted { lhs, rhs in
-            lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
-        }
-    }
-
-    private var resumeDirectoryForDisconnectedSession: String? {
-        let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "cwd",
-                "path",
-                "directory",
-                "workingDirectory",
-                "workDir",
-                "projectPath",
-            ]
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let raw, !raw.isEmpty else {
-            return nil
-        }
-        return raw
-    }
-
-    private var upstreamAgentSessionIDForResume: String? {
-        let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "agentSessionId",
-                "agent_session_id",
-                "upstreamSessionId",
-                "upstream_session_id",
-            ]
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let raw, !raw.isEmpty else {
-            return nil
-        }
-        return raw
-    }
-
-    private var canAutoResumeDisconnectedSession: Bool {
-        guard parsedSessionAgent != nil else { return false }
-        guard resumeDirectoryForDisconnectedSession != nil else { return false }
-        if parsedSessionAgent == .codex || parsedSessionAgent == .claude {
-            return upstreamAgentSessionIDForResume != nil
-        }
-        return true
-    }
-
-    private func permissionSummary(from requestPayload: [String: Any]) -> String? {
-        if let summary = SessionPayloadValueResolver.firstString(
-            in: [requestPayload],
-            keys: ["reason", "message", "description", "prompt"]
-        ) {
-            let normalized = summary.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !normalized.isEmpty {
-                return clippedSummary(normalized)
-            }
-        }
-
-        if let input = SessionPayloadValueResolver.firstDictionary(
-            in: [requestPayload],
-            keys: ["input", "arguments", "args", "payload"]
-        ) {
-            if let command = SessionPayloadValueResolver.firstString(
-                in: [input],
-                keys: ["cmd", "command", "query", "q", "url", "path"]
-            ) {
-                return clippedSummary(command)
-            }
-            if JSONSerialization.isValidJSONObject(input),
-               let data = try? JSONSerialization.data(withJSONObject: input, options: []),
-               let text = String(data: data, encoding: .utf8) {
-                return clippedSummary(text)
-            }
-        }
-
-        return nil
-    }
-
-    private func clippedSummary(_ raw: String, limit: Int = 180) -> String {
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalized.count > limit else { return normalized }
-        return String(normalized.prefix(limit)) + "…"
-    }
-
-    private func respondToPermissionRequest(
-        _ requestID: String,
-        approved: Bool
-    ) {
-        guard respondingPermissionRequestID == nil else { return }
-        let normalizedRequestID = requestID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedRequestID.isEmpty else { return }
-
-        respondingPermissionRequestID = normalizedRequestID
-        permissionActionStatusMessage = nil
-        permissionActionErrorMessage = nil
-
-        let currentSessionID = currentSession.id
-        Task {
-            let toolsViewModel = makeSessionToolsViewModel()
-            toolsViewModel.permissionRequestID = normalizedRequestID
-            toolsViewModel.permissionDecision = approved ? .approvedForSession : .denied
-            toolsViewModel.permissionMode = .default
-            toolsViewModel.permissionAllowTools = ""
-            await toolsViewModel.submitPermissionDecision(
-                sessionID: currentSessionID,
-                serverURLString: serverURLString,
-                token: token
-            )
-
-            let actionError = toolsViewModel.permissionErrorMessage?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if let actionError, !actionError.isEmpty {
-                respondingPermissionRequestID = nil
-                permissionActionStatusMessage = nil
-                if actionError.lowercased().contains("session rpc is not connected") {
-                    if canAutoResumeDisconnectedSession {
-                        isRecoveringDisconnectedSession = true
-                        let resumedSessionID = await recoverDisconnectedSessionForApproval()
-                        isRecoveringDisconnectedSession = false
-                        if let resumedSessionID, !resumedSessionID.isEmpty {
-                            permissionActionErrorMessage = nil
-                            permissionActionStatusMessage =
-                                "Session resumed into \(resumedSessionID). Open it and retry approval."
-                        } else {
-                            permissionActionErrorMessage =
-                                "Session is disconnected. Failed to auto-resume. Resume it manually, then retry approval."
-                        }
-                    } else {
-                        permissionActionErrorMessage =
-                            "Session is disconnected. Resume or reopen this session, then try approval again."
-                    }
-                } else {
-                    permissionActionErrorMessage = actionError
-                }
-                return
-            }
-
-            respondingPermissionRequestID = nil
-            permissionActionErrorMessage = nil
-            permissionActionStatusMessage = approved ? "Approved permission request" : "Denied permission request"
-
-            await viewModel.load(
-                serverURLString: serverURLString,
-                token: token
-            )
-            await viewModel.loadMessages(
-                for: currentSessionID,
-                serverURLString: serverURLString,
-                token: token
-            )
-        }
-    }
-
-    private func recoverDisconnectedSessionForApproval() async -> String? {
-        guard let agent = parsedSessionAgent else {
-            return nil
-        }
-        guard let directory = resumeDirectoryForDisconnectedSession else {
-            return nil
-        }
-
-        let upstreamSessionID = upstreamAgentSessionIDForResume
-        let codexResumeThreadID = agent == .codex ? upstreamSessionID : nil
-        let claudeResumeSessionID = agent == .claude ? upstreamSessionID : nil
-        if agent == .codex && (codexResumeThreadID == nil || codexResumeThreadID?.isEmpty == true) {
-            return nil
-        }
-        if agent == .claude && (claudeResumeSessionID == nil || claudeResumeSessionID?.isEmpty == true) {
-            return nil
-        }
-
-        let spawnUseCase = SessionSpawnUseCase(service: URLSessionSessionsService())
-        do {
-            let response = try await spawnUseCase.spawnSession(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: currentSession.id,
-                directory: directory,
-                agent: agent,
-                codexResumeThreadID: codexResumeThreadID,
-                claudeResumeSessionID: claudeResumeSessionID,
-                approvedNewDirectoryCreation: true
-            )
-            await viewModel.load(
-                serverURLString: serverURLString,
-                token: token
-            )
-            return response.sessionID
-        } catch {
-            return nil
-        }
-    }
-
-    @ViewBuilder
-    private var sessionSectionContent: some View {
-        SessionSummarySectionRows(
-            title: currentSessionTitle,
-            titleIsPrimary: currentSessionHasDisplayTitle,
-            sessionID: currentSession.id,
-            statusText: currentSession.active ? "Active" : "Inactive",
-            isActive: currentSession.active,
-            updatedText: SessionTimestampPresentation.updatedLabel(for: currentSession.updatedAt)
-        )
-    }
-
-    private var approvalBottomSheet: some View {
-        SessionApprovalBottomSheet(
-            requests: approvalRequestRowModels,
-            respondingRequestID: respondingPermissionRequestID,
-            isRecoveringDisconnectedSession: isRecoveringDisconnectedSession,
-            statusMessage: permissionActionStatusMessage,
-            errorMessage: permissionActionErrorMessage,
-            surfaceColor: bottomSheetSurfaceColor,
-            shadowColor: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.36 : 0.10),
-            onApprove: { requestID in
-                respondToPermissionRequest(requestID, approved: true)
-            },
-            onDeny: { requestID in
-                respondToPermissionRequest(requestID, approved: false)
-            }
-        )
-    }
-
-    private var approvalRequestRowModels: [SessionApprovalRequestRowModel] {
-        pendingPermissionRequests.map { request in
-            SessionApprovalRequestRowModel(
-                id: request.id,
-                callID: request.callID,
-                toolName: request.toolName,
-                summary: request.summary
-            )
-        }
-    }
-
-    private var transcriptBackground: some View {
-        ZStack {
-            LinearGradient(
-                colors: backgroundGradientColors,
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(AppPalette.accent.opacity(colorScheme == .dark ? 0.06 : 0.07))
-                .frame(width: 320, height: 320)
-                .blur(radius: 56)
-                .offset(x: 160, y: -260)
-        }
-        .ignoresSafeArea()
-    }
-
-    private var backgroundGradientColors: [Color] {
-        if colorScheme == .dark {
-            return [
-                Color(red: 0.08, green: 0.10, blue: 0.14),
-                Color(red: 0.06, green: 0.07, blue: 0.10),
-            ]
-        }
-
-        return [
-            AppPalette.chatBackgroundTop,
-            AppPalette.chatBackgroundBottom,
-        ]
-    }
-
-    private var isKeyboardActive: Bool {
-        focusedComposerField != nil
-    }
-
-    private var bottomSheetSurfaceColor: Color {
-        Color(.systemBackground)
-    }
-
-    private var bottomSheetCornerRadius: CGFloat {
-        22
-    }
-
-    private var bottomDock: some View {
-        VStack(spacing: isKeyboardActive ? 6 : 10) {
-            composerBar
-            quickToolsBar
-        }
-        .padding(.horizontal, 12)
-        .padding(.top, isKeyboardActive ? 8 : 10)
-        .padding(.bottom, isKeyboardActive ? 4 : 8)
-        .background(
-            RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
-                .fill(bottomSheetSurfaceColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
-                .stroke(
-                    AppPalette.chromeSurfaceStroke.opacity(isKeyboardActive ? 0.32 : 0.55),
-                    lineWidth: 1
-                )
-        )
-        .shadow(
-            color: AppPalette.chromeShadow.opacity(colorScheme == .dark ? 0.42 : 0.14),
-            radius: isKeyboardActive ? 8 : 10,
-            y: isKeyboardActive ? 2 : 3
-        )
-        .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0).updating($isInteractingWithBottomDock) { _, state, _ in
-                state = true
-            }
-        )
-    }
-
-    private var bottomInsetContent: some View {
-        VStack(spacing: isKeyboardActive ? 6 : 8) {
-            if subAgentInProgressCount > 0 {
-                SessionSubAgentLiveBar(count: subAgentInProgressCount)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            if !pendingPermissionRequests.isEmpty {
-                approvalBottomSheet
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-            bottomDock
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.bottom, isKeyboardActive ? 6 : 8)
-        .animation(.easeInOut(duration: 0.2), value: subAgentInProgressCount > 0)
-        .animation(.easeInOut(duration: 0.2), value: pendingPermissionRequests.count)
-        .animation(.easeInOut(duration: 0.18), value: isKeyboardActive)
-    }
-
-    private var topBarTitleView: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "terminal")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppPalette.secondaryText)
-            Text(currentSessionTitle)
-                .font(.subheadline.monospaced().weight(.semibold))
-                .foregroundStyle(AppPalette.primaryText)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-    }
-
-    @ViewBuilder
-    private var toolbarTrailingContent: some View {
-        SessionToolbarTrailingMenu(
-            isBusy: viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id),
-            onListCodexSessions: {
-                showCodexThreadsSheet = true
-                if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    codexResumeDirectoryDraft = codexCwdFilterDraft
-                }
-                Task {
-                    await viewModel.loadCodexThreads(
-                        for: session.id,
-                        serverURLString: serverURLString,
-                        token: token,
-                        cwd: normalizedCWD(from: codexCwdFilterDraft)
-                    )
-                }
-            },
-            onListClaudeSessions: {
-                showClaudeSessionsSheet = true
-                if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    claudeResumeDirectoryDraft = claudeCwdFilterDraft
-                }
-                Task {
-                    await viewModel.loadClaudeSessions(
-                        for: session.id,
-                        serverURLString: serverURLString,
-                        token: token,
-                        cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                    )
-                }
-            },
-            onRename: {
-                renameDraft = currentSession.displayName ?? ""
-                showRenameSheet = true
-            },
-            onDelete: {
-                showDeleteConfirmation = true
-            }
-        )
-    }
-
-    private var composerBar: some View {
-        SessionComposerInputPanel(
-            isKeyboardActive: isKeyboardActive,
-            colorScheme: colorScheme,
-            isSending: viewModel.isSendingMessage(sessionID: session.id),
-            queuedComposerMessages: viewModel.queuedComposerMessages(for: currentSession.id),
-            applyModelOverride: applyModelOverride,
-            selectedModelOverrideOption: selectedModelOverrideOption,
-            customModelOverrideOption: Self.customModelOverrideOption,
-            sendErrorMessage: viewModel.sendMessageErrorMessage,
-            focusedComposerField: $focusedComposerField,
-            draftMessage: $draftMessage,
-            modelOverrideDraft: $modelOverrideDraft,
-            onQueue: {
-                submitDraftMessage(with: .queue)
-            },
-            onSend: {
-                submitDraftMessage(with: .immediate)
-            },
-            onEditQueuedMessage: { queueIndex, fallbackText in
-                let restored = viewModel.takeQueuedComposerMessage(
-                    for: currentSession.id,
-                    at: queueIndex
-                ) ?? fallbackText
-                draftMessage = restored
-                focusedComposerField = .message
-            }
-        )
-    }
-
-    private func submitDraftMessage(with steerMode: APISessionSteerMode) {
-        let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        focusedComposerField = nil
-
-        let modelOverride: SessionMessageModelOverride
-        if applyModelOverride {
-            switch selectedModelOverrideOption {
-            case Self.customModelOverrideOption:
-                let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                modelOverride = normalized.isEmpty ? .reset : .set(normalized)
-            case "":
-                modelOverride = .reset
-            default:
-                modelOverride = .set(selectedModelOverrideOption)
-            }
-        } else {
-            modelOverride = .inherit
-        }
-
-        let effortOverride: SessionMessageEffortOverride
-        if applyEffortOverride && supportsReasoningEffortOverride {
-            effortOverride = selectedEffortOverride.overrideValue
-        } else {
-            effortOverride = .inherit
-        }
-
-        Task {
-            let sent = await viewModel.sendMessage(
-                for: session.id,
-                text: text,
-                steerMode: steerMode,
-                permissionMode: selectedPermissionModeOverride,
-                modelOverride: modelOverride,
-                effortOverride: effortOverride,
-                serverURLString: serverURLString,
-                token: token
-            )
-            if sent {
-                shouldFollowTranscript = true
-                scrollToBottomRequestID = UUID()
-                draftMessage = ""
-            }
-        }
-    }
-
-    private var supportsReasoningEffortOverride: Bool {
-        guard let flavor = parsedSessionFlavor else { return false }
-        switch flavor {
-        case .codex, .claude:
-            return true
-        case .gemini:
-            return false
-        }
-    }
-
-    private var availableEffortSelections: [SessionComposerEffortSelection] {
-        guard let flavor = parsedSessionFlavor else {
-            return [.auto, .low, .medium, .high]
-        }
-        switch flavor {
-        case .codex:
-            return [.auto, .low, .medium, .high, .xhigh]
-        case .claude:
-            return [.auto, .low, .medium, .high, .max]
-        case .gemini:
-            return [.auto]
-        }
-    }
-
-    private var availableModelOverrideOptions: [String] {
-        if !serverModelOverrideOptions.isEmpty {
-            return serverModelOverrideOptions
-        }
-        guard let flavor = parsedSessionFlavor else { return [] }
-        switch flavor {
-        case .codex:
-            return [
-                "gpt-5.3-codex",
-                "gpt-5.2-codex",
-                "gpt-5-codex",
-                "gpt-5",
-            ]
-        case .claude:
-            return [
-                "claude-opus-4-6",
-                "claude-sonnet-4-5",
-                "claude-haiku-4-5",
-            ]
-        case .gemini:
-            return [
-                "gemini-2.5-pro",
-                "gemini-2.5-flash",
-                "gemini-2.5-flash-lite",
-            ]
-        }
-    }
-
-    private var quickToolsBar: some View {
-        SessionQuickToolsDockBar(
-            supportsReasoningEffortOverride: supportsReasoningEffortOverride,
-            selectedModelOverrideLabel: selectedModelOverrideLabel,
-            selectedReasoningOverrideLabel: selectedReasoningOverrideLabel,
-            selectedFileModeLabel: selectedFileModeLabel,
-            modelPickerOptions: modelPickerOptions,
-            effortPickerOptions: effortPickerOptions,
-            permissionModePickerOptions: permissionModePickerOptions,
-            modelPickerSelection: modelPickerSelection,
-            effortPickerSelection: effortPickerSelection,
-            permissionModePickerSelection: permissionModePickerSelection,
-            sessionIdentity: "\(session.id)-\(supportsReasoningEffortOverride)-\(serverModelOverrideOptions.count)",
-            surfaceColor: bottomSheetSurfaceColor,
-            onInfo: {
-                focusedComposerField = nil
-                presentedQuickTool = .info
-            },
-            onFiles: {
-                focusedComposerField = nil
-                presentedQuickTool = .files
-            },
-            onDiff: {
-                focusedComposerField = nil
-                presentedQuickTool = .review
-            },
-            onWorktree: {
-                focusedComposerField = nil
-                presentedQuickTool = .worktree
-            }
-        )
-    }
-
-    private var selectedModelOverrideLabel: String {
-        guard applyModelOverride else { return resolvedCurrentModelLabel ?? "Default" }
-        switch selectedModelOverrideOption {
-        case Self.customModelOverrideOption:
-            let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-            return normalized.isEmpty ? "Custom" : normalized
-        default:
-            return selectedModelOverrideOption
-        }
-    }
-
-    private var selectedReasoningOverrideLabel: String {
-        guard applyEffortOverride else { return resolvedCurrentEffortLabel ?? "Auto" }
-        return selectedEffortOverride.label
-    }
-
-    private var selectedFileModeLabel: String {
-        if let selectedPermissionModeOverride {
-            return permissionModeDisplayLabel(for: selectedPermissionModeOverride)
-        }
-        if let resolvedCurrentPermissionMode {
-            return permissionModeDisplayLabel(for: resolvedCurrentPermissionMode)
-        }
-        return "Default"
-    }
-
-    private var modelPickerOptions: [SessionQuickToolPickerOption] {
-        var options: [SessionQuickToolPickerOption] = [
-            SessionQuickToolPickerOption(
-                id: Self.modelPickerDefaultOption,
-                label: "Use current model"
-            ),
-        ]
-        options.append(
-            contentsOf: availableModelOverrideOptions.map { model in
-                SessionQuickToolPickerOption(
-                    id: Self.modelPickerPresetPrefix + model,
-                    label: model
-                )
-            }
-        )
-        options.append(
-            SessionQuickToolPickerOption(
-                id: Self.modelPickerCustomOption,
-                label: "Custom model…"
-            )
-        )
-        return options
-    }
-
-    private var effortPickerOptions: [SessionQuickToolPickerOption] {
-        availableEffortSelections.map { effort in
-            SessionQuickToolPickerOption(
-                id: Self.effortPickerPresetPrefix + effort.rawValue,
-                label: effort.label
-            )
-        }
-    }
-
-    private var availablePermissionModeOptions: [APISessionMessagePermissionMode] {
-        guard let flavor = parsedSessionFlavor else {
-            return [.default, .yolo]
-        }
-        switch flavor {
-        case .codex:
-            return [.passthrough, .default, .readOnly, .safeYolo, .yolo]
-        case .claude, .gemini:
-            return [.default, .acceptEdits, .bypassPermissions, .plan]
-        }
-    }
-
-    private var permissionModePickerOptions: [SessionQuickToolPickerOption] {
-        var options: [SessionQuickToolPickerOption] = [
-            SessionQuickToolPickerOption(
-                id: Self.permissionModePickerDefaultOption,
-                label: "Use current mode"
-            ),
-        ]
-        options.append(
-            contentsOf: availablePermissionModeOptions.map { mode in
-                SessionQuickToolPickerOption(
-                    id: Self.permissionModePickerPresetPrefix + mode.rawValue,
-                    label: permissionModeDisplayLabel(for: mode)
-                )
-            }
-        )
-        return options
-    }
-
-    private var modelPickerSelection: Binding<String> {
-        Binding(
-            get: {
-                if !applyModelOverride {
-                    return Self.modelPickerDefaultOption
-                }
-                if selectedModelOverrideOption == Self.customModelOverrideOption {
-                    return Self.modelPickerCustomOption
-                }
-                return Self.modelPickerPresetPrefix + selectedModelOverrideOption
-            },
-            set: { value in
-                switch value {
-                case Self.modelPickerDefaultOption:
-                    applyModelOverride = false
-                    selectedModelOverrideOption = ""
-                    focusedComposerField = nil
-                case Self.modelPickerCustomOption:
-                    applyModelOverride = true
-                    selectedModelOverrideOption = Self.customModelOverrideOption
-                    focusedComposerField = .customModel
-                default:
-                    guard value.hasPrefix(Self.modelPickerPresetPrefix) else { return }
-                    let model = String(value.dropFirst(Self.modelPickerPresetPrefix.count))
-                    applyModelOverride = true
-                    selectedModelOverrideOption = model
-                    modelOverrideDraft = model
-                    focusedComposerField = nil
-                }
-            }
-        )
-    }
-
-    private var effortPickerSelection: Binding<String> {
-        Binding(
-            get: {
-                if applyEffortOverride {
-                    return Self.effortPickerPresetPrefix + selectedEffortOverride.rawValue
-                }
-                return Self.effortPickerPresetPrefix + SessionComposerEffortSelection.auto.rawValue
-            },
-            set: { value in
-                guard value.hasPrefix(Self.effortPickerPresetPrefix) else { return }
-                let raw = String(value.dropFirst(Self.effortPickerPresetPrefix.count))
-                guard let selected = SessionComposerEffortSelection(rawValue: raw) else { return }
-                selectedEffortOverride = selected
-                applyEffortOverride = selected != .auto
-            }
-        )
-    }
-
-    private var permissionModePickerSelection: Binding<String> {
-        Binding(
-            get: {
-                guard let selectedPermissionModeOverride else {
-                    return Self.permissionModePickerDefaultOption
-                }
-                return Self.permissionModePickerPresetPrefix + selectedPermissionModeOverride.rawValue
-            },
-            set: { value in
-                if value == Self.permissionModePickerDefaultOption {
-                    selectedPermissionModeOverride = nil
-                    return
-                }
-                guard value.hasPrefix(Self.permissionModePickerPresetPrefix) else { return }
-                let raw = String(value.dropFirst(Self.permissionModePickerPresetPrefix.count))
-                selectedPermissionModeOverride = APISessionMessagePermissionMode(rawValue: raw)
-            }
-        )
-    }
-
-    @ViewBuilder
-    private func quickToolDestinationView(_ tool: SessionQuickTool) -> some View {
-        switch tool {
-        case .info:
-            SessionInfoView(
-                session: currentSession,
-                serverURLString: serverURLString,
-                token: token,
-                makeViewModel: makeSessionToolsViewModel
-            )
-            .navigationTitle("Session Info")
-            .navigationBarTitleDisplayMode(.inline)
-        case .files:
-            SessionFileView(
-                session: currentSession,
-                serverURLString: serverURLString,
-                token: token,
-                makeViewModel: makeSessionToolsViewModel
-            )
-            .navigationTitle("File Viewer")
-            .navigationBarTitleDisplayMode(.inline)
-        case .review:
-            SessionReviewView(
-                session: currentSession,
-                serverURLString: serverURLString,
-                token: token,
-                makeViewModel: makeSessionToolsViewModel
-            )
-            .navigationTitle("Review Diff")
-            .navigationBarTitleDisplayMode(.inline)
-        case .worktree:
-            SessionFinishView(
-                session: currentSession,
-                serverURLString: serverURLString,
-                token: token,
-                makeViewModel: makeSessionToolsViewModel
-            )
-            .navigationTitle("Finish Worktree")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-
-    private func normalizedCWD(from value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private func scrollTranscriptToBottom(
-        using proxy: ScrollViewProxy,
-        animated: Bool = false
-    ) {
-        let snapshotCount = visibleTranscriptMessageIDs.count
-        // Schedule after two runloop turns so List can reconcile backing UICollectionView.
-        // This reduces invalid target index-path assertions during rapid stream updates.
-        DispatchQueue.main.async {
-            DispatchQueue.main.async {
-                guard shouldFollowTranscript else { return }
-                // Skip stale requests when the transcript just shrank.
-                guard visibleTranscriptMessageIDs.count >= snapshotCount else { return }
-
-                let action = {
-                    proxy.scrollTo(Self.transcriptBottomAnchorID, anchor: .bottom)
-                }
-                if animated {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        action()
-                    }
-                } else {
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        action()
-                    }
-                }
-            }
-        }
-    }
-
-    private func handleVisibleTranscriptMessageIDsChange(
-        oldIDs: [String],
-        newIDs: [String],
-        using proxy: ScrollViewProxy
-    ) {
-        guard shouldFollowTranscript else { return }
-        // Avoid List/UICollectionView out-of-bounds assertions during shrink updates.
-        guard newIDs.count >= oldIDs.count else { return }
-        scrollTranscriptToBottom(using: proxy)
-    }
-
-    private var parsedSessionFlavor: SessionComposerFlavor? {
-        guard let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionMetadata, decodedSessionAgentState],
-            keys: ["flavor", "agent", "provider"]
-        ) else {
-            return nil
-        }
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if let flavor = SessionComposerFlavor(rawValue: normalized) {
-            return flavor
-        }
-        if normalized.contains("claude") {
-            return .claude
-        }
-        if normalized.contains("gemini") {
-            return .gemini
-        }
-        if normalized.contains("codex") || normalized.contains("openai") || normalized.contains("gpt") {
-            return .codex
-        }
-        return nil
-    }
-
-    private var parsedSessionAgent: APISessionSpawnAgent? {
-        switch parsedSessionFlavor {
-        case .codex:
-            return .codex
-        case .claude:
-            return .claude
-        case .gemini:
-            return .gemini
-        case .none:
-            return nil
-        }
-    }
-
-    private var decodedSessionMetadata: [String: Any] {
-        SessionPayloadValueResolver.decodeJSONObject(
-            payload: currentSession.metadata,
-            dataEncryptionKey: currentSession.dataEncryptionKey
-        )
-    }
-
-    private var decodedSessionAgentState: [String: Any] {
-        SessionPayloadValueResolver.decodeJSONObject(
-            payload: currentSession.agentState,
-            dataEncryptionKey: currentSession.dataEncryptionKey
-        )
-    }
-
-    private var collabInProgressCountFromAgentState: Int {
-        let sources = [decodedSessionAgentState, decodedSessionMetadata]
-        guard let collabState = SessionPayloadValueResolver.firstDictionary(
-            in: sources,
-            keys: [
-                "collab",
-                "collaboration",
-                "multiAgent",
-                "multi_agent",
-            ]
-        ) else {
-            return 0
-        }
-
-        let activeCountKeys = [
-            "activeCount",
-            "active_count",
-            "inProgressCount",
-            "in_progress_count",
-            "runningCount",
-            "running_count",
-            "count",
-        ]
-        for key in activeCountKeys {
-            if let activeCount = normalizedNonNegativeInt(from: collabState[key]), activeCount > 0 {
-                return activeCount
-            }
-        }
-
-        let state = SessionPayloadValueResolver.firstString(
-            in: [collabState],
-            keys: ["state", "status", "phase"]
-        )?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if state == "in_progress" || state == "inprogress" || state == "running" {
-            return 1
-        }
-        return 0
-    }
-
-    private var resolvedCurrentModelLabel: String? {
-        SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "model",
-                "currentModel",
-                "selectedModel",
-                "modelName",
-            ]
-        )
-    }
-
-    private var resolvedCurrentEffortLabel: String? {
-        guard let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "effort",
-                "reasoningEffort",
-                "reasoning_effort",
-                "modelReasoningEffort",
-            ]
-        ) else {
-            return nil
-        }
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? nil : normalized
-    }
-
-    private var resolvedCurrentPermissionMode: APISessionMessagePermissionMode? {
-        guard let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "permissionMode",
-                "permission_mode",
-                "approvalMode",
-                "approval_mode",
-                "fileMode",
-                "file_mode",
-            ]
-        ) else {
-            return nil
-        }
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return APISessionMessagePermissionMode(rawValue: normalized)
-    }
-
-    private func permissionModeDisplayLabel(for mode: APISessionMessagePermissionMode) -> String {
-        switch mode {
-        case .default:
-            return "Default"
-        case .acceptEdits:
-            return "Accept Edits"
-        case .bypassPermissions:
-            return "Bypass"
-        case .plan:
-            return "Plan"
-        case .passthrough:
-            return "Passthrough"
-        case .readOnly:
-            return "Read Only"
-        case .safeYolo:
-            return "Safe YOLO"
-        case .yolo:
-            return "YOLO"
-        }
-    }
-
-    private func loadServerModelOptions() async {
-        let loaded = await viewModel.loadSessionModelOptions(
-            for: currentSession.id,
-            serverURLString: serverURLString,
-            token: token,
-            agent: parsedSessionAgent
-        ) ?? []
-        let normalized = loaded.compactMap { raw -> String? in
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }
-        var deduped: [String] = []
-        deduped.reserveCapacity(normalized.count)
-        for model in normalized where !deduped.contains(model) {
-            deduped.append(model)
-        }
-        if !deduped.isEmpty {
-            serverModelOverrideOptions = deduped
-        }
-    }
-
-    private func refreshTranscriptPresentationCache(
-        messages: [APISessionMessage],
-        dataEncryptionKey: String?
-    ) {
-        var nextCache: [String: CachedTranscriptPresentation] = [:]
-        nextCache.reserveCapacity(messages.count)
-
-        var nextPresentations: [SessionTranscriptMessagePresentation] = []
-        nextPresentations.reserveCapacity(messages.count)
-
-        for message in messages {
-            if let cached = transcriptPresentationCache[message.id],
-               cached.sourceMessage == message,
-               cached.dataEncryptionKey == dataEncryptionKey {
-                nextCache[message.id] = cached
-                if !cached.presentation.entries.isEmpty {
-                    nextPresentations.append(cached.presentation)
-                }
-                continue
-            }
-
-            let presentation = SessionTranscriptPresentationBuilder.make(
-                from: message,
-                dataEncryptionKey: dataEncryptionKey
-            )
-            let cached = CachedTranscriptPresentation(
-                sourceMessage: message,
-                dataEncryptionKey: dataEncryptionKey,
-                presentation: presentation
-            )
-            nextCache[message.id] = cached
-            if !presentation.entries.isEmpty {
-                nextPresentations.append(presentation)
-            }
-        }
-
-        let mergedPresentations = SessionTranscriptProcessing.coalesceStreamingEntries(
-            in: nextPresentations
-        )
-        let visiblePresentations = SessionTranscriptProcessing.filterReasoningEntries(
-            in: mergedPresentations,
-            showReasoningDetails: showReasoningDetails
-        )
-        transcriptPresentationCache = nextCache
-        if cachedVisibleTranscriptPresentations != visiblePresentations {
-            cachedVisibleTranscriptPresentations = visiblePresentations
-        }
-    }
-
-    private func refreshTranscriptPresentationCacheForCurrentState() {
-        refreshTranscriptPresentationCache(
-            messages: viewModel.selectedSessionMessages,
-            dataEncryptionKey: currentSession.dataEncryptionKey
-        )
-    }
-
-    private var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {
-        cachedVisibleTranscriptPresentations
-    }
-
-    private var visibleTranscriptMessageIDs: [String] {
-        visibleTranscriptPresentations.map(\.messageID)
-    }
-
-    private var latestAgentThinkingEntry: SessionTranscriptEntry? {
-        SessionTranscriptLiveStatusEvaluator.latestAgentThinkingEntry(
-            in: visibleTranscriptPresentations
-        )
-    }
-
-    private var liveStatusText: String? {
-        if viewModel.isLoadingSessionMessages {
-            return "Loading messages…"
-        }
-
-        if let sendingMode = viewModel.sendingSteerMode(sessionID: currentSession.id) {
-            if sendingMode == .queue {
-                return "Queueing…"
-            }
-            return "Sending…"
-        }
-
-        let queuedCount = viewModel.queuedComposerMessages(for: currentSession.id).count
-        if queuedCount > 0 {
-            return queuedCount == 1 ? "Queued 1 message" : "Queued \(queuedCount) messages"
-        }
-
-        if hasPendingApprovalRequest {
-            return "Approval needed"
-        }
-
-        if let latestAgentLiveStatusText {
-            if shouldShowAgentLiveStatus {
-                return latestAgentLiveStatusText
-            }
-        }
-
-        if currentSession.active {
-            return "Working…"
-        }
-
-        return nil
-    }
-
-    private var hasPendingApprovalRequest: Bool {
-        SessionApprovalStateEvaluator.hasPendingApprovalRequest(
-            agentState: decodedSessionAgentState,
-            metadata: decodedSessionMetadata
-        )
-    }
-
-    private var shouldShowAgentLiveStatus: Bool {
-        if subAgentInProgressCount > 0 {
-            return true
-        }
-        if latestAgentThinkingEntry != nil {
-            return true
-        }
-        return hasOutstandingAgentToolCalls
-    }
-
-    private var latestAgentLiveStatusText: String? {
-        SessionTranscriptLiveStatusEvaluator.latestAgentLiveStatusText(
-            in: visibleTranscriptPresentations
-        )
-    }
-
-    private var hasOutstandingAgentToolCalls: Bool {
-        SessionTranscriptLiveStatusEvaluator.hasOutstandingAgentToolCalls(
-            in: visibleTranscriptPresentations
-        )
-    }
-
-    private func normalizedNonNegativeInt(from value: Any?) -> Int? {
-        if let intValue = value as? Int {
-            return max(0, intValue)
-        }
-        if let number = value as? NSNumber {
-            return max(0, number.intValue)
-        }
-        if let string = value as? String,
-           let parsed = Int(string.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            return max(0, parsed)
-        }
-        return nil
-    }
 }
