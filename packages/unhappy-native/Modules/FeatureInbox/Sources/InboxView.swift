@@ -17,57 +17,102 @@ public struct InboxView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            Group {
-                if viewModel.isLoading {
-                    ProgressView("Loading inbox…")
-                } else if let errorMessage = viewModel.errorMessage {
-                    ContentUnavailableView(
-                        "Unable to load inbox",
-                        systemImage: "tray.full",
-                        description: Text(errorMessage)
-                    )
-                } else if viewModel.isEmpty {
-                    ContentUnavailableView(
-                        "No inbox items",
-                        systemImage: "tray",
-                        description: Text("Notifications and pending requests will appear here.")
-                    )
-                } else {
-                    inboxListContent
-                    .listStyle(.insetGrouped)
-                    .refreshable {
-                        await viewModel.load()
-                    }
+        NavigationSplitView {
+            sidebarContent
+                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
+                .navigationTitle("Inbox")
+                .toolbar { inboxToolbarContent }
+                .refreshable {
+                    await viewModel.load()
                 }
-            }
-            .navigationTitle("Inbox")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        InboxFriendsView(viewModel: viewModel)
-                    } label: {
-                        Image(systemName: "person.2")
-                    }
-                    .accessibilityLabel("Open friends")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        InboxFriendSearchView(viewModel: viewModel)
-                    } label: {
-                        Image(systemName: "person.badge.plus")
-                    }
-                    .accessibilityLabel("Search users")
-                }
-            }
-            .task(id: "\(serverURLString)|\(token)") {
-                viewModel.updateConfiguration(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                await viewModel.load()
-            }
+        } detail: {
+            splitDetailPlaceholder
         }
+        .navigationSplitViewStyle(.balanced)
+        .task(id: "\(serverURLString)|\(token)") {
+            viewModel.updateConfiguration(
+                serverURLString: serverURLString,
+                token: token
+            )
+            await viewModel.load()
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarContent: some View {
+        if viewModel.isLoading {
+            ProgressView("Loading inbox…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let errorMessage = viewModel.errorMessage {
+            ContentUnavailableView(
+                "Unable to load inbox",
+                systemImage: "tray.full",
+                description: Text(errorMessage)
+            )
+        } else if viewModel.isEmpty {
+            emptySidebarState
+        } else {
+            inboxListContent
+                .listStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private var splitDetailPlaceholder: some View {
+        if viewModel.isLoading {
+            ProgressView("Loading inbox…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if viewModel.isEmpty {
+            emptyDetailState
+        } else {
+            chooseItemDetailState
+        }
+    }
+
+    private var emptySidebarState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "tray")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("No inbox items")
+                .font(.headline)
+            Text("Notifications and requests will appear here.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 20)
+    }
+
+    private var emptyDetailState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "tray.full")
+                .font(.system(size: 38, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Inbox is empty")
+                .font(.title3.weight(.semibold))
+            Text("Friend requests and updates will show up here.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(24)
+    }
+
+    private var chooseItemDetailState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "bubble.left.and.bubble.right.fill")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Select an Inbox Item")
+                .font(.headline)
+            Text("Choose an item from the left panel to open details.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(24)
     }
 
     private var inboxListContent: some View {
@@ -76,6 +121,26 @@ public struct InboxView: View {
             pendingRequestsSection
             sentRequestsSection
             friendsSection
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var inboxToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            NavigationLink {
+                InboxFriendsView(viewModel: viewModel)
+            } label: {
+                Image(systemName: "person.2")
+            }
+            .accessibilityLabel("Open friends")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            NavigationLink {
+                InboxFriendSearchView(viewModel: viewModel)
+            } label: {
+                Image(systemName: "person.badge.plus")
+            }
+            .accessibilityLabel("Search users")
         }
     }
 
