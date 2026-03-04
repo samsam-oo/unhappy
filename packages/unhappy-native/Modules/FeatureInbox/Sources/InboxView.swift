@@ -53,8 +53,6 @@ public struct InboxView: View {
                     systemImage: "tray.full",
                     description: Text(errorMessage)
                 )
-            } else if viewModel.isEmpty {
-                emptySidebarState
             } else {
                 inboxListContent
                     .listStyle(.plain)
@@ -89,9 +87,7 @@ public struct InboxView: View {
                 .multilineTextAlignment(.leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 6)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.vertical, 6)
     }
 
     private var emptyDetailState: some View {
@@ -126,10 +122,20 @@ public struct InboxView: View {
 
     private var inboxListContent: some View {
         List {
-            updatesSection
-            pendingRequestsSection
-            sentRequestsSection
-            friendsSection
+            if viewModel.isEmpty {
+                Section {
+                    emptySidebarState
+                        .listRowInsets(
+                            EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+                        )
+                        .listRowBackground(Color.clear)
+                }
+            } else {
+                updatesSection
+                pendingRequestsSection
+                sentRequestsSection
+                friendsSection
+            }
         }
         .scrollContentBackground(.hidden)
         .background(sidebarCanvasColor)
