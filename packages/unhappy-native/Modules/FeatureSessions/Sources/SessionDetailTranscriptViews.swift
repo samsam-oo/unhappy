@@ -8,6 +8,7 @@ struct MessagesSectionRows: View {
     let liveStatusText: String?
     let transcriptBottomAnchorID: String
     let onReferenceToggle: () -> Void
+    let onFileLinkTap: (String) -> Void
     let onRetry: () -> Void
 
     var body: some View {
@@ -37,7 +38,8 @@ struct MessagesSectionRows: View {
             ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
                 SessionTranscriptMessageRow(
                     presentation: presentation,
-                    onReferenceToggle: onReferenceToggle
+                    onReferenceToggle: onReferenceToggle,
+                    onFileLinkTap: onFileLinkTap
                 )
                 .sessionListRow(insets: SessionListRowInsets.messageEntry)
             }
@@ -105,6 +107,7 @@ struct TranscriptErrorCard: View {
 struct SessionTranscriptMessageRow: View {
     let presentation: SessionTranscriptMessagePresentation
     let onReferenceToggle: (() -> Void)?
+    let onFileLinkTap: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: showsTimestamp ? 8 : 3) {
@@ -121,7 +124,8 @@ struct SessionTranscriptMessageRow: View {
                 ForEach(presentation.entries) { entry in
                     SessionTranscriptLogLine(
                         entry: entry,
-                        onReferenceToggle: onReferenceToggle
+                        onReferenceToggle: onReferenceToggle,
+                        onFileLinkTap: onFileLinkTap
                     )
                 }
             }
@@ -212,6 +216,7 @@ struct LiveStatusShimmerText: View {
 struct SessionTranscriptLogLine: View {
     let entry: SessionTranscriptEntry
     let onReferenceToggle: (() -> Void)?
+    let onFileLinkTap: (String) -> Void
     @State private var isExpanded = false
 
     var body: some View {
@@ -297,7 +302,8 @@ struct SessionTranscriptLogLine: View {
                 SessionTranscriptMarkdownView(
                     markdown: entry.body,
                     role: entry.role,
-                    kind: entry.kind
+                    kind: entry.kind,
+                    onOpenFilePath: onFileLinkTap
                 )
             }
             .padding(.horizontal, 8)

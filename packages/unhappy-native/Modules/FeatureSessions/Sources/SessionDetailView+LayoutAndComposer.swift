@@ -347,6 +347,7 @@ extension SessionDetailView {
             },
             onFiles: {
                 focusedComposerField = nil
+                linkedFilePathToOpen = nil
                 presentedQuickTool = .files
             },
             onDiff: {
@@ -537,6 +538,7 @@ extension SessionDetailView {
                 session: currentSession,
                 serverURLString: serverURLString,
                 token: token,
+                initialFilePath: linkedFilePathToOpen,
                 makeViewModel: makeSessionToolsViewModel
             )
             .navigationTitle("File Viewer")

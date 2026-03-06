@@ -564,6 +564,9 @@ private struct HomeRegularSessionsTab: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
+                    onClose: {
+                        selectedSessionID = nil
+                    },
                     makeSessionToolsViewModel: makeSessionToolsViewModel
                 )
             } else {

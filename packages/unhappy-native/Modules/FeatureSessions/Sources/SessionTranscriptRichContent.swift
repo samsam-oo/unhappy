@@ -741,6 +741,7 @@ struct SessionTranscriptMarkdownView: View {
     let markdown: String
     let role: SessionTranscriptEntryRole
     let kind: SessionTranscriptEntryKind
+    let onOpenFilePath: (String) -> Void
 
     private var blocks: [SessionMarkdownBlock] {
         SessionTranscriptRichContentParser.markdownBlocks(from: markdown)
@@ -754,6 +755,16 @@ struct SessionTranscriptMarkdownView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .tint(AppPalette.accent)
+        .environment(\.openURL, OpenURLAction { url in
+            if url.isFileURL {
+                let path = url.path.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !path.isEmpty {
+                    onOpenFilePath(path)
+                    return .handled
+                }
+            }
+            return .systemAction
+        })
     }
 
     @ViewBuilder

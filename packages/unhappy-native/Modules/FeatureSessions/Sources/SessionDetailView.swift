@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreKit
 import FeatureSessionTools
+import UIKit
 
 @MainActor
 public struct SessionDetailView: View {
@@ -96,6 +97,7 @@ public struct SessionDetailView: View {
     let serverURLString: String
     let token: String
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    let onClose: (() -> Void)?
 
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var colorScheme
@@ -123,6 +125,7 @@ public struct SessionDetailView: View {
     @State var scrollToBottomRequestID = UUID()
     @State var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
+    @State var linkedFilePathToOpen: String?
     @State var respondingPermissionRequestID: String?
     @State var isRecoveringDisconnectedSession = false
     @State var permissionActionStatusMessage: String?
@@ -135,13 +138,23 @@ public struct SessionDetailView: View {
         viewModel: SessionsViewModel,
         serverURLString: String,
         token: String,
+        onClose: (() -> Void)? = nil,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.session = session
         self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
+        self.onClose = onClose
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
+    }
+
+    var tabBarVisibility: Visibility {
+        UIDevice.current.userInterfaceIdiom == .pad ? .visible : .hidden
+    }
+
+    var canCloseDetailPane: Bool {
+        onClose != nil
     }
 
     public var body: some View {
@@ -167,6 +180,11 @@ public struct SessionDetailView: View {
             transcriptBottomAnchorID: Self.transcriptBottomAnchorID,
             onReferenceToggle: {
                 shouldFollowTranscript = false
+            },
+            onFileLinkTap: { path in
+                shouldFollowTranscript = false
+                linkedFilePathToOpen = path
+                presentedQuickTool = .files
             },
             onRetry: {
                 Task {
@@ -209,16 +227,34 @@ public struct SessionDetailView: View {
                 shouldFollowTranscript = false
             }
         )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onEnded { value in
+                guard canCloseDetailPane else { return }
+                guard value.startLocation.x <= 40 else { return }
+                guard value.translation.width > 90 else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                onClose?()
+            }
+        )
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomInsetContent
         }
         // Keep auto-follow behavior via explicit scroll requests below.
         // Avoid defaultScrollAnchor on List because rapid shrink/grow updates can trigger
         // UICollectionView target index assertions on some iOS versions.
-        .toolbar(.hidden, for: .tabBar)
+        .toolbar(tabBarVisibility, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
+            if canCloseDetailPane {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        onClose?()
+                    } label: {
+                        Label("Back", systemImage: "chevron.left")
+                    }
+                }
+            }
             ToolbarItem(placement: .principal) {
                 topBarTitleView
             }
@@ -415,8 +451,24 @@ public struct SessionDetailView: View {
         NavigationStack {
             quickToolDestinationView(tool)
                 .toolbar {
+                    if tool == .files, canCloseDetailPane {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                onClose?()
+                                presentedQuickTool = nil
+                                linkedFilePathToOpen = nil
+                            } label: {
+                                Label("Back", systemImage: "chevron.left")
+                            }
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { presentedQuickTool = nil }
+                        Button("Done") {
+                            presentedQuickTool = nil
+                            if tool == .files {
+                                linkedFilePathToOpen = nil
+                            }
+                        }
                     }
                 }
         }

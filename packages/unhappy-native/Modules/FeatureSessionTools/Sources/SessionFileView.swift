@@ -6,19 +6,23 @@ public struct SessionFileView: View {
     let session: APISession
     let serverURLString: String
     let token: String
+    let initialFilePath: String?
 
     @StateObject private var viewModel: SessionToolsViewModel
     @State private var contentMode: SessionFileContentMode = .file
+    @State private var lastAutoOpenedFilePath: String?
 
     public init(
         session: APISession,
         serverURLString: String,
         token: String,
+        initialFilePath: String? = nil,
         makeViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.session = session
         self.serverURLString = serverURLString
         self.token = token
+        self.initialFilePath = initialFilePath
         _viewModel = StateObject(wrappedValue: makeViewModel())
     }
 
@@ -32,6 +36,9 @@ public struct SessionFileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(serverURLString)|\(token)|\(session.id)") {
             await loadDirectory()
+        }
+        .task(id: initialFilePath ?? "") {
+            await autoOpenLinkedFileIfNeeded()
         }
     }
 
@@ -225,6 +232,29 @@ public struct SessionFileView: View {
             serverURLString: serverURLString,
             token: token
         )
+    }
+
+    private func autoOpenLinkedFileIfNeeded() async {
+        guard let initialFilePath else { return }
+        let normalized = initialFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+        guard lastAutoOpenedFilePath != normalized else { return }
+
+        lastAutoOpenedFilePath = normalized
+        viewModel.filePath = normalized
+        if let parentDirectory = fileDirectory(for: normalized) {
+            viewModel.directoryPath = parentDirectory
+        }
+        await loadFile()
+    }
+
+    private func fileDirectory(for path: String) -> String? {
+        let normalized = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        let nsPath = normalized as NSString
+        let directory = nsPath.deletingLastPathComponent
+        guard !directory.isEmpty else { return nil }
+        return directory
     }
 }
 
