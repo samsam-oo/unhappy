@@ -266,6 +266,68 @@ struct SessionTranscriptPresentationTests {
     }
 
     @Test
+    func latestItemStartedCommandExecutionBecomesToolCallEntry() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "item_started",
+                    "item": [
+                        "type": "commandExecution",
+                        "id": "item_cmd_1",
+                        "command": "rg markdown Sources",
+                        "cwd": "/tmp/project",
+                        "commandActions": [
+                            [
+                                "type": "search",
+                                "command": "rg markdown Sources",
+                                "query": "markdown",
+                                "path": "Sources",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolCall)
+        #expect(presentation.entries[0].toolName == "codexbash")
+        #expect(presentation.entries[0].sourceType == "item_started")
+    }
+
+    @Test
+    func latestTurnDiffBecomesToolResultEntry() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "turn_diff",
+                    "unified_diff": "@@ -1,1 +1,2 @@\n-import Foundation\n+import Foundation\n+import SwiftUI",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].title == "Turn Diff")
+    }
+
+    @Test
     func codexMessageNestedTextIsExtracted() {
         let payload: [String: Any] = [
             "role": "agent",

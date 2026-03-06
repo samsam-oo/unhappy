@@ -259,12 +259,7 @@ struct SessionTranscriptLogLine: View {
 
                 if isExpanded {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.body)
-                            .font(bodyFont)
-                            .foregroundStyle(.primary)
-                            .textSelection(.enabled)
-                            .lineLimit(nil)
-                            .lineSpacing(1.5)
+                        SessionTranscriptToolRichContentView(entry: entry)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.leading, 14)
@@ -299,12 +294,11 @@ struct SessionTranscriptLogLine: View {
                     Spacer(minLength: 0)
                 }
 
-                Text(entry.body)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(AppPalette.primaryText)
-                    .textSelection(.enabled)
-                    .lineLimit(nil)
-                    .lineSpacing(2.2)
+                SessionTranscriptMarkdownView(
+                    markdown: entry.body,
+                    role: entry.role,
+                    kind: entry.kind
+                )
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -382,6 +376,9 @@ struct SessionTranscriptLogLine: View {
     }
 
     private var collapsibleTitle: String {
+        if let summaryTitle = SessionTranscriptRichContentParser.summaryTitle(for: entry) {
+            return summaryTitle
+        }
         if isEditFilesEntry {
             return "Edit files"
         }

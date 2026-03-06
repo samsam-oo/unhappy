@@ -198,6 +198,13 @@ function getFirstRecord(values: unknown[]): Record<string, unknown> | null {
   return null;
 }
 
+function normalizeThreadItemType(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.toLowerCase();
+}
+
 export class CodexAppServerClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private connected = false;
@@ -1387,51 +1394,86 @@ export class CodexAppServerClient {
     }
 
     if (
-      method === 'item/completed' &&
+      method === 'item/commandExecution/outputDelta' &&
+      typeof params.delta === 'string' &&
+      !this.sawLegacyCodexEvents
+    ) {
+      const threadId = getFirstNonEmptyString([params.threadId, params.thread_id]);
+      const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
+      const itemId = getFirstNonEmptyString([params.itemId, params.item_id]);
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ thread_id: threadId });
+      }
+      this.handler?.({
+        type: 'exec_command_output_delta',
+        delta: params.delta,
+        ...(itemId ? { call_id: itemId } : {}),
+        ...(threadId ? { thread_id: threadId } : {}),
+        ...(turnId ? { turn_id: turnId } : {}),
+      });
+      return;
+    }
+
+    if (
+      (method === 'item/started' || method === 'item/completed') &&
       isRecord(params.item) &&
       !this.sawLegacyCodexEvents
     ) {
       const item = params.item;
-      if (item.type === 'agentMessage' && typeof item.text === 'string') {
-        const inferredThreadId = getFirstNonEmptyString([
-          params.threadId,
-          params.thread_id,
-          item.threadId,
-          item.thread_id,
-          item.sessionId,
-          item.session_id,
-        ]);
-        const inferredConversationId = getFirstNonEmptyString([
-          params.conversationId,
-          params.conversation_id,
-          item.conversationId,
-          item.conversation_id,
-          inferredThreadId,
-          this.conversationId,
-        ]);
-        const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
-        if (inferredThreadId) {
-          this.updateIdentifiersFromEvent({ thread_id: inferredThreadId });
-        }
-        if (inferredConversationId) {
-          this.updateIdentifiersFromEvent({ conversation_id: inferredConversationId });
-        }
-        const shouldForward = !this.shouldSuppressAgentMessage({
-          message: item.text,
-          turnId,
-          conversationId: inferredConversationId,
-        });
-        if (shouldForward) {
-          this.handler?.({
-            type: 'agent_message',
-            message: item.text,
-            ...(inferredThreadId ? { thread_id: inferredThreadId } : {}),
-            ...(inferredConversationId ? { conversation_id: inferredConversationId } : {}),
-          });
-        } else {
-          logger.debug('[CodexAppServer] Suppressed duplicate agent_message from item/completed');
-        }
+      const itemType = normalizeThreadItemType(item.type);
+      const threadId = getFirstNonEmptyString([
+        params.threadId,
+        params.thread_id,
+        item.threadId,
+        item.thread_id,
+        item.sessionId,
+        item.session_id,
+      ]);
+      const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
+
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ thread_id: threadId });
       }
+
+      if (itemType === 'agentmessage') {
+        if (method === 'item/completed' && typeof item.text === 'string') {
+          const inferredConversationId = getFirstNonEmptyString([
+            params.conversationId,
+            params.conversation_id,
+            item.conversationId,
+            item.conversation_id,
+            threadId,
+            this.conversationId,
+          ]);
+          if (inferredConversationId) {
+            this.updateIdentifiersFromEvent({ conversation_id: inferredConversationId });
+          }
+          const shouldForward = !this.shouldSuppressAgentMessage({
+            message: item.text,
+            turnId,
+            conversationId: inferredConversationId,
+          });
+          if (shouldForward) {
+            this.handler?.({
+              type: 'agent_message',
+              message: item.text,
+              ...(threadId ? { thread_id: threadId } : {}),
+              ...(inferredConversationId ? { conversation_id: inferredConversationId } : {}),
+            });
+          } else {
+            logger.debug('[CodexAppServer] Suppressed duplicate agent_message from item/completed');
+          }
+        }
+        return;
+      }
+
+      this.handler?.({
+        type: method === 'item/started' ? 'item_started' : 'item_completed',
+        item,
+        ...(threadId ? { thread_id: threadId } : {}),
+        ...(turnId ? { turn_id: turnId } : {}),
+      });
+      return;
     }
 
     if (

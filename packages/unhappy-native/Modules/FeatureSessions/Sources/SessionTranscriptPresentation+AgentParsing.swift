@@ -161,6 +161,7 @@ extension SessionTranscriptPresentationBuilder {
 
         var entries: [SessionTranscriptEntry] = []
         var toolNamesByID: [String: String] = [:]
+        var toolTitlesByID: [String: String] = [:]
         for (index, item) in contentArray.enumerated() {
             guard let chunk = item as? [String: Any],
                   let type = chunk["type"] as? String else {
@@ -207,16 +208,30 @@ extension SessionTranscriptPresentationBuilder {
             case "tool_use", "tool-call":
                 let name = normalizedText(chunk["name"]) ?? "Tool"
                 let toolUseID = extractToolUseID(from: chunk)
+                let inputText = stringify(chunk["input"])
+                let summarizedTitle = SessionTranscriptRichContentParser.summaryTitle(
+                    for: makeEntry(
+                        id: "\(messageID)-assistant-\(index)-summary",
+                        role: .agent,
+                        kind: .toolCall,
+                        title: toolDisplayName(name),
+                        body: inputText,
+                        toolUseID: toolUseID,
+                        sourceType: type,
+                        toolName: name,
+                        isSidechain: isSidechain
+                    )
+                ) ?? toolDisplayName(name)
                 if let toolUseID {
                     toolNamesByID[toolUseID] = name
+                    toolTitlesByID[toolUseID] = summarizedTitle
                 }
-                let inputText = stringify(chunk["input"])
                 entries.append(
                     makeEntry(
                         id: "\(messageID)-assistant-\(index)",
                         role: .agent,
                         kind: .toolCall,
-                        title: toolDisplayName(name),
+                        title: summarizedTitle,
                         body: inputText,
                         toolUseID: toolUseID,
                         sourceType: type,
@@ -227,7 +242,10 @@ extension SessionTranscriptPresentationBuilder {
             case "tool_result", "tool-call-result":
                 let toolUseID = extractToolUseID(from: chunk)
                 let linkedToolName = toolUseID.flatMap { toolNamesByID[$0] }
-                let title = linkedToolName.map { "\(toolDisplayName($0)) Result" } ?? "Tool result"
+                let linkedToolTitle = toolUseID.flatMap { toolTitlesByID[$0] }
+                let title = linkedToolTitle.map { "\($0) Result" } ??
+                    linkedToolName.map { "\(toolDisplayName($0)) Result" } ??
+                    "Tool result"
                 let outputText = stringifyToolResultContent(chunk["content"] ?? chunk["output"])
                 entries.append(
                     makeEntry(
@@ -470,10 +488,23 @@ extension SessionTranscriptPresentationBuilder {
             let name = normalizedText(dictionary["name"]) ?? "Tool"
             let toolUseID = extractToolUseID(from: dictionary)
             let reasoningTitle = codexReasoningTitle(from: dictionary["input"])
-            let title = reasoningTitle ?? toolDisplayName(name)
-            let body = reasoningTitle == nil
-                ? stringify(dictionary["input"])
-                : stringify(dictionary["input"])
+            let body = stringify(dictionary["input"])
+            let title = reasoningTitle ?? (
+                SessionTranscriptRichContentParser.summaryTitle(
+                    for: makeEntry(
+                        id: "\(messageID)-acp-tool-call-summary",
+                        role: .agent,
+                        kind: .toolCall,
+                        title: toolDisplayName(name),
+                        body: body,
+                        toolUseID: toolUseID,
+                        sourceType: type,
+                        toolName: name,
+                        isSidechain: isSidechain,
+                        threadID: threadID
+                    )
+                ) ?? toolDisplayName(name)
+            )
             return [
                 makeEntry(
                     id: "\(messageID)-acp-tool-call",
@@ -598,6 +629,32 @@ extension SessionTranscriptPresentationBuilder {
             return []
         case "token_count":
             return []
+        case "turn_diff":
+            let diff =
+                normalizedText(dictionary["unified_diff"]) ??
+                normalizedText(dictionary["diff"]) ??
+                stringify(dictionary)
+            return [
+                makeEntry(
+                    id: "\(messageID)-acp-turn-diff",
+                    role: .agent,
+                    kind: .toolResult,
+                    title: "Turn Diff",
+                    body: diff,
+                    sourceType: type,
+                    toolName: "codexdiff",
+                    isSidechain: isSidechain,
+                    threadID: threadID
+                )
+            ]
+        case "item_started", "item_completed":
+            return parseLatestThreadItem(
+                dictionary["item"],
+                eventType: type,
+                messageID: messageID,
+                isSidechain: isSidechain,
+                threadID: threadID
+            )
         default:
             return [
                 makeEntry(
@@ -613,4 +670,89 @@ extension SessionTranscriptPresentationBuilder {
             ]
         }
 }
+
+    private static func parseLatestThreadItem(
+        _ itemValue: Any?,
+        eventType: String,
+        messageID: String,
+        isSidechain: Bool,
+        threadID: String?
+    ) -> [SessionTranscriptEntry] {
+        guard let item = itemValue as? [String: Any] else {
+            return [
+                makeEntry(
+                    id: "\(messageID)-latest-item-raw",
+                    role: .agent,
+                    kind: .raw,
+                    title: "Item",
+                    body: stringify(itemValue),
+                    sourceType: eventType,
+                    isSidechain: isSidechain,
+                    threadID: threadID
+                )
+            ]
+        }
+
+        let itemType = (normalizedText(item["type"]) ?? "item").lowercased()
+        let entryKind: SessionTranscriptEntryKind = eventType == "item_started" ? .toolCall : .toolResult
+
+        switch itemType {
+        case "commandexecution":
+            return [
+                makeEntry(
+                    id: "\(messageID)-latest-command-\(eventType)",
+                    role: .agent,
+                    kind: entryKind,
+                    title: eventType == "item_started" ? "Command Execution" : "Command Result",
+                    body: stringify(item),
+                    sourceType: eventType,
+                    toolName: "codexbash",
+                    isSidechain: isSidechain,
+                    threadID: threadID
+                )
+            ]
+        case "filechange":
+            return [
+                makeEntry(
+                    id: "\(messageID)-latest-file-change-\(eventType)",
+                    role: .agent,
+                    kind: entryKind,
+                    title: eventType == "item_started" ? "File Changes" : "File Change Result",
+                    body: stringify(item),
+                    sourceType: eventType,
+                    toolName: "codexpatch",
+                    isSidechain: isSidechain,
+                    threadID: threadID
+                )
+            ]
+        case "mcptoolcall":
+            let toolName = normalizedText(item["tool"]) ?? normalizedText(item["server"]) ?? "MCP Tool"
+            return [
+                makeEntry(
+                    id: "\(messageID)-latest-mcp-\(eventType)",
+                    role: .agent,
+                    kind: entryKind,
+                    title: eventType == "item_started" ? toolDisplayName(toolName) : "\(toolDisplayName(toolName)) Result",
+                    body: stringify(item),
+                    sourceType: eventType,
+                    toolName: toolName,
+                    isSidechain: isSidechain,
+                    threadID: threadID
+                )
+            ]
+        default:
+            return [
+                makeEntry(
+                    id: "\(messageID)-latest-item-\(eventType)",
+                    role: .agent,
+                    kind: .raw,
+                    title: "Item \(itemType)",
+                    body: stringify(item),
+                    sourceType: eventType,
+                    isSidechain: isSidechain,
+                    threadID: threadID
+                )
+            ]
+        }
+    }
 }

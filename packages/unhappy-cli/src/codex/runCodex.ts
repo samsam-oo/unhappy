@@ -1736,6 +1736,26 @@ export async function runCodex(opts: {
       ? activeExecCallIds[activeExecCallIds.length - 1]
       : null;
   };
+  const normalizeItemType = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed.toLowerCase() : null;
+  };
+  const countLatestFileChanges = (item: any): number => {
+    return Array.isArray(item?.changes) ? item.changes.length : 0;
+  };
+  const latestCommandLabel = (item: any): string => {
+    if (Array.isArray(item?.commandActions) && item.commandActions.length > 0) {
+      const [firstAction] = item.commandActions;
+      if (firstAction && typeof firstAction.command === 'string' && firstAction.command.trim()) {
+        return firstAction.command;
+      }
+    }
+    if (typeof item?.command === 'string' && item.command.trim()) {
+      return item.command;
+    }
+    return 'command';
+  };
   client.setHandler((msg: any) => {
     // Avoid logging the full raw Codex event payloads (can be huge and include prompt contents).
     const msgType = typeof msg?.type === 'string' ? msg.type : 'unknown';
@@ -1849,6 +1869,37 @@ export async function runCodex(opts: {
         `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
         'result',
       );
+    } else if (msg.type === 'item_started') {
+      const itemType = normalizeItemType(msg.item?.type);
+      if (itemType === 'commandexecution') {
+        messageBuffer.addMessage(
+          `Executing: ${latestCommandLabel(msg.item)}`,
+          'tool',
+        );
+      } else if (itemType === 'filechange') {
+        const changeCount = countLatestFileChanges(msg.item);
+        const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
+        messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
+      }
+    } else if (msg.type === 'item_completed') {
+      const itemType = normalizeItemType(msg.item?.type);
+      if (itemType === 'commandexecution') {
+        const output =
+          typeof msg.item?.aggregatedOutput === 'string' && msg.item.aggregatedOutput.trim()
+            ? msg.item.aggregatedOutput
+            : typeof msg.item?.status === 'string' && msg.item.status.trim()
+              ? msg.item.status
+              : 'Command completed';
+        const truncatedOutput = output.substring(0, 200);
+        messageBuffer.addMessage(
+          `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
+          'result',
+        );
+      } else if (itemType === 'filechange') {
+        const changeCount = countLatestFileChanges(msg.item);
+        const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
+        messageBuffer.addMessage(`Updated ${filesMsg}`, 'result');
+      }
     } else if (msg.type === 'task_started') {
       messageBuffer.addMessage('Starting task...', 'status');
     } else if (msg.type === 'task_complete') {
@@ -1908,6 +1959,40 @@ export async function runCodex(opts: {
         ...(threadID ? { thread_id: threadID } : {}),
         ...(isSidechain ? { isSidechain: true } : {}),
       });
+    }
+    if (msg.type === 'item_started' || msg.type === 'item_completed') {
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
+      const itemType = normalizeItemType(msg.item?.type);
+      if (isSidechain) {
+        return;
+      }
+      if (!itemType) {
+        return;
+      }
+      if (itemType === 'commandexecution') {
+        const itemId =
+          typeof msg.item?.id === 'string' && msg.item.id.trim()
+            ? msg.item.id
+            : randomUUID();
+        if (msg.type === 'item_started') {
+          rememberExecCallId(itemId);
+        } else {
+          forgetExecCallId(itemId);
+        }
+      }
+      if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+        return;
+      }
+      session.sendCodexMessage({
+        type: msg.type,
+        item: msg.item,
+        id: randomUUID(),
+        ...(typeof msg.turn_id === 'string' ? { turn_id: msg.turn_id } : {}),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
+      });
+      return;
     }
     if (
       msg.type === 'exec_command_begin' ||
