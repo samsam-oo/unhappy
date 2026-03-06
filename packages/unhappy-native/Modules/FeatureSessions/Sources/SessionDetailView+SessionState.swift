@@ -8,7 +8,10 @@ extension SessionDetailView {
     }
 
     var currentSessionDisplayTitle: String? {
-        SessionDisplayTitleResolver.resolvedDisplayTitle(for: currentSession)
+        SessionDisplayTitleResolver.resolvedDisplayTitle(
+            for: currentSession,
+            context: currentSessionContext
+        )
     }
 
     var currentSessionHasDisplayTitle: Bool {
@@ -81,11 +84,11 @@ extension SessionDetailView {
     }
 
     var resumeDirectoryForDisconnectedSession: String? {
-        SessionUpstreamIdentity(session: currentSession)?.workingDirectory
+        currentSessionContext.workingDirectory
     }
 
     var upstreamAgentSessionIDForResume: String? {
-        SessionUpstreamIdentity(session: currentSession)?.upstreamSessionID
+        currentSessionContext.upstreamSessionID
     }
 
     var canAutoResumeDisconnectedSession: Bool {

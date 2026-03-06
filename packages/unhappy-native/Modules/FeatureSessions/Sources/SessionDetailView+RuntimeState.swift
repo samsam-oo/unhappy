@@ -3,8 +3,12 @@ import CoreKit
 import FeatureSessionTools
 
 extension SessionDetailView {
+    var currentSessionContext: SessionRuntimeContext {
+        SessionRuntimeContext(session: currentSession)
+    }
+
     var parsedSessionFlavor: SessionComposerFlavor? {
-        if let provider = SessionUpstreamIdentity(session: currentSession)?.provider {
+        if let provider = currentSessionContext.provider {
             switch provider {
             case .codex:
                 return .codex
@@ -14,138 +18,35 @@ extension SessionDetailView {
                 return .gemini
             }
         }
-        guard let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionMetadata, decodedSessionAgentState],
-            keys: ["flavor", "agent", "provider"]
-        ) else {
-            return nil
-        }
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if let flavor = SessionComposerFlavor(rawValue: normalized) {
-            return flavor
-        }
-        if normalized.contains("claude") {
-            return .claude
-        }
-        if normalized.contains("gemini") {
-            return .gemini
-        }
-        if normalized.contains("codex") || normalized.contains("openai") || normalized.contains("gpt") {
-            return .codex
-        }
         return nil
     }
 
     var parsedSessionAgent: APISessionSpawnAgent? {
-        switch parsedSessionFlavor {
-        case .codex:
-            return .codex
-        case .claude:
-            return .claude
-        case .gemini:
-            return .gemini
-        case .none:
-            return nil
-        }
+        currentSessionContext.sessionAgent
     }
 
     var decodedSessionMetadata: [String: Any] {
-        SessionPayloadValueResolver.decodeJSONObject(
-            payload: currentSession.metadata,
-            dataEncryptionKey: currentSession.dataEncryptionKey
-        )
+        currentSessionContext.metadata
     }
 
     var decodedSessionAgentState: [String: Any] {
-        SessionPayloadValueResolver.decodeJSONObject(
-            payload: currentSession.agentState,
-            dataEncryptionKey: currentSession.dataEncryptionKey
-        )
+        currentSessionContext.agentState
     }
 
     var collabInProgressCountFromAgentState: Int {
-        let sources = [decodedSessionAgentState, decodedSessionMetadata]
-        guard let collabState = SessionPayloadValueResolver.firstDictionary(
-            in: sources,
-            keys: [
-                "collab",
-                "collaboration",
-                "multiAgent",
-                "multi_agent",
-            ]
-        ) else {
-            return 0
-        }
-
-        let activeCountKeys = [
-            "activeCount",
-            "active_count",
-            "inProgressCount",
-            "in_progress_count",
-            "runningCount",
-            "running_count",
-            "count",
-        ]
-        for key in activeCountKeys {
-            if let activeCount = normalizedNonNegativeInt(from: collabState[key]), activeCount > 0 {
-                return activeCount
-            }
-        }
-
-        let state = SessionPayloadValueResolver.firstString(
-            in: [collabState],
-            keys: ["state", "status", "phase"]
-        )?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if state == "in_progress" || state == "inprogress" || state == "running" {
-            return 1
-        }
-        return 0
+        currentSessionContext.collabInProgressCount
     }
 
     var resolvedCurrentModelLabel: String? {
-        SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "model",
-                "currentModel",
-                "selectedModel",
-                "modelName",
-            ]
-        )
+        currentSessionContext.currentModelLabel
     }
 
     var resolvedCurrentEffortLabel: String? {
-        guard let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "effort",
-                "reasoningEffort",
-                "reasoning_effort",
-                "modelReasoningEffort",
-            ]
-        ) else {
-            return nil
-        }
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? nil : normalized
+        currentSessionContext.currentEffortLabel
     }
 
     var resolvedCurrentPermissionMode: APISessionMessagePermissionMode? {
-        guard let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "permissionMode",
-                "permission_mode",
-                "approvalMode",
-                "approval_mode",
-                "fileMode",
-                "file_mode",
-            ]
-        ) else {
-            return nil
-        }
-        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return APISessionMessagePermissionMode(rawValue: normalized)
+        currentSessionContext.currentPermissionMode
     }
 
     func permissionModeDisplayLabel(for mode: APISessionMessagePermissionMode) -> String {
@@ -295,10 +196,7 @@ extension SessionDetailView {
     }
 
     var hasPendingApprovalRequest: Bool {
-        SessionApprovalStateEvaluator.hasPendingApprovalRequest(
-            agentState: decodedSessionAgentState,
-            metadata: decodedSessionMetadata
-        )
+        currentSessionContext.requiresApproval
     }
 
     var shouldShowAgentLiveStatus: Bool {
@@ -321,19 +219,5 @@ extension SessionDetailView {
         SessionTranscriptLiveStatusEvaluator.hasOutstandingAgentToolCalls(
             in: visibleTranscriptPresentations
         )
-    }
-
-    func normalizedNonNegativeInt(from value: Any?) -> Int? {
-        if let intValue = value as? Int {
-            return max(0, intValue)
-        }
-        if let number = value as? NSNumber {
-            return max(0, number.intValue)
-        }
-        if let string = value as? String,
-           let parsed = Int(string.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            return max(0, parsed)
-        }
-        return nil
     }
 }
