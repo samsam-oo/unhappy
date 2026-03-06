@@ -230,7 +230,7 @@ struct SessionsViewModelTests {
             titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
-        await model.linkUpstreamSession(
+        _ = await model.linkUpstreamSession(
             row,
             serverURLString: "https://api.unhappy.im",
             token: "token"

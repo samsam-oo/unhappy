@@ -423,10 +423,10 @@ public final class SessionsViewModel: ObservableObject {
         _ row: SessionLinkedUpstreamSession,
         serverURLString: String,
         token: String
-    ) async {
+    ) async -> String? {
         guard let upstreamSessionLinker else {
             upstreamSessionStatusMessage = "Upstream linking is unavailable in this build"
-            return
+            return nil
         }
 
         linkingUpstreamSessionID = row.id
@@ -440,7 +440,7 @@ public final class SessionsViewModel: ObservableObject {
         let directory = row.summary.cwd?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !directory.isEmpty else {
             upstreamSessionStatusMessage = "Missing working directory for upstream session"
-            return
+            return nil
         }
 
         do {
@@ -473,8 +473,10 @@ public final class SessionsViewModel: ObservableObject {
                 upstreamSessionStatusMessage = "Linked \(row.summary.provider.displayName) session"
             }
             await load(serverURLString: serverURLString, token: token)
+            return response.sessionID
         } catch {
             upstreamSessionStatusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return nil
         }
     }
 

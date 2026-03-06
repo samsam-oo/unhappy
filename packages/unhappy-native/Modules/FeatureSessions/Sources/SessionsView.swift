@@ -245,14 +245,13 @@ public struct SessionsView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(viewModel.upstreamSessions) { row in
-                            Button {
-                                Task {
-                                    await viewModel.linkUpstreamSession(
-                                        row,
-                                        serverURLString: serverURLString,
-                                        token: token
-                                    )
-                                }
+                            NavigationLink {
+                                SessionUpstreamLinkDetailView(
+                                    row: row,
+                                    viewModel: viewModel,
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
                             } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     UpstreamSessionRow(
@@ -271,7 +270,6 @@ public struct SessionsView: View {
                                     .foregroundStyle(.secondary)
                                 }
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }

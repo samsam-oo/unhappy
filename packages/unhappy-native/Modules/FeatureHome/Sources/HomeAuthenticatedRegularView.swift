@@ -342,6 +342,11 @@ private struct HomeRegularInboxTab: View {
 
 @MainActor
 private struct HomeRegularSessionsTab: View {
+    private enum Selection: Hashable {
+        case session(String)
+        case upstream(String)
+    }
+
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
@@ -351,7 +356,7 @@ private struct HomeRegularSessionsTab: View {
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     let onSessionsChanged: @MainActor ([APISession]) async -> Void
 
-    @State private var selectedSessionID: String?
+    @State private var selection: Selection?
     @State private var pendingDeleteSession: APISession?
     @State private var isPresentingNewSession = false
     @State private var isPresentingRecentSessions = false
@@ -372,12 +377,18 @@ private struct HomeRegularSessionsTab: View {
             await onSessionsChanged(viewModel.sessions)
         }
         .onChange(of: visibleSessions.map(\.id)) { _, ids in
-            guard let selectedSessionID else {
-                self.selectedSessionID = ids.first
+            guard let selection else {
+                self.selection = ids.first.map(Selection.session)
                 return
             }
-            if !ids.contains(selectedSessionID) {
-                self.selectedSessionID = ids.first
+            if case .session(let sessionID) = selection, !ids.contains(sessionID) {
+                self.selection = ids.first.map(Selection.session)
+            }
+        }
+        .onChange(of: viewModel.upstreamSessions.map(\.id)) { _, ids in
+            guard let selection else { return }
+            if case .upstream(let rowID) = selection, !ids.contains(rowID) {
+                self.selection = visibleSessions.first.map { .session($0.id) }
             }
         }
         .alert(
@@ -516,17 +527,12 @@ private struct HomeRegularSessionsTab: View {
                                 } else {
                                     ForEach(viewModel.upstreamSessions) { row in
                                         Button {
-                                            Task {
-                                                await viewModel.linkUpstreamSession(
-                                                    row,
-                                                    serverURLString: serverURLString,
-                                                    token: token
-                                                )
-                                            }
+                                            selection = .upstream(row.id)
                                         } label: {
                                             HomeRegularUpstreamSessionRow(
                                                 row: row,
-                                                isLinking: viewModel.linkingUpstreamSessionID == row.id
+                                                isLinking: viewModel.linkingUpstreamSessionID == row.id,
+                                                isSelected: selection == .upstream(row.id)
                                             )
                                         }
                                         .buttonStyle(.plain)
@@ -537,12 +543,12 @@ private struct HomeRegularSessionsTab: View {
 
                         ForEach(visibleSessions) { session in
                             Button {
-                                selectedSessionID = session.id
+                                selection = .session(session.id)
                             } label: {
                                 HomeRegularSessionRow(
                                     session: session,
                                     isDeleting: viewModel.isDeleting(sessionID: session.id),
-                                    isSelected: selectedSessionID == session.id
+                                    isSelected: selection == .session(session.id)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -596,9 +602,19 @@ private struct HomeRegularSessionsTab: View {
                     serverURLString: serverURLString,
                     token: token,
                     onClose: {
-                        selectedSessionID = nil
+                        selection = nil
                     },
                     makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            } else if let upstreamSession = selectedUpstreamSession {
+                SessionUpstreamLinkDetailView(
+                    row: upstreamSession,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    onLinkedSession: { linkedSessionID in
+                        selection = .session(linkedSessionID)
+                    }
                 )
             } else {
                 VStack(spacing: 10) {
@@ -636,8 +652,13 @@ private struct HomeRegularSessionsTab: View {
     }
 
     private var selectedSession: APISession? {
-        guard let selectedSessionID else { return nil }
-        return visibleSessions.first(where: { $0.id == selectedSessionID })
+        guard case .session(let sessionID)? = selection else { return nil }
+        return visibleSessions.first(where: { $0.id == sessionID })
+    }
+
+    private var selectedUpstreamSession: SessionLinkedUpstreamSession? {
+        guard case .upstream(let rowID)? = selection else { return nil }
+        return viewModel.upstreamSessions.first(where: { $0.id == rowID })
     }
 
     private var detailPlaceholderIcon: String {
@@ -745,6 +766,7 @@ private struct HomeRegularSessionRow: View {
 private struct HomeRegularUpstreamSessionRow: View {
     let row: SessionLinkedUpstreamSession
     let isLinking: Bool
+    let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -783,6 +805,11 @@ private struct HomeRegularUpstreamSessionRow: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        )
     }
 }
 
