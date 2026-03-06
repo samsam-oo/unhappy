@@ -227,11 +227,12 @@ extension SessionDetailView {
                 draftImageAttachments.removeAll { $0.id == attachmentID }
             },
             onEditQueuedMessage: { queueIndex, fallbackText in
-                let restored = viewModel.takeQueuedComposerMessage(
+                let restored = viewModel.takeQueuedComposerDraft(
                     for: currentSession.id,
                     at: queueIndex
-                ) ?? fallbackText
-                draftMessage = restored
+                )
+                draftMessage = restored?.text ?? fallbackText
+                draftImageAttachments = restored?.attachments ?? []
                 focusedComposerField = .message
             }
         )
@@ -265,17 +266,28 @@ extension SessionDetailView {
         }
 
         Task {
-            let sent = await viewModel.sendMessage(
-                for: session.id,
-                text: text,
-                attachments: draftImageAttachments,
-                steerMode: steerMode,
-                permissionMode: selectedPermissionModeOverride,
-                modelOverride: modelOverride,
-                effortOverride: effortOverride,
-                serverURLString: serverURLString,
-                token: token
-            )
+            let sent: Bool
+            if steerMode == .queue {
+                sent = await viewModel.enqueueComposerDraft(
+                    for: session.id,
+                    text: text,
+                    attachments: draftImageAttachments,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+            } else {
+                sent = await viewModel.sendMessage(
+                    for: session.id,
+                    text: text,
+                    attachments: draftImageAttachments,
+                    steerMode: steerMode,
+                    permissionMode: selectedPermissionModeOverride,
+                    modelOverride: modelOverride,
+                    effortOverride: effortOverride,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+            }
             if sent {
                 shouldFollowTranscript = true
                 scrollToBottomRequestID = UUID()

@@ -37,7 +37,9 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var sendingMessageSteerMode: APISessionSteerMode?
     @Published public private(set) var sendMessageStatusMessage: String?
     @Published public private(set) var sendMessageErrorMessage: String?
-    @Published public private(set) var queuedComposerMessagesBySessionID: [String: [String]] = [:]
+    @Published private(set) var queuedComposerDraftsBySessionID: [String: [SessionQueuedComposerDraft]] = [:]
+    private var queuedComposerAwaitingTurnCompletionSessionIDs: Set<String> = []
+    private var queuedComposerLastDispatchAtBySessionID: [String: TimeInterval] = [:]
 
     private let loader: any SessionsLoading
     private let pageLoader: any SessionsPageLoading
@@ -164,19 +166,19 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     public func queuedComposerMessages(for sessionID: String) -> [String] {
-        queuedComposerMessagesBySessionID[sessionID] ?? []
+        (queuedComposerDraftsBySessionID[sessionID] ?? []).map(\.previewText)
     }
 
-    public func takeQueuedComposerMessage(for sessionID: String, at index: Int) -> String? {
-        guard var queued = queuedComposerMessagesBySessionID[sessionID] else { return nil }
+    func takeQueuedComposerDraft(for sessionID: String, at index: Int) -> SessionQueuedComposerDraft? {
+        guard var queued = queuedComposerDraftsBySessionID[sessionID] else { return nil }
         guard queued.indices.contains(index) else { return nil }
-        let message = queued.remove(at: index)
+        let draft = queued.remove(at: index)
         if queued.isEmpty {
-            queuedComposerMessagesBySessionID[sessionID] = nil
+            queuedComposerDraftsBySessionID[sessionID] = nil
         } else {
-            queuedComposerMessagesBySessionID[sessionID] = queued
+            queuedComposerDraftsBySessionID[sessionID] = queued
         }
-        return message
+        return draft
     }
 
     public func load(serverURLString: String, token: String) async {
@@ -193,13 +195,15 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = firstPage.sessions
-            refreshQueuedComposerMessagesCache(from: sessions)
             nextCursor = firstPage.nextCursor
             hasMoreSessions = firstPage.hasNext
             errorMessage = nil
+            await maybeDispatchQueuedComposerDrafts(
+                serverURLString: serverURLString,
+                token: token
+            )
         } catch {
             sessions = []
-            refreshQueuedComposerMessagesCache(from: sessions)
             nextCursor = nil
             hasMoreSessions = false
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -222,15 +226,17 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 sessions = mergeLatestRows(rows, into: sessions)
-                refreshQueuedComposerMessagesCache(from: sessions)
                 errorMessage = nil
                 isLoading = false
+                await maybeDispatchQueuedComposerDrafts(
+                    serverURLString: serverURLString,
+                    token: token
+                )
             }
         } catch is CancellationError {
             // Stream cancellation is expected when the view task is torn down.
         } catch {
             sessions = []
-            refreshQueuedComposerMessagesCache(from: sessions)
             nextCursor = nil
             hasMoreSessions = false
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -257,10 +263,13 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = mergeLatestRows(page.sessions, into: sessions)
-            refreshQueuedComposerMessagesCache(from: sessions)
             self.nextCursor = page.nextCursor
             hasMoreSessions = page.hasNext
             errorMessage = nil
+            await maybeDispatchQueuedComposerDrafts(
+                serverURLString: serverURLString,
+                token: token
+            )
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -569,12 +578,6 @@ public final class SessionsViewModel: ObservableObject {
             )
             sendMessageStatusMessage = nil
             sendMessageErrorMessage = nil
-            applyQueuedComposerSnapshot(
-                for: sessionID,
-                steerMode: steerMode,
-                sentText: text,
-                response: result
-            )
             appendOptimisticUserMessageIfPossible(
                 for: sessionID,
                 text: text,
@@ -586,6 +589,33 @@ public final class SessionsViewModel: ObservableObject {
             sendMessageErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
         }
+    }
+
+    @discardableResult
+    public func enqueueComposerDraft(
+        for sessionID: String,
+        text: String,
+        attachments: [SessionComposerImageAttachment],
+        serverURLString: String,
+        token: String
+    ) async -> Bool {
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty || !attachments.isEmpty else { return false }
+
+        let draft = SessionQueuedComposerDraft(
+            text: normalizedText,
+            attachments: attachments
+        )
+
+        var queued = queuedComposerDraftsBySessionID[sessionID] ?? []
+        queued.append(draft)
+        queuedComposerDraftsBySessionID[sessionID] = queued
+
+        await maybeDispatchQueuedComposerDrafts(
+            serverURLString: serverURLString,
+            token: token
+        )
+        return true
     }
 
     public func loadSessionModelOptions(
@@ -633,7 +663,9 @@ public final class SessionsViewModel: ObservableObject {
             )
 
             sessions.removeAll { $0.id == sessionID }
-            queuedComposerMessagesBySessionID[sessionID] = nil
+            queuedComposerDraftsBySessionID[sessionID] = nil
+            queuedComposerAwaitingTurnCompletionSessionIDs.remove(sessionID)
+            queuedComposerLastDispatchAtBySessionID[sessionID] = nil
             messagesBySessionID[sessionID] = nil
             if selectedSessionID == sessionID {
                 stopSelectedSessionMessagesPolling()
@@ -721,7 +753,6 @@ public final class SessionsViewModel: ObservableObject {
                     lastMessage: session.lastMessage
                 )
                 replaceSession(updatedSession)
-                refreshQueuedComposerMessagesCache(from: sessions)
             }
             errorMessage = nil
         } catch {
@@ -729,110 +760,83 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
-    private func applyQueuedComposerSnapshot(
-        for sessionID: String,
-        steerMode: APISessionSteerMode,
-        sentText: String,
-        response: APISessionSendMessageResult
-    ) {
-        let responseMessages = normalizeQueuedComposerMessageTexts(
-            (response.queuedMessages ?? []).map { $0 as Any }
-        )
-
-        var next = queuedComposerMessagesBySessionID
-        if !responseMessages.isEmpty {
-            next[sessionID] = responseMessages
-        } else if let queueCount = response.queueCount, queueCount <= 0 {
-            next[sessionID] = nil
-        } else if steerMode == .queue {
-            let normalizedText = sentText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !normalizedText.isEmpty {
-                var existing = next[sessionID] ?? []
-                existing.append(normalizedText)
-                next[sessionID] = normalizeQueuedComposerMessageTexts(existing.map { $0 as Any })
-            }
-        }
-
-        if next != queuedComposerMessagesBySessionID {
-            queuedComposerMessagesBySessionID = next
-        }
-    }
-
-    private func refreshQueuedComposerMessagesCache(from sessions: [APISession]) {
-        var next: [String: [String]] = [:]
-        next.reserveCapacity(sessions.count)
+    private func maybeDispatchQueuedComposerDrafts(
+        serverURLString: String,
+        token: String
+    ) async {
+        guard sendingMessageSessionID == nil else { return }
 
         for session in sessions {
-            let decoded = decodeQueuedComposerState(from: session)
-            if !decoded.messages.isEmpty {
-                next[session.id] = decoded.messages
-                continue
-            }
-            if let queueCount = decoded.queueCount, queueCount <= 0 {
-                continue
-            }
-            if let existing = queuedComposerMessagesBySessionID[session.id], !existing.isEmpty {
-                next[session.id] = existing
-            }
-        }
-
-        if next != queuedComposerMessagesBySessionID {
-            queuedComposerMessagesBySessionID = next
+            guard canDispatchQueuedComposerDraft(for: session) else { continue }
+            await dispatchNextQueuedComposerDraft(
+                for: session.id,
+                serverURLString: serverURLString,
+                token: token
+            )
+            return
         }
     }
 
-    private func decodeQueuedComposerState(from session: APISession) -> (messages: [String], queueCount: Int?) {
-        let payload = SessionPayloadValueResolver.decodeJSONObject(
-            payload: session.agentState,
-            dataEncryptionKey: session.dataEncryptionKey
+    private func canDispatchQueuedComposerDraft(for session: APISession) -> Bool {
+        guard let queued = queuedComposerDraftsBySessionID[session.id], !queued.isEmpty else {
+            return false
+        }
+        if queuedComposerAwaitingTurnCompletionSessionIDs.contains(session.id) {
+            let decodedAgentState = SessionPayloadValueResolver.decodeJSONObject(
+                payload: session.agentState,
+                dataEncryptionKey: session.dataEncryptionKey
+            )
+            let decodedMetadata = SessionPayloadValueResolver.decodeJSONObject(
+                payload: session.metadata,
+                dataEncryptionKey: session.dataEncryptionKey
+            )
+            let hasPendingApproval = SessionApprovalStateEvaluator.hasPendingApprovalRequest(
+                agentState: decodedAgentState,
+                metadata: decodedMetadata
+            )
+            if session.active || hasPendingApproval {
+                return false
+            }
+            if let lastDispatchAt = queuedComposerLastDispatchAtBySessionID[session.id],
+               session.updatedAt <= lastDispatchAt {
+                return false
+            }
+            queuedComposerAwaitingTurnCompletionSessionIDs.remove(session.id)
+            queuedComposerLastDispatchAtBySessionID[session.id] = nil
+        }
+        return !session.active
+    }
+
+    private func dispatchNextQueuedComposerDraft(
+        for sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let draft = queuedComposerDraftsBySessionID[sessionID]?.first else { return }
+        let sent = await sendMessage(
+            for: sessionID,
+            text: draft.text,
+            attachments: draft.attachments,
+            steerMode: .immediate,
+            permissionMode: nil,
+            modelOverride: .inherit,
+            effortOverride: .inherit,
+            serverURLString: serverURLString,
+            token: token
         )
-        guard !payload.isEmpty else {
-            return ([], nil)
+        guard sent else { return }
+
+        var queued = queuedComposerDraftsBySessionID[sessionID] ?? []
+        if !queued.isEmpty {
+            queued.removeFirst()
         }
-
-        if let queue = payload["queue"] as? [String: Any] {
-            let queueCount = normalizedNonNegativeInt(from: queue["queuedCount"])
-            let candidates: [Any?] = [
-                queue["pendingMessages"],
-                queue["queuedMessages"],
-                queue["messages"],
-            ]
-            for candidate in candidates {
-                let messages = normalizeQueuedComposerMessageTexts(arrayValue(from: candidate))
-                if !messages.isEmpty {
-                    return (messages, queueCount)
-                }
-            }
-            if let queueCount {
-                return ([], queueCount)
-            }
+        if queued.isEmpty {
+            queuedComposerDraftsBySessionID[sessionID] = nil
+        } else {
+            queuedComposerDraftsBySessionID[sessionID] = queued
         }
-
-        let fallbackCandidates: [Any?] = [
-            payload["pendingMessages"],
-            payload["queuedMessages"],
-            payload["messages"],
-        ]
-        for candidate in fallbackCandidates {
-            let messages = normalizeQueuedComposerMessageTexts(arrayValue(from: candidate))
-            if !messages.isEmpty {
-                return (messages, nil)
-            }
-        }
-
-        return ([], nil)
-    }
-
-    private func arrayValue(from value: Any?) -> [Any] {
-        sessionsArrayValue(from: value)
-    }
-
-    private func normalizeQueuedComposerMessageTexts(_ values: [Any]) -> [String] {
-        sessionsNormalizeQueuedComposerMessageTexts(values)
-    }
-
-    private func normalizedNonNegativeInt(from value: Any?) -> Int? {
-        sessionsNormalizedNonNegativeInt(from: value)
+        queuedComposerAwaitingTurnCompletionSessionIDs.insert(sessionID)
+        queuedComposerLastDispatchAtBySessionID[sessionID] = Date().timeIntervalSince1970
     }
 
     @discardableResult
@@ -962,10 +966,15 @@ public final class SessionsViewModel: ObservableObject {
                 token: token
             )
             sessions = mergeLatestRows(rows, into: sessions)
-            refreshQueuedComposerMessagesCache(from: sessions)
+            await maybeDispatchQueuedComposerDrafts(
+                serverURLString: serverURLString,
+                token: token
+            )
 
             // If the selected session vanished server-side, clear detail state immediately.
-            if selectedSessionID == sessionID && !sessions.contains(where: { $0.id == sessionID }) {
+            if !rows.isEmpty &&
+                selectedSessionID == sessionID &&
+                !sessions.contains(where: { $0.id == sessionID }) {
                 clearDetailSelectionIfNeeded(sessionID: sessionID)
             }
         } catch {

@@ -571,17 +571,17 @@ struct SessionsViewModelTests {
     }
 
     @Test
-    func takeQueuedComposerMessageRemovesPickedEntry() async throws {
+    func takeQueuedComposerDraftRemovesPickedEntry() async throws {
         let sessions = [
             APISession(
                 id: "session-1",
-                active: true,
+                active: false,
                 activeAt: 1,
                 createdAt: 1,
                 updatedAt: 10,
                 metadataVersion: 1,
                 metadata: "enc",
-                agentState: #"{"queue":{"pendingMessages":["first","second"]}}"#,
+                agentState: nil,
                 dataEncryptionKey: nil,
                 lastMessage: nil
             )
@@ -591,16 +591,31 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: sessions, nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            messageSender: MockSessionMessageSender(result: .success(APISessionSendMessageResult(success: true, queueCount: nil, queuedMessages: nil, error: nil))),
             deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
             titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        _ = await model.enqueueComposerDraft(
+            for: "session-1",
+            text: "first",
+            attachments: [],
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        _ = await model.enqueueComposerDraft(
+            for: "session-1",
+            text: "second",
+            attachments: [],
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
 
-        #expect(model.queuedComposerMessages(for: "session-1") == ["first", "second"])
-        let taken = model.takeQueuedComposerMessage(for: "session-1", at: 0)
-        #expect(taken == "first")
         #expect(model.queuedComposerMessages(for: "session-1") == ["second"])
+        let taken = model.takeQueuedComposerDraft(for: "session-1", at: 0)
+        #expect(taken?.text == "second")
+        #expect(model.queuedComposerMessages(for: "session-1").isEmpty)
     }
 
     @Test
@@ -820,4 +835,3 @@ struct SessionsViewModelTests {
         #expect(model.claudeResumeInProgressSessionID == nil)
     }
 }
-
