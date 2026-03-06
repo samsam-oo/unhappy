@@ -256,54 +256,47 @@ public struct SessionsView: View {
     }
 
     private var sessionsNavigationList: some View {
-        List(selection: $selection) {
-            if showsUpstreamSessionsSection {
-                Section("Live Machine Sessions") {
-                    if viewModel.isLoadingUpstreamSessions && viewModel.upstreamSessions.isEmpty {
+        let machineEntries = SessionListPresentationBuilder.machineEntries(
+            sessions: visibleSessions,
+            upstreamSessions: viewModel.upstreamSessions
+        )
+        let localSessions = SessionListPresentationBuilder.localSessions(from: visibleSessions)
+
+        return List(selection: $selection) {
+            if showsMachineSessionsSection(machineEntries: machineEntries) {
+                Section("Machine Sessions") {
+                    if viewModel.isLoadingUpstreamSessions && machineEntries.isEmpty {
                         ProgressView("Loading live sessions…")
                     } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
-                              viewModel.upstreamSessions.isEmpty {
+                              machineEntries.isEmpty {
                         Text(errorMessage)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(viewModel.upstreamSessions) { row in
-                            NavigationLink(value: Selection.upstream(row.id)) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    UpstreamSessionRow(
-                                        summary: row.summary,
-                                        isLinking: viewModel.linkingUpstreamSessionID == row.id
-                                    )
-                                    HStack(spacing: 6) {
-                                        Text(row.summary.provider.displayName)
-                                            .font(.caption2.weight(.semibold))
-                                        Text("·")
-                                            .font(.caption2)
-                                        Text(row.machineDisplayName)
-                                            .font(.caption2)
-                                            .lineLimit(1)
-                                    }
-                                    .foregroundStyle(.secondary)
-                                }
-                            }
+                        ForEach(machineEntries) { entry in
+                            machineNavigationLink(entry)
                         }
                     }
                 }
             }
 
-            ForEach(visibleSessions) { session in
-                NavigationLink(value: Selection.session(session.id)) {
-                    SessionsRow(
-                        session: session,
-                        isDeleting: viewModel.isDeleting(sessionID: session.id)
-                    )
-                }
-                .disabled(viewModel.isDeleting(sessionID: session.id))
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button(role: .destructive) {
-                        pendingDeleteSession = session
-                    } label: {
-                        Label("Delete", systemImage: "trash")
+            if !localSessions.isEmpty {
+                Section("Local Sessions") {
+                    ForEach(localSessions) { session in
+                        NavigationLink(value: Selection.session(session.id)) {
+                            SessionsRow(
+                                session: session,
+                                isDeleting: viewModel.isDeleting(sessionID: session.id)
+                            )
+                        }
+                        .disabled(viewModel.isDeleting(sessionID: session.id))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                pendingDeleteSession = session
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
@@ -323,6 +316,10 @@ public struct SessionsView: View {
 
     private var hasSidebarRows: Bool {
         !visibleSessions.isEmpty || showsUpstreamSessionsSection
+    }
+
+    private func showsMachineSessionsSection(machineEntries: [SessionListEntry]) -> Bool {
+        !machineEntries.isEmpty || showsUpstreamSessionsSection
     }
 
     private var emptyDetailTitle: String {
@@ -411,6 +408,46 @@ public struct SessionsView: View {
 
     private var detailCanvasColor: Color {
         Color(uiColor: .systemGroupedBackground)
+    }
+
+    @ViewBuilder
+    private func machineNavigationLink(_ entry: SessionListEntry) -> some View {
+        switch entry {
+        case .mirroredSession(let session):
+            NavigationLink(value: Selection.session(session.id)) {
+                SessionsRow(
+                    session: session,
+                    isDeleting: viewModel.isDeleting(sessionID: session.id)
+                )
+            }
+            .disabled(viewModel.isDeleting(sessionID: session.id))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    pendingDeleteSession = session
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        case .upstreamSession(let row):
+            NavigationLink(value: Selection.upstream(row.id)) {
+                VStack(alignment: .leading, spacing: 6) {
+                    UpstreamSessionRow(
+                        summary: row.summary,
+                        isLinking: viewModel.linkingUpstreamSessionID == row.id
+                    )
+                    HStack(spacing: 6) {
+                        Text(row.summary.provider.displayName)
+                            .font(.caption2.weight(.semibold))
+                        Text("·")
+                            .font(.caption2)
+                        Text(row.machineDisplayName)
+                            .font(.caption2)
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 
     @ViewBuilder

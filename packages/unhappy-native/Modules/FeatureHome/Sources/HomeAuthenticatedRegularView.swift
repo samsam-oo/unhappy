@@ -447,7 +447,13 @@ private struct HomeRegularSessionsTab: View {
     }
 
     private var sidebar: some View {
-        VStack(spacing: 0) {
+        let machineEntries = SessionListPresentationBuilder.machineEntries(
+            sessions: visibleSessions,
+            upstreamSessions: viewModel.upstreamSessions
+        )
+        let localSessions = SessionListPresentationBuilder.localSessions(from: visibleSessions)
+
+        return VStack(spacing: 0) {
             HStack {
                 Button {
                     isPresentingRecentSessions = true
@@ -515,48 +521,43 @@ private struct HomeRegularSessionsTab: View {
                     .padding(.horizontal, 20)
                 } else {
                     List {
-                        if showsUpstreamSessionsSection {
-                            Section("Live Machine Sessions") {
-                                if viewModel.isLoadingUpstreamSessions && viewModel.upstreamSessions.isEmpty {
+                        if showsMachineSessionsSection(machineEntries: machineEntries) {
+                            Section("Machine Sessions") {
+                                if viewModel.isLoadingUpstreamSessions && machineEntries.isEmpty {
                                     ProgressView("Loading live sessions…")
                                 } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
-                                          viewModel.upstreamSessions.isEmpty {
+                                          machineEntries.isEmpty {
                                     Text(errorMessage)
                                         .font(.footnote)
                                         .foregroundStyle(.secondary)
                                 } else {
-                                    ForEach(viewModel.upstreamSessions) { row in
-                                        Button {
-                                            selection = .upstream(row.id)
-                                        } label: {
-                                            HomeRegularUpstreamSessionRow(
-                                                row: row,
-                                                isLinking: viewModel.linkingUpstreamSessionID == row.id,
-                                                isSelected: selection == .upstream(row.id)
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
+                                    ForEach(machineEntries) { entry in
+                                        machineEntryButton(entry)
                                     }
                                 }
                             }
                         }
 
-                        ForEach(visibleSessions) { session in
-                            Button {
-                                selection = .session(session.id)
-                            } label: {
-                                HomeRegularSessionRow(
-                                    session: session,
-                                    isDeleting: viewModel.isDeleting(sessionID: session.id),
-                                    isSelected: selection == .session(session.id)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    pendingDeleteSession = session
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                        if !localSessions.isEmpty {
+                            Section("Local Sessions") {
+                                ForEach(localSessions) { session in
+                                    Button {
+                                        selection = .session(session.id)
+                                    } label: {
+                                        HomeRegularSessionRow(
+                                            session: session,
+                                            isDeleting: viewModel.isDeleting(sessionID: session.id),
+                                            isSelected: selection == .session(session.id)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            pendingDeleteSession = session
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -651,6 +652,10 @@ private struct HomeRegularSessionsTab: View {
         !visibleSessions.isEmpty || showsUpstreamSessionsSection
     }
 
+    private func showsMachineSessionsSection(machineEntries: [SessionListEntry]) -> Bool {
+        !machineEntries.isEmpty || showsUpstreamSessionsSection
+    }
+
     private var selectedSession: APISession? {
         guard case .session(let sessionID)? = selection else { return nil }
         return visibleSessions.first(where: { $0.id == sessionID })
@@ -690,6 +695,41 @@ private struct HomeRegularSessionsTab: View {
                 "\(session.id)|\(session.active ? 1 : 0)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
             }
             .joined(separator: ",")
+    }
+
+    @ViewBuilder
+    private func machineEntryButton(_ entry: SessionListEntry) -> some View {
+        switch entry {
+        case .mirroredSession(let session):
+            Button {
+                selection = .session(session.id)
+            } label: {
+                HomeRegularSessionRow(
+                    session: session,
+                    isDeleting: viewModel.isDeleting(sessionID: session.id),
+                    isSelected: selection == .session(session.id)
+                )
+            }
+            .buttonStyle(.plain)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    pendingDeleteSession = session
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        case .upstreamSession(let row):
+            Button {
+                selection = .upstream(row.id)
+            } label: {
+                HomeRegularUpstreamSessionRow(
+                    row: row,
+                    isLinking: viewModel.linkingUpstreamSessionID == row.id,
+                    isSelected: selection == .upstream(row.id)
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 
