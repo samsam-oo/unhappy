@@ -75,6 +75,39 @@ public enum MachinesAPI {
         return try makeRequest(url: url, method: "GET", token: token)
     }
 
+    public static func makeListProjectsRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let projectsURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/projects")
+        return try makeRequest(url: projectsURL, method: "GET", token: token)
+    }
+
+    public static func makeOpenProjectRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let openProjectURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/projects/open")
+        var request = try makeRequest(url: openProjectURL, method: "POST", token: token)
+        request.httpBody = try JSONEncoder().encode(["path": normalizedPath])
+        return request
+    }
+
     public static func makeCodexThreadsRequest(
         serverURL: URL,
         token: String,
@@ -307,6 +340,18 @@ public enum MachinesAPI {
         )
     }
 
+    public static func decodeProjectsResponse(_ data: Data) throws -> [APIMachineProjectSummary] {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(MachinesProjectsResponse.self, from: data)
+        guard response.success else {
+            let normalizedError = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "Failed to list projects"
+            )
+        }
+        return response.projects ?? []
+    }
+
     private static func makeRequest(url: URL, method: String, token: String) throws -> URLRequest {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -411,6 +456,12 @@ private struct MachinesListModelsResponse: Decodable {
     let models: [String]?
     let reasoningEfforts: [String]?
     let modelMetadata: [MachinesModelMetadata]?
+    let error: String?
+}
+
+private struct MachinesProjectsResponse: Decodable {
+    let success: Bool
+    let projects: [APIMachineProjectSummary]?
     let error: String?
 }
 
@@ -599,6 +650,23 @@ public protocol MachineModelsListing: Sendable {
     ) async throws -> APIMachineAgentCapabilities
 }
 
+public protocol MachineProjectsFetching: Sendable {
+    func fetchProjects(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) async throws -> [APIMachineProjectSummary]
+}
+
+public protocol MachineProjectOpening: Sendable {
+    func openProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APIMachineCommandResult
+}
+
 public struct APIMachineAgentCapabilities: Equatable, Sendable {
     public let models: [String]
     public let reasoningEfforts: [String]
@@ -652,7 +720,7 @@ public struct APIMachineModelCapability: Equatable, Sendable {
     }
 }
 
-public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing {
+public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing, MachineProjectsFetching, MachineProjectOpening {
     let rpcDirectoryService: any MachineRPCDirectoryListing
 
     public init(

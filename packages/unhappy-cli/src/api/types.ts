@@ -217,7 +217,13 @@ export const DaemonStateSchema = z.object({
     z.union([
       z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']),
       z.string() // Forward compatibility
-    ]).optional()
+    ]).optional(),
+  openedProjects: z.array(
+    z.object({
+      path: z.string(),
+      openedAt: z.number().optional()
+    })
+  ).optional()
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>

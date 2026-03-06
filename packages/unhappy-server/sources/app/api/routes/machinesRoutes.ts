@@ -382,6 +382,71 @@ export function machinesRoutes(app: Fastify) {
         });
     });
 
+    app.post('/v1/machines/:id/projects/open', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            body: z.object({
+                path: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const projectPath = request.body.path.trim();
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+        if (!projectPath) {
+            return reply.code(400).send({ success: false, error: 'Project path is required' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'open-project',
+            { path: projectPath }
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        return reply.send(invoked.result);
+    });
+
+    app.get('/v1/machines/:id/projects', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'list-projects',
+            {}
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        return reply.send(invoked.result);
+    });
+
     app.post('/v1/machines/:id/daemon/stop', {
         preHandler: app.authenticate,
         schema: {

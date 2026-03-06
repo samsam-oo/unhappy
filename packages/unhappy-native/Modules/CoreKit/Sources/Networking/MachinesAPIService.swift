@@ -1,6 +1,50 @@
 import Foundation
 
 extension URLSessionMachinesService {
+    public func fetchProjects(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) async throws -> [APIMachineProjectSummary] {
+        let request = try MachinesAPI.makeListProjectsRequest(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+        return try MachinesAPI.decodeProjectsResponse(data)
+    }
+
+    public func openProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APIMachineCommandResult {
+        let request = try MachinesAPI.makeOpenProjectRequest(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            path: path
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+        return try MachinesAPI.decodeCommandResponse(data)
+    }
+
     public func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
         let request = try MachinesAPI.makeListRequest(serverURL: serverURL, token: token)
         let (data, response) = try await URLSession.shared.data(for: request)
