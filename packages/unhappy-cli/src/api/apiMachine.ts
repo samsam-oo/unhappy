@@ -551,12 +551,8 @@ export class ApiMachineClient {
         const deduped = existing.filter(
           (entry) => entry.path !== normalizedPath,
         );
-        const archived = normalizedProjectEntries(state?.archivedProjects, homeDir)
-          .filter((entry) => entry.path !== normalizedPath)
-          .map(({ path, archivedAt }) => ({ path, archivedAt }));
         return {
           ...(state ?? { status: 'running' }),
-          archivedProjects: archived,
           openedProjects: [
             ...deduped,
             {
@@ -573,39 +569,6 @@ export class ApiMachineClient {
       };
     });
 
-    this.rpcHandlerManager.registerHandler('archive-project', async (params: any) => {
-      const rawPath = typeof params?.path === 'string' ? params.path.trim() : '';
-      if (!rawPath) {
-        return { success: false, error: 'Project path is required' };
-      }
-      const homeDir = currentHomeDir();
-      const normalizedPath = normalizeMachinePath(rawPath, homeDir);
-      await this.updateDaemonState((state) => {
-        const existing = normalizedProjectEntries(state?.openedProjects, homeDir)
-          .filter((entry) => entry.path !== normalizedPath)
-          .map(({ path, openedAt }) => ({ path, openedAt }));
-        const archivedExisting = normalizedProjectEntries(state?.archivedProjects, homeDir)
-          .filter((entry) => entry.path !== normalizedPath)
-          .map(({ path, archivedAt }) => ({ path, archivedAt }));
-        return {
-          ...(state ?? { status: 'running' }),
-          openedProjects: existing,
-          archivedProjects: [
-            ...archivedExisting,
-            {
-              path: normalizedPath,
-              archivedAt: Date.now(),
-            },
-          ],
-        };
-      });
-      return {
-        success: true as const,
-        message: 'Project archived',
-        path: normalizedPath,
-      };
-    });
-
     this.rpcHandlerManager.registerHandler('close-project', async (params: any) => {
       const rawPath = typeof params?.path === 'string' ? params.path.trim() : '';
       if (!rawPath) {
@@ -618,9 +581,6 @@ export class ApiMachineClient {
         openedProjects: normalizedProjectEntries(state?.openedProjects, homeDir)
           .filter((entry) => entry.path !== normalizedPath)
           .map(({ path, openedAt }) => ({ path, openedAt })),
-        archivedProjects: normalizedProjectEntries(state?.archivedProjects, homeDir)
-          .filter((entry) => entry.path !== normalizedPath)
-          .map(({ path, archivedAt }) => ({ path, archivedAt })),
       }));
       return {
         success: true as const,

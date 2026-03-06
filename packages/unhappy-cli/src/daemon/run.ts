@@ -126,14 +126,14 @@ export async function startDaemon(): Promise<void> {
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
   let requestShutdown: (
-    source: 'unhappy-app' | 'unhappy-cli' | 'os-signal' | 'exception',
+    source: 'mobile-app' | 'unhappy-cli' | 'os-signal' | 'exception',
     errorMessage?: string,
   ) => void;
   let startupFallbackExitTimer: NodeJS.Timeout | null = null;
   let startupCompleted = false;
   let shutdownAlreadyRequested = false;
   let resolvesWhenShutdownRequested = new Promise<{
-    source: 'unhappy-app' | 'unhappy-cli' | 'os-signal' | 'exception';
+    source: 'mobile-app' | 'unhappy-cli' | 'os-signal' | 'exception';
     errorMessage?: string;
   }>((resolve) => {
     requestShutdown = (source, errorMessage) => {
@@ -1144,7 +1144,7 @@ export async function startDaemon(): Promise<void> {
     apiMachine.setRPCHandlers({
       spawnSession,
       stopSession,
-      requestShutdown: () => requestShutdown('unhappy-app'),
+      requestShutdown: () => requestShutdown('mobile-app'),
       requestUpdate,
     });
 
@@ -1264,7 +1264,7 @@ export async function startDaemon(): Promise<void> {
 
     // Setup signal handlers
     const cleanupAndShutdown = async (
-      source: 'unhappy-app' | 'unhappy-cli' | 'os-signal' | 'exception',
+      source: 'mobile-app' | 'unhappy-cli' | 'os-signal' | 'exception',
       errorMessage?: string,
     ) => {
       logger.debug(
