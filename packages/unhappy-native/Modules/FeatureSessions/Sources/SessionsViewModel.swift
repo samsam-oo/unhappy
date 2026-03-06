@@ -229,7 +229,7 @@ public final class SessionsViewModel: ObservableObject {
     public func startPolling(
         serverURLString: String,
         token: String,
-        interval: Duration = .seconds(20)
+        interval: Duration = .seconds(15)
     ) async {
         isLoading = true
         errorMessage = nil

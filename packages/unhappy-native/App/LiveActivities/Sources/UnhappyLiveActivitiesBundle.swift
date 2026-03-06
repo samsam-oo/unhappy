@@ -21,7 +21,7 @@ struct UnhappySessionsLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     if context.state.requiresApproval {
-                        Label("Approval", systemImage: "exclamationmark.triangle.fill")
+                        Label("Approve", systemImage: "exclamationmark.triangle.fill")
                             .font(.caption2.weight(.semibold))
                             .labelStyle(.titleAndIcon)
                             .foregroundStyle(.orange)
@@ -35,11 +35,18 @@ struct UnhappySessionsLiveActivityWidget: Widget {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(context.state.statusText)
                             .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(context.state.requiresApproval ? .orange : .primary)
                             .lineLimit(1)
-                        Text(context.state.directory)
-                            .font(.caption2.monospaced())
-                            .lineLimit(1)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text(context.state.directory)
+                                .font(.caption2.monospaced())
+                                .lineLimit(1)
+                                .foregroundStyle(.secondary)
+                            Spacer(minLength: 0)
+                            Text(context.state.updatedAt, style: .relative)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -71,9 +78,13 @@ private struct LiveActivityLockScreenView: View {
                     .lineLimit(1)
                 Spacer()
                 if context.state.requiresApproval {
-                    Label("Approval", systemImage: "exclamationmark.triangle.fill")
+                    Label("Approval Needed", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.orange)
+                } else if context.state.statusText == "Inactive" {
+                    Label("Inactive", systemImage: "moon.zzz.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 } else {
                     Label("Running", systemImage: "bolt.fill")
                         .font(.caption2.weight(.semibold))
@@ -83,16 +94,26 @@ private struct LiveActivityLockScreenView: View {
 
             Text(context.state.statusText)
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(context.state.requiresApproval ? .orange : .secondary)
                 .lineLimit(1)
-            Text(context.state.directory)
-                .font(.caption2.monospaced())
-                .lineLimit(1)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(context.state.directory)
+                    .font(.caption2.monospaced())
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text(context.state.updatedAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .activityBackgroundTint(Color(.systemBackground))
+        .activityBackgroundTint(
+            context.state.requiresApproval
+                ? Color.orange.opacity(0.14)
+                : Color(.systemBackground)
+        )
         .activitySystemActionForegroundColor(Color.accentColor)
     }
 }
