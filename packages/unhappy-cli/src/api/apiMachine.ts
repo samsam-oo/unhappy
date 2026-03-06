@@ -966,6 +966,7 @@ export class ApiMachineClient {
         const supportedCommands = new Set([
           'spawn-unhappy-session',
           'open-project',
+          'close-project',
           'list-projects',
           'list-models',
           'stop-daemon',
