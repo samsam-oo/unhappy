@@ -28,7 +28,31 @@ enum SessionDisplayTitleResolver {
             }
         }
 
+        if let previewText = resolvedPreviewText(for: session) {
+            return previewText
+        }
+
         return nil
+    }
+
+    static func resolvedPreviewText(for session: APISession) -> String? {
+        guard let content = session.lastMessage?.content else { return nil }
+
+        let decodedPayload = SessionPayloadValueResolver.decodeJSONObject(
+            payload: content.c,
+            dataEncryptionKey: session.dataEncryptionKey
+        )
+        if let text = SessionPayloadValueResolver.firstString(
+            in: [decodedPayload],
+            keys: ["text", "body", "content", "message", "summary"]
+        ) {
+            return normalizePreview(text)
+        }
+
+        guard content.t.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "encrypted" else {
+            return nil
+        }
+        return normalizePreview(content.c)
     }
 
     static func fallbackTitle(for session: APISession) -> String {
@@ -66,5 +90,18 @@ enum SessionDisplayTitleResolver {
             }
         }
         return nil
+    }
+
+    private static func normalizePreview(_ raw: String) -> String? {
+        let collapsed = raw
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !collapsed.isEmpty else { return nil }
+        if collapsed.count <= 90 {
+            return collapsed
+        }
+        return String(collapsed.prefix(90)) + "…"
     }
 }
