@@ -18,7 +18,7 @@ public struct SessionsView: View {
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     @State private var isPresentingProjectPicker = false
-    @State private var selection: Selection?
+    @State private var navigationPath: [Selection] = []
 
     public init(
         serverURLString: String,
@@ -41,21 +41,18 @@ public struct SessionsView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
+        NavigationStack(path: $navigationPath) {
             sidebarContent
-                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
                 .navigationTitle("Projects")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { sessionsToolbarContent }
                 .refreshable {
                     await viewModel.load(serverURLString: serverURLString, token: token)
                 }
-        } detail: {
-            splitDetailPlaceholder
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(detailCanvasColor)
+                .navigationDestination(for: Selection.self) { destinationSelection in
+                    destinationView(for: destinationSelection)
+                }
         }
-        .navigationSplitViewStyle(.balanced)
         .task(id: "\(serverURLString)|\(token)") {
             await viewModel.load(
                 serverURLString: serverURLString,
@@ -70,12 +67,12 @@ public struct SessionsView: View {
             await onSessionsChanged(viewModel.sessions)
         }
         .onChange(of: projectGroups.map(\.id)) { _, ids in
-            guard let selection else {
-                self.selection = projectGroups.first.map { .project($0.id) }
-                return
-            }
-            if case .project(let projectID) = selection, !ids.contains(projectID) {
-                self.selection = nil
+            guard let lastSelection = navigationPath.last else { return }
+            switch lastSelection {
+            case .project(let projectID):
+                if !ids.contains(projectID) {
+                    navigationPath.removeAll()
+                }
             }
         }
         .sheet(isPresented: $isPresentingProjectPicker) {
@@ -97,33 +94,6 @@ public struct SessionsView: View {
                     }
                 }
             )
-        }
-        .navigationDestination(for: Selection.self) { destinationSelection in
-            destinationView(for: destinationSelection)
-        }
-    }
-
-    @ViewBuilder
-    private var splitDetailPlaceholder: some View {
-        if viewModel.isLoading {
-            ProgressView("Loading projects…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let selection {
-            destinationView(for: selection)
-        } else if !hasSidebarRows {
-            emptyDetailState
-        } else if let firstProject = projectGroups.first {
-            SessionProjectDetailView(
-                group: firstProject,
-                viewModel: viewModel,
-                serverURLString: serverURLString,
-                token: token,
-                defaultNewSessionAgent: defaultNewSessionAgent,
-                makeNewSessionViewModel: makeNewSessionViewModel,
-                makeSessionToolsViewModel: makeSessionToolsViewModel
-            )
-        } else {
-            emptyDetailState
         }
     }
 
@@ -178,31 +148,8 @@ public struct SessionsView: View {
         .padding(.horizontal, 20)
     }
 
-    private var emptyDetailState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "folder.badge.plus")
-                .font(.system(size: 38, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text("Add a Project")
-                .font(.title3.weight(.semibold))
-            Text("Choose a machine and project path first. Sessions inside that project will sync automatically.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button {
-                isPresentingProjectPicker = true
-            } label: {
-                Label("Add Project", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .padding(24)
-    }
-
     private var sessionsNavigationList: some View {
-        return List(selection: $selection) {
+        return List {
             Section("Projects") {
                 if viewModel.isLoadingProjects && projectGroups.isEmpty {
                     ProgressView("Loading projects…")
@@ -216,6 +163,36 @@ public struct SessionsView: View {
                         NavigationLink(value: Selection.project(group.id)) {
                             ProjectRow(group: group)
                         }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
+                                Task {
+                                    await viewModel.archiveProject(
+                                        machineID: group.machineID,
+                                        projectPath: group.projectPath,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
+                            } label: {
+                                Label("Archive", systemImage: "archivebox")
+                            }
+                            .tint(.orange)
+                            .disabled(viewModel.isArchiving(projectID: group.id) || viewModel.isRemoving(projectID: group.id))
+
+                            Button(role: .destructive) {
+                                Task {
+                                    await viewModel.removeProject(
+                                        machineID: group.machineID,
+                                        projectPath: group.projectPath,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                            .disabled(viewModel.isArchiving(projectID: group.id) || viewModel.isRemoving(projectID: group.id))
+                        }
                     }
                 }
             }
@@ -227,18 +204,8 @@ public struct SessionsView: View {
         .background(sidebarCanvasColor)
     }
 
-    private var showsUpstreamSessionsSection: Bool {
-        viewModel.isLoadingUpstreamSessions ||
-        !viewModel.upstreamSessions.isEmpty ||
-        viewModel.upstreamSessionsErrorMessage != nil
-    }
-
     private var hasSidebarRows: Bool {
         !projectGroups.isEmpty
-    }
-
-    private var emptyDetailButtonTitle: String {
-        showsUpstreamSessionsSection ? "Create New Session" : "Create Session"
     }
 
     @ViewBuilder
@@ -309,10 +276,6 @@ public struct SessionsView: View {
 
     private var sidebarCanvasColor: Color {
         Color(uiColor: .systemBackground)
-    }
-
-    private var detailCanvasColor: Color {
-        Color(uiColor: .systemGroupedBackground)
     }
 
     @ViewBuilder

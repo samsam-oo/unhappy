@@ -387,7 +387,7 @@ private struct HomeRegularSessionsTab: View {
         .task(id: sessionsChangeTaskID) {
             await onSessionsChanged(viewModel.sessions)
         }
-        .onChange(of: visibleSessions.map(\.id)) { _, ids in
+        .onChange(of: projectGroups.map(\.id)) { _, ids in
             guard let selection else {
                 self.selection = firstAvailableSelection
                 return
@@ -611,14 +611,8 @@ private struct HomeRegularSessionsTab: View {
         return viewModel.sessions
     }
 
-    private var showsUpstreamSessionsSection: Bool {
-        viewModel.isLoadingUpstreamSessions ||
-        !viewModel.upstreamSessions.isEmpty ||
-        viewModel.upstreamSessionsErrorMessage != nil
-    }
-
     private var showsSessionSidebarList: Bool {
-        !projectGroups.isEmpty || showsUpstreamSessionsSection
+        !projectGroups.isEmpty
     }
 
     private var projectGroups: [SessionProjectGroup] {

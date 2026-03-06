@@ -31,7 +31,9 @@ struct SessionRuntimeContext {
             in: [agentState, metadata],
             keys: ["machineId", "machine_id"]
         )?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.machineDisplayName = upstreamIdentity?.machineDisplayName
+        self.machineDisplayName =
+            upstreamIdentity?.machineDisplayName
+            ?? SessionMachineDisplayNameResolver.resolve(in: [metadata, agentState])
         self.provider = SessionRuntimeContext.resolveProvider(
             upstreamIdentity: upstreamIdentity,
             metadata: metadata,

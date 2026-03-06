@@ -98,6 +98,7 @@ public struct SessionProjectDetailView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(group.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { projectActionsToolbar }
         .sheet(isPresented: $isPresentingNewSession) {
             NewSessionView(
                 serverURLString: serverURLString,
@@ -107,6 +108,49 @@ public struct SessionProjectDetailView: View {
                 initialDirectoryPath: group.projectPath,
                 makeViewModel: makeNewSessionViewModel
             )
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var projectActionsToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Button {
+                    Task {
+                        await viewModel.archiveProject(
+                            machineID: group.machineID,
+                            projectPath: group.projectPath,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                } label: {
+                    Label("Archive Project", systemImage: "archivebox")
+                }
+                .disabled(isProjectActionInProgress)
+
+                Button(role: .destructive) {
+                    Task {
+                        await viewModel.removeProject(
+                            machineID: group.machineID,
+                            projectPath: group.projectPath,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                } label: {
+                    Label("Remove Project", systemImage: "trash")
+                }
+                .disabled(isProjectActionInProgress)
+            } label: {
+                if isProjectActionInProgress {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+            .accessibilityLabel("Project Actions")
         }
     }
 
@@ -141,6 +185,10 @@ public struct SessionProjectDetailView: View {
             }
             .padding(16)
         }
+    }
+
+    private var isProjectActionInProgress: Bool {
+        viewModel.isArchiving(projectID: group.id) || viewModel.isRemoving(projectID: group.id)
     }
 }
 
