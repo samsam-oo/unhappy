@@ -78,14 +78,24 @@ public enum MachinesAPI {
     public static func makeListProjectsRequest(
         serverURL: URL,
         token: String,
-        machineID: String
+        machineID: String,
+        explicitOnly: Bool = false
     ) throws -> URLRequest {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
             throw MachinesAPIError.missingMachineID
         }
         let projectsURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/projects")
-        return try makeRequest(url: projectsURL, method: "GET", token: token)
+        guard var components = URLComponents(url: projectsURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        if explicitOnly {
+            components.queryItems = [URLQueryItem(name: "explicitOnly", value: "true")]
+        }
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(url: url, method: "GET", token: token)
     }
 
     public static func makeOpenProjectRequest(
@@ -104,6 +114,46 @@ public enum MachinesAPI {
         }
         let openProjectURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/projects/open")
         var request = try makeRequest(url: openProjectURL, method: "POST", token: token)
+        request.httpBody = try JSONEncoder().encode(["path": normalizedPath])
+        return request
+    }
+
+    public static func makeArchiveProjectRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let archiveProjectURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/projects/archive")
+        var request = try makeRequest(url: archiveProjectURL, method: "POST", token: token)
+        request.httpBody = try JSONEncoder().encode(["path": normalizedPath])
+        return request
+    }
+
+    public static func makeRemoveProjectRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let removeProjectURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/projects/remove")
+        var request = try makeRequest(url: removeProjectURL, method: "POST", token: token)
         request.httpBody = try JSONEncoder().encode(["path": normalizedPath])
         return request
     }
@@ -654,12 +704,31 @@ public protocol MachineProjectsFetching: Sendable {
     func fetchProjects(
         serverURL: URL,
         token: String,
-        machineID: String
+        machineID: String,
+        explicitOnly: Bool
     ) async throws -> [APIMachineProjectSummary]
 }
 
 public protocol MachineProjectOpening: Sendable {
     func openProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APIMachineCommandResult
+}
+
+public protocol MachineProjectArchiving: Sendable {
+    func archiveProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APIMachineCommandResult
+}
+
+public protocol MachineProjectRemoving: Sendable {
+    func removeProject(
         serverURL: URL,
         token: String,
         machineID: String,
@@ -720,7 +789,7 @@ public struct APIMachineModelCapability: Equatable, Sendable {
     }
 }
 
-public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing, MachineProjectsFetching, MachineProjectOpening {
+public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing, MachineProjectsFetching, MachineProjectOpening, MachineProjectArchiving, MachineProjectRemoving {
     let rpcDirectoryService: any MachineRPCDirectoryListing
 
     public init(

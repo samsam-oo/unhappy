@@ -223,6 +223,12 @@ export const DaemonStateSchema = z.object({
       path: z.string(),
       openedAt: z.number().optional()
     })
+  ).optional(),
+  archivedProjects: z.array(
+    z.object({
+      path: z.string(),
+      archivedAt: z.number().optional()
+    })
   ).optional()
 })
 

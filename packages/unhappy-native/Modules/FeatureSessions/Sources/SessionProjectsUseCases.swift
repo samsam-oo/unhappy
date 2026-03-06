@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import FeatureNewSession
 
 public protocol SessionProjectsLoadingAction: Sendable {
     func loadProjects(
@@ -14,6 +15,24 @@ public protocol SessionProjectOpeningAction: Sendable {
         token: String,
         machineID: String,
         machineDisplayName: String,
+        path: String
+    ) async throws -> SessionMachineProject
+}
+
+public protocol SessionProjectArchivingAction: Sendable {
+    func archiveProject(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> SessionMachineProject
+}
+
+public protocol SessionProjectRemovingAction: Sendable {
+    func removeProject(
+        serverURLString: String,
+        token: String,
+        machineID: String,
         path: String
     ) async throws -> SessionMachineProject
 }
@@ -51,7 +70,8 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
             let machineProjects = try await service.fetchProjects(
                 serverURL: serverURL,
                 token: normalizedToken,
-                machineID: machine.id
+                machineID: machine.id,
+                explicitOnly: true
             )
             projects.append(
                 contentsOf: machineProjects.map {
@@ -78,21 +98,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
     }
 
     private func machineName(for machine: APIMachine) -> String {
-        let payload = machine.metadata.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = payload.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return machine.id
-        }
-        let keys = ["displayName", "name", "host", "hostname"]
-        for key in keys {
-            if let value = object[key] as? String {
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    return trimmed
-                }
-            }
-        }
-        return machine.id
+        NewSessionMachinePresentation.displayName(for: machine)
     }
 }
 
@@ -138,6 +144,106 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
                 codexThreadCount: 0,
                 claudeSessionCount: 0,
                 openedExplicitly: true
+            )
+        )
+    }
+}
+
+public actor SessionProjectArchiveUseCase: SessionProjectArchivingAction {
+    private let service: any MachineProjectArchiving
+
+    public init(service: any MachineProjectArchiving) {
+        self.service = service
+    }
+
+    public func archiveProject(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> SessionMachineProject {
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedToken.isEmpty else {
+            throw MachinesAPIError.missingToken
+        }
+        let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let serverURL = URL(string: normalizedURL),
+              serverURL.scheme != nil,
+              serverURL.host != nil else {
+            throw MachinesAPIError.invalidHTTPStatus(0)
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let result = try await service.archiveProject(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: machineID,
+            path: normalizedPath
+        )
+        if result.success == false {
+            throw MachinesAPIError.rpcCallFailed(result.error ?? result.message)
+        }
+        return SessionMachineProject(
+            machineID: machineID,
+            machineDisplayName: machineID,
+            summary: APIMachineProjectSummary(
+                path: normalizedPath,
+                latestUpdatedAt: Date().ISO8601Format(),
+                codexThreadCount: 0,
+                claudeSessionCount: 0,
+                openedExplicitly: false
+            )
+        )
+    }
+}
+
+public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
+    private let service: any MachineProjectRemoving
+
+    public init(service: any MachineProjectRemoving) {
+        self.service = service
+    }
+
+    public func removeProject(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> SessionMachineProject {
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedToken.isEmpty else {
+            throw MachinesAPIError.missingToken
+        }
+        let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let serverURL = URL(string: normalizedURL),
+              serverURL.scheme != nil,
+              serverURL.host != nil else {
+            throw MachinesAPIError.invalidHTTPStatus(0)
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let result = try await service.removeProject(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: machineID,
+            path: normalizedPath
+        )
+        if result.success == false {
+            throw MachinesAPIError.rpcCallFailed(result.error ?? result.message)
+        }
+        return SessionMachineProject(
+            machineID: machineID,
+            machineDisplayName: machineID,
+            summary: APIMachineProjectSummary(
+                path: normalizedPath,
+                latestUpdatedAt: Date().ISO8601Format(),
+                codexThreadCount: 0,
+                claudeSessionCount: 0,
+                openedExplicitly: false
             )
         )
     }
