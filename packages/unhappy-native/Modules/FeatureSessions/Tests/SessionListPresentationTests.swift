@@ -126,11 +126,17 @@ struct SessionListPresentationTests {
         let groups = SessionListPresentationBuilder.projectGroups(
             sessions: [],
             upstreamSessions: [],
-            bookmarks: [
-                SessionProjectBookmark(
+            projects: [
+                SessionMachineProject(
                     machineID: "machine-1",
                     machineDisplayName: "Work Mac",
-                    projectPath: "/repo/app"
+                    summary: APIMachineProjectSummary(
+                        path: "/repo/app",
+                        latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                        codexThreadCount: 0,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
                 )
             ]
         )

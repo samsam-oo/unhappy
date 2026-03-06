@@ -55,7 +55,7 @@ public extension SessionListPresentationBuilder {
     static func projectGroups(
         sessions: [APISession],
         upstreamSessions: [SessionLinkedUpstreamSession],
-        bookmarks: [SessionProjectBookmark] = []
+        projects: [SessionMachineProject] = []
     ) -> [SessionProjectGroup] {
         struct Accumulator {
             var machineDisplayName: String
@@ -97,15 +97,17 @@ public extension SessionListPresentationBuilder {
             groups[key]?.upstreamSessions.append(row)
         }
 
-        for bookmark in bookmarks {
-            let projectPath = normalizedProjectPath(bookmark.projectPath) ?? bookmark.projectPath
-            let key = "\(bookmark.machineID)|\(projectPath)"
+        for project in projects {
+            let projectPath = normalizedProjectPath(project.summary.path) ?? project.summary.path
+            let key = "\(project.machineID)|\(projectPath)"
             if groups[key] == nil {
                 groups[key] = Accumulator(
-                    machineDisplayName: bookmark.machineDisplayName,
+                    machineDisplayName: project.machineDisplayName,
                     projectPath: projectPath,
                     hasConcreteProjectPath: true
                 )
+            } else if project.summary.openedExplicitly {
+                groups[key]?.hasConcreteProjectPath = true
             }
         }
 

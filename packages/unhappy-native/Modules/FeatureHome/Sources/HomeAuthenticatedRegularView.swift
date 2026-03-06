@@ -422,11 +422,15 @@ private struct HomeRegularSessionsTab: View {
                 mode: .selectProject,
                 makeViewModel: makeNewSessionViewModel,
                 onProjectSelected: { machineID, directoryPath, machineDisplayName in
-                    viewModel.addProjectBookmark(
-                        machineID: machineID ?? "",
-                        machineDisplayName: machineDisplayName ?? machineID ?? "",
-                        projectPath: directoryPath
-                    )
+                    Task {
+                        await viewModel.openProject(
+                            machineID: machineID ?? "",
+                            machineDisplayName: machineDisplayName ?? machineID ?? "",
+                            projectPath: directoryPath,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
                 }
             )
         }
@@ -512,9 +516,9 @@ private struct HomeRegularSessionsTab: View {
                 } else {
                     List {
                         Section("Projects") {
-                            if viewModel.isLoadingUpstreamSessions && projectGroups.isEmpty {
+                            if viewModel.isLoadingProjects && projectGroups.isEmpty {
                                 ProgressView("Loading projects…")
-                            } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
+                            } else if let errorMessage = viewModel.projectsErrorMessage,
                                       projectGroups.isEmpty {
                                 Text(errorMessage)
                                     .font(.footnote)
@@ -621,7 +625,7 @@ private struct HomeRegularSessionsTab: View {
         SessionListPresentationBuilder.projectGroups(
             sessions: visibleSessions,
             upstreamSessions: viewModel.upstreamSessions,
-            bookmarks: viewModel.projectBookmarks
+            projects: viewModel.projects
         )
     }
 

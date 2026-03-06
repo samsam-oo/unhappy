@@ -18,8 +18,11 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var selectedSessionMessages: [APISessionMessage] = []
     @Published public private(set) var isLoadingSessionMessages = false
     @Published public private(set) var selectedSessionErrorMessage: String?
+    @Published public private(set) var projects: [SessionMachineProject] = []
+    @Published public private(set) var isLoadingProjects = false
+    @Published public private(set) var projectsErrorMessage: String?
+    @Published public private(set) var openingProjectID: String?
     @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
-    @Published public private(set) var projectBookmarks: [SessionProjectBookmark] = []
     @Published public private(set) var isLoadingUpstreamSessions = false
     @Published public private(set) var upstreamSessionsErrorMessage: String?
     @Published public private(set) var linkingUpstreamSessionID: String?
@@ -52,6 +55,8 @@ public final class SessionsViewModel: ObservableObject {
     private let pageLoader: any SessionsPageLoading
     private let poller: any SessionsPolling
     private let messageLoader: any SessionsMessagesLoading
+    private let projectsLoader: (any SessionProjectsLoadingAction)?
+    private let projectOpener: (any SessionProjectOpeningAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
     private let upstreamSessionLinker: (any NewSessionSpawningAction)?
     private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
@@ -73,6 +78,8 @@ public final class SessionsViewModel: ObservableObject {
         pageLoader: any SessionsPageLoading,
         poller: any SessionsPolling,
         messageLoader: any SessionsMessagesLoading,
+        projectsLoader: (any SessionProjectsLoadingAction)? = nil,
+        projectOpener: (any SessionProjectOpeningAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
         upstreamSessionLinker: (any NewSessionSpawningAction)? = nil,
         codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
@@ -88,6 +95,8 @@ public final class SessionsViewModel: ObservableObject {
         self.pageLoader = pageLoader
         self.poller = poller
         self.messageLoader = messageLoader
+        self.projectsLoader = projectsLoader
+        self.projectOpener = projectOpener
         self.upstreamSessionsLoader = upstreamSessionsLoader
         self.upstreamSessionLinker = upstreamSessionLinker
         self.codexThreadsLoader = codexThreadsLoader
@@ -211,6 +220,10 @@ public final class SessionsViewModel: ObservableObject {
             nextCursor = firstPage.nextCursor
             hasMoreSessions = firstPage.hasNext
             errorMessage = nil
+            await loadProjects(
+                serverURLString: serverURLString,
+                token: token
+            )
             await loadUpstreamSessions(
                 serverURLString: serverURLString,
                 token: token
@@ -243,6 +256,10 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 sessions = mergeLatestRows(rows, into: sessions)
+                await loadProjects(
+                    serverURLString: serverURLString,
+                    token: token
+                )
                 await loadUpstreamSessions(
                     serverURLString: serverURLString,
                     token: token
@@ -260,6 +277,8 @@ public final class SessionsViewModel: ObservableObject {
             sessions = []
             nextCursor = nil
             hasMoreSessions = false
+            projects = []
+            projectsErrorMessage = nil
             upstreamSessions = []
             upstreamSessionsErrorMessage = nil
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -289,6 +308,10 @@ public final class SessionsViewModel: ObservableObject {
             self.nextCursor = page.nextCursor
             hasMoreSessions = page.hasNext
             errorMessage = nil
+            await loadProjects(
+                serverURLString: serverURLString,
+                token: token
+            )
             await loadUpstreamSessions(
                 serverURLString: serverURLString,
                 token: token
@@ -420,6 +443,71 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    public func loadProjects(
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let projectsLoader else {
+            projects = []
+            projectsErrorMessage = nil
+            return
+        }
+
+        isLoadingProjects = true
+        defer { isLoadingProjects = false }
+
+        do {
+            projects = try await projectsLoader.loadProjects(
+                serverURLString: serverURLString,
+                token: token
+            )
+            projectsErrorMessage = nil
+        } catch {
+            projects = []
+            projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func openProject(
+        machineID: String,
+        machineDisplayName: String,
+        projectPath: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let projectOpener else {
+            projectsErrorMessage = "Project opening is unavailable in this build"
+            return
+        }
+
+        let projectID = "\(machineID)|\(projectPath)"
+        openingProjectID = projectID
+        defer {
+            if openingProjectID == projectID {
+                openingProjectID = nil
+            }
+        }
+
+        do {
+            let openedProject = try await projectOpener.openProject(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: machineID,
+                machineDisplayName: machineDisplayName,
+                path: projectPath
+            )
+            if !projects.contains(where: { $0.id == openedProject.id }) {
+                projects.insert(openedProject, at: 0)
+            }
+            await loadProjects(
+                serverURLString: serverURLString,
+                token: token
+            )
+        } catch {
+            projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     public func linkUpstreamSession(
         _ row: SessionLinkedUpstreamSession,
         serverURLString: String,
@@ -479,37 +567,6 @@ public final class SessionsViewModel: ObservableObject {
             upstreamSessionStatusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return nil
         }
-    }
-
-    public func addProjectBookmark(
-        machineID: String,
-        machineDisplayName: String,
-        projectPath: String
-    ) {
-        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedMachineDisplayName = machineDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedProjectPath = projectPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedMachineID.isEmpty, !normalizedProjectPath.isEmpty else { return }
-
-        let bookmark = SessionProjectBookmark(
-            machineID: normalizedMachineID,
-            machineDisplayName: normalizedMachineDisplayName.isEmpty ? normalizedMachineID : normalizedMachineDisplayName,
-            projectPath: normalizedProjectPath
-        )
-        if projectBookmarks.contains(where: { $0.id == bookmark.id }) {
-            return
-        }
-        projectBookmarks.append(bookmark)
-        projectBookmarks.sort { lhs, rhs in
-            if lhs.machineDisplayName != rhs.machineDisplayName {
-                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
-            }
-            return lhs.projectPath.localizedCaseInsensitiveCompare(rhs.projectPath) == .orderedAscending
-        }
-    }
-
-    public func removeProjectBookmark(projectID: String) {
-        projectBookmarks.removeAll { $0.id == projectID }
     }
 
     public func loadCodexThreads(
