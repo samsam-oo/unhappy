@@ -928,6 +928,27 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    public func loadFirstMessagePreview(
+        for sessionID: String,
+        dataEncryptionKey: String?,
+        serverURLString: String,
+        token: String
+    ) async -> String? {
+        do {
+            let messages = try await messageLoader.loadMessages(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID
+            )
+            return SessionFirstMessagePreviewResolver.resolve(
+                from: messages,
+                dataEncryptionKey: dataEncryptionKey
+            )
+        } catch {
+            return nil
+        }
+    }
+
     public func deleteSession(sessionID: String, serverURLString: String, token: String) async {
         deletingSessionIDs.insert(sessionID)
         defer { deletingSessionIDs.remove(sessionID) }

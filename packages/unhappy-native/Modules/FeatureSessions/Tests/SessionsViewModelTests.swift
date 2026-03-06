@@ -272,6 +272,45 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadFirstMessagePreviewReturnsEarliestReadableMessage() async throws {
+        let messages = [
+            APISessionMessage(
+                id: "m2",
+                seq: 2,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "text", c: "Second message"),
+                createdAt: 2,
+                updatedAt: 2
+            ),
+            APISessionMessage(
+                id: "m1",
+                seq: 1,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "text", c: "First message"),
+                createdAt: 1,
+                updatedAt: 1
+            ),
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success(messages)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        let preview = await model.loadFirstMessagePreview(
+            for: "session-1",
+            dataEncryptionKey: nil,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(preview == "First message")
+    }
+
+    @Test
     func sendMessageSuccessSkipsReloadAndAppendsOptimisticMessage() async throws {
         let existingMessage = APISessionMessage(
             id: "m1",

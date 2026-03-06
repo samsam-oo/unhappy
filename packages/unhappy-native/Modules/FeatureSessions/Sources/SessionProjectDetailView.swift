@@ -5,6 +5,29 @@ import FeatureSessionTools
 
 @MainActor
 public struct SessionProjectDetailView: View {
+    private enum SessionListEntry: Identifiable {
+        case mirrored(APISession)
+        case upstream(SessionLinkedUpstreamSession)
+
+        var id: String {
+            switch self {
+            case .mirrored(let session):
+                return "mirrored:\(session.id)"
+            case .upstream(let row):
+                return "upstream:\(row.id)"
+            }
+        }
+
+        var sortTimestamp: TimeInterval {
+            switch self {
+            case .mirrored(let session):
+                return session.updatedAt
+            case .upstream(let row):
+                return row.sortTimestamp
+            }
+        }
+    }
+
     let group: SessionProjectGroup
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
@@ -14,6 +37,7 @@ public struct SessionProjectDetailView: View {
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
     @State private var isPresentingNewSession = false
+    @State private var firstMessagePreviewBySessionID: [String: String] = [:]
 
     public init(
         group: SessionProjectGroup,
@@ -39,56 +63,21 @@ public struct SessionProjectDetailView: View {
                 summaryCard
             }
 
-            if !group.mirroredSessions.isEmpty {
-                Section("Project Sessions") {
-                    ForEach(group.mirroredSessions) { session in
-                        NavigationLink {
-                            SessionDetailView(
-                                session: session,
-                                viewModel: viewModel,
-                                serverURLString: serverURLString,
-                                token: token,
-                                makeSessionToolsViewModel: makeSessionToolsViewModel
-                            )
-                        } label: {
-                            ProjectMirroredSessionRow(
-                                session: session,
-                                isDeleting: viewModel.isDeleting(sessionID: session.id)
-                            )
-                        }
-                        .disabled(viewModel.isDeleting(sessionID: session.id))
+            if sessionEntries.isEmpty {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No sessions yet")
+                            .font(.headline)
+                        Text("Start a new session in this project and it will appear here.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.vertical, 4)
                 }
-            }
-
-            if !group.upstreamSessions.isEmpty {
-                Section("Other Computer Sessions") {
-                    ForEach(group.upstreamSessions) { row in
-                        NavigationLink {
-                            SessionUpstreamOpeningView(
-                                row: row,
-                                viewModel: viewModel,
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                UpstreamSessionRow(
-                                    summary: row.summary,
-                                    isLinking: viewModel.linkingUpstreamSessionID == row.id
-                                )
-                                HStack(spacing: 6) {
-                                    Text(row.summary.provider.displayName)
-                                        .font(.caption2.weight(.semibold))
-                                    Text("·")
-                                        .font(.caption2)
-                                    Text(row.machineDisplayName)
-                                        .font(.caption2)
-                                        .lineLimit(1)
-                                }
-                                .foregroundStyle(.secondary)
-                            }
-                        }
+            } else {
+                Section("Sessions") {
+                    ForEach(sessionEntries) { entry in
+                        sessionRow(for: entry)
                     }
                 }
             }
@@ -99,6 +88,9 @@ public struct SessionProjectDetailView: View {
         .navigationTitle(group.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { projectActionsToolbar }
+        .task(id: firstMessagePreviewTaskID) {
+            await loadMissingFirstMessagePreviews()
+        }
         .sheet(isPresented: $isPresentingNewSession) {
             NewSessionView(
                 serverURLString: serverURLString,
@@ -113,6 +105,16 @@ public struct SessionProjectDetailView: View {
 
     @ToolbarContentBuilder
     private var projectActionsToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                isPresentingNewSession = true
+            } label: {
+                Image(systemName: "plus")
+            }
+            .disabled(!group.hasConcreteProjectPath)
+            .accessibilityLabel("New Session")
+        }
+
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Button {
@@ -169,19 +171,10 @@ public struct SessionProjectDetailView: View {
                         .font(.body.monospaced())
                         .foregroundStyle(AppPalette.primaryText)
                         .textSelection(.enabled)
-                    Text("Sessions on this machine path stay grouped here and new sessions start in the same project context.")
+                    Text("Choose a session to continue where you left off, or start a fresh one in the same project context.")
                         .font(.footnote)
                         .foregroundStyle(AppPalette.secondaryText)
                 }
-
-                Button {
-                    isPresentingNewSession = true
-                } label: {
-                    Label("New Session in Project", systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!group.hasConcreteProjectPath)
             }
             .padding(16)
         }
@@ -190,17 +183,124 @@ public struct SessionProjectDetailView: View {
     private var isProjectActionInProgress: Bool {
         viewModel.isArchiving(projectID: group.id) || viewModel.isRemoving(projectID: group.id)
     }
+
+    private var sessionEntries: [SessionListEntry] {
+        let combined = group.mirroredSessions.map(SessionListEntry.mirrored)
+            + group.upstreamSessions.map(SessionListEntry.upstream)
+        return combined.sorted { lhs, rhs in
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
+            }
+            return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
+        }
+    }
+
+    @ViewBuilder
+    private func sessionRow(for entry: SessionListEntry) -> some View {
+        switch entry {
+        case .mirrored(let session):
+            NavigationLink {
+                SessionDetailView(
+                    session: session,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            } label: {
+                ProjectMirroredSessionRow(
+                    sessionDisplayTitle: mirroredSessionDisplayTitle(for: session),
+                    sessionPreview: mirroredSessionSecondaryPreview(for: session),
+                    isDisplayTitlePrimary: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) != nil,
+                    sessionIsActive: session.active,
+                    sessionUpdatedAt: session.updatedAt,
+                    isDeleting: viewModel.isDeleting(sessionID: session.id)
+                )
+            }
+            .disabled(viewModel.isDeleting(sessionID: session.id))
+
+        case .upstream(let row):
+            NavigationLink {
+                SessionUpstreamOpeningView(
+                    row: row,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            } label: {
+                ProjectUpstreamSessionRow(row: row)
+            }
+        }
+    }
+
+    private var firstMessagePreviewTaskID: String {
+        group.mirroredSessions
+            .map { session in
+                "\(session.id)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
+            }
+            .joined(separator: ",")
+    }
+
+    private func mirroredSessionDisplayTitle(for session: APISession) -> String {
+        if let resolvedTitle = SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) {
+            return resolvedTitle
+        }
+        if let firstMessagePreview = firstMessagePreviewBySessionID[session.id] {
+            return firstMessagePreview
+        }
+        return SessionDisplayTitleResolver.fallbackTitle(for: session)
+    }
+
+    private func mirroredSessionSecondaryPreview(for session: APISession) -> String? {
+        guard SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) != nil else {
+            return nil
+        }
+        guard let firstMessagePreview = firstMessagePreviewBySessionID[session.id] else {
+            return nil
+        }
+        guard firstMessagePreview != mirroredSessionDisplayTitle(for: session) else {
+            return nil
+        }
+        return firstMessagePreview
+    }
+
+    private func loadMissingFirstMessagePreviews() async {
+        let pendingSessions = group.mirroredSessions.filter { session in
+            SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) == nil
+                && firstMessagePreviewBySessionID[session.id] == nil
+        }
+        guard !pendingSessions.isEmpty else { return }
+
+        for session in pendingSessions {
+            let preview = await viewModel.loadFirstMessagePreview(
+                for: session.id,
+                dataEncryptionKey: session.dataEncryptionKey,
+                serverURLString: serverURLString,
+                token: token
+            )
+            if let preview, !preview.isEmpty {
+                firstMessagePreviewBySessionID[session.id] = preview
+            }
+        }
+    }
+
 }
 
 private struct ProjectMirroredSessionRow: View {
-    let session: APISession
+    let sessionDisplayTitle: String
+    let sessionPreview: String?
+    let isDisplayTitlePrimary: Bool
+    let sessionIsActive: Bool
+    let sessionUpdatedAt: TimeInterval
     let isDeleting: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session))
+                Text(sessionDisplayTitle)
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isDisplayTitlePrimary ? .primary : .secondary)
                     .lineLimit(1)
                 if isDeleting {
                     ProgressView()
@@ -208,23 +308,107 @@ private struct ProjectMirroredSessionRow: View {
                 }
             }
 
+            if let sessionPreview {
+                Text(sessionPreview)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
             HStack(spacing: 8) {
                 Circle()
-                    .fill(session.active ? .green : .gray)
+                    .fill(sessionIsActive ? .green : .gray)
                     .frame(width: 8, height: 8)
-                Text(session.active ? "Active" : "Inactive")
+                Text(sessionIsActive ? "Active" : "Inactive")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Updated \(SessionTimestampPresentation.updatedLabel(for: session.updatedAt))")
+                Text("Updated \(SessionTimestampPresentation.updatedLabel(for: sessionUpdatedAt))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(session.id)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
             }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
+    }
+}
+
+private struct ProjectUpstreamSessionRow: View {
+    let row: SessionLinkedUpstreamSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(rowDisplayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(hasExplicitTitle ? .primary : .secondary)
+                    .lineLimit(1)
+
+                Text(row.summary.provider.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if let normalizedPreview, normalizedPreview != rowDisplayTitle {
+                Text(normalizedPreview)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            HStack(spacing: 8) {
+                Text("Updated \(updatedLabel)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let model = normalizedModel {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(model)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    private var normalizedTitle: String? {
+        let title = row.summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        guard title.localizedCaseInsensitiveCompare("Untitled") != .orderedSame else { return nil }
+        return title
+    }
+
+    private var hasExplicitTitle: Bool {
+        normalizedTitle != nil
+    }
+
+    private var rowDisplayTitle: String {
+        if let normalizedTitle {
+            return normalizedTitle
+        }
+        if let normalizedPreview {
+            return normalizedPreview
+        }
+        return row.summary.id
+    }
+
+    private var updatedLabel: String {
+        SessionTimestampPresentation.updatedLabel(for: row.sortTimestamp)
+    }
+
+    private var normalizedPreview: String? {
+        let preview = row.summary.preview?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let preview, !preview.isEmpty else { return nil }
+        return preview
+    }
+
+    private var normalizedModel: String? {
+        let model = row.summary.model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let model, !model.isEmpty else { return nil }
+        return model
     }
 }

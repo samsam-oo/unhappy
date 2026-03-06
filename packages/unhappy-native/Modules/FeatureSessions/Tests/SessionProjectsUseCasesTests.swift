@@ -92,7 +92,7 @@ private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
         explicitOnly: Bool
     ) async throws -> [APIMachineProjectSummary] {
         requestedExplicitOnlyValues.append(explicitOnly)
-        projectsByMachineID[machineID] ?? []
+        return projectsByMachineID[machineID] ?? []
     }
 }
 
