@@ -129,6 +129,9 @@ public struct SessionsView: View {
                 }
             )
         }
+        .navigationDestination(for: Selection.self) { destinationSelection in
+            destinationView(for: destinationSelection)
+        }
     }
 
     @ViewBuilder
@@ -136,24 +139,8 @@ public struct SessionsView: View {
         if viewModel.isLoading {
             ProgressView("Loading sessions…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let selectedSession {
-            SessionDetailView(
-                session: selectedSession,
-                viewModel: viewModel,
-                serverURLString: serverURLString,
-                token: token,
-                makeSessionToolsViewModel: makeSessionToolsViewModel
-            )
-        } else if let selectedUpstreamSession {
-            SessionUpstreamLinkDetailView(
-                row: selectedUpstreamSession,
-                viewModel: viewModel,
-                serverURLString: serverURLString,
-                token: token,
-                onLinkedSession: { linkedSessionID in
-                    selection = .session(linkedSessionID)
-                }
-            )
+        } else if let selection {
+            destinationView(for: selection)
         } else if !hasSidebarRows {
             emptyDetailState
         } else if visibleSessions.isEmpty {
@@ -410,16 +397,6 @@ public struct SessionsView: View {
         return viewModel.sessions
     }
 
-    private var selectedSession: APISession? {
-        guard case .session(let sessionID)? = selection else { return nil }
-        return visibleSessions.first(where: { $0.id == sessionID })
-    }
-
-    private var selectedUpstreamSession: SessionLinkedUpstreamSession? {
-        guard case .upstream(let rowID)? = selection else { return nil }
-        return viewModel.upstreamSessions.first(where: { $0.id == rowID })
-    }
-
     private var sessionsChangeTaskID: String {
         viewModel.sessions
             .map { session in
@@ -434,6 +411,34 @@ public struct SessionsView: View {
 
     private var detailCanvasColor: Color {
         Color(uiColor: .systemGroupedBackground)
+    }
+
+    @ViewBuilder
+    private func destinationView(for selection: Selection) -> some View {
+        switch selection {
+        case .session(let sessionID):
+            if let session = visibleSessions.first(where: { $0.id == sessionID }) {
+                SessionDetailView(
+                    session: session,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            }
+        case .upstream(let rowID):
+            if let row = viewModel.upstreamSessions.first(where: { $0.id == rowID }) {
+                SessionUpstreamLinkDetailView(
+                    row: row,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    onLinkedSession: { linkedSessionID in
+                        self.selection = .session(linkedSessionID)
+                    }
+                )
+            }
+        }
     }
 }
 
