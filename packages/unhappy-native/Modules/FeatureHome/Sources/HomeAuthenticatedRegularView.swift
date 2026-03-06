@@ -69,16 +69,6 @@ struct HomeAuthenticatedRegularView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeRegularInboxTab(
-                viewModel: inboxViewModel,
-                serverURLString: serverURLString,
-                token: token
-            )
-            .tabItem {
-                Label("Inbox", systemImage: "tray.full")
-            }
-            .tag(AuthenticatedTab.inbox)
-
             HomeRegularSessionsTab(
                 viewModel: sessionsViewModel,
                 serverURLString: serverURLString,
@@ -93,6 +83,16 @@ struct HomeAuthenticatedRegularView: View {
                 Label("Projects", systemImage: "folder")
             }
             .tag(AuthenticatedTab.projects)
+
+            HomeRegularInboxTab(
+                viewModel: inboxViewModel,
+                serverURLString: serverURLString,
+                token: token
+            )
+            .tabItem {
+                Label("Inbox", systemImage: "tray.full")
+            }
+            .tag(AuthenticatedTab.inbox)
 
             HomeRegularSettingsTab(
                 viewModel: settingsViewModel,
