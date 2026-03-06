@@ -500,24 +500,63 @@ export class ApiMachineClient {
       return resp;
     });
 
+    const currentHomeDir = () =>
+      (this.machine?.metadata?.homeDir || os.homedir()).trim() || os.homedir();
+
+    const normalizedProjectEntries = (
+      entries: Array<{ path?: string; openedAt?: number; archivedAt?: number }> | undefined,
+      homeDir: string,
+    ) =>
+      (entries ?? [])
+        .map((entry) => {
+          const rawPath = typeof entry?.path === 'string' ? entry.path : '';
+          const normalizedPath = normalizeMachinePath(rawPath, homeDir);
+          if (!normalizedPath) {
+            return null;
+          }
+          return {
+            path: normalizedPath,
+            openedAt:
+              typeof entry?.openedAt === 'number' && Number.isFinite(entry.openedAt)
+                ? entry.openedAt
+                : undefined,
+            archivedAt:
+              typeof entry?.archivedAt === 'number' && Number.isFinite(entry.archivedAt)
+                ? entry.archivedAt
+                : undefined,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+    const explicitProjectSummaries = (
+      entries: Array<{ path: string; openedAt?: number }>,
+    ) =>
+      entries.map((entry) => ({
+        path: entry.path,
+        latestUpdatedAt: new Date(entry.openedAt ?? 0).toISOString(),
+        codexThreadCount: 0,
+        claudeSessionCount: 0,
+        openedExplicitly: true,
+      }));
+
     this.rpcHandlerManager.registerHandler('open-project', async (params: any) => {
       const rawPath = typeof params?.path === 'string' ? params.path.trim() : '';
       if (!rawPath) {
         return { success: false, error: 'Project path is required' };
       }
-      const homeDir =
-        (this.machine?.metadata?.homeDir || os.homedir()).trim() ||
-        os.homedir();
+      const homeDir = currentHomeDir();
       const normalizedPath = normalizeMachinePath(rawPath, homeDir);
       await this.updateDaemonState((state) => {
-        const existing = state?.openedProjects ?? [];
+        const existing = normalizedProjectEntries(state?.openedProjects, homeDir);
         const deduped = existing.filter(
-          (entry) =>
-            typeof entry?.path === 'string' &&
-            normalizeMachinePath(entry.path, homeDir) !== normalizedPath,
+          (entry) => entry.path !== normalizedPath,
         );
+        const archived = normalizedProjectEntries(state?.archivedProjects, homeDir)
+          .filter((entry) => entry.path !== normalizedPath)
+          .map(({ path, archivedAt }) => ({ path, archivedAt }));
         return {
           ...(state ?? { status: 'running' }),
+          archivedProjects: archived,
           openedProjects: [
             ...deduped,
             {
@@ -529,14 +568,85 @@ export class ApiMachineClient {
       });
       return {
         success: true as const,
+        message: 'Project added',
         path: normalizedPath,
       };
     });
 
-    this.rpcHandlerManager.registerHandler('list-projects', async () => {
-      const homeDir =
-        (this.machine?.metadata?.homeDir || os.homedir()).trim() ||
-        os.homedir();
+    this.rpcHandlerManager.registerHandler('archive-project', async (params: any) => {
+      const rawPath = typeof params?.path === 'string' ? params.path.trim() : '';
+      if (!rawPath) {
+        return { success: false, error: 'Project path is required' };
+      }
+      const homeDir = currentHomeDir();
+      const normalizedPath = normalizeMachinePath(rawPath, homeDir);
+      await this.updateDaemonState((state) => {
+        const existing = normalizedProjectEntries(state?.openedProjects, homeDir)
+          .filter((entry) => entry.path !== normalizedPath)
+          .map(({ path, openedAt }) => ({ path, openedAt }));
+        const archivedExisting = normalizedProjectEntries(state?.archivedProjects, homeDir)
+          .filter((entry) => entry.path !== normalizedPath)
+          .map(({ path, archivedAt }) => ({ path, archivedAt }));
+        return {
+          ...(state ?? { status: 'running' }),
+          openedProjects: existing,
+          archivedProjects: [
+            ...archivedExisting,
+            {
+              path: normalizedPath,
+              archivedAt: Date.now(),
+            },
+          ],
+        };
+      });
+      return {
+        success: true as const,
+        message: 'Project archived',
+        path: normalizedPath,
+      };
+    });
+
+    this.rpcHandlerManager.registerHandler('close-project', async (params: any) => {
+      const rawPath = typeof params?.path === 'string' ? params.path.trim() : '';
+      if (!rawPath) {
+        return { success: false, error: 'Project path is required' };
+      }
+      const homeDir = currentHomeDir();
+      const normalizedPath = normalizeMachinePath(rawPath, homeDir);
+      await this.updateDaemonState((state) => ({
+        ...(state ?? { status: 'running' }),
+        openedProjects: normalizedProjectEntries(state?.openedProjects, homeDir)
+          .filter((entry) => entry.path !== normalizedPath)
+          .map(({ path, openedAt }) => ({ path, openedAt })),
+        archivedProjects: normalizedProjectEntries(state?.archivedProjects, homeDir)
+          .filter((entry) => entry.path !== normalizedPath)
+          .map(({ path, archivedAt }) => ({ path, archivedAt })),
+      }));
+      return {
+        success: true as const,
+        message: 'Project removed',
+        path: normalizedPath,
+      };
+    });
+
+    this.rpcHandlerManager.registerHandler('list-projects', async (params: any) => {
+      const homeDir = currentHomeDir();
+      const explicitOnly = params?.explicitOnly === true;
+      const openedProjects = normalizedProjectEntries(
+        this.machine.daemonState?.openedProjects,
+        homeDir,
+      ).map(({ path, openedAt }) => ({
+        path,
+        openedAt,
+      }));
+
+      if (explicitOnly) {
+        return {
+          success: true as const,
+          projects: explicitProjectSummaries(openedProjects),
+        };
+      }
+
       const codexHomeCandidates = buildCodexHomeCandidates(this.machine, homeDir);
       const codexProjects = (
         await Promise.all(
@@ -548,16 +658,9 @@ export class ApiMachineClient {
       const claudeProjects = await listClaudeProjectsFromConfigDir(
         defaultClaudeConfigDir(),
       );
-      const openedProjects = (this.machine.daemonState?.openedProjects ?? [])
-        .map((entry) =>
-          typeof entry?.path === 'string'
-            ? normalizeMachinePath(entry.path, homeDir)
-            : '',
-        )
-        .filter((entry) => entry.length > 0);
       const projects = mergeProjectSummaries(
         [...codexProjects, ...claudeProjects],
-        openedProjects,
+        openedProjects.map((entry) => entry.path),
       );
       return {
         success: true as const,

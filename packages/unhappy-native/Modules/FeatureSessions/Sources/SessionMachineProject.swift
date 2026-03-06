@@ -1,21 +1,22 @@
 import Foundation
+import CoreKit
 
-public struct SessionProjectBookmark: Identifiable, Equatable, Sendable {
+public struct SessionMachineProject: Identifiable, Equatable, Sendable {
     public let machineID: String
     public let machineDisplayName: String
-    public let projectPath: String
+    public let summary: APIMachineProjectSummary
 
     public init(
         machineID: String,
         machineDisplayName: String,
-        projectPath: String
+        summary: APIMachineProjectSummary
     ) {
         self.machineID = machineID
         self.machineDisplayName = machineDisplayName
-        self.projectPath = projectPath
+        self.summary = summary
     }
 
     public var id: String {
-        "\(machineID)|\(projectPath)"
+        "\(machineID)|\(summary.path)"
     }
 }

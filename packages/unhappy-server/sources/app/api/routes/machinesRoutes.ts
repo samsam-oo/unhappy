@@ -418,16 +418,92 @@ export function machinesRoutes(app: Fastify) {
         return reply.send(invoked.result);
     });
 
-    app.get('/v1/machines/:id/projects', {
+    app.post('/v1/machines/:id/projects/archive', {
         preHandler: app.authenticate,
         schema: {
             params: z.object({
                 id: z.string()
+            }),
+            body: z.object({
+                path: z.string()
             })
         }
     }, async (request, reply) => {
         const userId = request.userId;
         const { id } = request.params;
+        const projectPath = request.body.path.trim();
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+        if (!projectPath) {
+            return reply.code(400).send({ success: false, error: 'Project path is required' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'archive-project',
+            { path: projectPath }
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        return reply.send(invoked.result);
+    });
+
+    app.post('/v1/machines/:id/projects/remove', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            body: z.object({
+                path: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const projectPath = request.body.path.trim();
+
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+        if (!projectPath) {
+            return reply.code(400).send({ success: false, error: 'Project path is required' });
+        }
+
+        const invoked = await invokeMachineCommand(
+            userId,
+            id,
+            'close-project',
+            { path: projectPath }
+        );
+        if (!invoked.ok) {
+            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
+        }
+
+        return reply.send(invoked.result);
+    });
+
+    app.get('/v1/machines/:id/projects', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            querystring: z.object({
+                explicitOnly: z.coerce.boolean().optional()
+            }).optional()
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const explicitOnly = request.query?.explicitOnly === true;
 
         const machineExists = await ensureMachineBelongsToUser(userId, id);
         if (!machineExists) {
@@ -438,7 +514,7 @@ export function machinesRoutes(app: Fastify) {
             userId,
             id,
             'list-projects',
-            {}
+            { explicitOnly }
         );
         if (!invoked.ok) {
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });

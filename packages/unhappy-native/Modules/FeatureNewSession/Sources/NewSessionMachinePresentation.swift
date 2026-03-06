@@ -2,7 +2,7 @@ import Foundation
 import CryptoKit
 import CoreKit
 
-enum NewSessionMachinePresentation {
+public enum NewSessionMachinePresentation {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
     private static let payloadBundleVersion: UInt8 = 2
     private static let wrappedDataKeyBundleVersion: UInt8 = 2
@@ -17,7 +17,7 @@ enum NewSessionMachinePresentation {
     private static let wrappedDataKeyKDFInfo =
         Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
 
-    static func displayName(for machine: APIMachine) -> String {
+    public static func displayName(for machine: APIMachine) -> String {
         let metadata = decodeMetadata(machine: machine)
         let primaryNameKeys = [
             "displayName", "name", "machineName", "deviceName", "computerName",
