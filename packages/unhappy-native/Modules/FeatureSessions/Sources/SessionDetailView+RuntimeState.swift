@@ -4,6 +4,16 @@ import FeatureSessionTools
 
 extension SessionDetailView {
     var parsedSessionFlavor: SessionComposerFlavor? {
+        if let provider = SessionUpstreamIdentity(session: currentSession)?.provider {
+            switch provider {
+            case .codex:
+                return .codex
+            case .claude:
+                return .claude
+            case .gemini:
+                return .gemini
+            }
+        }
         guard let raw = SessionPayloadValueResolver.firstString(
             in: [decodedSessionMetadata, decodedSessionAgentState],
             keys: ["flavor", "agent", "provider"]

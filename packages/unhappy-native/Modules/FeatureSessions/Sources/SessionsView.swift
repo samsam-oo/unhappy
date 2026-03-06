@@ -5,6 +5,11 @@ import FeatureSessionTools
 
 @MainActor
 public struct SessionsView: View {
+    private enum Selection: Hashable {
+        case session(String)
+        case upstream(String)
+    }
+
     @StateObject private var viewModel: SessionsViewModel
     private let serverURLString: String
     private let token: String
@@ -15,6 +20,7 @@ public struct SessionsView: View {
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     @State private var pendingDeleteSession: APISession?
     @State private var isPresentingNewSession = false
+    @State private var selection: Selection?
 
     public init(
         serverURLString: String,
@@ -64,6 +70,18 @@ public struct SessionsView: View {
         }
         .task(id: sessionsChangeTaskID) {
             await onSessionsChanged(viewModel.sessions)
+        }
+        .onChange(of: visibleSessions.map(\.id)) { _, ids in
+            guard let selection else { return }
+            if case .session(let sessionID) = selection, !ids.contains(sessionID) {
+                self.selection = nil
+            }
+        }
+        .onChange(of: viewModel.upstreamSessions.map(\.id)) { _, ids in
+            guard let selection else { return }
+            if case .upstream(let rowID) = selection, !ids.contains(rowID) {
+                self.selection = nil
+            }
         }
         .alert(
             "Delete session?",
@@ -118,6 +136,24 @@ public struct SessionsView: View {
         if viewModel.isLoading {
             ProgressView("Loading sessions…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let selectedSession {
+            SessionDetailView(
+                session: selectedSession,
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                makeSessionToolsViewModel: makeSessionToolsViewModel
+            )
+        } else if let selectedUpstreamSession {
+            SessionUpstreamLinkDetailView(
+                row: selectedUpstreamSession,
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                onLinkedSession: { linkedSessionID in
+                    selection = .session(linkedSessionID)
+                }
+            )
         } else if !hasSidebarRows {
             emptyDetailState
         } else if visibleSessions.isEmpty {
@@ -233,7 +269,7 @@ public struct SessionsView: View {
     }
 
     private var sessionsNavigationList: some View {
-        List {
+        List(selection: $selection) {
             if showsUpstreamSessionsSection {
                 Section("Live Machine Sessions") {
                     if viewModel.isLoadingUpstreamSessions && viewModel.upstreamSessions.isEmpty {
@@ -245,14 +281,7 @@ public struct SessionsView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(viewModel.upstreamSessions) { row in
-                            NavigationLink {
-                                SessionUpstreamLinkDetailView(
-                                    row: row,
-                                    viewModel: viewModel,
-                                    serverURLString: serverURLString,
-                                    token: token
-                                )
-                            } label: {
+                            NavigationLink(value: Selection.upstream(row.id)) {
                                 VStack(alignment: .leading, spacing: 6) {
                                     UpstreamSessionRow(
                                         summary: row.summary,
@@ -276,15 +305,7 @@ public struct SessionsView: View {
             }
 
             ForEach(visibleSessions) { session in
-                NavigationLink {
-                    SessionDetailView(
-                        session: session,
-                        viewModel: viewModel,
-                        serverURLString: serverURLString,
-                        token: token,
-                        makeSessionToolsViewModel: makeSessionToolsViewModel
-                    )
-                } label: {
+                NavigationLink(value: Selection.session(session.id)) {
                     SessionsRow(
                         session: session,
                         isDeleting: viewModel.isDeleting(sessionID: session.id)
@@ -389,6 +410,16 @@ public struct SessionsView: View {
         return viewModel.sessions
     }
 
+    private var selectedSession: APISession? {
+        guard case .session(let sessionID)? = selection else { return nil }
+        return visibleSessions.first(where: { $0.id == sessionID })
+    }
+
+    private var selectedUpstreamSession: SessionLinkedUpstreamSession? {
+        guard case .upstream(let rowID)? = selection else { return nil }
+        return viewModel.upstreamSessions.first(where: { $0.id == rowID })
+    }
+
     private var sessionsChangeTaskID: String {
         viewModel.sessions
             .map { session in
@@ -463,133 +494,6 @@ private struct SessionsRow: View {
     }
 
     private var machineDisplayName: String? {
-        let metadata = SessionPayloadValueResolver.decodeJSONObject(
-            payload: session.metadata,
-            dataEncryptionKey: session.dataEncryptionKey
-        )
-        if let primary = bestDisplayString(
-            in: metadata,
-            keys: ["displayName", "name", "machineName", "deviceName", "computerName"],
-            rejectGenericHosts: true,
-            rejectOpaqueIdentifiers: true
-        ) {
-            return primary
-        }
-        if let host = bestDisplayString(
-            in: metadata,
-            keys: ["host", "hostname", "computerName", "localHostName", "hostName", "machineHost"],
-            rejectGenericHosts: true,
-            rejectOpaqueIdentifiers: true
-        ) {
-            return host
-        }
-        return nil
-    }
-
-    private func bestDisplayString(
-        in object: Any?,
-        keys: [String],
-        rejectGenericHosts: Bool,
-        rejectOpaqueIdentifiers: Bool
-    ) -> String? {
-        let normalizedKeys = Set(keys.map(normalizeKey))
-        let candidates = values(in: object, matching: normalizedKeys)
-        for candidate in candidates {
-            if let normalized = normalizeDisplayValue(
-                candidate,
-                rejectGenericHosts: rejectGenericHosts,
-                rejectOpaqueIdentifiers: rejectOpaqueIdentifiers
-            ) {
-                return normalized
-            }
-        }
-        return nil
-    }
-
-    private func normalizeDisplayValue(
-        _ raw: String,
-        rejectGenericHosts: Bool,
-        rejectOpaqueIdentifiers: Bool
-    ) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let withoutLocalSuffix = trimmed.replacingOccurrences(
-            of: #"\.local$"#,
-            with: "",
-            options: .regularExpression
-        )
-        let lowered = withoutLocalSuffix.lowercased()
-        let blockedValues: Set<String> = [
-            "mac",
-            "localhost",
-            "unknown-host",
-        ]
-        if rejectGenericHosts && blockedValues.contains(lowered) {
-            return nil
-        }
-        if rejectOpaqueIdentifiers && looksLikeOpaqueIdentifier(withoutLocalSuffix) {
-            return nil
-        }
-        return withoutLocalSuffix
-    }
-
-    private func looksLikeOpaqueIdentifier(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-
-        if trimmed.range(
-            of: #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#,
-            options: .regularExpression
-        ) != nil {
-            return true
-        }
-        if trimmed.range(of: #"^[0-9a-fA-F]{20,}$"#, options: .regularExpression) != nil {
-            return true
-        }
-        if trimmed.range(of: #"^[0-9]{10,}$"#, options: .regularExpression) != nil {
-            return true
-        }
-        if trimmed.range(of: #"^[a-z0-9-]{24,}$"#, options: .regularExpression) != nil,
-           trimmed.lowercased().contains("macbook") == false {
-            return true
-        }
-        return false
-    }
-
-    private func values(in object: Any?, matching keys: Set<String>) -> [String] {
-        var output: [String] = []
-        collectValues(in: object, matching: keys, output: &output)
-        return output
-    }
-
-    private func collectValues(
-        in object: Any?,
-        matching keys: Set<String>,
-        output: inout [String]
-    ) {
-        if let dictionary = object as? [String: Any] {
-            for (rawKey, value) in dictionary where keys.contains(normalizeKey(rawKey)) {
-                if let string = value as? String {
-                    output.append(string)
-                } else if let number = value as? NSNumber {
-                    output.append(number.stringValue)
-                }
-            }
-            for (_, value) in dictionary {
-                collectValues(in: value, matching: keys, output: &output)
-            }
-            return
-        }
-
-        if let array = object as? [Any] {
-            for item in array {
-                collectValues(in: item, matching: keys, output: &output)
-            }
-        }
-    }
-
-    private func normalizeKey(_ value: String) -> String {
-        value.lowercased().filter { $0.isLetter || $0.isNumber }
+        SessionUpstreamIdentity(session: session)?.machineDisplayName
     }
 }

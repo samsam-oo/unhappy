@@ -81,37 +81,11 @@ extension SessionDetailView {
     }
 
     var resumeDirectoryForDisconnectedSession: String? {
-        let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "cwd",
-                "path",
-                "directory",
-                "workingDirectory",
-                "workDir",
-                "projectPath",
-            ]
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let raw, !raw.isEmpty else {
-            return nil
-        }
-        return raw
+        SessionUpstreamIdentity(session: currentSession)?.workingDirectory
     }
 
     var upstreamAgentSessionIDForResume: String? {
-        let raw = SessionPayloadValueResolver.firstString(
-            in: [decodedSessionAgentState, decodedSessionMetadata],
-            keys: [
-                "agentSessionId",
-                "agent_session_id",
-                "upstreamSessionId",
-                "upstream_session_id",
-            ]
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let raw, !raw.isEmpty else {
-            return nil
-        }
-        return raw
+        SessionUpstreamIdentity(session: currentSession)?.upstreamSessionID
     }
 
     var canAutoResumeDisconnectedSession: Bool {

@@ -1129,29 +1129,7 @@ public final class SessionsViewModel: ObservableObject {
     ) -> [SessionLinkedUpstreamSession] {
         let mirroredKeys: Set<String> = Set(
             sessions.compactMap { session in
-                let metadata = SessionPayloadValueResolver.decodeJSONObject(
-                    payload: session.metadata,
-                    dataEncryptionKey: session.dataEncryptionKey
-                )
-                let agentSessionId = SessionPayloadValueResolver.firstString(
-                    in: [metadata],
-                    keys: ["agentSessionId", "agent_session_id"]
-                )?.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard let agentSessionId, !agentSessionId.isEmpty else {
-                    return nil
-                }
-                let flavor = SessionPayloadValueResolver.firstString(
-                    in: [metadata],
-                    keys: ["flavor"]
-                )?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                let machineId = SessionPayloadValueResolver.firstString(
-                    in: [metadata],
-                    keys: ["machineId", "machine_id"]
-                )?.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard let flavor, let machineId, !machineId.isEmpty else {
-                    return nil
-                }
-                return "\(machineId)|\(flavor)|\(agentSessionId)"
+                SessionUpstreamIdentity(session: session)?.key
             }
         )
 
