@@ -390,6 +390,99 @@ public struct APIClaudeSessionsPage: Decodable, Equatable, Sendable {
     }
 }
 
+public enum APIUpstreamSessionProvider: String, Codable, CaseIterable, Sendable {
+    case codex
+    case claude
+    case gemini
+
+    public var displayName: String {
+        switch self {
+        case .codex:
+            return "Codex"
+        case .claude:
+            return "Claude"
+        case .gemini:
+            return "Gemini"
+        }
+    }
+}
+
+public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let provider: APIUpstreamSessionProvider
+    public let title: String
+    public let cwd: String?
+    public let updatedAt: String?
+    public let createdAt: String?
+    public let archived: Bool?
+    public let model: String?
+    public let effort: APISessionReasoningEffort?
+    public let preview: String?
+    public let statusType: String?
+
+    public init(
+        id: String,
+        provider: APIUpstreamSessionProvider,
+        title: String,
+        cwd: String?,
+        updatedAt: String?,
+        createdAt: String?,
+        archived: Bool?,
+        model: String? = nil,
+        effort: APISessionReasoningEffort? = nil,
+        preview: String? = nil,
+        statusType: String? = nil
+    ) {
+        self.id = id
+        self.provider = provider
+        self.title = title
+        self.cwd = cwd
+        self.updatedAt = updatedAt
+        self.createdAt = createdAt
+        self.archived = archived
+        self.model = model
+        self.effort = effort
+        self.preview = preview
+        self.statusType = statusType
+    }
+}
+
+public extension APICodexThreadSummary {
+    var upstreamSummary: APIUpstreamSessionSummary {
+        APIUpstreamSessionSummary(
+            id: id,
+            provider: .codex,
+            title: (name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? name! : "Untitled"),
+            cwd: cwd,
+            updatedAt: updatedAt,
+            createdAt: createdAt,
+            archived: archived,
+            model: model,
+            effort: effort,
+            preview: preview,
+            statusType: statusType
+        )
+    }
+}
+
+public extension APIClaudeSessionSummary {
+    var upstreamSummary: APIUpstreamSessionSummary {
+        APIUpstreamSessionSummary(
+            id: id,
+            provider: .claude,
+            title: id,
+            cwd: cwd,
+            updatedAt: updatedAt,
+            createdAt: createdAt,
+            archived: nil,
+            model: nil,
+            effort: nil,
+            preview: nil,
+            statusType: nil
+        )
+    }
+}
+
 public enum APISessionSpawnAgent: String, Encodable, Sendable {
     case claude
     case codex

@@ -237,3 +237,66 @@ struct ClaudeSessionRow: View {
         return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
 }
+
+struct UpstreamSessionRow: View {
+    private static let formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let fallbackFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    let summary: APIUpstreamSessionSummary
+    let isLinking: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(summary.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                if isLinking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Link")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
+
+            Text(summary.id)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            if let cwd = summary.cwd, !cwd.isEmpty {
+                Text(cwd)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if let dateText {
+                Text(dateText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var dateText: String? {
+        let candidate = summary.updatedAt ?? summary.createdAt
+        guard let candidate else { return nil }
+        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
+            return candidate
+        }
+        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+    }
+}
