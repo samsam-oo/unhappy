@@ -596,7 +596,11 @@ private struct HomeRegularSessionsTab: View {
                             token: token,
                             defaultNewSessionAgent: defaultNewSessionAgent,
                             makeNewSessionViewModel: makeNewSessionViewModel,
-                            makeSessionToolsViewModel: makeSessionToolsViewModel
+                            makeSessionToolsViewModel: makeSessionToolsViewModel,
+                            onProjectRemoved: {
+                                selection = nil
+                                detailPath.removeAll()
+                            }
                         )
                     }
                 }

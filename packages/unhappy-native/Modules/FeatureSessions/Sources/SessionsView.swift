@@ -163,22 +163,7 @@ public struct SessionsView: View {
                         NavigationLink(value: Selection.project(group.id)) {
                             ProjectRow(group: group)
                         }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button {
-                                Task {
-                                    await viewModel.archiveProject(
-                                        machineID: group.machineID,
-                                        projectPath: group.projectPath,
-                                        serverURLString: serverURLString,
-                                        token: token
-                                    )
-                                }
-                            } label: {
-                                Label("Archive", systemImage: "archivebox")
-                            }
-                            .tint(.orange)
-                            .disabled(viewModel.isArchiving(projectID: group.id) || viewModel.isRemoving(projectID: group.id))
-
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 Task {
                                     await viewModel.removeProject(
@@ -189,9 +174,9 @@ public struct SessionsView: View {
                                     )
                                 }
                             } label: {
-                                Label("Remove", systemImage: "trash")
+                                Label("Stop Syncing", systemImage: "xmark.bin")
                             }
-                            .disabled(viewModel.isArchiving(projectID: group.id) || viewModel.isRemoving(projectID: group.id))
+                            .disabled(viewModel.isRemoving(projectID: group.id))
                         }
                     }
                 }
@@ -290,7 +275,10 @@ public struct SessionsView: View {
                     token: token,
                     defaultNewSessionAgent: defaultNewSessionAgent,
                     makeNewSessionViewModel: makeNewSessionViewModel,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                    makeSessionToolsViewModel: makeSessionToolsViewModel,
+                    onProjectRemoved: {
+                        navigationPath.removeAll()
+                    }
                 )
             }
         }

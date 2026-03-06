@@ -35,6 +35,7 @@ public struct SessionProjectDetailView: View {
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    let onProjectRemoved: (() -> Void)?
 
     @State private var isPresentingNewSession = false
     @State private var firstMessagePreviewBySessionID: [String: String] = [:]
@@ -46,7 +47,8 @@ public struct SessionProjectDetailView: View {
         token: String,
         defaultNewSessionAgent: APISessionSpawnAgent,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
+        onProjectRemoved: (() -> Void)? = nil
     ) {
         self.group = group
         self.viewModel = viewModel
@@ -55,6 +57,7 @@ public struct SessionProjectDetailView: View {
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.onProjectRemoved = onProjectRemoved
     }
 
     public var body: some View {
@@ -117,35 +120,24 @@ public struct SessionProjectDetailView: View {
 
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                Button {
-                    Task {
-                        await viewModel.archiveProject(
-                            machineID: group.machineID,
-                            projectPath: group.projectPath,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                } label: {
-                    Label("Archive Project", systemImage: "archivebox")
-                }
-                .disabled(isProjectActionInProgress)
-
                 Button(role: .destructive) {
                     Task {
-                        await viewModel.removeProject(
+                        let didRemove = await viewModel.removeProject(
                             machineID: group.machineID,
                             projectPath: group.projectPath,
                             serverURLString: serverURLString,
                             token: token
                         )
+                        if didRemove {
+                            onProjectRemoved?()
+                        }
                     }
                 } label: {
-                    Label("Remove Project", systemImage: "trash")
+                    Label("Stop Syncing Project", systemImage: "xmark.bin")
                 }
-                .disabled(isProjectActionInProgress)
+                .disabled(viewModel.isRemoving(projectID: group.id))
             } label: {
-                if isProjectActionInProgress {
+                if viewModel.isRemoving(projectID: group.id) {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -181,7 +173,7 @@ public struct SessionProjectDetailView: View {
     }
 
     private var isProjectActionInProgress: Bool {
-        viewModel.isArchiving(projectID: group.id) || viewModel.isRemoving(projectID: group.id)
+        viewModel.isRemoving(projectID: group.id)
     }
 
     private var sessionEntries: [SessionListEntry] {

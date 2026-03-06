@@ -560,15 +560,16 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    @discardableResult
     public func removeProject(
         machineID: String,
         projectPath: String,
         serverURLString: String,
         token: String
-    ) async {
+    ) async -> Bool {
         guard let projectRemover else {
             projectsErrorMessage = "Project removal is unavailable in this build"
-            return
+            return false
         }
 
         let projectID = "\(machineID)|\(projectPath)"
@@ -591,8 +592,10 @@ public final class SessionsViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token
             )
+            return true
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
         }
     }
 

@@ -272,6 +272,51 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func removeProjectClearsTrackedProjectAfterSuccessfulClose() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let projectsLoader = SequenceProjectsLoader(
+            results: [
+                .success([project]),
+                .success([]),
+            ]
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            projectsLoader: projectsLoader,
+            projectRemover: MockProjectRemover(result: .success(project)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        #expect(model.projects.map(\.id) == ["machine-1|/repo/app"])
+
+        await model.removeProject(
+            machineID: "machine-1",
+            projectPath: "/repo/app",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.projects.isEmpty)
+        #expect(model.removingProjectID == nil)
+        #expect(model.projectsErrorMessage == nil)
+    }
+
+    @Test
     func loadFirstMessagePreviewReturnsEarliestReadableMessage() async throws {
         let messages = [
             APISessionMessage(

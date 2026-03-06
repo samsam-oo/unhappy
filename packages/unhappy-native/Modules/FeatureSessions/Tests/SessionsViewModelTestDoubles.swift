@@ -365,3 +365,50 @@ struct MockUpstreamSessionLinker: NewSessionSpawningAction {
         }
     }
 }
+
+enum MockProjectsLoaderError: Error, Sendable {
+    case failed
+}
+
+actor SequenceProjectsLoader: SessionProjectsLoadingAction {
+    var results: [Result<[SessionMachineProject], MockProjectsLoaderError>]
+
+    init(results: [Result<[SessionMachineProject], MockProjectsLoaderError>]) {
+        self.results = results
+    }
+
+    func loadProjects(serverURLString: String, token: String) async throws -> [SessionMachineProject] {
+        if results.isEmpty {
+            return []
+        }
+        let next = results.count == 1 ? results[0] : results.removeFirst()
+        switch next {
+        case .success(let projects):
+            return projects
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+enum MockProjectRemoverError: Error, Sendable {
+    case failed
+}
+
+struct MockProjectRemover: SessionProjectRemovingAction {
+    let result: Result<SessionMachineProject, MockProjectRemoverError>
+
+    func removeProject(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> SessionMachineProject {
+        switch result {
+        case .success(let project):
+            return project
+        case .failure(let error):
+            throw error
+        }
+    }
+}
