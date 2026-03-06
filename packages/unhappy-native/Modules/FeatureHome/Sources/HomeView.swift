@@ -297,15 +297,30 @@ public struct HomeView: View {
 
     @ViewBuilder
     private var onboardingActions: some View {
-        VStack(spacing: 10) {
-            restoreAccountButton(title: "Use Existing Account", isPrimary: true)
-            createAccountButton(isPrimary: false)
+        VStack(spacing: 12) {
+            onboardingActionCard(
+                eyebrow: "Recommended",
+                title: "Use Existing Account",
+                description: "Sign in with your iPhone or another device by scanning a QR code or entering your account secret key.",
+                buttonTitle: "Sign In From Existing Device",
+                isPrimary: true,
+                isDisabled: isCreatingAccount
+            ) {
+                onboardingErrorMessage = nil
+                onboardingStatusMessage = nil
+                isRestoreNavigationPresented = true
+            }
 
-            Text("If you already use Unhappy on iPhone or another device, sign in with that existing account first.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.top, 2)
+            onboardingActionCard(
+                eyebrow: nil,
+                title: "Create New Account",
+                description: "Generate a fresh account secret and API token for this device.",
+                buttonTitle: isCreatingAccount ? "Creating Access Key..." : "Create New Account",
+                isPrimary: false,
+                isDisabled: isCreatingAccount,
+                showsProgress: isCreatingAccount,
+                action: createAccount
+            )
         }
     }
 
@@ -326,60 +341,64 @@ public struct HomeView: View {
         }
     }
 
-    @ViewBuilder
-    private func createAccountButton(isPrimary: Bool) -> some View {
-        if isPrimary {
-            Button(action: createAccount) {
-                HStack(spacing: 10) {
-                    if isCreatingAccount {
-                        ProgressView()
-                            .controlSize(.small)
+    private func onboardingActionCard(
+        eyebrow: String?,
+        title: String,
+        description: String,
+        buttonTitle: String,
+        isPrimary: Bool,
+        isDisabled: Bool,
+        showsProgress: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let eyebrow {
+                Text(eyebrow.uppercased())
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            Text(title)
+                .font(.headline)
+            Text(description)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Group {
+                if isPrimary {
+                    Button(action: action) {
+                        HStack(spacing: 10) {
+                            if showsProgress {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            Text(buttonTitle)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
                     }
-                    Text(isCreatingAccount ? "Creating Access Key..." : "Create New Account")
-                        .fontWeight(.semibold)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isCreatingAccount)
-        } else {
-            Button(action: createAccount) {
-                HStack(spacing: 10) {
-                    if isCreatingAccount {
-                        ProgressView()
-                            .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isDisabled)
+                } else {
+                    Button(action: action) {
+                        HStack(spacing: 10) {
+                            if showsProgress {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            Text(buttonTitle)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
                     }
-                    Text(isCreatingAccount ? "Creating Access Key..." : "Create New Account")
-                        .fontWeight(.semibold)
+                    .buttonStyle(.bordered)
+                    .disabled(isDisabled)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
-            .buttonStyle(.bordered)
-            .disabled(isCreatingAccount)
         }
-    }
-
-    @ViewBuilder
-    private func restoreAccountButton(title: String, isPrimary: Bool) -> some View {
-        if isPrimary {
-            Button(title) {
-                onboardingErrorMessage = nil
-                onboardingStatusMessage = nil
-                isRestoreNavigationPresented = true
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isCreatingAccount)
-        } else {
-            Button(title) {
-                onboardingErrorMessage = nil
-                onboardingStatusMessage = nil
-                isRestoreNavigationPresented = true
-            }
-            .buttonStyle(.bordered)
-            .disabled(isCreatingAccount)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func featureBadge(title: String, systemImage: String) -> some View {
