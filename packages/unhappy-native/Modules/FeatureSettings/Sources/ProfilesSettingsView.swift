@@ -2,10 +2,14 @@ import SwiftUI
 import CoreKit
 
 @MainActor
-struct ProfilesSettingsView: View {
+public struct ProfilesSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
 
-    var body: some View {
+    public init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         Form {
             Section("Default Agent Profile") {
                 Picker("Agent", selection: $viewModel.defaultNewSessionAgent) {

@@ -12,7 +12,8 @@ import { join } from 'node:path';
 import React from 'react';
 
 import { ApiClient } from '@/api/api';
-import type { ApiSessionClient } from '@/api/apiSession';
+import { extractUserMessageText } from '@/api/types';
+import type { ACPMessageData, ApiSessionClient } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
@@ -25,6 +26,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
+import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -249,24 +251,29 @@ export async function runGemini(opts: {
   session.onUserMessage((message) => {
     // Resolve permission mode (validate) - same as Codex
     let messagePermissionMode = currentPermissionMode;
-    if (message.meta?.permissionMode) {
-      const validModes: PermissionMode[] = [
-        'default',
-        'read-only',
-        'safe-yolo',
-        'yolo',
-      ];
-      if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
-        messagePermissionMode = message.meta.permissionMode as PermissionMode;
-        currentPermissionMode = messagePermissionMode;
-        // Update permission handler with new mode
-        updatePermissionMode(messagePermissionMode);
+    const hasPermissionModeOverride =
+      message.meta &&
+      Object.prototype.hasOwnProperty.call(message.meta, 'permissionMode');
+    if (hasPermissionModeOverride) {
+      const resolvedPermissionMode = resolvePermissionModeWithAdapter({
+        target: 'gemini',
+        currentMode: currentPermissionMode,
+        rawRequestedMode: message.meta?.permissionMode,
+      });
+      if (resolvedPermissionMode.kind === 'invalid') {
         logger.debug(
-          `[Gemini] Permission mode updated from user message to: ${currentPermissionMode}`,
+          `[Gemini] Invalid permission mode received: ${String(message.meta?.permissionMode)}`,
         );
       } else {
+        messagePermissionMode = resolvedPermissionMode.effectiveMode;
+        currentPermissionMode = resolvedPermissionMode.nextCurrentMode;
+        if (currentPermissionMode) {
+          updatePermissionMode(currentPermissionMode);
+        }
         logger.debug(
-          `[Gemini] Invalid permission mode received: ${message.meta.permissionMode}`,
+          resolvedPermissionMode.kind === 'passthrough'
+            ? `[Gemini] Permission mode passthrough from user message, keeping current: ${currentPermissionMode}`
+            : `[Gemini] Permission mode updated from user message to: ${currentPermissionMode}`,
         );
       }
     } else {
@@ -315,7 +322,7 @@ export async function runGemini(opts: {
 
     // Build the full prompt with appendSystemPrompt if provided
     // Only include system prompt for the first message to avoid forcing tool usage on every message
-    const originalUserMessage = message.content.text;
+    const originalUserMessage = extractUserMessageText(message.content);
     let fullPrompt = originalUserMessage;
     if (isFirstMessage && message.meta?.appendSystemPrompt) {
       // Prepend system prompt to user message only for first message
@@ -403,6 +410,43 @@ export async function runGemini(opts: {
     return true;
   };
 
+  const hasExplicitSidechainMarker = (payload: unknown): boolean => {
+    if (!payload || typeof payload !== 'object') {
+      return false;
+    }
+    const record = payload as Record<string, unknown>;
+
+    const truthyKeys = ['isSidechain', 'sidechain', 'is_sidechain'];
+    for (const key of truthyKeys) {
+      if (record[key] === true) {
+        return true;
+      }
+    }
+
+    const parentKeys = [
+      'parent_tool_use_id',
+      'parentToolUseId',
+      'parent_tool_call_id',
+      'parentToolCallId',
+    ];
+    for (const key of parentKeys) {
+      const raw = record[key];
+      if (typeof raw === 'string' && raw.trim().length > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  const sendGeminiAgentMessage = (payload: ACPMessageData): void => {
+    if (hasExplicitSidechainMarker(payload)) {
+      logger.debug('[Gemini] Suppressed sidechain transcript payload');
+      return;
+    }
+    session.sendAgentMessage('gemini', payload);
+  };
+
   //
   // Abort handling
   //
@@ -416,7 +460,7 @@ export async function runGemini(opts: {
     logger.debug('[Gemini] Abort requested - stopping current task');
 
     // Send turn_aborted event (like Codex) when abort is requested
-    session.sendAgentMessage('gemini', {
+    sendGeminiAgentMessage({
       type: 'turn_aborted',
       id: randomUUID(),
     });
@@ -594,7 +638,7 @@ export async function runGemini(opts: {
   // Create reasoning processor for handling thinking/reasoning chunks
   const reasoningProcessor = new GeminiReasoningProcessor((message) => {
     if (message && typeof message === 'object' && message.type === 'tool-stream') {
-      session.sendAgentMessage('gemini', {
+      sendGeminiAgentMessage({
         type: 'terminal-output',
         callId: message.callId,
         data: message.output,
@@ -603,13 +647,13 @@ export async function runGemini(opts: {
     }
 
     // Callback to send messages directly from the processor
-    session.sendAgentMessage('gemini', message);
+    sendGeminiAgentMessage(message);
   });
 
   // Create diff processor for handling file edit events and diff tracking
   const diffProcessor = new GeminiDiffProcessor((message) => {
     // Callback to send messages directly from the processor
-    session.sendAgentMessage('gemini', message);
+    sendGeminiAgentMessage(message);
   });
 
   // Update permission handler when permission mode changes
@@ -675,7 +719,7 @@ export async function runGemini(opts: {
             );
 
             // Send turn_aborted event (like Codex) when error occurs
-            session.sendAgentMessage('gemini', {
+            sendGeminiAgentMessage({
               type: 'turn_aborted',
               id: randomUUID(),
             });
@@ -688,7 +732,7 @@ export async function runGemini(opts: {
             // Send task_started event ONCE per turn (like Codex) when agent starts working
             // Gemini may go running -> idle -> running multiple times during a turn
             if (!taskStartedSent) {
-              session.sendAgentMessage('gemini', {
+              sendGeminiAgentMessage({
                 type: 'task_started',
                 id: randomUUID(),
               });
@@ -747,7 +791,7 @@ export async function runGemini(opts: {
             messageBuffer.addMessage(`Error: ${errorMessage}`, 'status');
 
             // Use sendAgentMessage for consistency with ACP format
-            session.sendAgentMessage('gemini', {
+            sendGeminiAgentMessage({
               type: 'message',
               message: `Error: ${errorMessage}`,
             });
@@ -785,7 +829,7 @@ export async function runGemini(opts: {
             `Executing: ${msg.toolName}${toolArgs ? ` ${toolArgs}${toolArgs.length >= 100 ? '...' : ''}` : ''}`,
             'tool',
           );
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'tool-call',
             name: msg.toolName,
             callId: msg.callId,
@@ -855,7 +899,7 @@ export async function runGemini(opts: {
             messageBuffer.addMessage(`Result: ${truncatedResult}`, 'result');
           }
 
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'tool-result',
             callId: msg.callId,
             output: msg.result,
@@ -874,7 +918,7 @@ export async function runGemini(opts: {
             msg.diff,
           );
 
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'file-edit',
             description: msg.description,
             diff: msg.diff,
@@ -889,7 +933,7 @@ export async function runGemini(opts: {
             // Forward token count to mobile app (like Codex)
             // Note: Gemini ACP may not provide token_count events directly,
             // but we handle them if they come from the backend
-            session.sendAgentMessage('gemini', {
+            sendGeminiAgentMessage({
               type: 'token_count',
               ...(msg as any),
               id: randomUUID(),
@@ -899,7 +943,7 @@ export async function runGemini(opts: {
 
         case 'terminal-output':
           messageBuffer.addMessage(msg.data, 'result');
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'terminal-output',
             data: msg.data,
             callId: (msg as any).callId || randomUUID(),
@@ -911,7 +955,7 @@ export async function runGemini(opts: {
           // Note: toolName is in msg.payload.toolName (from AcpBackend),
           // msg.reason also contains the tool name
           const payload = (msg as any).payload || {};
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'permission-request',
             permissionId: msg.id,
             toolName: payload.toolName || (msg as any).reason || 'unknown',
@@ -934,7 +978,7 @@ export async function runGemini(opts: {
             'tool',
           );
 
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'tool-call',
             name: 'GeminiBash', // Similar to Codex's CodexBash
             callId: callId,
@@ -964,7 +1008,7 @@ export async function runGemini(opts: {
             `[gemini] Patch apply begin: ${patchCallId}, files: ${changeCount}`,
           );
 
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'tool-call',
             name: 'GeminiPatch', // Similar to Codex's CodexPatch
             callId: patchCallId,
@@ -1004,7 +1048,7 @@ export async function runGemini(opts: {
             `[gemini] Patch apply end: ${patchEndCallId}, success: ${success}`,
           );
 
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'tool-result',
             callId: patchEndCallId,
             output: {
@@ -1053,7 +1097,7 @@ export async function runGemini(opts: {
               // This ensures user sees progress during long reasoning operations
             }
             // Also forward to mobile for UI feedback
-            session.sendAgentMessage('gemini', {
+            sendGeminiAgentMessage({
               type: 'thinking',
               text: thinkingText,
             });
@@ -1348,7 +1392,7 @@ export async function runGemini(opts: {
               }
               const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
               messageBuffer.addMessage(quotaMsg, 'status');
-              session.sendAgentMessage('gemini', {
+              sendGeminiAgentMessage({
                 type: 'message',
                 message: quotaMsg,
               });
@@ -1499,7 +1543,7 @@ export async function runGemini(opts: {
 
           messageBuffer.addMessage(errorMsg, 'status');
           // Use sendAgentMessage for consistency with ACP format
-          session.sendAgentMessage('gemini', {
+          sendGeminiAgentMessage({
             type: 'message',
             message: errorMsg,
           });
@@ -1542,14 +1586,14 @@ export async function runGemini(opts: {
           logger.debug(
             `[gemini] Sending complete message to mobile (length: ${finalMessageText.length}): ${finalMessageText.substring(0, 100)}...`,
           );
-          session.sendAgentMessage('gemini', messagePayload);
+          sendGeminiAgentMessage(messagePayload);
           accumulatedResponse = '';
           isResponseInProgress = false;
         }
 
         // Send task_complete ONCE at the end of turn (not on every idle)
         // This signals to the UI that the agent has finished processing
-        session.sendAgentMessage('gemini', {
+        sendGeminiAgentMessage({
           type: 'task_complete',
           id: randomUUID(),
         });

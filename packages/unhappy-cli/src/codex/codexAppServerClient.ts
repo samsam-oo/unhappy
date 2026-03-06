@@ -86,6 +86,14 @@ export type CodexThreadSummary = {
   archived?: boolean;
   model?: string;
   effort?: CodexThreadSummaryEffort;
+  preview?: string;
+  path?: string;
+  source?: string;
+  cliVersion?: string;
+  modelProvider?: string;
+  ephemeral?: boolean;
+  statusType?: string;
+  status?: Record<string, unknown>;
 };
 
 export type CodexPermissionHandlerLike = {
@@ -181,6 +189,20 @@ function getFirstNonEmptyString(values: unknown[]): string | null {
     }
   }
   return null;
+}
+
+function getFirstRecord(values: unknown[]): Record<string, unknown> | null {
+  for (const value of values) {
+    if (isRecord(value)) return value;
+  }
+  return null;
+}
+
+function normalizeThreadItemType(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.toLowerCase();
 }
 
 export class CodexAppServerClient {
@@ -321,7 +343,7 @@ export class CodexAppServerClient {
       isRecord(config.config) ? config.config.model_reasoning_effort : undefined,
     );
 
-    return this.startTurn(config.prompt, {
+    return this.startTurn(config.initialInputs ?? config.prompt, {
       signal: options?.signal,
       overrides: {
         approvalPolicy: config['approval-policy'] ?? undefined,
@@ -334,7 +356,7 @@ export class CodexAppServerClient {
   }
 
   async continueSession(
-    prompt: string,
+    prompt: string | Array<Record<string, unknown>>,
     options?: ContinueSessionOptions,
   ): Promise<CodexToolResponse> {
     if (!this.connected) await this.connect();
@@ -755,7 +777,7 @@ export class CodexAppServerClient {
   }
 
   private async startTurn(
-    prompt: string,
+    prompt: string | Array<Record<string, unknown>>,
     options?: ContinueSessionOptions,
   ): Promise<CodexToolResponse> {
     if (!this.sessionId) {
@@ -766,7 +788,9 @@ export class CodexAppServerClient {
     const cwd = options?.overrides?.cwd ?? process.cwd();
     const turnParams: Record<string, unknown> = {
       threadId: this.sessionId,
-      input: [{ type: 'text', text: prompt }],
+      input: Array.isArray(prompt)
+        ? prompt
+        : [{ type: 'text', text: prompt }],
     };
 
     if (options?.overrides?.approvalPolicy !== undefined) {
@@ -1150,11 +1174,15 @@ export class CodexAppServerClient {
 
   private handleServerNotification(notification: Record<string, unknown>): void {
     const method = typeof notification.method === 'string' ? notification.method : '';
+    const methodLower = method.toLowerCase();
     const params = isRecord(notification.params) ? notification.params : {};
 
     if (method.startsWith('codex/event/')) {
       this.sawLegacyCodexEvents = true;
-      const conversationId = params.conversationId;
+      const conversationId = getFirstNonEmptyString([
+        params.conversationId,
+        params.conversation_id,
+      ]);
       if (typeof conversationId === 'string' && conversationId.trim()) {
         this.conversationId = conversationId;
         if (!this.sessionId) this.sessionId = conversationId;
@@ -1162,23 +1190,63 @@ export class CodexAppServerClient {
 
       const msg = params.msg;
       if (msg !== undefined) {
-        this.updateIdentifiersFromEvent(msg);
-        this.toolCallIds.maybeRecordExecApproval(msg);
+        let forwardedMsg: unknown = msg;
+        if (isRecord(msg)) {
+          const inferredThreadId = getFirstNonEmptyString([
+            msg.thread_id,
+            msg.threadId,
+            msg.session_id,
+            msg.sessionId,
+            msg.conversation_id,
+            msg.conversationId,
+            params.threadId,
+            params.thread_id,
+            params.conversationId,
+            params.conversation_id,
+          ]);
+          const inferredConversationId = getFirstNonEmptyString([
+            msg.conversation_id,
+            msg.conversationId,
+            params.conversationId,
+            params.conversation_id,
+          ]);
+          const hasThreadId =
+            getFirstNonEmptyString([msg.thread_id, msg.threadId]) !== null;
+          const hasConversationId =
+            getFirstNonEmptyString([msg.conversation_id, msg.conversationId]) !== null;
+          if (
+            (!hasThreadId && inferredThreadId) ||
+            (!hasConversationId && inferredConversationId)
+          ) {
+            forwardedMsg = {
+              ...msg,
+              ...(!hasThreadId && inferredThreadId
+                ? { thread_id: inferredThreadId }
+                : {}),
+              ...(!hasConversationId && inferredConversationId
+                ? { conversation_id: inferredConversationId }
+                : {}),
+            };
+          }
+        }
+
+        this.updateIdentifiersFromEvent(forwardedMsg);
+        this.toolCallIds.maybeRecordExecApproval(forwardedMsg);
         let shouldForward = true;
         if (
-          isRecord(msg) &&
-          msg.type === 'agent_message' &&
-          typeof msg.message === 'string'
+          isRecord(forwardedMsg) &&
+          forwardedMsg.type === 'agent_message' &&
+          typeof forwardedMsg.message === 'string'
         ) {
           shouldForward = !this.shouldSuppressAgentMessage({
-            message: msg.message,
+            message: forwardedMsg.message,
             turnId: params.id,
             conversationId:
               typeof conversationId === 'string' ? conversationId : this.conversationId,
           });
         }
         if (shouldForward) {
-          this.handler?.(msg);
+          this.handler?.(forwardedMsg);
         } else {
           logger.debug('[CodexAppServer] Suppressed duplicate agent_message from codex/event');
         }
@@ -1228,6 +1296,49 @@ export class CodexAppServerClient {
           thread_name: threadName,
         });
       }
+      return;
+    }
+
+    // Newer app-server streams include thread status change notifications
+    // (`thread/status/changed` and similar variants).
+    if (
+      methodLower.includes('thread') &&
+      methodLower.includes('status') &&
+      (methodLower.includes('changed') || methodLower.includes('updated'))
+    ) {
+      const threadRecord = isRecord(params.thread) ? params.thread : null;
+      const statusRecord = getFirstRecord([
+        params.status,
+        params.threadStatus,
+        params.thread_status,
+        threadRecord?.status,
+      ]);
+      const threadId =
+        getFirstNonEmptyString([
+          params.threadId,
+          params.thread_id,
+          threadRecord?.id,
+          statusRecord?.threadId,
+          statusRecord?.thread_id,
+        ]) ?? undefined;
+      const statusType =
+        getFirstNonEmptyString([
+          statusRecord?.type,
+          params.statusType,
+          params.status_type,
+          params.state,
+        ]) ?? undefined;
+
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ threadId });
+      }
+
+      this.handler?.({
+        type: 'thread_status_changed',
+        thread_id: threadId ?? this.sessionId ?? undefined,
+        status_type: statusType,
+        status: statusRecord ?? undefined,
+      });
       return;
     }
 
@@ -1285,24 +1396,86 @@ export class CodexAppServerClient {
     }
 
     if (
-      method === 'item/completed' &&
+      method === 'item/commandExecution/outputDelta' &&
+      typeof params.delta === 'string' &&
+      !this.sawLegacyCodexEvents
+    ) {
+      const threadId = getFirstNonEmptyString([params.threadId, params.thread_id]);
+      const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
+      const itemId = getFirstNonEmptyString([params.itemId, params.item_id]);
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ thread_id: threadId });
+      }
+      this.handler?.({
+        type: 'exec_command_output_delta',
+        delta: params.delta,
+        ...(itemId ? { call_id: itemId } : {}),
+        ...(threadId ? { thread_id: threadId } : {}),
+        ...(turnId ? { turn_id: turnId } : {}),
+      });
+      return;
+    }
+
+    if (
+      (method === 'item/started' || method === 'item/completed') &&
       isRecord(params.item) &&
       !this.sawLegacyCodexEvents
     ) {
       const item = params.item;
-      if (item.type === 'agentMessage' && typeof item.text === 'string') {
-        const shouldForward = !this.shouldSuppressAgentMessage({
-          message: item.text,
-          turnId: params.turnId,
-          conversationId:
-            typeof params.threadId === 'string' ? params.threadId : this.conversationId,
-        });
-        if (shouldForward) {
-          this.handler?.({ type: 'agent_message', message: item.text });
-        } else {
-          logger.debug('[CodexAppServer] Suppressed duplicate agent_message from item/completed');
-        }
+      const itemType = normalizeThreadItemType(item.type);
+      const threadId = getFirstNonEmptyString([
+        params.threadId,
+        params.thread_id,
+        item.threadId,
+        item.thread_id,
+        item.sessionId,
+        item.session_id,
+      ]);
+      const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
+
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ thread_id: threadId });
       }
+
+      if (itemType === 'agentmessage') {
+        if (method === 'item/completed' && typeof item.text === 'string') {
+          const inferredConversationId = getFirstNonEmptyString([
+            params.conversationId,
+            params.conversation_id,
+            item.conversationId,
+            item.conversation_id,
+            threadId,
+            this.conversationId,
+          ]);
+          if (inferredConversationId) {
+            this.updateIdentifiersFromEvent({ conversation_id: inferredConversationId });
+          }
+          const shouldForward = !this.shouldSuppressAgentMessage({
+            message: item.text,
+            turnId,
+            conversationId: inferredConversationId,
+          });
+          if (shouldForward) {
+            this.handler?.({
+              type: 'agent_message',
+              message: item.text,
+              ...(threadId ? { thread_id: threadId } : {}),
+              ...(inferredConversationId ? { conversation_id: inferredConversationId } : {}),
+            });
+          } else {
+            logger.debug('[CodexAppServer] Suppressed duplicate agent_message from item/completed');
+          }
+        }
+        return;
+      }
+
+      this.handler?.({
+        type: method === 'item/started' ? 'item_started' : 'item_completed',
+        item,
+        ...(threadId ? { thread_id: threadId } : {}),
+        ...(turnId ? { turn_id: turnId } : {}),
+      });
+      return;
     }
 
     if (
@@ -1310,12 +1483,26 @@ export class CodexAppServerClient {
       typeof params.delta === 'string' &&
       !this.sawLegacyCodexEvents
     ) {
+      const item = isRecord(params.item) ? params.item : null;
+      const threadId = getFirstNonEmptyString([
+        params.threadId,
+        params.thread_id,
+        item?.threadId,
+        item?.thread_id,
+        item?.sessionId,
+        item?.session_id,
+      ]);
+      const itemId = getFirstNonEmptyString([params.itemId, params.item_id, item?.id]);
+      const turnId = getFirstNonEmptyString([params.turnId, params.turn_id]);
+      if (threadId) {
+        this.updateIdentifiersFromEvent({ thread_id: threadId });
+      }
       this.handler?.({
         type: 'agent_message_delta',
         delta: params.delta,
-        item_id: params.itemId,
-        turn_id: params.turnId,
-        thread_id: params.threadId,
+        ...(itemId ? { item_id: itemId } : {}),
+        ...(turnId ? { turn_id: turnId } : {}),
+        ...(threadId ? { thread_id: threadId } : {}),
       });
     }
   }
@@ -1328,9 +1515,13 @@ export class CodexAppServerClient {
 
     // v2 stream: item_started/item_completed with `item.type = collabAgentToolCall`
     const item = isRecord(params.item) ? params.item : null;
-    if (item && item.type === 'collabAgentToolCall') {
+    const itemType = getFirstNonEmptyString([item?.type])?.toLowerCase();
+    if (
+      item &&
+      (itemType === 'collabagenttoolcall' || itemType === 'collab_agent_tool_call')
+    ) {
       const statusRaw =
-        typeof item.status === 'string' ? item.status.toLowerCase() : '';
+        getFirstNonEmptyString([item.status, item.state])?.toLowerCase() ?? '';
       const looksInProgress =
         statusRaw === 'inprogress' ||
         statusRaw === 'in_progress' ||
@@ -1339,24 +1530,40 @@ export class CodexAppServerClient {
         methodLower === 'item_started' ||
         methodLower.endsWith('/started');
 
-      const receiverThreadIds = Array.isArray(item.receiverThreadIds)
-        ? item.receiverThreadIds.filter(
+      const rawReceiverThreadIds = Array.isArray(item.receiverThreadIds)
+        ? item.receiverThreadIds
+        : Array.isArray(item.receiver_thread_ids)
+          ? item.receiver_thread_ids
+          : [];
+      const receiverThreadIds = rawReceiverThreadIds
+        .filter(
             (value): value is string =>
               typeof value === 'string' && value.trim().length > 0,
           )
-        : undefined;
+        .map((value) => value.trim());
+      const directReceiverThreadId = getFirstNonEmptyString([
+        item.receiverThreadId,
+        item.receiver_thread_id,
+      ]);
+      if (directReceiverThreadId && !receiverThreadIds.includes(directReceiverThreadId)) {
+        receiverThreadIds.push(directReceiverThreadId);
+      }
+      const senderThreadId = getFirstNonEmptyString([
+        item.senderThreadId,
+        item.sender_thread_id,
+      ]);
+      const newThreadId = getFirstNonEmptyString([item.newThreadId, item.new_thread_id]);
+      const threadId = getFirstNonEmptyString([params.threadId, params.thread_id, senderThreadId]);
 
       const syntheticEvent = {
         type: looksInProgress ? 'collab_waiting_begin' : 'collab_waiting_end',
         call_id:
-          typeof item.id === 'string' && item.id.trim()
-            ? item.id
-            : undefined,
-        sender_thread_id:
-          typeof item.senderThreadId === 'string' && item.senderThreadId.trim()
-            ? item.senderThreadId
-            : undefined,
-        receiver_thread_ids: receiverThreadIds,
+          getFirstNonEmptyString([item.id, item.callId, item.call_id]) ?? undefined,
+        ...(threadId ? { thread_id: threadId } : {}),
+        ...(senderThreadId ? { sender_thread_id: senderThreadId } : {}),
+        ...(receiverThreadIds.length > 0 ? { receiver_thread_ids: receiverThreadIds } : {}),
+        ...(receiverThreadIds.length > 0 ? { receiver_thread_id: receiverThreadIds[0] } : {}),
+        ...(newThreadId ? { new_thread_id: newThreadId } : {}),
         tool: item.tool,
         status: item.status,
       };
@@ -1634,8 +1841,11 @@ export class CodexAppServerClient {
       if (!isRecord(row)) continue;
       const nestedThread = isRecord(row.thread) ? row.thread : null;
       const rowReasoning = isRecord(row.reasoning) ? row.reasoning : null;
+      const rowStatus = isRecord(row.status) ? row.status : null;
       const nestedReasoning =
         nestedThread && isRecord(nestedThread.reasoning) ? nestedThread.reasoning : null;
+      const nestedStatus =
+        nestedThread && isRecord(nestedThread.status) ? nestedThread.status : null;
       const configRecords: Array<Record<string, unknown>> = [
         row.config,
         row.threadConfig,
@@ -1756,6 +1966,49 @@ export class CodexAppServerClient {
               : undefined,
         model,
         effort,
+        preview:
+          getFirstNonEmptyString([row.preview, nestedThread?.preview]) ?? undefined,
+        path:
+          getFirstNonEmptyString([
+            row.path,
+            row.sessionPath,
+            row.session_path,
+            nestedThread?.path,
+            nestedThread?.sessionPath,
+            nestedThread?.session_path,
+          ]) ?? undefined,
+        source:
+          getFirstNonEmptyString([row.source, nestedThread?.source]) ?? undefined,
+        cliVersion:
+          getFirstNonEmptyString([
+            row.cliVersion,
+            row.cli_version,
+            nestedThread?.cliVersion,
+            nestedThread?.cli_version,
+          ]) ?? undefined,
+        modelProvider:
+          getFirstNonEmptyString([
+            row.modelProvider,
+            row.model_provider,
+            nestedThread?.modelProvider,
+            nestedThread?.model_provider,
+          ]) ?? undefined,
+        ephemeral:
+          typeof row.ephemeral === 'boolean'
+            ? row.ephemeral
+            : typeof nestedThread?.ephemeral === 'boolean'
+              ? nestedThread.ephemeral
+              : undefined,
+        statusType:
+          getFirstNonEmptyString([
+            rowStatus?.type,
+            row.statusType,
+            row.status_type,
+            nestedStatus?.type,
+            nestedThread?.statusType,
+            nestedThread?.status_type,
+          ]) ?? undefined,
+        status: getFirstRecord([rowStatus, nestedStatus]) ?? undefined,
       });
     }
 

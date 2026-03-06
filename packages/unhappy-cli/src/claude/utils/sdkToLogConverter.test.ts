@@ -40,7 +40,6 @@ describe('SDKToLogConverter', () => {
                 version: context.version,
                 gitBranch: context.gitBranch,
                 parentUuid: null,
-                isSidechain: false,
                 userType: 'external',
                 message: {
                     role: 'user',
@@ -111,6 +110,25 @@ describe('SDKToLogConverter', () => {
             const logMessage = converter.convert(sdkMessage)
 
             expect((logMessage as any).requestId).toBe('req_123')
+        })
+
+        it('should preserve parent_tool_use_id on sidechain messages', () => {
+            const sdkMessage: SDKAssistantMessage = {
+                type: 'assistant',
+                parent_tool_use_id: 'tool_parent_123',
+                message: {
+                    role: 'assistant',
+                    content: [
+                        { type: 'text', text: 'Running in sidechain' }
+                    ]
+                }
+            }
+
+            const logMessage = converter.convert(sdkMessage)
+
+            expect(logMessage).toBeTruthy()
+            expect(logMessage?.type).toBe('assistant')
+            expect((logMessage as any).parent_tool_use_id).toBe('tool_parent_123')
         })
     })
 
@@ -265,6 +283,15 @@ describe('SDKToLogConverter', () => {
             expect(logMessages[0].parentUuid).toBeNull()
             expect(logMessages[1].parentUuid).toBe(logMessages[0].uuid)
             expect(logMessages[2].parentUuid).toBe(logMessages[1].uuid)
+        })
+    })
+
+    describe('Sidechain helpers', () => {
+        it('should include parent_tool_use_id in synthetic sidechain message', () => {
+            const logMessage = converter.convertSidechainUserMessage('tool_parent_456', 'Sub-agent prompt')
+
+            expect(logMessage.type).toBe('user')
+            expect((logMessage as any).parent_tool_use_id).toBe('tool_parent_456')
         })
     })
 

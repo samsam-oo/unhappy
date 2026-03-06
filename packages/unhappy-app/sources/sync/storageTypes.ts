@@ -32,6 +32,14 @@ export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
   controlledByUser: z.boolean().nullish(),
+  mode: z
+    .object({
+      model: z.string().nullish(),
+      effort: z.string().nullish(),
+      permissionMode: z.string().nullish(),
+      fallbackModel: z.string().nullish(),
+    })
+    .nullish(),
   collab: z
     .object({
       state: z.enum(['in_progress', 'completed']),
@@ -109,6 +117,7 @@ export interface Session {
     | 'acceptEdits'
     | 'bypassPermissions'
     | 'plan'
+    | 'passthrough'
     | 'read-only'
     | 'safe-yolo'
     | 'yolo'

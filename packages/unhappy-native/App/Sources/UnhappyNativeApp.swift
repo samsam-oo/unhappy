@@ -53,6 +53,7 @@ struct UnhappyNativeApp: App {
         let newSessionMachinesLoader = NewSessionMachinesLoadUseCase(service: machinesService)
         let newSessionDirectoryLister = NewSessionDirectoryListUseCase(service: machinesService)
         let newSessionSpawner = NewSessionSpawnUseCase(service: machinesService)
+        let upstreamSessionsLoader = SessionUpstreamSessionsLoadUseCase(service: machinesService)
         let newSessionModelsLoader = NewSessionModelsLoadUseCase(service: machinesService)
         let newSessionCodexThreadsLoader = NewSessionCodexThreadsLoadUseCase(service: machinesService)
         let newSessionClaudeSessionsLoader = NewSessionClaudeSessionsLoadUseCase(service: machinesService)
@@ -100,6 +101,18 @@ struct UnhappyNativeApp: App {
             notifications: sessionsNotifier,
             liveActivity: sessionsLiveActivity
         )
+        let sessionsLoader = SessionsLoadUseCase(service: sessionsService)
+        let sessionsPageLoader = SessionsPageLoadUseCase(service: sessionsService)
+        let sessionsPoller = SessionsPollingUseCase(loader: sessionsLoader)
+        let sessionMessagesLoader = SessionMessagesLoadUseCase(service: sessionsService)
+        let sessionModelsLoader = SessionModelsLoadUseCase(service: sessionsService)
+        let sessionSpawnUseCase = SessionSpawnUseCase(service: sessionsService)
+        let sessionMessageSender = SessionMessageSendUseCase(service: sessionsService)
+        let sessionPreDeleteKillUseCase = SessionPreDeleteKillUseCase(service: sessionsService)
+        let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
+        let sessionTitleUpdateUseCase = SessionTitleUpdateUseCase(service: sessionsService)
+        let sessionCodexThreadsLoader = SessionCodexThreadsLoadUseCase(service: sessionsService)
+        let sessionClaudeSessionsLoader = SessionClaudeSessionsLoadUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
         self.sessionPresenceCoordinator = sessionPresenceCoordinator
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
@@ -111,7 +124,24 @@ struct UnhappyNativeApp: App {
                 userSearcher: inboxUserSearcher
             )
         }
-        self.makeSessionsViewModel = { SessionsViewModel(service: sessionsService) }
+        self.makeSessionsViewModel = {
+            return SessionsViewModel(
+                loader: sessionsLoader,
+                pageLoader: sessionsPageLoader,
+                poller: sessionsPoller,
+                messageLoader: sessionMessagesLoader,
+                upstreamSessionsLoader: upstreamSessionsLoader,
+                upstreamSessionLinker: newSessionSpawner,
+                codexThreadsLoader: sessionCodexThreadsLoader,
+                claudeSessionsLoader: sessionClaudeSessionsLoader,
+                sessionModelsLoader: sessionModelsLoader,
+                spawnUseCase: sessionSpawnUseCase,
+                messageSender: sessionMessageSender,
+                preDeleteKiller: sessionPreDeleteKillUseCase,
+                deleteUseCase: sessionDeleteUseCase,
+                titleUseCase: sessionTitleUpdateUseCase
+            )
+        }
         self.makeNewSessionViewModel = {
             NewSessionViewModel(
                 machinesLoader: newSessionMachinesLoader,

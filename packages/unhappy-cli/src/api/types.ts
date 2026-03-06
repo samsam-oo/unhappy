@@ -6,14 +6,22 @@ import { UsageSchema } from '@/claude/types'
  * Must match MessageMetaSchema.permissionMode enum values
  *
  * Claude modes: default, acceptEdits, bypassPermissions, plan
- * Codex modes: read-only, safe-yolo, yolo
+ * Codex modes: passthrough, read-only, safe-yolo, yolo
  *
  * When calling Claude SDK, Codex modes are mapped at the SDK boundary:
  * - yolo → bypassPermissions
  * - safe-yolo → default
  * - read-only → default
  */
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
+export type PermissionMode =
+  | 'default'
+  | 'acceptEdits'
+  | 'bypassPermissions'
+  | 'plan'
+  | 'passthrough'
+  | 'read-only'
+  | 'safe-yolo'
+  | 'yolo'
 
 /**
  * Usage data type from Claude
@@ -209,7 +217,13 @@ export const DaemonStateSchema = z.object({
     z.union([
       z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']),
       z.string() // Forward compatibility
-    ]).optional()
+    ]).optional(),
+  openedProjects: z.array(
+    z.object({
+      path: z.string(),
+      openedAt: z.number().optional()
+    })
+  ).optional()
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>
@@ -241,7 +255,7 @@ export type SessionMessage = z.infer<typeof SessionMessageSchema>
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'passthrough', 'read-only', 'safe-yolo', 'yolo']).optional(), // Permission mode for this message
   steerMode: z.enum(['queue', 'immediate']).optional(), // Codex steer behavior for this message
   model: z.string().nullable().optional(), // Model name for this message (null = reset)
   fallbackModel: z.string().nullable().optional(), // Fallback model for this message (null = reset)
@@ -273,17 +287,90 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
+const UserTextContentSchema = z.object({
+  type: z.literal('text'),
+  text: z.string()
+});
+
+const UserStructuredTextItemSchema = z.object({
+  type: z.enum(['text', 'input_text']),
+  text: z.string().optional(),
+  input_text: z.string().optional(),
+}).refine((value) => {
+  const text = typeof value.text === 'string' ? value.text.trim() : '';
+  const inputText = typeof value.input_text === 'string' ? value.input_text.trim() : '';
+  return text.length > 0 || inputText.length > 0;
+}, {
+  message: 'User text content item must include text',
+});
+
+const UserStructuredImageItemSchema = z.object({
+  type: z.enum(['input_image', 'image_url', 'image']),
+  image_url: z.string().optional(),
+  url: z.string().optional(),
+}).refine((value) => {
+  const imageURL = typeof value.image_url === 'string' ? value.image_url.trim() : '';
+  const url = typeof value.url === 'string' ? value.url.trim() : '';
+  return imageURL.length > 0 || url.length > 0;
+}, {
+  message: 'User image content item must include a URL',
+});
+
+const UserStructuredContentItemSchema = z.union([
+  UserStructuredTextItemSchema,
+  UserStructuredImageItemSchema,
+]);
+
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
-  content: z.object({
-    type: z.literal('text'),
-    text: z.string()
-  }),
+  content: z.union([
+    UserTextContentSchema,
+    z.array(UserStructuredContentItemSchema).min(1),
+  ]),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
 })
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
+
+export function extractUserMessageText(content: UserMessage['content']): string {
+  if (!Array.isArray(content)) {
+    return typeof content.text === 'string' ? content.text : '';
+  }
+  return content
+    .map((item) => {
+      if (item.type === 'text' || item.type === 'input_text') {
+        if (typeof item.text === 'string' && item.text.trim()) {
+          return item.text;
+        }
+        if (typeof item.input_text === 'string' && item.input_text.trim()) {
+          return item.input_text;
+        }
+      }
+      return '';
+    })
+    .filter((item) => item.trim().length > 0)
+    .join('\n');
+}
+
+export function extractUserMessageImageUrls(content: UserMessage['content']): string[] {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content
+    .map((item) => {
+      if (item.type === 'input_image' || item.type === 'image_url' || item.type === 'image') {
+        if (typeof item.image_url === 'string' && item.image_url.trim()) {
+          return item.image_url;
+        }
+        if (typeof item.url === 'string' && item.url.trim()) {
+          return item.url;
+        }
+      }
+      return '';
+    })
+    .filter((item) => item.trim().length > 0);
+}
 
 export const AgentMessageSchema = z.object({
   role: z.literal('agent'),
@@ -339,6 +426,7 @@ export type AgentState = {
   mode?: {
     model?: string
     effort?: string
+    permissionMode?: PermissionMode
     fallbackModel?: string
   }
   queue?: {

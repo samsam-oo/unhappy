@@ -37,6 +37,7 @@ interface AgentInputProps {
     planOnly?: boolean;
     onPlanOnlyChange?: (planOnly: boolean) => void;
     modelMode?: string | null;
+    activeModelMode?: string | null;
     onModelModeChange?: (mode: string | null) => void;
     effortMode?: ReasoningEffortMode | null;
     onEffortModeChange?: (mode: ReasoningEffortMode | null) => void;
@@ -97,6 +98,21 @@ const SUPPORTED_CLAUDE_MODELS = new Set([
     'claude-sonnet-4-5',
     'claude-haiku-4-5',
 ]);
+
+type PermissionOverlayRow =
+    | {
+        kind: 'mode';
+        value: CanonicalPermissionMode;
+        label: string;
+        hint: string;
+        icon: string;
+    }
+    | {
+        kind: 'plan';
+        label: string;
+        hint: string;
+        icon: string;
+    };
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -500,20 +516,41 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Model dropdown state (loaded on demand)
     type ListModelsResponse =
-        | { success: true; models: string[] }
+        | {
+            success: true;
+            models: string[];
+            reasoningEfforts?: string[];
+            modelMetadata?: Array<{
+                id: string;
+                model?: string;
+                displayName?: string;
+                description?: string;
+                defaultReasoningEffort?: string;
+                supportedReasoningEfforts?: Array<{
+                    reasoningEffort: string;
+                    description?: string;
+                }>;
+            }>;
+        }
         | { success: false; error: string };
     const [availableModels, setAvailableModels] = React.useState<string[] | null>(null);
     const [isLoadingModels, setIsLoadingModels] = React.useState(false);
     const [modelLoadError, setModelLoadError] = React.useState<string | null>(null);
     const isResolvingModel = !!props.onModelModeChange && isLoadingModels && !availableModels;
+    const effectiveModelMode = React.useMemo(() => {
+        const explicit = typeof props.modelMode === 'string' ? props.modelMode.trim() : '';
+        if (explicit && explicit !== 'default') return explicit;
+        const active = typeof props.activeModelMode === 'string' ? props.activeModelMode.trim() : '';
+        return active || null;
+    }, [props.activeModelMode, props.modelMode]);
     const ensureValidSelectedModel = React.useCallback((models: string[]) => {
         if (!props.onModelModeChange) return;
         if (!models || models.length === 0) return;
-        const current = typeof props.modelMode === 'string' ? props.modelMode.trim() : '';
+        const current = effectiveModelMode ?? '';
         if (!current || current === 'default' || !models.includes(current)) {
             props.onModelModeChange(models[0]);
         }
-    }, [props.onModelModeChange, props.modelMode]);
+    }, [effectiveModelMode, props.onModelModeChange]);
 
     // Prevent cross-session/provider stale lists from sticking around.
     React.useEffect(() => {
@@ -537,6 +574,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [agentFlavor, availableModels]);
 
     const loadModels = React.useCallback(async () => {
+        const applyListedModels = (modelsFromResponse: string[] | undefined) => {
+            const models = agentFlavor === 'claude'
+                ? (modelsFromResponse || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
+                : (modelsFromResponse || []);
+            if (models.length === 0) {
+                setAvailableModels(null);
+                setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
+                return;
+            }
+            setAvailableModels(models);
+            ensureValidSelectedModel(models);
+        };
+
         if (agentFlavor === 'gemini') {
             // Static list, no RPC required.
             const models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
@@ -545,40 +595,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             ensureValidSelectedModel(models);
             return;
         }
-        if (!props.sessionId) {
-            // New-session flow: no sessionId yet. If we have machineId, use machine-scoped RPC.
-            if (props.machineId) {
-                setIsLoadingModels(true);
-                setModelLoadError(null);
-                try {
-                    const resp = await apiSocket.machineRPC<ListModelsResponse, { agent: 'claude' | 'codex' | 'gemini' }>(
-                        props.machineId,
-                        'list-models',
-                        { agent: agentFlavor }
-                    );
-                    if (resp.success) {
-                        const models = agentFlavor === 'claude'
-                            ? (resp.models || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
-                            : (resp.models || []);
-                        if (models.length === 0) {
-                            setAvailableModels(null);
-                            setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
-                        } else {
-                            setAvailableModels(models);
-                            ensureValidSelectedModel(models);
-                        }
-                    } else {
-                        setAvailableModels(null);
-                        setModelLoadError(resp.error || '모델 목록을 불러오지 못했습니다.');
-                    }
-                } catch (e) {
-                    setAvailableModels(null);
-                    setModelLoadError(e instanceof Error ? e.message : '모델 목록을 불러오지 못했습니다.');
-                } finally {
-                    setIsLoadingModels(false);
-                }
-                return;
-            }
+        if (!props.machineId && !props.sessionId) {
             setAvailableModels(null);
             setModelLoadError(t('newSession.noMachineSelected'));
             return;
@@ -586,18 +603,26 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         setIsLoadingModels(true);
         setModelLoadError(null);
         try {
+            if (props.machineId) {
+                const resp = await apiSocket.machineRPC<ListModelsResponse, { agent: 'claude' | 'codex' | 'gemini' }>(
+                    props.machineId,
+                    'list-models',
+                    { agent: agentFlavor }
+                );
+                if (resp.success) {
+                    applyListedModels(resp.models);
+                    return;
+                }
+                throw new Error(resp.error || '모델 목록을 불러오지 못했습니다.');
+            }
+            if (!props.sessionId) {
+                setAvailableModels(null);
+                setModelLoadError(t('newSession.noMachineSelected'));
+                return;
+            }
             const resp = await apiSocket.sessionRPC<ListModelsResponse, {}>(props.sessionId, 'list-models', {});
             if (resp.success) {
-                const models = agentFlavor === 'claude'
-                    ? (resp.models || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
-                    : (resp.models || []);
-                if (models.length === 0) {
-                    setAvailableModels(null);
-                    setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
-                } else {
-                    setAvailableModels(models);
-                    ensureValidSelectedModel(models);
-                }
+                applyListedModels(resp.models);
             } else {
                 setAvailableModels(null);
                 setModelLoadError(resp.error || '모델 목록을 불러오지 못했습니다.');
@@ -631,7 +656,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         ensureValidSelectedModel(availableModels);
     }, [
         props.onModelModeChange,
-        props.modelMode,
+        effectiveModelMode,
         isLoadingModels,
         modelLoadError,
         availableModels,
@@ -696,10 +721,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     );
     const normalizedPermissionMode = normalizedPermissionPolicy.permissionMode;
     const isPlanOnly = normalizedPermissionPolicy.planOnly;
+    const supportsPassthroughPermission = agentFlavor === 'codex';
 
     const permissionModeLabel = React.useMemo(() => {
         if (isPlanOnly) {
             return t('agentInput.permissionMode.plan');
+        }
+        if (normalizedPermissionMode === 'passthrough') {
+            return supportsPassthroughPermission
+                ? t('agentInput.codexPermissionMode.default')
+                : t('agentInput.permissionMode.default');
         }
         if (normalizedPermissionMode === 'default') {
             return t('agentInput.permissionMode.default');
@@ -711,7 +742,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             return t('agentInput.permissionMode.acceptEdits');
         }
         return t('agentInput.permissionMode.badgeBypassAllPermissions');
-    }, [isPlanOnly, normalizedPermissionMode]);
+    }, [isPlanOnly, normalizedPermissionMode, supportsPassthroughPermission]);
 
     const permissionModeColor = React.useMemo(() => {
         if (isPlanOnly) return theme.colors.permission.plan;
@@ -722,6 +753,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 return theme.colors.permission.bypass;
             case 'read-only':
                 return theme.colors.permission.readOnly;
+            case 'passthrough':
             case 'default':
             default:
                 return theme.colors.button.secondary.tint;
@@ -737,11 +769,33 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 return 'create-outline' as const;
             case 'bypass':
                 return 'flash-outline' as const;
+            case 'passthrough':
+                return 'settings-outline' as const;
             case 'default':
             default:
                 return 'shield-checkmark-outline' as const;
         }
     }, [isPlanOnly, normalizedPermissionMode]);
+    const permissionRows = React.useMemo(() => {
+        const passthroughRows: PermissionOverlayRow[] = supportsPassthroughPermission
+            ? [{
+                kind: 'mode',
+                value: 'passthrough',
+                label: t('agentInput.codexPermissionMode.default'),
+                hint: t('agentInput.permissionMode.useCliConfig'),
+                icon: 'settings-outline',
+            }]
+            : [];
+        const rows: PermissionOverlayRow[] = [
+            { kind: 'mode', value: 'default', label: t('agentInput.permissionMode.default'), hint: t('agentInput.permissionMode.askEveryAction'), icon: 'shield-checkmark-outline' },
+            ...passthroughRows,
+            { kind: 'plan', label: t('agentInput.permissionMode.plan'), hint: t('agentInput.permissionMode.planOnly'), icon: 'list-outline' },
+            { kind: 'mode', value: 'allow-edits', label: t('agentInput.permissionMode.acceptEdits'), hint: t('agentInput.permissionMode.autoApproveEdits'), icon: 'create-outline' },
+            { kind: 'mode', value: 'read-only', label: t('agentInput.codexPermissionMode.readOnly'), hint: t('agentInput.permissionMode.readOnlyTools'), icon: 'eye-outline' },
+            { kind: 'mode', value: 'bypass', label: t('agentInput.permissionMode.bypassPermissions'), hint: t('agentInput.permissionMode.autoApproveAll'), icon: 'flash-outline' },
+        ];
+        return rows;
+    }, [supportsPassthroughPermission]);
 
     const effectiveEffortLabel: string = React.useMemo(() => {
         if (!props.effortMode) {
@@ -845,7 +899,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: CanonicalPermissionMode[] = ['default', 'read-only', 'allow-edits', 'bypass'];
+                const modeOrder: CanonicalPermissionMode[] = supportsPassthroughPermission
+                    ? ['default', 'passthrough', 'read-only', 'allow-edits', 'bypass']
+                    : ['default', 'read-only', 'allow-edits', 'bypass'];
                 const currentIndex = modeOrder.indexOf(normalizedPermissionMode);
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
@@ -855,7 +911,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, normalizedPermissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, normalizedPermissionMode, props.onPermissionModeChange, supportsPassthroughPermission]);
 
 
 
@@ -903,13 +959,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         <Text style={styles.overlaySectionTitle}>
                                             {t('agentInput.permissionMode.title')}
                                         </Text>
-                                        {([
-                                            { kind: 'mode', value: 'default', label: t('agentInput.permissionMode.default'), hint: t('agentInput.permissionMode.askEveryAction'), icon: 'shield-checkmark-outline' },
-                                            { kind: 'plan', label: t('agentInput.permissionMode.plan'), hint: t('agentInput.permissionMode.planOnly'), icon: 'list-outline' },
-                                            { kind: 'mode', value: 'allow-edits', label: t('agentInput.permissionMode.acceptEdits'), hint: t('agentInput.permissionMode.autoApproveEdits'), icon: 'create-outline' },
-                                            { kind: 'mode', value: 'read-only', label: t('agentInput.codexPermissionMode.readOnly'), hint: t('agentInput.permissionMode.readOnlyTools'), icon: 'eye-outline' },
-                                            { kind: 'mode', value: 'bypass', label: t('agentInput.permissionMode.bypassPermissions'), hint: t('agentInput.permissionMode.autoApproveAll'), icon: 'flash-outline' },
-                                        ] as const).map((row) => {
+                                        {permissionRows.map((row) => {
                                             if (row.kind === 'plan' && !props.onPlanOnlyChange) return null;
                                             const isSelected = row.kind === 'plan' ? isPlanOnly : !isPlanOnly && normalizedPermissionMode === row.value;
                                             return (
@@ -1067,7 +1117,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         ) : (
                                             <>
                                                 {(availableModels || []).map((model) => {
-                                                    const isSelected = props.modelMode === model;
+                                                    const isSelected = effectiveModelMode === model;
                                                     return (
                                                         <Pressable
                                                             key={model}
@@ -1585,8 +1635,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         }} numberOfLines={1}>
                                             {isLoadingModels && !availableModels
                                                 ? t('common.loading')
-                                                : (props.modelMode && props.modelMode !== 'default'
-                                                    ? props.modelMode
+                                                : (effectiveModelMode
+                                                    ? effectiveModelMode
                                                     : t('agentInput.model.selectModel'))}
                                         </Text>
                                         <Ionicons

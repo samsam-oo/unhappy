@@ -62,6 +62,43 @@ struct SessionsPollingUseCaseTests {
             _ = try await iterator.next()
         }
     }
+
+    @Test
+    func pollingStreamUsesFastIntervalWhileSessionsAreActive() async throws {
+        let rows = [
+            APISession(
+                id: "active",
+                active: true,
+                activeAt: 1,
+                createdAt: 1,
+                updatedAt: 20,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let useCase = SessionsPollingUseCase(
+            loader: ImmediateSessionsLoader(result: .success(rows)),
+            activeInterval: .milliseconds(20)
+        )
+
+        let stream = await useCase.makePollingStream(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            interval: .seconds(60)
+        )
+        var iterator = stream.makeAsyncIterator()
+
+        _ = try await iterator.next()
+        let clock = ContinuousClock()
+        let start = clock.now
+        let second = try await iterator.next()
+        let elapsed = start.duration(to: clock.now)
+
+        #expect(second?.map(\.id) == ["active"])
+        #expect(elapsed < .seconds(1))
+    }
 }
 
 private struct ImmediateSessionsLoader: SessionsLoading {

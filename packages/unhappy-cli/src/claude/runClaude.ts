@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
 import { ApiClient } from '@/api/api';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentState, Metadata, extractUserMessageText } from '@/api/types';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { loop } from '@/claude/loop';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
@@ -25,6 +25,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { hashObject } from '@/utils/deterministicJson';
 import { resolveMachineHost } from '@/utils/machineHost';
+import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import {
   connectionState,
   startOfflineReconnection,
@@ -320,7 +321,7 @@ export async function runClaude(
   );
 
   // Forward messages to the queue
-  // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
+  // Permission modes: Use the unified 8-mode type, mapping happens at SDK boundary in claudeRemote.ts
   let currentPermissionMode: PermissionMode | undefined =
     options.permissionMode;
   let currentModel = options.model; // Track current model state
@@ -350,12 +351,32 @@ export async function runClaude(
     // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
     let messagePermissionMode: PermissionMode | undefined =
       currentPermissionMode;
-    if (message.meta?.permissionMode) {
-      messagePermissionMode = message.meta.permissionMode;
-      currentPermissionMode = messagePermissionMode;
-      logger.debug(
-        `[loop] Permission mode updated from user message to: ${currentPermissionMode}`,
-      );
+    const hasPermissionModeOverride =
+      message.meta &&
+      Object.prototype.hasOwnProperty.call(message.meta, 'permissionMode');
+    if (hasPermissionModeOverride) {
+      const resolvedPermissionMode = resolvePermissionModeWithAdapter({
+        target: 'claude',
+        currentMode: currentPermissionMode,
+        rawRequestedMode: message.meta?.permissionMode,
+      });
+      if (resolvedPermissionMode.kind === 'invalid') {
+        logger.debug(
+          `[loop] Invalid permission mode received: ${String(message.meta?.permissionMode)}`,
+        );
+      } else if (resolvedPermissionMode.kind === 'passthrough') {
+        messagePermissionMode = resolvedPermissionMode.effectiveMode;
+        currentPermissionMode = resolvedPermissionMode.nextCurrentMode;
+        logger.debug(
+          `[loop] Permission mode passthrough from user message, keeping current: ${currentPermissionMode ?? 'default'}`,
+        );
+      } else {
+        messagePermissionMode = resolvedPermissionMode.effectiveMode;
+        currentPermissionMode = resolvedPermissionMode.nextCurrentMode;
+        logger.debug(
+          `[loop] Permission mode updated from user message to: ${currentPermissionMode}`,
+        );
+      }
     } else {
       logger.debug(
         `[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`,
@@ -467,7 +488,8 @@ export async function runClaude(
     syncAgentModeState(currentModel, currentEffort, currentFallbackModel);
 
     // Check for special commands before processing
-    const specialCommand = parseSpecialCommand(message.content.text);
+    const userText = extractUserMessageText(message.content);
+    const specialCommand = parseSpecialCommand(userText);
 
     if (specialCommand.type === 'compact') {
       logger.debug('[start] Detected /compact command');
@@ -482,7 +504,7 @@ export async function runClaude(
         disallowedTools: messageDisallowedTools,
       };
       messageQueue.pushIsolateAndClear(
-        specialCommand.originalMessage || message.content.text,
+        specialCommand.originalMessage || userText,
         enhancedMode,
       );
       logger.debugLargeJson(
@@ -505,7 +527,7 @@ export async function runClaude(
         disallowedTools: messageDisallowedTools,
       };
       messageQueue.pushIsolateAndClear(
-        specialCommand.originalMessage || message.content.text,
+        specialCommand.originalMessage || userText,
         enhancedMode,
       );
       logger.debugLargeJson(
@@ -526,7 +548,7 @@ export async function runClaude(
       allowedTools: messageAllowedTools,
       disallowedTools: messageDisallowedTools,
     };
-    messageQueue.push(message.content.text, enhancedMode);
+    messageQueue.push(userText, enhancedMode);
     logger.debugLargeJson('User message pushed to queue:', message);
   });
 

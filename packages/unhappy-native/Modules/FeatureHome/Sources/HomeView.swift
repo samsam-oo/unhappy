@@ -9,7 +9,14 @@ import FeatureSettings
 
 @MainActor
 public struct HomeView: View {
+    private enum AuthenticatedTab: Hashable {
+        case projects
+        case inbox
+        case settings
+    }
+
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var settingsViewModel: SettingsViewModel
     @StateObject private var serverStatusViewModel: HomeServerConnectionStatusViewModel
     @State private var isCreatingAccount = false
@@ -17,6 +24,7 @@ public struct HomeView: View {
     @State private var onboardingStatusMessage: String?
     @State private var isRestoreNavigationPresented = false
     @State private var isServerSettingsPresented = false
+    @State private var selectedAuthenticatedTab: AuthenticatedTab = .projects
     private let onboarding: any HomeAccountOnboardingAction
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
@@ -78,16 +86,26 @@ public struct HomeView: View {
             .isEmpty
     }
 
+    @ViewBuilder
     private var authenticatedHome: some View {
-        TabView {
+        if horizontalSizeClass == .regular {
+            authenticatedRegularHome
+        } else {
+            authenticatedCompactHome
+        }
+    }
+
+    private var authenticatedCompactHome: some View {
+        TabView(selection: $selectedAuthenticatedTab) {
             InboxView(
                 serverURLString: settingsViewModel.serverURLString,
                 token: settingsViewModel.apiToken,
                 makeViewModel: makeInboxViewModel
             )
-                .tabItem {
-                    Label("Inbox", systemImage: "tray.full")
-                }
+            .tabItem {
+                Label("Inbox", systemImage: "tray.full")
+            }
+            .tag(AuthenticatedTab.inbox)
 
             SessionsView(
                 serverURLString: settingsViewModel.serverURLString,
@@ -99,9 +117,10 @@ public struct HomeView: View {
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel
             )
-                .tabItem {
-                    Label("Sessions", systemImage: "bubble.left.and.bubble.right")
-                }
+            .tabItem {
+                Label("Projects", systemImage: "folder")
+            }
+            .tag(AuthenticatedTab.projects)
 
             SettingsView(
                 viewModel: settingsViewModel,
@@ -111,10 +130,31 @@ public struct HomeView: View {
                 makeTerminalConnectViewModel: makeTerminalConnectViewModel,
                 makeAccountLinkViewModel: makeAccountLinkViewModel
             )
-                .tabItem {
-                    Label("Settings", systemImage: "gearshape")
-                }
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .tag(AuthenticatedTab.settings)
         }
+    }
+
+    private var authenticatedRegularHome: some View {
+        HomeAuthenticatedRegularView(
+            settingsViewModel: settingsViewModel,
+            serverURLString: settingsViewModel.serverURLString,
+            token: settingsViewModel.apiToken,
+            hideInactiveSessions: settingsViewModel.hideInactiveSessions,
+            defaultNewSessionAgent: settingsViewModel.defaultNewSessionAgent,
+            makeInboxViewModel: makeInboxViewModel,
+            makeSessionsViewModel: makeSessionsViewModel,
+            makeNewSessionViewModel: makeNewSessionViewModel,
+            makeSessionToolsViewModel: makeSessionToolsViewModel,
+            onSessionsChanged: onSessionsChanged,
+            makeMachinesViewModel: makeMachinesViewModel,
+            makeUsageViewModel: makeUsageViewModel,
+            makeDaemonStatusViewModel: makeDaemonStatusViewModel,
+            makeTerminalConnectViewModel: makeTerminalConnectViewModel,
+            makeAccountLinkViewModel: makeAccountLinkViewModel
+        )
     }
 
     private var unauthenticatedHome: some View {
@@ -122,10 +162,7 @@ public struct HomeView: View {
             GeometryReader { proxy in
                 ZStack {
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.95, green: 0.97, blue: 1.0),
-                            Color(red: 0.98, green: 0.99, blue: 1.0),
-                        ],
+                        colors: onboardingBackgroundGradientColors,
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -221,7 +258,7 @@ public struct HomeView: View {
             }
             .frame(maxWidth: 360)
             .padding(20)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .background(onboardingPanelBackground, in: RoundedRectangle(cornerRadius: 18))
         }
         .frame(maxWidth: .infinity)
     }
@@ -268,14 +305,30 @@ public struct HomeView: View {
 
     @ViewBuilder
     private var onboardingActions: some View {
-        VStack(spacing: 10) {
-            if isPhoneLayout {
-                createAccountButton(isPrimary: true)
-                restoreAccountButton(title: "Link or Restore Account", isPrimary: false)
-            } else {
-                restoreAccountButton(title: "Login With Mobile App", isPrimary: true)
-                createAccountButton(isPrimary: false)
+        VStack(spacing: 12) {
+            onboardingActionCard(
+                eyebrow: "Recommended",
+                title: "Use Existing Account",
+                description: "Sign in with your iPhone or another device by scanning a QR code or entering your account secret key.",
+                buttonTitle: "Sign In From Existing Device",
+                isPrimary: true,
+                isDisabled: isCreatingAccount
+            ) {
+                onboardingErrorMessage = nil
+                onboardingStatusMessage = nil
+                isRestoreNavigationPresented = true
             }
+
+            onboardingActionCard(
+                eyebrow: nil,
+                title: "Create New Account",
+                description: "Generate a fresh account secret and API token for this device.",
+                buttonTitle: isCreatingAccount ? "Creating Access Key..." : "Create New Account",
+                isPrimary: false,
+                isDisabled: isCreatingAccount,
+                showsProgress: isCreatingAccount,
+                action: createAccount
+            )
         }
     }
 
@@ -296,60 +349,64 @@ public struct HomeView: View {
         }
     }
 
-    @ViewBuilder
-    private func createAccountButton(isPrimary: Bool) -> some View {
-        if isPrimary {
-            Button(action: createAccount) {
-                HStack(spacing: 10) {
-                    if isCreatingAccount {
-                        ProgressView()
-                            .controlSize(.small)
+    private func onboardingActionCard(
+        eyebrow: String?,
+        title: String,
+        description: String,
+        buttonTitle: String,
+        isPrimary: Bool,
+        isDisabled: Bool,
+        showsProgress: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let eyebrow {
+                Text(eyebrow.uppercased())
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            Text(title)
+                .font(.headline)
+            Text(description)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Group {
+                if isPrimary {
+                    Button(action: action) {
+                        HStack(spacing: 10) {
+                            if showsProgress {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            Text(buttonTitle)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
                     }
-                    Text(isCreatingAccount ? "Creating Account..." : "Create Account")
-                        .fontWeight(.semibold)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isCreatingAccount)
-        } else {
-            Button(action: createAccount) {
-                HStack(spacing: 10) {
-                    if isCreatingAccount {
-                        ProgressView()
-                            .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isDisabled)
+                } else {
+                    Button(action: action) {
+                        HStack(spacing: 10) {
+                            if showsProgress {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                            Text(buttonTitle)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
                     }
-                    Text(isCreatingAccount ? "Creating Account..." : "Create Account")
-                        .fontWeight(.semibold)
+                    .buttonStyle(.bordered)
+                    .disabled(isDisabled)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
             }
-            .buttonStyle(.bordered)
-            .disabled(isCreatingAccount)
         }
-    }
-
-    @ViewBuilder
-    private func restoreAccountButton(title: String, isPrimary: Bool) -> some View {
-        if isPrimary {
-            Button(title) {
-                onboardingErrorMessage = nil
-                onboardingStatusMessage = nil
-                isRestoreNavigationPresented = true
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isCreatingAccount)
-        } else {
-            Button(title) {
-                onboardingErrorMessage = nil
-                onboardingStatusMessage = nil
-                isRestoreNavigationPresented = true
-            }
-            .buttonStyle(.bordered)
-            .disabled(isCreatingAccount)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(onboardingCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func featureBadge(title: String, systemImage: String) -> some View {
@@ -362,7 +419,42 @@ public struct HomeView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
+        .background(onboardingBadgeBackground, in: Capsule())
+    }
+
+    private var onboardingBackgroundGradientColors: [Color] {
+        if colorScheme == .dark {
+            return [
+                Color(red: 0.08, green: 0.10, blue: 0.14),
+                Color(red: 0.04, green: 0.05, blue: 0.08),
+            ]
+        }
+
+        return [
+            Color(red: 0.95, green: 0.97, blue: 1.0),
+            Color(red: 0.98, green: 0.99, blue: 1.0),
+        ]
+    }
+
+    private var onboardingPanelBackground: some ShapeStyle {
+        if colorScheme == .dark {
+            return AnyShapeStyle(Color.white.opacity(0.08))
+        }
+        return AnyShapeStyle(.ultraThinMaterial)
+    }
+
+    private var onboardingCardBackground: some ShapeStyle {
+        if colorScheme == .dark {
+            return AnyShapeStyle(Color.white.opacity(0.06))
+        }
+        return AnyShapeStyle(.regularMaterial)
+    }
+
+    private var onboardingBadgeBackground: some ShapeStyle {
+        if colorScheme == .dark {
+            return AnyShapeStyle(Color.white.opacity(0.08))
+        }
+        return AnyShapeStyle(.regularMaterial)
     }
 
     private func createAccount() {
@@ -472,117 +564,5 @@ public struct HomeView: View {
                 return
             }
         }
-    }
-}
-
-#Preview {
-    HomeView(
-        onboarding: PreviewHomeAccountOnboarding(),
-        makeSettingsViewModel: {
-            SettingsViewModel(
-                settingsManager: SettingsUseCase(store: UserDefaultsAppSettingsStore())
-            )
-        },
-        makeInboxViewModel: {
-            let friendsService = URLSessionFriendsService()
-            let usersService = URLSessionUsersService()
-            return InboxViewModel(
-                loader: InboxLoadUseCase(
-                    service: URLSessionFeedService(),
-                    friendsService: friendsService
-                ),
-                friendAction: InboxFriendActionUseCase(
-                    adder: friendsService,
-                    remover: friendsService
-                ),
-                userProfileLoader: InboxUserProfileLoadUseCase(service: usersService),
-                userSearcher: InboxUserSearchUseCase(service: usersService)
-            )
-        },
-        makeSessionsViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
-        makeNewSessionViewModel: {
-            let service = URLSessionMachinesService()
-            return NewSessionViewModel(
-                machinesLoader: NewSessionMachinesLoadUseCase(service: service),
-                directoryLister: NewSessionDirectoryListUseCase(service: service),
-                spawner: NewSessionSpawnUseCase(service: service),
-                recentProjectsManager: NewSessionNoopRecentProjectsManager(),
-                profilesManager: NewSessionNoopProfilesManager(),
-                modelsLoader: NewSessionModelsLoadUseCase(service: service),
-                codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
-                claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
-            )
-        },
-        makeSessionToolsViewModel: {
-            let service = URLSessionSessionsService()
-            let basher = SessionBashUseCase(service: service)
-            return SessionToolsViewModel(
-                fileLoader: SessionFileLoadUseCase(service: service),
-                directoryLister: SessionDirectoryListUseCase(service: service),
-                fileWriter: SessionFileWriteUseCase(service: service),
-                fileDiffPreviewer: SessionFileDiffPreviewUseCase(basher: basher),
-                killer: SessionKillUseCase(service: service),
-                aborter: SessionTaskAbortUseCase(service: service),
-                permissionResponder: SessionPermissionUseCase(service: service),
-                modeSwitcher: SessionModeSwitchUseCase(service: service),
-                basher: basher,
-                ripgrepRunner: SessionRipgrepUseCase(service: service),
-                difftasticRunner: SessionDifftasticUseCase(service: service)
-            )
-        },
-        makeMachinesViewModel: {
-            let service = URLSessionMachinesService()
-            return MachinesViewModel(
-                loader: MachinesLoadUseCase(service: service),
-                spawner: MachineSpawnUseCase(service: service),
-                updater: MachineDaemonUpdateUseCase(service: service),
-                stopper: MachineDaemonStopUseCase(service: service)
-            )
-        },
-        makeUsageViewModel: {
-            UsageSettingsViewModel(
-                usageLoader: SettingsUsageLoadUseCase(service: URLSessionSessionsService())
-            )
-        },
-        makeDaemonStatusViewModel: {
-            ConnectorsDaemonStatusViewModel(
-                loader: DaemonStatusLoadUseCase(service: URLSessionMachinesService())
-            )
-        },
-        makeTerminalConnectViewModel: {
-            TerminalConnectSettingsViewModel(
-                connector: TerminalConnectUseCase(
-                    service: URLSessionTerminalAuthService(),
-                    dataKeyStore: UserDefaultsTerminalDataKeyStore(),
-                    encryptor: CryptoKitTerminalAuthEncryptor()
-                )
-            )
-        },
-        makeAccountLinkViewModel: {
-            AccountLinkSettingsViewModel(
-                linker: AccountLinkUseCase(
-                    service: URLSessionAccountAuthService(),
-                    encryptor: CryptoKitTerminalAuthEncryptor()
-                ),
-                restorer: AccountRestoreUseCase(
-                    authTokenService: URLSessionAuthTokenService()
-                ),
-                qrRestorer: AccountRestoreQRUseCase(
-                    requestService: URLSessionAccountRestoreRequestService()
-                ),
-                secretStore: UserDefaultsAccountSecretStore()
-            )
-        },
-        makeServerStatusViewModel: {
-            HomeServerConnectionStatusViewModel(
-                loader: HomeServerConnectionStatusLoadUseCase()
-            )
-        }
-    )
-}
-
-private actor PreviewHomeAccountOnboarding: HomeAccountOnboardingAction {
-    func createAccount(serverURLString: String) async throws -> String {
-        "preview-token"
     }
 }

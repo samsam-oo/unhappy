@@ -474,6 +474,7 @@ export const ca: TranslationStructure = {
       bypassPermissions: 'Mode Yolo',
       askEveryAction: 'Demana cada acció',
       planOnly: 'Només planificació',
+      useCliConfig: 'Use local CLI config',
       autoApproveEdits: "Aprova automàticament les edicions",
       readOnlyTools: 'Eines de només lectura',
       autoApproveAll: "Aprova-ho tot automàticament",

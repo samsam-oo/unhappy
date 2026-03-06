@@ -124,6 +124,124 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadFiltersAlreadyMirroredUpstreamSessions() async throws {
+        let mirroredSession = APISession(
+            id: "session-1",
+            active: false,
+            activeAt: 1,
+            createdAt: 1,
+            updatedAt: 3,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let upstreamRows = [
+            SessionLinkedUpstreamSession(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIUpstreamSessionSummary(
+                    id: "thread-1",
+                    provider: .codex,
+                    title: "Existing",
+                    cwd: "/tmp/existing",
+                    updatedAt: "2026-03-06T03:00:00.000Z",
+                    createdAt: "2026-03-06T02:00:00.000Z",
+                    archived: false
+                )
+            ),
+            SessionLinkedUpstreamSession(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIUpstreamSessionSummary(
+                    id: "thread-2",
+                    provider: .codex,
+                    title: "Fresh",
+                    cwd: "/tmp/fresh",
+                    updatedAt: "2026-03-06T04:00:00.000Z",
+                    createdAt: "2026-03-06T03:00:00.000Z",
+                    archived: false
+                )
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([mirroredSession])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [mirroredSession], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            upstreamSessionsLoader: MockUpstreamSessionsLoader(result: .success(upstreamRows)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.upstreamSessions.count == 1)
+        #expect(model.upstreamSessions.first?.summary.id == "thread-2")
+        #expect(model.upstreamSessionsErrorMessage == nil)
+    }
+
+    @Test
+    func linkUpstreamSessionPublishesSuccessAndReloadsSessions() async throws {
+        let reloadedSessions = [
+            APISession(
+                id: "linked-session",
+                active: true,
+                activeAt: 10,
+                createdAt: 9,
+                updatedAt: 11,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-9",
+                provider: .codex,
+                title: "Live Bugfix",
+                cwd: "/tmp/live",
+                updatedAt: "2026-03-06T04:00:00.000Z",
+                createdAt: "2026-03-06T03:00:00.000Z",
+                archived: false
+            )
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: reloadedSessions, nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            upstreamSessionLinker: MockUpstreamSessionLinker(
+                result: .success(
+                    APISessionSpawnResult(
+                        success: true,
+                        sessionID: "linked-session",
+                        requiresUserApproval: nil,
+                        actionRequired: nil,
+                        directory: nil,
+                        error: nil
+                    )
+                )
+            ),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        _ = await model.linkUpstreamSession(
+            row,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.linkingUpstreamSessionID == nil)
+        #expect(model.upstreamSessionStatusMessage == "Linked Codex session linked-session")
+        #expect(model.sessions == reloadedSessions)
+    }
+
+    @Test
     func loadMessagesSuccessPublishesSelectedSessionMessages() async throws {
         let message = APISessionMessage(
             id: "m1",
@@ -571,17 +689,17 @@ struct SessionsViewModelTests {
     }
 
     @Test
-    func takeQueuedComposerMessageRemovesPickedEntry() async throws {
+    func takeQueuedComposerDraftRemovesPickedEntry() async throws {
         let sessions = [
             APISession(
                 id: "session-1",
-                active: true,
+                active: false,
                 activeAt: 1,
                 createdAt: 1,
                 updatedAt: 10,
                 metadataVersion: 1,
                 metadata: "enc",
-                agentState: #"{"queue":{"pendingMessages":["first","second"]}}"#,
+                agentState: nil,
                 dataEncryptionKey: nil,
                 lastMessage: nil
             )
@@ -591,16 +709,31 @@ struct SessionsViewModelTests {
             pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: sessions, nextCursor: nil, hasNext: false))),
             poller: MockSessionsPoller(rows: []),
             messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            messageSender: MockSessionMessageSender(result: .success(APISessionSendMessageResult(success: true, queueCount: nil, queuedMessages: nil, error: nil))),
             deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
             titleUseCase: MockSessionTitleUseCase(result: .success(()))
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        _ = await model.enqueueComposerDraft(
+            for: "session-1",
+            text: "first",
+            attachments: [],
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        _ = await model.enqueueComposerDraft(
+            for: "session-1",
+            text: "second",
+            attachments: [],
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
 
-        #expect(model.queuedComposerMessages(for: "session-1") == ["first", "second"])
-        let taken = model.takeQueuedComposerMessage(for: "session-1", at: 0)
-        #expect(taken == "first")
         #expect(model.queuedComposerMessages(for: "session-1") == ["second"])
+        let taken = model.takeQueuedComposerDraft(for: "session-1", at: 0)
+        #expect(taken?.text == "second")
+        #expect(model.queuedComposerMessages(for: "session-1").isEmpty)
     }
 
     @Test
@@ -818,318 +951,5 @@ struct SessionsViewModelTests {
         #expect(model.claudeResumeStatusMessage == nil)
         #expect(model.claudeResumeErrorMessage?.contains("MockSessionSpawnUseCaseError") == true)
         #expect(model.claudeResumeInProgressSessionID == nil)
-    }
-}
-
-private enum MockSessionsLoaderError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionsLoader: SessionsLoading {
-    let result: Result<[APISession], MockSessionsLoaderError>
-
-    func loadSessions(serverURLString: String, token: String) async throws -> [APISession] {
-        switch result {
-        case .success(let sessions):
-            return sessions
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning {
-    func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
-        []
-    }
-
-    func fetchSessionsPage(serverURL: URL, token: String, cursor: String?, limit: Int) async throws -> APISessionsPage {
-        APISessionsPage(sessions: [], nextCursor: nil, hasNext: false)
-    }
-
-    func fetchSessionMessages(serverURL: URL, token: String, sessionID: String) async throws -> [APISessionMessage] {
-        []
-    }
-
-    func deleteSession(serverURL: URL, token: String, sessionID: String) async throws {}
-
-    func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws {}
-
-    func fetchCodexThreads(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APICodexThreadSummary] {
-        []
-    }
-
-    func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
-        []
-    }
-
-    func spawnSession(
-        serverURL: URL,
-        token: String,
-        sessionID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?
-    ) async throws -> APISessionSpawnResult {
-        APISessionSpawnResult(
-            success: true,
-            sessionID: "session-new",
-            requiresUserApproval: nil,
-            actionRequired: nil,
-            directory: nil,
-            error: nil
-        )
-    }
-}
-
-private struct MockSessionsPoller: SessionsPolling {
-    let rows: [APISession]
-
-    func makePollingStream(
-        serverURLString: String,
-        token: String,
-        interval: Duration
-    ) async -> AsyncThrowingStream<[APISession], Error> {
-        AsyncThrowingStream { continuation in
-            continuation.yield(rows)
-            continuation.finish()
-        }
-    }
-}
-
-private enum MockSessionsPageLoaderError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionsPageLoader: SessionsPageLoading {
-    let result: Result<SessionsPageResult, MockSessionsPageLoaderError>
-
-    func loadPage(serverURLString: String, token: String, cursor: String?, limit: Int) async throws -> SessionsPageResult {
-        switch result {
-        case .success(let page):
-            return page
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private actor SequenceSessionsPageLoader: SessionsPageLoading {
-    private var pages: [SessionsPageResult]
-
-    init(results: [SessionsPageResult]) {
-        self.pages = results
-    }
-
-    func loadPage(serverURLString: String, token: String, cursor: String?, limit: Int) async throws -> SessionsPageResult {
-        if pages.isEmpty {
-            return SessionsPageResult(sessions: [], nextCursor: nil, hasNext: false)
-        }
-        return pages.removeFirst()
-    }
-}
-
-private enum MockSessionsMessagesLoaderError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionsMessagesLoader: SessionsMessagesLoading {
-    let result: Result<[APISessionMessage], MockSessionsMessagesLoaderError>
-
-    func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
-        switch result {
-        case .success(let messages):
-            return messages
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private actor SequenceMessagesLoader: SessionsMessagesLoading {
-    private var messagesByCall: [[APISessionMessage]]
-    private var loadCalls = 0
-
-    init(messagesByCall: [[APISessionMessage]]) {
-        self.messagesByCall = messagesByCall
-    }
-
-    func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
-        loadCalls += 1
-        if messagesByCall.isEmpty {
-            return []
-        }
-        if messagesByCall.count == 1 {
-            return messagesByCall[0]
-        }
-        return messagesByCall.removeFirst()
-    }
-
-    func loadCallCount() -> Int {
-        loadCalls
-    }
-}
-
-private struct SessionAwareMessagesLoader: SessionsMessagesLoading {
-    func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
-        [
-            APISessionMessage(
-                id: "m-\(sessionID)",
-                seq: 1,
-                localId: nil,
-                content: APIEncryptedMessageContent(t: "encrypted", c: "payload"),
-                createdAt: 1,
-                updatedAt: 1
-            )
-        ]
-    }
-}
-
-private actor CallOrderRecorder {
-    private var calls: [String] = []
-
-    func append(_ call: String) {
-        calls.append(call)
-    }
-
-    func snapshot() -> [String] {
-        calls
-    }
-}
-
-private struct RecordingSessionPreDeleteKillUseCase: SessionPreDeleteKillingAction {
-    let recorder: CallOrderRecorder
-
-    func killSession(serverURLString: String, token: String, sessionID: String) async throws {
-        await recorder.append("kill:\(sessionID)")
-    }
-}
-
-private struct RecordingSessionDeleteUseCase: SessionDeletingAction {
-    let recorder: CallOrderRecorder
-
-    func deleteSession(serverURLString: String, token: String, sessionID: String) async throws {
-        await recorder.append("delete:\(sessionID)")
-    }
-}
-
-private enum MockSessionDeleteUseCaseError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionDeleteUseCase: SessionDeletingAction {
-    let result: Result<Void, MockSessionDeleteUseCaseError>
-
-    func deleteSession(serverURLString: String, token: String, sessionID: String) async throws {
-        switch result {
-        case .success:
-            return
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private enum MockSessionTitleUseCaseError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionTitleUseCase: SessionTitleUpdatingAction {
-    let result: Result<Void, MockSessionTitleUseCaseError>
-
-    func setSessionTitle(serverURLString: String, token: String, sessionID: String, title: String?) async throws {
-        switch result {
-        case .success:
-            return
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private enum MockSessionCodexThreadsLoaderError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionCodexThreadsLoader: SessionCodexThreadsLoading {
-    let result: Result<[APICodexThreadSummary], MockSessionCodexThreadsLoaderError>
-
-    func loadCodexThreads(serverURLString: String, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APICodexThreadSummary] {
-        switch result {
-        case .success(let rows):
-            return rows
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private enum MockSessionClaudeSessionsLoaderError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionClaudeSessionsLoader: SessionClaudeSessionsLoading {
-    let result: Result<[APIClaudeSessionSummary], MockSessionClaudeSessionsLoaderError>
-
-    func loadClaudeSessions(serverURLString: String, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
-        switch result {
-        case .success(let rows):
-            return rows
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private enum MockSessionSpawnUseCaseError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionSpawnUseCase: SessionSpawningAction {
-    let result: Result<APISessionSpawnResult, MockSessionSpawnUseCaseError>
-
-    func spawnSession(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?
-    ) async throws -> APISessionSpawnResult {
-        switch result {
-        case .success(let response):
-            return response
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-private enum MockSessionMessageSenderError: Error, Sendable {
-    case failed
-}
-
-private struct MockSessionMessageSender: SessionMessageSendingAction {
-    let result: Result<APISessionSendMessageResult, MockSessionMessageSenderError>
-
-    func sendMessage(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        text: String,
-        steerMode: APISessionSteerMode,
-        modelOverride: SessionMessageModelOverride,
-        effortOverride: SessionMessageEffortOverride
-    ) async throws -> APISessionSendMessageResult {
-        switch result {
-        case .success(let response):
-            return response
-        case .failure(let error):
-            throw error
-        }
     }
 }

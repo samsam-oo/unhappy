@@ -28,109 +28,146 @@ public struct SettingsView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            Form {
-                Section("Connection") {
-                    NavigationLink {
-                        AccountSettingsView(
-                            viewModel: viewModel,
-                            makeAccountLinkViewModel: makeAccountLinkViewModel
-                        )
-                    } label: {
-                        Label("Account", systemImage: "person.crop.circle")
-                    }
-                    NavigationLink {
-                        AccountRestoreView(
-                            viewModel: viewModel,
-                            makeAccountLinkViewModel: makeAccountLinkViewModel
-                        )
-                    } label: {
-                        Label("Restore", systemImage: "qrcode.viewfinder")
-                    }
-                    NavigationLink {
-                        ServerSettingsView(viewModel: viewModel)
-                    } label: {
-                        Label("Server", systemImage: "server.rack")
-                    }
-                    NavigationLink {
-                        ConnectorsSettingsView(
-                            serverURLString: viewModel.serverURLString,
-                            token: viewModel.apiToken,
-                            makeDaemonStatusViewModel: makeDaemonStatusViewModel
-                        )
-                    } label: {
-                        Label("Connectors", systemImage: "link")
-                    }
-                    NavigationLink {
-                        TerminalConnectSettingsView(
-                            serverURLString: viewModel.serverURLString,
-                            token: viewModel.apiToken,
-                            makeViewModel: makeTerminalConnectViewModel
-                        )
-                    } label: {
-                        Label("Terminal", systemImage: "terminal")
-                    }
-                }
+        NavigationSplitView {
+            settingsSidebarContent
+                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
+        } detail: {
+            splitDetailPlaceholder
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(detailCanvasColor)
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
 
-                Section("Preferences") {
-                    NavigationLink {
-                        LanguageSettingsView(viewModel: viewModel)
-                    } label: {
-                        Label("Language", systemImage: "globe")
-                    }
-                    NavigationLink {
-                        AppearanceSettingsView(viewModel: viewModel)
-                    } label: {
-                        Label("Appearance", systemImage: "circle.lefthalf.filled")
-                    }
-                    NavigationLink {
-                        FeaturesSettingsView(viewModel: viewModel)
-                    } label: {
-                        Label("Features", systemImage: "slider.horizontal.3")
-                    }
-                    NavigationLink {
-                        ProfilesSettingsView(viewModel: viewModel)
-                    } label: {
-                        Label("Profiles", systemImage: "person.2")
-                    }
-                    NavigationLink {
-                        VoiceSettingsView(viewModel: viewModel)
-                    } label: {
-                        Label("Voice", systemImage: "waveform")
-                    }
-                    NavigationLink {
-                        UsageSettingsView(
-                            serverURLString: viewModel.serverURLString,
-                            token: viewModel.apiToken,
-                            makeViewModel: makeUsageViewModel
-                        )
-                    } label: {
-                        Label("Usage", systemImage: "chart.bar.xaxis")
-                    }
-                    NavigationLink {
-                        ChangelogView()
-                            .onAppear {
-                                viewModel.markLatestChangelogViewed()
-                            }
-                    } label: {
-                        ChangelogRow(hasUnread: viewModel.hasUnreadChangelog)
-                    }
+    private var settingsSidebarContent: some View {
+        List {
+            Section("Connection") {
+                NavigationLink {
+                    AccountSettingsView(
+                        viewModel: viewModel,
+                        makeAccountLinkViewModel: makeAccountLinkViewModel
+                    )
+                } label: {
+                    Label("Account", systemImage: "person.crop.circle")
                 }
-
-                Section("Machine") {
-                    NavigationLink {
-                        MachinesView(
-                            serverURLString: viewModel.serverURLString,
-                            token: viewModel.apiToken,
-                            makeViewModel: makeMachinesViewModel
-                        )
-                    } label: {
-                        Label("Manage Machines", systemImage: "desktopcomputer")
-                    }
+                NavigationLink {
+                    AccountRestoreView(
+                        viewModel: viewModel,
+                        makeAccountLinkViewModel: makeAccountLinkViewModel
+                    )
+                } label: {
+                    Label("Restore", systemImage: "qrcode.viewfinder")
+                }
+                NavigationLink {
+                    ServerSettingsView(viewModel: viewModel)
+                } label: {
+                    Label("Server", systemImage: "server.rack")
+                }
+                NavigationLink {
+                    ConnectorsSettingsView(
+                        serverURLString: viewModel.serverURLString,
+                        token: viewModel.apiToken,
+                        makeDaemonStatusViewModel: makeDaemonStatusViewModel
+                    )
+                } label: {
+                    Label("Connectors", systemImage: "link")
+                }
+                NavigationLink {
+                    TerminalConnectSettingsView(
+                        serverURLString: viewModel.serverURLString,
+                        token: viewModel.apiToken,
+                        makeViewModel: makeTerminalConnectViewModel
+                    )
+                } label: {
+                    Label("Terminal", systemImage: "terminal")
                 }
             }
-            .navigationTitle("Settings")
+
+            Section("Preferences") {
+                NavigationLink {
+                    LanguageSettingsView(viewModel: viewModel)
+                } label: {
+                    Label("Language", systemImage: "globe")
+                }
+                NavigationLink {
+                    AppearanceSettingsView(viewModel: viewModel)
+                } label: {
+                    Label("Appearance", systemImage: "circle.lefthalf.filled")
+                }
+                NavigationLink {
+                    FeaturesSettingsView(viewModel: viewModel)
+                } label: {
+                    Label("Features", systemImage: "slider.horizontal.3")
+                }
+                NavigationLink {
+                    ProfilesSettingsView(viewModel: viewModel)
+                } label: {
+                    Label("Profiles", systemImage: "person.2")
+                }
+                NavigationLink {
+                    VoiceSettingsView(viewModel: viewModel)
+                } label: {
+                    Label("Voice", systemImage: "waveform")
+                }
+                NavigationLink {
+                    UsageSettingsView(
+                        serverURLString: viewModel.serverURLString,
+                        token: viewModel.apiToken,
+                        makeViewModel: makeUsageViewModel
+                    )
+                } label: {
+                    Label("Usage", systemImage: "chart.bar.xaxis")
+                }
+                NavigationLink {
+                    ChangelogView()
+                        .onAppear {
+                            viewModel.markLatestChangelogViewed()
+                        }
+                } label: {
+                    ChangelogRow(hasUnread: viewModel.hasUnreadChangelog)
+                }
+            }
+
+            Section("Machine") {
+                NavigationLink {
+                    MachinesView(
+                        serverURLString: viewModel.serverURLString,
+                        token: viewModel.apiToken,
+                        makeViewModel: makeMachinesViewModel
+                    )
+                } label: {
+                    Label("Manage Machines", systemImage: "desktopcomputer")
+                }
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(sidebarCanvasColor)
+    }
+
+    private var splitDetailPlaceholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "gearshape.2.fill")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Select a Setting")
+                .font(.headline)
+            Text("Choose an item from the left panel to open details.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(24)
+    }
+
+    private var sidebarCanvasColor: Color {
+        Color(uiColor: .systemBackground)
+    }
+
+    private var detailCanvasColor: Color {
+        Color(uiColor: .systemGroupedBackground)
     }
 }
 

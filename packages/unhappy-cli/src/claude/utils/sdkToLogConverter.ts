@@ -85,16 +85,19 @@ export class SDKToLogConverter {
     convert(sdkMessage: SDKMessage): RawJSONLines | null {
         const uuid = randomUUID()
         const timestamp = new Date().toISOString()
+        const parentToolUseId =
+            typeof (sdkMessage as any).parent_tool_use_id === 'string'
+                ? (sdkMessage as any).parent_tool_use_id
+                : undefined
         let parentUuid = this.lastUuid;
-        let isSidechain = false;
-        if (sdkMessage.parent_tool_use_id) {
-            isSidechain = true;
-            parentUuid = this.sidechainLastUUID.get((sdkMessage as any).parent_tool_use_id) ?? null;
-            this.sidechainLastUUID.set((sdkMessage as any).parent_tool_use_id!, uuid);
+        const isSidechain = parentToolUseId != null;
+        if (parentToolUseId) {
+            parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null;
+            this.sidechainLastUUID.set(parentToolUseId, uuid);
         }
         const baseFields = {
             parentUuid: parentUuid,
-            isSidechain: isSidechain,
+            parent_tool_use_id: parentToolUseId,
             userType: 'external' as const,
             cwd: this.context.cwd,
             sessionId: this.context.sessionId,
@@ -244,7 +247,7 @@ export class SDKToLogConverter {
         this.sidechainLastUUID.set(toolUseId, uuid);
         return {
             parentUuid: null,
-            isSidechain: true,
+            parent_tool_use_id: toolUseId,
             userType: 'external' as const,
             cwd: this.context.cwd,
             sessionId: this.context.sessionId,
@@ -272,11 +275,9 @@ export class SDKToLogConverter {
         const errorMessage = "[Request interrupted by user for tool use]"
         
         // Determine if this is a sidechain and get parent UUID
-        let isSidechain = false
         let parentUuid: string | null = this.lastUuid
         
         if (parentToolUseId) {
-            isSidechain = true
             // Look up the parent tool's UUID
             parentUuid = this.sidechainLastUUID.get(parentToolUseId) ?? null
             // Track this tool in the sidechain map
@@ -285,7 +286,7 @@ export class SDKToLogConverter {
         
         const logMessage: RawJSONLines = {
             type: 'user',
-            isSidechain: isSidechain,
+            parent_tool_use_id: parentToolUseId ?? undefined,
             uuid,
             message: {
                 role: 'user',

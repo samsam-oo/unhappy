@@ -1,12 +1,12 @@
 import SwiftUI
 
 @MainActor
-struct ConnectorsSettingsView: View {
+public struct ConnectorsSettingsView: View {
     private let serverURLString: String
     private let token: String
     @StateObject private var daemonStatusViewModel: ConnectorsDaemonStatusViewModel
 
-    init(
+    public init(
         serverURLString: String,
         token: String,
         makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel
@@ -16,7 +16,7 @@ struct ConnectorsSettingsView: View {
         _daemonStatusViewModel = StateObject(wrappedValue: makeDaemonStatusViewModel())
     }
 
-    var body: some View {
+    public var body: some View {
         Form {
             Section("Daemon") {
                 LabeledContent("Status") {
@@ -132,7 +132,7 @@ struct ConnectorsSettingsView: View {
     }
 }
 
-private enum DaemonStatusState {
+enum DaemonStatusState {
     case checking
     case unavailable
     case missingToken

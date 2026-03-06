@@ -140,6 +140,12 @@ GOOGLE_CLOUD_PROJECT=your-project-id unhappy gemini
 
 Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
+## Codex AppServer Compatibility
+
+For Codex protocol/version baseline and upgrade criteria, see:
+
+- [../../docs/codex-appserver-compatibility.md](../../docs/codex-appserver-compatibility.md)
+
 ## Requirements
 
 - Node.js >= 20.0.0

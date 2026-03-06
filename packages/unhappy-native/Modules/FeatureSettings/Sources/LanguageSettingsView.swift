@@ -1,10 +1,14 @@
 import SwiftUI
 
 @MainActor
-struct LanguageSettingsView: View {
+public struct LanguageSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
 
-    var body: some View {
+    public init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         Form {
             Section("Language") {
                 Picker("App Language", selection: $viewModel.selectedLanguage) {

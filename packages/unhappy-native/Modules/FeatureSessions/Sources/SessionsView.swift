@@ -5,6 +5,10 @@ import FeatureSessionTools
 
 @MainActor
 public struct SessionsView: View {
+    private enum Selection: Hashable {
+        case project(String)
+    }
+
     @StateObject private var viewModel: SessionsViewModel
     private let serverURLString: String
     private let token: String
@@ -13,8 +17,8 @@ public struct SessionsView: View {
     private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    @State private var pendingDeleteSession: APISession?
-    @State private var isPresentingNewSession = false
+    @State private var isPresentingProjectPicker = false
+    @State private var selection: Selection?
 
     public init(
         serverURLString: String,
@@ -37,164 +41,250 @@ public struct SessionsView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                if viewModel.isLoading {
-                    ProgressView("Loading sessions…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Unable to load sessions")
-                            .font(.headline)
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else if visibleSessions.isEmpty {
-                    Text("No sessions")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                } else {
-                    List {
-                        ForEach(visibleSessions) { session in
-                            NavigationLink {
-                                SessionDetailView(
-                                    session: session,
-                                    viewModel: viewModel,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    makeSessionToolsViewModel: makeSessionToolsViewModel
-                                )
-                            } label: {
-                                SessionsRow(
-                                    session: session,
-                                    isDeleting: viewModel.isDeleting(sessionID: session.id)
-                                )
-                            }
-                            .disabled(viewModel.isDeleting(sessionID: session.id))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    pendingDeleteSession = session
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
-
-                        if viewModel.hasMoreSessions {
-                            HStack {
-                                Spacer()
-                                if viewModel.isLoadingMoreSessions {
-                                    ProgressView("Loading more…")
-                                        .font(.footnote)
-                                } else {
-                                    Button("Load more") {
-                                        Task {
-                                            await viewModel.loadMoreSessions(
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
-                                        }
-                                    }
-                                    .font(.footnote.weight(.semibold))
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 6)
-                            .listRowSeparator(.hidden)
-                        }
-                    }
-                    .listStyle(.plain)
+        NavigationSplitView {
+            sidebarContent
+                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
+                .navigationTitle("Projects")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { sessionsToolbarContent }
+                .refreshable {
+                    await viewModel.load(serverURLString: serverURLString, token: token)
                 }
+        } detail: {
+            splitDetailPlaceholder
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(detailCanvasColor)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .task(id: "\(serverURLString)|\(token)") {
+            await viewModel.load(
+                serverURLString: serverURLString,
+                token: token
+            )
+            await viewModel.startPolling(
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
+        .task(id: sessionsChangeTaskID) {
+            await onSessionsChanged(viewModel.sessions)
+        }
+        .onChange(of: projectGroups.map(\.id)) { _, ids in
+            guard let selection else {
+                self.selection = projectGroups.first.map { .project($0.id) }
+                return
             }
-            .navigationTitle("Sessions")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        SessionRecentView(
-                            viewModel: viewModel,
-                            serverURLString: serverURLString,
-                            token: token,
-                            makeSessionToolsViewModel: makeSessionToolsViewModel
-                        )
-                    } label: {
-                        Label("Recent", systemImage: "clock")
-                    }
-                    .accessibilityLabel("Recent Sessions")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isPresentingNewSession = true
-                    } label: {
-                        Image(systemName: "plus.circle.fill")
-                    }
-                    .accessibilityLabel("New Session")
-                }
+            if case .project(let projectID) = selection, !ids.contains(projectID) {
+                self.selection = nil
             }
-            .task(id: "\(serverURLString)|\(token)") {
-                await viewModel.load(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                await viewModel.startPolling(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-            }
-            .task(id: sessionsChangeTaskID) {
-                await onSessionsChanged(viewModel.sessions)
-            }
-            .refreshable {
-                await viewModel.load(serverURLString: serverURLString, token: token)
-            }
-            .alert(
-                "Delete session?",
-                isPresented: Binding(
-                    get: { pendingDeleteSession != nil },
-                    set: { shouldPresent in
-                        if !shouldPresent {
-                            pendingDeleteSession = nil
-                        }
-                    }
-                ),
-                actions: {
-                    Button("Cancel", role: .cancel) {
-                        pendingDeleteSession = nil
-                    }
-                    Button("Delete", role: .destructive) {
-                        guard let session = pendingDeleteSession else { return }
-                        pendingDeleteSession = nil
-                        Task {
-                            await viewModel.deleteSession(
-                                sessionID: session.id,
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                        }
-                    }
-                },
-                message: {
-                    Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
+        }
+        .sheet(isPresented: $isPresentingProjectPicker) {
+            NewSessionView(
+                serverURLString: serverURLString,
+                token: token,
+                defaultAgent: defaultNewSessionAgent,
+                mode: .selectProject,
+                makeViewModel: makeNewSessionViewModel,
+                onProjectSelected: { machineID, directoryPath, machineDisplayName in
+                    viewModel.addProjectBookmark(
+                        machineID: machineID ?? "",
+                        machineDisplayName: machineDisplayName ?? machineID ?? "",
+                        projectPath: directoryPath
+                    )
                 }
             )
-            .sheet(isPresented: $isPresentingNewSession) {
-                NewSessionView(
-                    serverURLString: serverURLString,
-                    token: token,
-                    defaultAgent: defaultNewSessionAgent,
-                    makeViewModel: makeNewSessionViewModel,
-                    onSessionSpawned: { _ in
+        }
+        .navigationDestination(for: Selection.self) { destinationSelection in
+            destinationView(for: destinationSelection)
+        }
+    }
+
+    @ViewBuilder
+    private var splitDetailPlaceholder: some View {
+        if viewModel.isLoading {
+            ProgressView("Loading projects…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let selection {
+            destinationView(for: selection)
+        } else if !hasSidebarRows {
+            emptyDetailState
+        } else if let firstProject = projectGroups.first {
+            SessionProjectDetailView(
+                group: firstProject,
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                defaultNewSessionAgent: defaultNewSessionAgent,
+                makeNewSessionViewModel: makeNewSessionViewModel,
+                makeSessionToolsViewModel: makeSessionToolsViewModel
+            )
+        } else {
+            emptyDetailState
+        }
+    }
+
+    @ViewBuilder
+    private var sidebarContent: some View {
+        VStack(spacing: 0) {
+            if viewModel.isLoading {
+                ProgressView("Loading sessions…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Unable to load sessions")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else if !hasSidebarRows {
+                emptySidebarState
+            } else {
+                sessionsNavigationList
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(sidebarCanvasColor)
+    }
+
+    private var emptySidebarState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("No projects yet")
+                .font(.headline)
+            Text("Add a project to start syncing its sessions.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                isPresentingProjectPicker = true
+            } label: {
+                Label("Add Project", systemImage: "plus.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, 24)
+        .padding(.horizontal, 20)
+    }
+
+    private var emptyDetailState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 38, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Add a Project")
+                .font(.title3.weight(.semibold))
+            Text("Choose a machine and project path first. Sessions inside that project will sync automatically.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button {
+                isPresentingProjectPicker = true
+            } label: {
+                Label("Add Project", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(24)
+    }
+
+    private var sessionsNavigationList: some View {
+        return List(selection: $selection) {
+            Section("Projects") {
+                if viewModel.isLoadingUpstreamSessions && projectGroups.isEmpty {
+                    ProgressView("Loading projects…")
+                } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
+                          projectGroups.isEmpty {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(projectGroups) { group in
+                        NavigationLink(value: Selection.project(group.id)) {
+                            ProjectRow(group: group)
+                        }
+                    }
+                }
+            }
+
+            loadMoreRow
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(sidebarCanvasColor)
+    }
+
+    private var showsUpstreamSessionsSection: Bool {
+        viewModel.isLoadingUpstreamSessions ||
+        !viewModel.upstreamSessions.isEmpty ||
+        viewModel.upstreamSessionsErrorMessage != nil
+    }
+
+    private var hasSidebarRows: Bool {
+        !projectGroups.isEmpty
+    }
+
+    private var emptyDetailButtonTitle: String {
+        showsUpstreamSessionsSection ? "Create New Session" : "Create Session"
+    }
+
+    @ViewBuilder
+    private var loadMoreRow: some View {
+        if viewModel.hasMoreSessions {
+            HStack {
+                Spacer()
+                if viewModel.isLoadingMoreSessions {
+                    ProgressView("Loading more…")
+                        .font(.footnote)
+                } else {
+                    Button("Load more") {
                         Task {
-                            await viewModel.load(
+                            await viewModel.loadMoreSessions(
                                 serverURLString: serverURLString,
                                 token: token
                             )
                         }
                     }
-                )
+                    .font(.footnote.weight(.semibold))
+                }
+                Spacer()
             }
+            .padding(.vertical, 6)
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var sessionsToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            NavigationLink {
+                SessionRecentView(
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            } label: {
+                Label("Recent", systemImage: "clock")
+            }
+            .accessibilityLabel("Recent Sessions")
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                isPresentingProjectPicker = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+            }
+            .accessibilityLabel("Add Project")
         }
     }
 
@@ -211,6 +301,40 @@ public struct SessionsView: View {
                 "\(session.id)|\(session.active ? 1 : 0)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
             }
             .joined(separator: ",")
+    }
+
+    private var sidebarCanvasColor: Color {
+        Color(uiColor: .systemBackground)
+    }
+
+    private var detailCanvasColor: Color {
+        Color(uiColor: .systemGroupedBackground)
+    }
+
+    @ViewBuilder
+    private func destinationView(for selection: Selection) -> some View {
+        switch selection {
+        case .project(let projectID):
+            if let group = projectGroups.first(where: { $0.id == projectID }) {
+                SessionProjectDetailView(
+                    group: group,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    defaultNewSessionAgent: defaultNewSessionAgent,
+                    makeNewSessionViewModel: makeNewSessionViewModel,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            }
+        }
+    }
+
+    private var projectGroups: [SessionProjectGroup] {
+        SessionListPresentationBuilder.projectGroups(
+            sessions: visibleSessions,
+            upstreamSessions: viewModel.upstreamSessions,
+            bookmarks: viewModel.projectBookmarks
+        )
     }
 }
 
@@ -253,6 +377,7 @@ private struct SessionsRow: View {
             }
         }
         .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
 
     private var normalizedDisplayTitle: String? {
@@ -271,171 +396,51 @@ private struct SessionsRow: View {
     }
 
     private var machineDisplayName: String? {
-        let metadata = SessionPayloadValueResolver.decodeJSONObject(
-            payload: session.metadata,
-            dataEncryptionKey: session.dataEncryptionKey
-        )
-        if let primary = bestDisplayString(
-            in: metadata,
-            keys: ["displayName", "name", "machineName", "deviceName", "computerName"],
-            rejectGenericHosts: true,
-            rejectOpaqueIdentifiers: true
-        ) {
-            return primary
-        }
-        if let host = bestDisplayString(
-            in: metadata,
-            keys: ["host", "hostname", "computerName", "localHostName", "hostName", "machineHost"],
-            rejectGenericHosts: true,
-            rejectOpaqueIdentifiers: true
-        ) {
-            return host
-        }
-        return nil
-    }
-
-    private func bestDisplayString(
-        in object: Any?,
-        keys: [String],
-        rejectGenericHosts: Bool,
-        rejectOpaqueIdentifiers: Bool
-    ) -> String? {
-        let normalizedKeys = Set(keys.map(normalizeKey))
-        let candidates = values(in: object, matching: normalizedKeys)
-        for candidate in candidates {
-            if let normalized = normalizeDisplayValue(
-                candidate,
-                rejectGenericHosts: rejectGenericHosts,
-                rejectOpaqueIdentifiers: rejectOpaqueIdentifiers
-            ) {
-                return normalized
-            }
-        }
-        return nil
-    }
-
-    private func normalizeDisplayValue(
-        _ raw: String,
-        rejectGenericHosts: Bool,
-        rejectOpaqueIdentifiers: Bool
-    ) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let withoutLocalSuffix = trimmed.replacingOccurrences(
-            of: #"\.local$"#,
-            with: "",
-            options: .regularExpression
-        )
-        let lowered = withoutLocalSuffix.lowercased()
-        let blockedValues: Set<String> = [
-            "mac",
-            "localhost",
-            "unknown-host",
-        ]
-        if rejectGenericHosts && blockedValues.contains(lowered) {
-            return nil
-        }
-        if rejectOpaqueIdentifiers && looksLikeOpaqueIdentifier(withoutLocalSuffix) {
-            return nil
-        }
-        return withoutLocalSuffix
-    }
-
-    private func looksLikeOpaqueIdentifier(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-
-        if trimmed.range(
-            of: #"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"#,
-            options: .regularExpression
-        ) != nil {
-            return true
-        }
-        if trimmed.range(of: #"^[0-9a-fA-F]{20,}$"#, options: .regularExpression) != nil {
-            return true
-        }
-        if trimmed.range(of: #"^[0-9]{10,}$"#, options: .regularExpression) != nil {
-            return true
-        }
-        if trimmed.range(of: #"^[a-z0-9-]{24,}$"#, options: .regularExpression) != nil,
-           trimmed.lowercased().contains("macbook") == false {
-            return true
-        }
-        return false
-    }
-
-    private func values(in object: Any?, matching keys: Set<String>) -> [String] {
-        var output: [String] = []
-        collectValues(in: object, matching: keys, output: &output)
-        return output
-    }
-
-    private func collectValues(
-        in object: Any?,
-        matching keys: Set<String>,
-        output: inout [String]
-    ) {
-        if let dictionary = object as? [String: Any] {
-            for (rawKey, value) in dictionary where keys.contains(normalizeKey(rawKey)) {
-                if let string = value as? String {
-                    output.append(string)
-                } else if let number = value as? NSNumber {
-                    output.append(number.stringValue)
-                }
-            }
-            for (_, value) in dictionary {
-                collectValues(in: value, matching: keys, output: &output)
-            }
-            return
-        }
-
-        if let array = object as? [Any] {
-            for item in array {
-                collectValues(in: item, matching: keys, output: &output)
-            }
-        }
-    }
-
-    private func normalizeKey(_ value: String) -> String {
-        value.lowercased().filter { $0.isLetter || $0.isNumber }
+        SessionUpstreamIdentity(session: session)?.machineDisplayName
     }
 }
 
-#Preview {
-    SessionsView(
-        serverURLString: "https://api.unhappy.im",
-        token: "",
-        makeViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
-        makeNewSessionViewModel: {
-            let service = URLSessionMachinesService()
-            return NewSessionViewModel(
-                machinesLoader: NewSessionMachinesLoadUseCase(service: service),
-                directoryLister: NewSessionDirectoryListUseCase(service: service),
-                spawner: NewSessionSpawnUseCase(service: service),
-                recentProjectsManager: NewSessionNoopRecentProjectsManager(),
-                profilesManager: NewSessionNoopProfilesManager(),
-                modelsLoader: NewSessionModelsLoadUseCase(service: service),
-                codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
-                claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
-            )
-        },
-        makeSessionToolsViewModel: {
-            let service = URLSessionSessionsService()
-            let basher = SessionBashUseCase(service: service)
-            return SessionToolsViewModel(
-                fileLoader: SessionFileLoadUseCase(service: service),
-                directoryLister: SessionDirectoryListUseCase(service: service),
-                fileWriter: SessionFileWriteUseCase(service: service),
-                fileDiffPreviewer: SessionFileDiffPreviewUseCase(basher: basher),
-                killer: SessionKillUseCase(service: service),
-                aborter: SessionTaskAbortUseCase(service: service),
-                permissionResponder: SessionPermissionUseCase(service: service),
-                modeSwitcher: SessionModeSwitchUseCase(service: service),
-                basher: basher,
-                ripgrepRunner: SessionRipgrepUseCase(service: service),
-                difftasticRunner: SessionDifftasticUseCase(service: service)
-            )
+private struct ProjectRow: View {
+    let group: SessionProjectGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(group.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Text("\(group.allSessionCount)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Text(group.machineDisplayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(SessionTimestampPresentation.updatedLabel(for: group.latestUpdatedAt))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if group.activeSessionCount > 0 {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("\(group.activeSessionCount) active")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            Text(group.projectPath)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
-    )
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
 }

@@ -3,25 +3,23 @@ import CoreKit
 
 enum SessionDisplayTitleResolver {
     static func resolvedDisplayTitle(for session: APISession) -> String? {
+        resolvedDisplayTitle(for: session, context: SessionRuntimeContext(session: session))
+    }
+
+    static func resolvedDisplayTitle(
+        for session: APISession,
+        context: SessionRuntimeContext
+    ) -> String? {
         if let normalized = normalizedDisplayName(for: session) {
             return normalized
         }
 
-        let metadata = SessionPayloadValueResolver.decodeJSONObject(
-            payload: session.metadata,
-            dataEncryptionKey: session.dataEncryptionKey
-        )
-        let agentState = SessionPayloadValueResolver.decodeJSONObject(
-            payload: session.agentState,
-            dataEncryptionKey: session.dataEncryptionKey
-        )
-
-        if let summaryText = summaryText(in: [agentState, metadata]) {
+        if let summaryText = summaryText(in: [context.agentState, context.metadata]) {
             return summaryText
         }
 
         if let metadataName = SessionPayloadValueResolver.firstString(
-            in: [agentState, metadata],
+            in: [context.agentState, context.metadata],
             keys: ["displayName", "name", "title", "threadName", "sessionName"]
         ) {
             let trimmed = metadataName.trimmingCharacters(in: .whitespacesAndNewlines)

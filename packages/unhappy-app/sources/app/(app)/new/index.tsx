@@ -2646,6 +2646,9 @@ function NewSessionWizard() {
                             <ItemGroup title="">
                                 {([
                                     { kind: 'mode', value: 'default', label: '기본', description: '권한을 요청합니다', icon: 'shield-outline' },
+                                    ...(agentType === 'codex'
+                                        ? [{ kind: 'mode', value: 'passthrough', label: 'CLI 설정', description: '로컬 Codex config.toml 사용', icon: 'settings-outline' }]
+                                        : []),
                                     { kind: 'plan', value: 'planning', label: '계획', description: '실행 전 계획', icon: 'list-outline' },
                                     { kind: 'mode', value: 'allow-edits', label: '편집 허용', description: '편집을 자동 승인', icon: 'create-outline' },
                                     { kind: 'mode', value: 'read-only', label: '읽기 전용', description: '읽기 전용 모드', icon: 'eye-outline' },
@@ -2677,7 +2680,7 @@ function NewSessionWizard() {
                                                     return;
                                                 }
                                                 setPlanOnly(false);
-                                                setPermissionMode(row.value);
+                                                setPermissionMode(row.value as PermissionMode);
                                             }}
                                             showChevron={false}
                                             selected={isSelected}

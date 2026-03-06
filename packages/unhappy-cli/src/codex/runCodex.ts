@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
@@ -20,6 +21,10 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { stopCaffeinate } from '@/utils/caffeinate';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { hashObject } from '@/utils/deterministicJson';
+import {
+  mapPermissionModeToCodexOverrides,
+  resolvePermissionModeWithAdapter,
+} from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
@@ -33,6 +38,7 @@ import { createInterface } from 'node:readline';
 import React from 'react';
 import {
   CodexAppServerClient,
+  type CodexThreadSummary,
   type CodexThreadBootstrapState,
 } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
@@ -421,6 +427,7 @@ export async function runCodex(opts: {
   resumeThreadId?: string;
   model?: string;
   reasoningEffort?: ReasoningEffortMode;
+  permissionMode?: import('@/api/types').PermissionMode;
 }): Promise<void> {
   // Use shared PermissionMode type for cross-agent compatibility
   type PermissionMode = import('@/api/types').PermissionMode;
@@ -429,6 +436,9 @@ export async function runCodex(opts: {
     model?: string;
     effort?: ReasoningEffortMode;
     effortResetToDefault?: boolean;
+    inputText?: string;
+    imageDataURLs?: string[];
+    messageKey?: string;
   }
   interface QueuedMessage {
     message: string;
@@ -521,6 +531,7 @@ export async function runCodex(opts: {
       ...(currentState?.mode ?? {}),
       model: opts.model,
       effort: opts.reasoningEffort,
+      permissionMode: opts.permissionMode ?? 'passthrough',
     },
   }));
 
@@ -551,6 +562,9 @@ export async function runCodex(opts: {
       model: mode.model,
       effort: mode.effort,
       effortResetToDefault: mode.effortResetToDefault,
+      inputText: mode.inputText,
+      imageDataURLs: mode.imageDataURLs,
+      messageKey: mode.messageKey,
     }),
   );
   let thinking = false;
@@ -590,16 +604,21 @@ export async function runCodex(opts: {
   // Track current overrides to apply per message
   // Use shared PermissionMode type from api/types for cross-agent compatibility
   let currentPermissionMode: import('@/api/types').PermissionMode | undefined =
-    undefined;
+    opts.permissionMode ?? 'passthrough';
   let currentModel: string | undefined = opts.model;
   let currentEffort: ReasoningEffortMode | undefined = opts.reasoningEffort;
-  const syncAgentModeState = (model: string | undefined, effort: ReasoningEffortMode | undefined) => {
+  const syncAgentModeState = (
+    model: string | undefined,
+    effort: ReasoningEffortMode | undefined,
+    permissionMode: import('@/api/types').PermissionMode | undefined,
+  ) => {
     session.updateAgentState((currentState) => ({
       ...currentState,
       mode: {
         ...(currentState?.mode ?? {}),
         model,
         effort,
+        permissionMode,
       },
     }));
   };
@@ -614,15 +633,28 @@ export async function runCodex(opts: {
   let injectedInstructionsIntoPrompt = false;
 
   session.onUserMessage((message) => {
-    // Resolve permission mode (accept all modes, will be mapped in switch statement)
+    // Resolve permission mode (accept all modes; backend mapping is handled by adapter)
     let messagePermissionMode = currentPermissionMode;
-    if (message.meta?.permissionMode) {
-      messagePermissionMode = message.meta
-        .permissionMode as import('@/api/types').PermissionMode;
-      currentPermissionMode = messagePermissionMode;
-      logger.debug(
-        `[Codex] Permission mode updated from user message to: ${currentPermissionMode}`,
-      );
+    const hasPermissionModeOverride =
+      message.meta &&
+      Object.prototype.hasOwnProperty.call(message.meta, 'permissionMode');
+    if (hasPermissionModeOverride) {
+      const resolvedPermissionMode = resolvePermissionModeWithAdapter({
+        target: 'codex',
+        currentMode: currentPermissionMode,
+        rawRequestedMode: message.meta?.permissionMode,
+      });
+      if (resolvedPermissionMode.kind === 'invalid') {
+        logger.debug(
+          `[Codex] Invalid permission mode received: ${String(message.meta?.permissionMode)}`,
+        );
+      } else {
+        messagePermissionMode = resolvedPermissionMode.effectiveMode;
+        currentPermissionMode = resolvedPermissionMode.nextCurrentMode;
+        logger.debug(
+          `[Codex] Permission mode updated from user message to: ${currentPermissionMode}`,
+        );
+      }
     } else {
       logger.debug(
         `[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`,
@@ -671,7 +703,7 @@ export async function runCodex(opts: {
         `[Codex] User message received with no effort override, using current: ${currentEffort || 'default'}`,
       );
     }
-    syncAgentModeState(currentModel, currentEffort);
+    syncAgentModeState(currentModel, currentEffort, messagePermissionMode);
 
     // Resolve custom system prompt; explicit null resets to default (undefined)
     let messageCustomSystemPrompt = currentCustomSystemPrompt;
@@ -695,19 +727,46 @@ export async function runCodex(opts: {
       );
     }
 
+    const structuredContent = Array.isArray(message.content)
+      ? message.content
+      : null;
+    const imageDataURLs =
+      structuredContent !== null ? extractUserMessageImageUrls(message.content) : [];
+    const textParts = structuredContent
+      ? structuredContent
+          .map(collectTextFromUserContentItem)
+          .filter((value): value is string => !!value)
+      : [];
+    const inputText =
+      structuredContent !== null
+        ? textParts.join('\n').trim()
+        : extractUserMessageText(message.content);
+    const userText = (() => {
+      const normalizedText = inputText.trim();
+      if (imageDataURLs.length === 0) {
+        return normalizedText;
+      }
+      if (normalizedText) {
+        return `${normalizedText} [+${imageDataURLs.length} image${imageDataURLs.length === 1 ? '' : 's'}]`;
+      }
+      return `[${imageDataURLs.length} image${imageDataURLs.length === 1 ? '' : 's'}]`;
+    })();
     const enhancedMode: EnhancedMode = {
       permissionMode: messagePermissionMode || 'default',
       model: messageModel,
       effort: messageEffort,
       effortResetToDefault: messageEffortResetToDefault,
+      inputText,
+      imageDataURLs: imageDataURLs.length > 0 ? imageDataURLs : undefined,
+      messageKey: imageDataURLs.length > 0 ? randomUUID() : undefined,
     };
 
-    const userText = message.content.text;
     const steerMode =
       message.meta?.steerMode === 'immediate' ? 'immediate' : 'queue';
     const shouldTrySteer =
       steerMode === 'immediate' &&
       message.meta?.sentFrom !== 'native' &&
+      imageDataURLs.length === 0 &&
       typeof userText === 'string' &&
       userText.trim().length > 0 &&
       thinking &&
@@ -943,9 +1002,29 @@ export async function runCodex(opts: {
 
   // Model listing for UI dropdown (best-effort; cached per session process).
   let cachedModelList: Awaited<ReturnType<typeof listCodexModels>> | null = null;
+  const normalizeCodexReasoningEfforts = (values: string[] | undefined): string[] => {
+    const deduped: string[] = [];
+    const seen = new Set<string>();
+    for (const value of values ?? []) {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) continue;
+      seen.add(normalized);
+      deduped.push(normalized);
+    }
+    const withoutAuto = deduped.filter((value) => value !== 'auto');
+    if (withoutAuto.length === 0) {
+      return ['auto', 'low', 'medium', 'high', 'xhigh'];
+    }
+    return ['auto', ...withoutAuto];
+  };
   session.rpcHandlerManager.registerHandler('list-models', async () => {
     if (cachedModelList?.success && cachedModelList.models.length > 0) {
-      return cachedModelList;
+      return {
+        ...cachedModelList,
+        reasoningEfforts: normalizeCodexReasoningEfforts(
+          cachedModelList.reasoningEfforts,
+        ),
+      };
     }
     cachedModelList = await listCodexModels();
     // Guard: never cache an "empty success" result; UI should show an error instead.
@@ -955,7 +1034,15 @@ export async function runCodex(opts: {
         error: 'No Codex models returned',
       };
     }
-    return cachedModelList;
+    if (!cachedModelList.success) {
+      return cachedModelList;
+    }
+    return {
+      ...cachedModelList,
+      reasoningEfforts: normalizeCodexReasoningEfforts(
+        cachedModelList.reasoningEfforts,
+      ),
+    };
   });
 
   // Expose recent Codex thread history for UI surfaces that want to show/import legacy sessions.
@@ -1132,6 +1219,81 @@ export async function runCodex(opts: {
     client.setPreferredResumeThreadId(storedSessionIdForResume);
   }
 
+  const migratedThreadNameById = new Set<string>();
+  const syncSessionTitleFromThreadSummary = async (
+    threadIdRaw: string | null | undefined,
+    options?: {
+      recentThreads?: CodexThreadSummary[];
+      source?: string;
+    },
+  ): Promise<void> => {
+    const threadId =
+      typeof threadIdRaw === 'string' && threadIdRaw.trim()
+        ? threadIdRaw.trim()
+        : '';
+    if (!threadId || migratedThreadNameById.has(threadId)) {
+      return;
+    }
+
+    const findThreadName = (rows: CodexThreadSummary[]): string => {
+      const matched = rows.find((row) => row.id === threadId);
+      return typeof matched?.name === 'string' ? matched.name.trim() : '';
+    };
+
+    let threadName = findThreadName(options?.recentThreads ?? []);
+    if (!threadName) {
+      try {
+        const rows = await client.listRecentThreadsByCwd(cwd, { limit: 100 });
+        threadName = findThreadName(rows);
+      } catch (error) {
+        logger.debug(
+          '[Codex] Failed to fetch thread summaries for title migration',
+          error,
+        );
+        return;
+      }
+    }
+    if (!threadName) {
+      return;
+    }
+
+    const metadataSnapshot =
+      session.getMetadataSnapshot() as Record<string, unknown> | null;
+    const currentName =
+      typeof metadataSnapshot?.name === 'string'
+        ? metadataSnapshot.name.trim()
+        : '';
+    const summaryRecord =
+      metadataSnapshot &&
+      typeof metadataSnapshot.summary === 'object' &&
+      metadataSnapshot.summary
+        ? (metadataSnapshot.summary as Record<string, unknown>)
+        : null;
+    const currentSummaryText =
+      typeof summaryRecord?.text === 'string' ? summaryRecord.text.trim() : '';
+
+    if (currentName === threadName && currentSummaryText === threadName) {
+      migratedThreadNameById.add(threadId);
+      return;
+    }
+
+    const now = Date.now();
+    session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      name: threadName,
+      summary: {
+        text: threadName,
+        updatedAt: now,
+      },
+    }));
+    migratedThreadNameById.add(threadId);
+    logger.debug('[Codex] Migrated session title from Codex thread summary', {
+      source: options?.source ?? 'unknown',
+      threadId,
+      threadName,
+    });
+  };
+
   async function persistAndReportCodexIdentifiersIfNeeded(source: string) {
     const sessionId = client.getSessionId();
     const conversationId = client.getConversationId();
@@ -1178,6 +1340,10 @@ export async function runCodex(opts: {
     } catch (e) {
       logger.debug('[Codex] Failed to report codex identifiers to metadata', e);
     }
+
+    void syncSessionTitleFromThreadSummary(sessionId, {
+      source: `persist:${source}`,
+    });
   }
 
   // Helper: find Codex session transcript for a given sessionId
@@ -1426,6 +1592,20 @@ export async function runCodex(opts: {
     }
   };
 
+  // For explicit "resume thread" launches (mobile/web picker), import transcript
+  // immediately so the UI shows existing history before the first new prompt.
+  if (explicitResumeThreadId) {
+    await backfillResumeTranscriptIfNeeded(
+      {
+        mode: 'resume',
+        threadId: explicitResumeThreadId,
+        resumedFromThreadId: explicitResumeThreadId,
+        resumePath: null,
+      },
+      storedResumeFileForResume,
+    );
+  }
+
   permissionHandler = new CodexPermissionHandler(session);
   const reasoningProcessor = new ReasoningProcessor((message) => {
     // Stream reasoning deltas as terminal-output so mobile can append in real-time.
@@ -1449,6 +1629,81 @@ export async function runCodex(opts: {
   client.setPermissionHandler(permissionHandler);
   const activeExecCallIds: string[] = [];
   const activeCollabKeys = new Set<string>();
+  const subagentThreadIDs = new Set<string>();
+  const normalizeThreadID = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+  const threadIDForMessage = (msg: any): string | null => {
+    return (
+      normalizeThreadID(msg?.thread_id) ??
+      normalizeThreadID(msg?.threadId) ??
+      normalizeThreadID(msg?.session_id) ??
+      normalizeThreadID(msg?.sessionId)
+    );
+  };
+  let primaryThreadID: string | null =
+    normalizeThreadID(explicitResumeThreadId) ??
+    normalizeThreadID(client.getSessionId()) ??
+    null;
+  const rememberPrimaryThreadID = (value: unknown) => {
+    const threadID = normalizeThreadID(value);
+    if (!threadID || primaryThreadID) return;
+    primaryThreadID = threadID;
+  };
+  const rememberSubagentThreadsFromCollab = (msg: any) => {
+    const senderThreadID =
+      normalizeThreadID(msg?.sender_thread_id) ??
+      normalizeThreadID(msg?.senderThreadId);
+    if (senderThreadID) {
+      rememberPrimaryThreadID(senderThreadID);
+    }
+
+    const directReceiver =
+      normalizeThreadID(msg?.receiver_thread_id) ??
+      normalizeThreadID(msg?.receiverThreadId);
+    if (directReceiver && directReceiver !== primaryThreadID) {
+      subagentThreadIDs.add(directReceiver);
+    }
+
+    const newThreadID =
+      normalizeThreadID(msg?.new_thread_id) ??
+      normalizeThreadID(msg?.newThreadId);
+    if (newThreadID && newThreadID !== primaryThreadID) {
+      subagentThreadIDs.add(newThreadID);
+    }
+
+    const receiverList = Array.isArray(msg?.receiver_thread_ids)
+      ? msg.receiver_thread_ids
+      : Array.isArray(msg?.receiverThreadIds)
+        ? msg.receiverThreadIds
+        : [];
+    for (const candidate of receiverList) {
+      const receiverThreadID = normalizeThreadID(candidate);
+      if (!receiverThreadID || receiverThreadID === primaryThreadID) continue;
+      subagentThreadIDs.add(receiverThreadID);
+    }
+  };
+  const isSubagentMessage = (msg: any): boolean => {
+    const threadID = threadIDForMessage(msg);
+    if (threadID) {
+      if (subagentThreadIDs.has(threadID)) return true;
+      if (primaryThreadID && threadID !== primaryThreadID) return true;
+      return false;
+    }
+    return false;
+  };
+  const shouldSuppressTranscriptToolingNoise = (
+    threadID: string | null,
+    isSidechain: boolean,
+  ): boolean => {
+    if (isSidechain) return true;
+    // Some app-server tooling notifications don't carry thread_id.
+    // During active collab, suppress these details at daemon level.
+    if (activeCollabKeys.size > 0 && !threadID) return true;
+    return false;
+  };
   type CollabIndicatorState = 'in_progress' | 'completed' | null;
   let collabStatusState: CollabIndicatorState = null;
   let collabStatusUpdatedAt = 0;
@@ -1515,6 +1770,64 @@ export async function runCodex(opts: {
       ? activeExecCallIds[activeExecCallIds.length - 1]
       : null;
   };
+  const normalizeItemType = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed.toLowerCase() : null;
+  };
+  const countLatestFileChanges = (item: any): number => {
+    return Array.isArray(item?.changes) ? item.changes.length : 0;
+  };
+  const latestCommandLabel = (item: any): string => {
+    if (Array.isArray(item?.commandActions) && item.commandActions.length > 0) {
+      const [firstAction] = item.commandActions;
+      if (firstAction && typeof firstAction.command === 'string' && firstAction.command.trim()) {
+        return firstAction.command;
+      }
+    }
+    if (typeof item?.command === 'string' && item.command.trim()) {
+      return item.command;
+    }
+    return 'command';
+  };
+  const collectTextFromUserContentItem = (item: any): string | null => {
+    if (!item || typeof item !== 'object') return null;
+    const itemType =
+      typeof item.type === 'string' ? item.type.trim().toLowerCase() : '';
+    if (itemType !== 'text' && itemType !== 'input_text') {
+      return null;
+    }
+    const text =
+      typeof item.text === 'string'
+        ? item.text
+        : typeof item.input_text === 'string'
+          ? item.input_text
+          : '';
+    const normalized = text.trim();
+    return normalized || null;
+  };
+  const buildCodexTurnInputs = (
+    inputText: string,
+    imageDataURLs?: string[],
+  ): Array<Record<string, unknown>> => {
+    const inputs: Array<Record<string, unknown>> = [];
+    const normalizedText = inputText.trim();
+    if (normalizedText) {
+      inputs.push({
+        type: 'text',
+        text: normalizedText,
+      });
+    }
+    for (const imageURL of imageDataURLs ?? []) {
+      const normalized = imageURL.trim();
+      if (!normalized) continue;
+      inputs.push({
+        type: 'image',
+        url: normalized,
+      });
+    }
+    return inputs;
+  };
   client.setHandler((msg: any) => {
     // Avoid logging the full raw Codex event payloads (can be huge and include prompt contents).
     const msgType = typeof msg?.type === 'string' ? msg.type : 'unknown';
@@ -1526,6 +1839,7 @@ export async function runCodex(opts: {
         : typeof (msg as any)?.session_id === 'string'
           ? (msg as any).session_id
           : null;
+    rememberPrimaryThreadID(threadIdForLog);
 
     if (
       msgType === 'raw_response_item' ||
@@ -1545,6 +1859,7 @@ export async function runCodex(opts: {
 
     const collabEvent = extractCollabStatusEvent(msg);
     if (collabEvent) {
+      rememberSubagentThreadsFromCollab(msg);
       if (collabEvent.stage === 'in_progress') {
         activeCollabKeys.add(collabEvent.key);
       } else {
@@ -1626,6 +1941,37 @@ export async function runCodex(opts: {
         `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
         'result',
       );
+    } else if (msg.type === 'item_started') {
+      const itemType = normalizeItemType(msg.item?.type);
+      if (itemType === 'commandexecution') {
+        messageBuffer.addMessage(
+          `Executing: ${latestCommandLabel(msg.item)}`,
+          'tool',
+        );
+      } else if (itemType === 'filechange') {
+        const changeCount = countLatestFileChanges(msg.item);
+        const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
+        messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
+      }
+    } else if (msg.type === 'item_completed') {
+      const itemType = normalizeItemType(msg.item?.type);
+      if (itemType === 'commandexecution') {
+        const output =
+          typeof msg.item?.aggregatedOutput === 'string' && msg.item.aggregatedOutput.trim()
+            ? msg.item.aggregatedOutput
+            : typeof msg.item?.status === 'string' && msg.item.status.trim()
+              ? msg.item.status
+              : 'Command completed';
+        const truncatedOutput = output.substring(0, 200);
+        messageBuffer.addMessage(
+          `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
+          'result',
+        );
+      } else if (itemType === 'filechange') {
+        const changeCount = countLatestFileChanges(msg.item);
+        const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
+        messageBuffer.addMessage(`Updated ${filesMsg}`, 'result');
+      }
     } else if (msg.type === 'task_started') {
       messageBuffer.addMessage('Starting task...', 'status');
     } else if (msg.type === 'task_complete') {
@@ -1673,11 +2019,52 @@ export async function runCodex(opts: {
       reasoningProcessor.complete(msg.text);
     }
     if (msg.type === 'agent_message') {
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
+      if (isSidechain) {
+        return;
+      }
       session.sendCodexMessage({
         type: 'message',
         message: msg.message,
         id: randomUUID(),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
       });
+    }
+    if (msg.type === 'item_started' || msg.type === 'item_completed') {
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
+      const itemType = normalizeItemType(msg.item?.type);
+      if (isSidechain) {
+        return;
+      }
+      if (!itemType) {
+        return;
+      }
+      if (itemType === 'commandexecution') {
+        const itemId =
+          typeof msg.item?.id === 'string' && msg.item.id.trim()
+            ? msg.item.id
+            : randomUUID();
+        if (msg.type === 'item_started') {
+          rememberExecCallId(itemId);
+        } else {
+          forgetExecCallId(itemId);
+        }
+      }
+      if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+        return;
+      }
+      session.sendCodexMessage({
+        type: msg.type,
+        item: msg.item,
+        id: randomUUID(),
+        ...(typeof msg.turn_id === 'string' ? { turn_id: msg.turn_id } : {}),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
+      });
+      return;
     }
     if (
       msg.type === 'exec_command_begin' ||
@@ -1686,23 +2073,37 @@ export async function runCodex(opts: {
       let { call_id, type, ...inputs } = msg;
       const canonicalCallId = client.canonicalizeToolCallId(call_id, inputs);
       rememberExecCallId(canonicalCallId);
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
+      if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+        return;
+      }
       session.sendCodexMessage({
         type: 'tool-call',
         name: 'CodexBash',
         callId: canonicalCallId,
         input: inputs,
         id: randomUUID(),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
       });
     }
     if (msg.type === 'exec_command_end') {
       let { call_id, type, ...output } = msg;
       const canonicalCallId = client.canonicalizeToolCallId(call_id);
       forgetExecCallId(canonicalCallId);
+      const threadID = threadIDForMessage(msg);
+      const isSidechain = isSubagentMessage(msg);
+      if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+        return;
+      }
       session.sendCodexMessage({
         type: 'tool-call-result',
         callId: canonicalCallId,
         output: output,
         id: randomUUID(),
+        ...(threadID ? { thread_id: threadID } : {}),
+        ...(isSidechain ? { isSidechain: true } : {}),
       });
     }
     if (isExecOutputStreamEvent(msg)) {
@@ -1720,11 +2121,18 @@ export async function runCodex(opts: {
           : getLatestExecCallId();
 
         if (canonicalCallId) {
+          const threadID = threadIDForMessage(msg);
+          const isSidechain = isSubagentMessage(msg);
+          if (shouldSuppressTranscriptToolingNoise(threadID, isSidechain)) {
+            return;
+          }
           session.sendCodexMessage({
             type: 'terminal-output',
             callId: canonicalCallId,
             data: outputChunk,
             id: randomUUID(),
+            ...(threadID ? { thread_id: threadID } : {}),
+            ...(isSidechain ? { isSidechain: true } : {}),
           });
         }
       }
@@ -1870,6 +2278,13 @@ export async function runCodex(opts: {
         'status',
       );
     }
+    await syncSessionTitleFromThreadSummary(
+      explicitResumeThreadId ?? storedSessionIdForResume,
+      {
+        recentThreads,
+        source: 'startup',
+      },
+    );
 
     let wasCreated = false;
     let pending: QueuedMessage | null = null;
@@ -1912,57 +2327,25 @@ export async function runCodex(opts: {
       messageBuffer.addMessage(message.message, 'user');
 
       try {
-        // Map permission mode to approval policy and sandbox for startSession
-        const approvalPolicy = (() => {
-          switch (message.mode.permissionMode) {
-            // Codex native modes
-            case 'default':
-              return 'untrusted' as const; // Ask for non-trusted commands
-            case 'read-only':
-              return 'never' as const; // Never ask, read-only enforced by sandbox
-            case 'safe-yolo':
-              return 'on-failure' as const; // Auto-run, ask only on failure
-            case 'yolo':
-              return 'on-failure' as const; // Auto-run, ask only on failure
-            // Defensive fallback for Claude-specific modes (backward compatibility)
-            case 'bypassPermissions':
-              return 'on-failure' as const; // Full access: map to yolo behavior
-            case 'acceptEdits':
-              return 'on-request' as const; // Let model decide (closest to auto-approve edits)
-            case 'plan':
-              return 'untrusted' as const; // Conservative: ask for non-trusted
-            default:
-              return 'untrusted' as const; // Safe fallback
-          }
-        })();
-        const sandbox = (() => {
-          switch (message.mode.permissionMode) {
-            // Codex native modes
-            case 'default':
-              return 'workspace-write' as const; // Can write in workspace
-            case 'read-only':
-              return 'read-only' as const; // Read-only filesystem
-            case 'safe-yolo':
-              return 'workspace-write' as const; // Can write in workspace
-            case 'yolo':
-              return 'danger-full-access' as const; // Full system access
-            // Defensive fallback for Claude-specific modes
-            case 'bypassPermissions':
-              return 'danger-full-access' as const; // Full access: map to yolo
-            case 'acceptEdits':
-              return 'workspace-write' as const; // Can edit files in workspace
-            case 'plan':
-              return 'workspace-write' as const; // Can write for planning
-            default:
-              return 'workspace-write' as const; // Safe default
-          }
-        })();
+        const turnInputText =
+          typeof message.mode.inputText === 'string'
+            ? message.mode.inputText
+            : message.message;
+        const turnInputs = buildCodexTurnInputs(
+          turnInputText,
+          message.mode.imageDataURLs,
+        );
+        const permissionOverrides = mapPermissionModeToCodexOverrides(
+          message.mode.permissionMode,
+        );
+        const approvalPolicy = permissionOverrides.approvalPolicy;
+        const sandbox = permissionOverrides.sandbox;
         const codexReasoningEffort = resolveCodexTurnEffort(message.mode);
 
         if (!wasCreated) {
           const startConfig: CodexSessionConfig = {
             prompt: (() => {
-              const base = message.message;
+              const base = turnInputText;
               // NOTE: TS control-flow can't see assignments from the onUserMessage callback,
               // so it may incorrectly narrow these to `undefined` here. Normalize explicitly.
               const instructionParts = [
@@ -1987,8 +2370,7 @@ export async function runCodex(opts: {
               }
               return base + maybeInject;
             })(),
-            sandbox,
-            'approval-policy': approvalPolicy,
+            initialInputs: turnInputs,
             config: {
               mcp_servers: mcpServers,
               ...(codexReasoningEffort !== undefined
@@ -1996,6 +2378,12 @@ export async function runCodex(opts: {
                 : {}),
             },
           };
+          if (sandbox !== undefined) {
+            startConfig.sandbox = sandbox;
+          }
+          if (approvalPolicy !== undefined) {
+            startConfig['approval-policy'] = approvalPolicy;
+          }
           if (message.mode.model) {
             startConfig.model = message.mode.model;
           }
@@ -2074,7 +2462,7 @@ export async function runCodex(opts: {
           wasCreated = true;
           first = false;
         } else {
-          const response = await client.continueSession(message.message, {
+          const response = await client.continueSession(turnInputs, {
             signal: abortController.signal,
             overrides: {
               approvalPolicy,

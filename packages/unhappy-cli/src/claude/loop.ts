@@ -8,7 +8,7 @@ import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
 
 // Re-export permission mode type from api/types
-// Single unified type with 7 modes - Codex modes mapped at SDK boundary
+// Single unified type with 8 modes - Codex modes mapped at SDK boundary
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
 

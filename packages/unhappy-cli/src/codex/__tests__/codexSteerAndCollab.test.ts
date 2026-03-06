@@ -97,6 +97,41 @@ describe('Codex turn/steer and collab forwarding', () => {
     });
   });
 
+  it('maps snake_case collabAgentToolCall payloads and preserves thread linkage fields', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'item/started',
+      params: {
+        thread_id: 'thread-main',
+        item: {
+          type: 'collab_agent_tool_call',
+          call_id: 'call-v2-2',
+          status: 'running',
+          sender_thread_id: 'thread-main',
+          receiver_thread_id: 'thread-sub-1',
+          new_thread_id: 'thread-sub-2',
+          receiver_thread_ids: ['thread-sub-2', 'thread-sub-3'],
+          tool: 'spawn',
+        },
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      type: 'collab_waiting_begin',
+      call_id: 'call-v2-2',
+      thread_id: 'thread-main',
+      sender_thread_id: 'thread-main',
+      receiver_thread_id: 'thread-sub-2',
+      receiver_thread_ids: ['thread-sub-2', 'thread-sub-3', 'thread-sub-1'],
+      new_thread_id: 'thread-sub-2',
+    });
+  });
+
   it('handles item/tool/requestUserInput by sending a structured answer map', async () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;
@@ -256,6 +291,33 @@ describe('Codex turn/steer and collab forwarding', () => {
     });
   });
 
+  it('forwards item/completed agent messages with thread identifiers', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'item/completed',
+      params: {
+        thread_id: 'thread-sub-1',
+        turn_id: 'turn-sub-1',
+        item: {
+          type: 'agentMessage',
+          text: 'sub-agent update',
+        },
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      type: 'agent_message',
+      message: 'sub-agent update',
+      thread_id: 'thread-sub-1',
+      conversation_id: 'thread-sub-1',
+    });
+  });
+
   it('finds the most recent thread id for a cwd using thread/list', async () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;
@@ -296,6 +358,47 @@ describe('Codex turn/steer and collab forwarding', () => {
     const threadId = await client.findMostRecentThreadIdByCwd('/repo');
 
     expect(threadId).toBe('thread-from-items');
+  });
+
+  it('parses enriched thread/list fields from newer app-server responses', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const callRpc = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'thread-rich-1',
+          cwd: '/repo',
+          preview: 'Investigate failing CI',
+          path: '/Users/test/.codex/sessions/2026/03/thread-rich-1.jsonl',
+          source: 'cli',
+          cliVersion: '0.107.0',
+          modelProvider: 'openai',
+          ephemeral: false,
+          model: 'gpt-5.3-codex',
+          status: { type: 'notLoaded' },
+        },
+      ],
+    });
+
+    anyClient.connected = true;
+    anyClient.callRpc = callRpc;
+
+    const rows = await client.listRecentThreadsByCwd('/repo', { limit: 20 });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 'thread-rich-1',
+      cwd: '/repo',
+      preview: 'Investigate failing CI',
+      path: '/Users/test/.codex/sessions/2026/03/thread-rich-1.jsonl',
+      source: 'cli',
+      cliVersion: '0.107.0',
+      modelProvider: 'openai',
+      ephemeral: false,
+      model: 'gpt-5.3-codex',
+      statusType: 'notLoaded',
+      status: { type: 'notLoaded' },
+    });
   });
 
   it('falls back to latest thread/list result when preferred resume id fails', async () => {
@@ -542,6 +645,35 @@ describe('Codex turn/steer and collab forwarding', () => {
       type: 'thread_name_updated',
       thread_id: 'thread-xyz',
       thread_name: 'Renamed Session',
+    });
+  });
+
+  it('forwards thread status change notifications as thread_status_changed events', () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    const seen: any[] = [];
+    client.setHandler((msg: any) => seen.push(msg));
+
+    anyClient.handleServerNotification({
+      method: 'thread/status/changed',
+      params: {
+        threadId: 'thread-abc',
+        status: {
+          type: 'loaded',
+          reason: 'attached',
+        },
+      },
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      type: 'thread_status_changed',
+      thread_id: 'thread-abc',
+      status_type: 'loaded',
+      status: {
+        type: 'loaded',
+        reason: 'attached',
+      },
     });
   });
 });

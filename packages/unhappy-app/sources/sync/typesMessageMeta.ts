@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Shared message metadata schema
 export const MessageMetaSchema = z.object({
     sentFrom: z.string().optional(), // Source identifier
-    permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo', 'allow-edits', 'bypass']).optional(), // Permission mode for this message
+    permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'passthrough', 'read-only', 'safe-yolo', 'yolo', 'allow-edits', 'bypass']).optional(), // Permission mode for this message
     planOnly: z.boolean().optional(), // Plan-only flag for this message
     steerMode: z.enum(['queue', 'immediate']).optional(), // Codex steer behavior for this message
     model: z.string().nullable().optional(), // Model name for this message (null = reset)

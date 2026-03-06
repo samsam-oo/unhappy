@@ -20,8 +20,18 @@ import {
   CodexAppServerClient,
   type CodexThreadSummary,
 } from '@/codex/codexAppServerClient';
-import { listClaudeModels, listCodexModels } from '@/modules/common/listModels';
+import {
+  listClaudeModels,
+  listCodexModels,
+  type CodexModelMetadata,
+} from '@/modules/common/listModels';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import {
+  defaultClaudeConfigDir,
+  listClaudeProjectsFromConfigDir,
+  listCodexProjectsFromCodexHome,
+  mergeProjectSummaries,
+} from './projectSync';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import {
   DaemonState,
@@ -162,6 +172,18 @@ function buildCodexHomeCandidates(machine: Machine, homeDir: string): string[] {
     const normalized = raw.trim();
     if (!normalized || seen.has(normalized)) continue;
     if (!existsSync(normalized)) continue;
+    seen.add(normalized);
+    deduped.push(normalized);
+  }
+  return deduped;
+}
+
+function dedupeNonEmptyStrings(values: string[]): string[] {
+  const deduped: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     deduped.push(normalized);
   }
@@ -335,7 +357,12 @@ export class ApiMachineClient {
     const LIST_CODEX_MODELS_TTL_MS = 5 * 60 * 1000;
     const LIST_CODEX_MODELS_ERROR_TTL_MS = 15 * 1000;
     type ListModelsResponse =
-      | { success: true; models: string[]; reasoningEfforts: string[] }
+      | {
+          success: true;
+          models: string[];
+          reasoningEfforts: string[];
+          modelMetadata?: CodexModelMetadata[];
+        }
       | { success: false; error: string };
     const listModelsCache = new Map<
       string,
@@ -368,10 +395,30 @@ export class ApiMachineClient {
         if (!resp.success) {
           return resp;
         }
+        const normalizedReasoningEfforts = (() => {
+          const fromModels =
+            resp.modelMetadata?.flatMap((model) =>
+              (model.supportedReasoningEfforts ?? []).map(
+                (entry) => entry.reasoningEffort,
+              ),
+            ) ?? [];
+          const merged = dedupeNonEmptyStrings([
+            ...(resp.reasoningEfforts ?? []),
+            ...fromModels,
+          ]);
+          const withoutAuto = merged.filter(
+            (value) => value.toLowerCase() !== 'auto',
+          );
+          if (withoutAuto.length === 0) {
+            return ['auto', 'low', 'medium', 'high', 'xhigh'];
+          }
+          return ['auto', ...withoutAuto];
+        })();
         return {
           success: true as const,
           models: resp.models,
-          reasoningEfforts: ['auto', 'low', 'medium', 'high', 'xhigh'],
+          reasoningEfforts: normalizedReasoningEfforts,
+          modelMetadata: resp.modelMetadata,
         };
       }
       // Claude model list is static and does not need process spawning.
@@ -451,6 +498,71 @@ export class ApiMachineClient {
         error: resp.success ? undefined : resp.error,
       });
       return resp;
+    });
+
+    this.rpcHandlerManager.registerHandler('open-project', async (params: any) => {
+      const rawPath = typeof params?.path === 'string' ? params.path.trim() : '';
+      if (!rawPath) {
+        return { success: false, error: 'Project path is required' };
+      }
+      const homeDir =
+        (this.machine?.metadata?.homeDir || os.homedir()).trim() ||
+        os.homedir();
+      const normalizedPath = normalizeMachinePath(rawPath, homeDir);
+      await this.updateDaemonState((state) => {
+        const existing = state?.openedProjects ?? [];
+        const deduped = existing.filter(
+          (entry) =>
+            typeof entry?.path === 'string' &&
+            normalizeMachinePath(entry.path, homeDir) !== normalizedPath,
+        );
+        return {
+          ...(state ?? { status: 'running' }),
+          openedProjects: [
+            ...deduped,
+            {
+              path: normalizedPath,
+              openedAt: Date.now(),
+            },
+          ],
+        };
+      });
+      return {
+        success: true as const,
+        path: normalizedPath,
+      };
+    });
+
+    this.rpcHandlerManager.registerHandler('list-projects', async () => {
+      const homeDir =
+        (this.machine?.metadata?.homeDir || os.homedir()).trim() ||
+        os.homedir();
+      const codexHomeCandidates = buildCodexHomeCandidates(this.machine, homeDir);
+      const codexProjects = (
+        await Promise.all(
+          codexHomeCandidates.map((codexHomeDir) =>
+            listCodexProjectsFromCodexHome(codexHomeDir),
+          ),
+        )
+      ).flat();
+      const claudeProjects = await listClaudeProjectsFromConfigDir(
+        defaultClaudeConfigDir(),
+      );
+      const openedProjects = (this.machine.daemonState?.openedProjects ?? [])
+        .map((entry) =>
+          typeof entry?.path === 'string'
+            ? normalizeMachinePath(entry.path, homeDir)
+            : '',
+        )
+        .filter((entry) => entry.length > 0);
+      const projects = mergeProjectSummaries(
+        [...codexProjects, ...claudeProjects],
+        openedProjects,
+      );
+      return {
+        success: true as const,
+        projects,
+      };
     });
 
     // Best-effort Codex thread listing from daemon scope.
@@ -790,6 +902,8 @@ export class ApiMachineClient {
         }
         const supportedCommands = new Set([
           'spawn-unhappy-session',
+          'open-project',
+          'list-projects',
           'list-models',
           'stop-daemon',
           'update-daemon',

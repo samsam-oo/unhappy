@@ -685,7 +685,17 @@ export function sessionRoutes(app: Fastify) {
             }),
             body: z.object({
                 text: z.string(),
-                steerMode: z.enum(['queue', 'immediate']).optional()
+                steerMode: z.enum(['queue', 'immediate']).optional(),
+                permissionMode: z.enum([
+                    'default',
+                    'acceptEdits',
+                    'bypassPermissions',
+                    'plan',
+                    'passthrough',
+                    'read-only',
+                    'safe-yolo',
+                    'yolo',
+                ]).optional()
             })
         },
         preHandler: app.authenticate
@@ -709,7 +719,8 @@ export function sessionRoutes(app: Fastify) {
             'sendMessage',
             {
                 text: normalizedText,
-                steerMode: request.body.steerMode
+                steerMode: request.body.steerMode,
+                permissionMode: request.body.permissionMode,
             }
         );
         if (!invoked.ok) {
@@ -723,21 +734,9 @@ export function sessionRoutes(app: Fastify) {
                 error: typeof result?.error === 'string' ? result.error : 'Failed to send message'
             });
         }
-        const queuedMessages = Array.isArray(result?.queuedMessages)
-            ? result.queuedMessages
-                .filter((item: unknown): item is string => typeof item === 'string')
-                .map((item: string) => item.trim())
-                .filter((item: string) => item.length > 0)
-            : [];
-        const queueCountRaw = typeof result?.queueCount === 'number' ? result.queueCount : undefined;
-        const queueCount = typeof queueCountRaw === 'number'
-            ? Math.max(0, Math.floor(queueCountRaw))
-            : queuedMessages.length;
 
         return reply.send({
             success: true,
-            queueCount,
-            queuedMessages
         });
     });
 

@@ -481,6 +481,7 @@ export const ru: TranslationStructure = {
       bypassPermissions: 'YOLO режим',
       askEveryAction: 'Ask every action',
       planOnly: 'Plan only',
+      useCliConfig: 'Use local CLI config',
       autoApproveEdits: 'Auto-approve edits',
       readOnlyTools: 'Read-only tools',
       autoApproveAll: 'Auto-approve all',

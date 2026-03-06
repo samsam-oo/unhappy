@@ -185,22 +185,48 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     }
 
     public init(from decoder: Decoder) throws {
-        if let container = try? decoder.singleValueContainer(),
-           let encoded = try? container.decode(String.self) {
+        if let encoded = Self.decodeSingleValueString(from: decoder) {
             self = APIEncryptedMessageContent(t: "encrypted", c: encoded)
             return
         }
 
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedType = (try? container.decodeIfPresent(String.self, forKey: .t))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .type))
-            ?? "encrypted"
-        let decodedPayload = (try? container.decodeIfPresent(String.self, forKey: .c))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .payload))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .text))
-            ?? ""
+        let decodedType = Self.decodeType(from: container)
+        let decodedPayload = Self.decodePayload(from: container)
 
         self = APIEncryptedMessageContent(t: decodedType, c: decodedPayload)
+    }
+
+    private static func decodeSingleValueString(from decoder: Decoder) -> String? {
+        guard let container = try? decoder.singleValueContainer() else { return nil }
+        return try? container.decode(String.self)
+    }
+
+    private static func decodeType(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) -> String {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .t) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: .type) {
+            return value
+        }
+        return "encrypted"
+    }
+
+    private static func decodePayload(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) -> String {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .c) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: .payload) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(String.self, forKey: .text) {
+            return value
+        }
+        return ""
     }
 }
 
@@ -213,6 +239,13 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
     public let archived: Bool?
     public let model: String?
     public let effort: APISessionReasoningEffort?
+    public let preview: String?
+    public let path: String?
+    public let source: String?
+    public let cliVersion: String?
+    public let modelProvider: String?
+    public let ephemeral: Bool?
+    public let statusType: String?
 
     public init(
         id: String,
@@ -222,7 +255,14 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         createdAt: String?,
         archived: Bool?,
         model: String? = nil,
-        effort: APISessionReasoningEffort? = nil
+        effort: APISessionReasoningEffort? = nil,
+        preview: String? = nil,
+        path: String? = nil,
+        source: String? = nil,
+        cliVersion: String? = nil,
+        modelProvider: String? = nil,
+        ephemeral: Bool? = nil,
+        statusType: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -232,6 +272,13 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         self.archived = archived
         self.model = model
         self.effort = effort
+        self.preview = preview
+        self.path = path
+        self.source = source
+        self.cliVersion = cliVersion
+        self.modelProvider = modelProvider
+        self.ephemeral = ephemeral
+        self.statusType = statusType
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -243,6 +290,18 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         case archived
         case model
         case effort
+        case preview
+        case path
+        case source
+        case cliVersion
+        case modelProvider
+        case ephemeral
+        case status
+        case statusType
+    }
+
+    private struct ThreadStatus: Decodable {
+        let type: String?
     }
 
     public init(from decoder: Decoder) throws {
@@ -261,6 +320,30 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
         effort = decodeReasoningEffort(
             try? container.decodeIfPresent(String.self, forKey: .effort)
         )
+        preview = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .preview)
+        )
+        path = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .path)
+        )
+        source = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .source)
+        )
+        cliVersion = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .cliVersion)
+        )
+        modelProvider = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .modelProvider)
+        )
+        ephemeral = try? container.decodeIfPresent(Bool.self, forKey: .ephemeral)
+
+        let directStatusType = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .statusType)
+        )
+        let nestedStatusType = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(ThreadStatus.self, forKey: .status)?.type
+        )
+        statusType = directStatusType ?? nestedStatusType
     }
 }
 
@@ -307,6 +390,99 @@ public struct APIClaudeSessionsPage: Decodable, Equatable, Sendable {
     }
 }
 
+public enum APIUpstreamSessionProvider: String, Codable, CaseIterable, Sendable {
+    case codex
+    case claude
+    case gemini
+
+    public var displayName: String {
+        switch self {
+        case .codex:
+            return "Codex"
+        case .claude:
+            return "Claude"
+        case .gemini:
+            return "Gemini"
+        }
+    }
+}
+
+public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let provider: APIUpstreamSessionProvider
+    public let title: String
+    public let cwd: String?
+    public let updatedAt: String?
+    public let createdAt: String?
+    public let archived: Bool?
+    public let model: String?
+    public let effort: APISessionReasoningEffort?
+    public let preview: String?
+    public let statusType: String?
+
+    public init(
+        id: String,
+        provider: APIUpstreamSessionProvider,
+        title: String,
+        cwd: String?,
+        updatedAt: String?,
+        createdAt: String?,
+        archived: Bool?,
+        model: String? = nil,
+        effort: APISessionReasoningEffort? = nil,
+        preview: String? = nil,
+        statusType: String? = nil
+    ) {
+        self.id = id
+        self.provider = provider
+        self.title = title
+        self.cwd = cwd
+        self.updatedAt = updatedAt
+        self.createdAt = createdAt
+        self.archived = archived
+        self.model = model
+        self.effort = effort
+        self.preview = preview
+        self.statusType = statusType
+    }
+}
+
+public extension APICodexThreadSummary {
+    var upstreamSummary: APIUpstreamSessionSummary {
+        APIUpstreamSessionSummary(
+            id: id,
+            provider: .codex,
+            title: (name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? name! : "Untitled"),
+            cwd: cwd,
+            updatedAt: updatedAt,
+            createdAt: createdAt,
+            archived: archived,
+            model: model,
+            effort: effort,
+            preview: preview,
+            statusType: statusType
+        )
+    }
+}
+
+public extension APIClaudeSessionSummary {
+    var upstreamSummary: APIUpstreamSessionSummary {
+        APIUpstreamSessionSummary(
+            id: id,
+            provider: .claude,
+            title: id,
+            cwd: cwd,
+            updatedAt: updatedAt,
+            createdAt: createdAt,
+            archived: nil,
+            model: nil,
+            effort: nil,
+            preview: nil,
+            statusType: nil
+        )
+    }
+}
+
 public enum APISessionSpawnAgent: String, Encodable, Sendable {
     case claude
     case codex
@@ -348,6 +524,17 @@ public enum APISessionPermissionMode: String, Encodable, CaseIterable, Sendable 
     case acceptEdits
     case bypassPermissions
     case plan
+}
+
+public enum APISessionMessagePermissionMode: String, Codable, CaseIterable, Sendable {
+    case `default`
+    case acceptEdits
+    case bypassPermissions
+    case plan
+    case passthrough
+    case readOnly = "read-only"
+    case safeYolo = "safe-yolo"
+    case yolo
 }
 
 public enum APISessionPermissionDecision: String, Encodable, CaseIterable, Sendable {

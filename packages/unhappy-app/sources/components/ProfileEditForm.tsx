@@ -234,6 +234,7 @@ export function ProfileEditForm({
                     <ItemGroup title="">
                             {[
                             { value: 'default' as PermissionMode, label: '기본', description: '권한을 요청합니다', icon: 'shield-outline' },
+                            { value: 'passthrough' as PermissionMode, label: 'CLI 설정', description: '로컬 Codex config.toml 사용', icon: 'settings-outline' },
                             { value: 'plan' as PermissionMode, label: '계획', description: '실행 전 계획', icon: 'list-outline' },
                             { value: 'allow-edits' as PermissionMode, label: '편집 허용', description: '편집 요청을 자동 승인', icon: 'create-outline' },
                             { value: 'read-only' as PermissionMode, label: '읽기 전용', description: '읽기만 가능합니다', icon: 'eye-outline' },

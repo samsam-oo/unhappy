@@ -11,6 +11,7 @@ import { AsyncLock } from '@/utils/lock';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 import { calculateCost } from '@/utils/pricing';
+import { isPermissionMode } from '@/utils/permissionModeAdapter';
 import axios from 'axios';
 
 /**
@@ -150,8 +151,14 @@ export class ApiSessionClient extends EventEmitter {
                 if (command === 'sendMessage') {
                     const textRaw = typeof data?.params?.text === 'string' ? data.params.text : '';
                     const text = textRaw.trim();
-                    if (!text) {
-                        callback({ success: false, error: 'Message text is required' });
+                    const images = Array.isArray(data?.params?.images)
+                        ? data.params.images
+                            .filter((item: unknown): item is string => typeof item === 'string')
+                            .map((item: string) => item.trim())
+                            .filter((item: string) => item.length > 0)
+                        : [];
+                    if (!text && images.length === 0) {
+                        callback({ success: false, error: 'Message text or image is required' });
                         return;
                     }
                     const steerModeRaw = data?.params?.steerMode;
@@ -167,6 +174,9 @@ export class ApiSessionClient extends EventEmitter {
                     const hasEffortOverride =
                         data?.params &&
                         Object.prototype.hasOwnProperty.call(data.params, 'effort');
+                    const hasPermissionModeOverride =
+                        data?.params &&
+                        Object.prototype.hasOwnProperty.call(data.params, 'permissionMode');
                     const rawModel = hasModelOverride ? data?.params?.model : undefined;
                     const normalizedModel =
                         rawModel === null
@@ -185,6 +195,15 @@ export class ApiSessionClient extends EventEmitter {
                                 rawEffort === 'xhigh'
                                 ? rawEffort
                                 : undefined;
+                    const rawPermissionMode = hasPermissionModeOverride
+                        ? data?.params?.permissionMode
+                        : undefined;
+                    const normalizedPermissionMode =
+                        rawPermissionMode === null
+                            ? undefined
+                            : isPermissionMode(rawPermissionMode)
+                                ? rawPermissionMode
+                                : undefined;
 
                     if (!this.socket.connected) {
                         callback({ success: false, error: 'Session socket is not connected' });
@@ -192,12 +211,24 @@ export class ApiSessionClient extends EventEmitter {
                     }
 
                     const localKey = `native-${randomUUID()}`;
+                    const userContent =
+                        images.length === 0
+                            ? {
+                                type: 'text' as const,
+                                text,
+                            }
+                            : [
+                                ...(text
+                                    ? [{ type: 'text' as const, text }]
+                                    : []),
+                                ...images.map((imageURL: string) => ({
+                                    type: 'input_image' as const,
+                                    image_url: imageURL,
+                                })),
+                            ];
                     const content: UserMessage = {
                         role: 'user',
-                        content: {
-                            type: 'text',
-                            text
-                        },
+                        content: userContent,
                         localKey,
                         meta: {
                             sentFrom: 'native',
@@ -207,6 +238,9 @@ export class ApiSessionClient extends EventEmitter {
                                 : {}),
                             ...(hasEffortOverride && normalizedEffort !== undefined
                                 ? { effort: normalizedEffort }
+                                : {}),
+                            ...(hasPermissionModeOverride && normalizedPermissionMode !== undefined
+                                ? { permissionMode: normalizedPermissionMode }
                                 : {})
                         }
                     };
@@ -230,11 +264,8 @@ export class ApiSessionClient extends EventEmitter {
                         message: encrypted,
                         localId: localKey
                     });
-                    const queuedMessages = this.queueSnapshotForSendMessage(steerMode, text);
                     callback({
                         success: true,
-                        queueCount: queuedMessages.length,
-                        queuedMessages
                     });
                     return;
                 }
@@ -362,7 +393,10 @@ export class ApiSessionClient extends EventEmitter {
         const summaryUpdatedAt = Date.now();
 
         // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
+        const hasParentToolUseId = typeof (body as any).parent_tool_use_id === 'string' &&
+            (body as any).parent_tool_use_id.trim() !== '';
+
+        if (body.type === 'user' && typeof body.message.content === 'string' && !hasParentToolUseId && body.isMeta !== true) {
             content = {
                 role: 'user',
                 content: {
@@ -687,89 +721,10 @@ export class ApiSessionClient extends EventEmitter {
         this.socket.close();
     }
 
-    private queueSnapshotForSendMessage(
-        steerMode: 'queue' | 'immediate' | undefined,
-        text: string,
-    ): string[] {
-        const fromState = this.queuedMessagesFromAgentState();
-        if (steerMode !== 'queue') {
-            return fromState;
-        }
-        const normalizedText = text.trim();
-        if (!normalizedText) {
-            return fromState;
-        }
-        return [...fromState, normalizedText];
-    }
-
-    private queuedMessagesFromAgentState(): string[] {
-        if (!this.agentState || typeof this.agentState !== 'object') {
-            return [];
-        }
-        const root = this.agentState as Record<string, unknown>;
-        const queueNode = root.queue;
-        if (queueNode && typeof queueNode === 'object') {
-            const queueObject = queueNode as Record<string, unknown>;
-            const queueCandidates = [
-                queueObject.pendingMessages,
-                queueObject.queuedMessages,
-                queueObject.messages,
-            ];
-            for (const candidate of queueCandidates) {
-                const normalized = this.normalizeQueuedMessagesValue(candidate);
-                if (normalized.length > 0) {
-                    return normalized;
-                }
-            }
-        }
-        const fallbackCandidates = [
-            root.pendingMessages,
-            root.queuedMessages,
-            root.messages,
-        ];
-        for (const candidate of fallbackCandidates) {
-            const normalized = this.normalizeQueuedMessagesValue(candidate);
-            if (normalized.length > 0) {
-                return normalized;
-            }
-        }
-        return [];
-    }
-
-    private normalizeQueuedMessagesValue(value: unknown): string[] {
-        if (!Array.isArray(value)) {
-            return [];
-        }
-        const rows: string[] = [];
-        for (const item of value) {
-            if (typeof item === 'string') {
-                const normalized = item.trim();
-                if (!normalized) continue;
-                rows.push(normalized);
-                continue;
-            }
-            if (!item || typeof item !== 'object') {
-                continue;
-            }
-            const payload = item as Record<string, unknown>;
-            const textCandidates = [payload.text, payload.message, payload.value];
-            for (const candidate of textCandidates) {
-                if (typeof candidate !== 'string') continue;
-                const normalized = candidate.trim();
-                if (!normalized) continue;
-                rows.push(normalized);
-                break;
-            }
-        }
-        return rows;
-    }
-
     private async listMessagesForPublicCommand(): Promise<
         {
             success: true;
             messages: Array<Record<string, unknown>>;
-            queueCount: number;
-            queuedMessages: string[];
         }
         | { success: false; error: string }
     > {
@@ -788,12 +743,9 @@ export class ApiSessionClient extends EventEmitter {
             const messages = rows.map((row, index) =>
                 this.normalizeMessageForPublicCommand(row, index),
             );
-            const queuedMessages = this.queuedMessagesFromAgentState();
             return {
                 success: true,
                 messages,
-                queueCount: queuedMessages.length,
-                queuedMessages,
             };
         } catch (error) {
             const message =

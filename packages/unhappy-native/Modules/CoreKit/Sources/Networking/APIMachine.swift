@@ -81,3 +81,27 @@ public struct APIMachineCommandResult: Decodable, Equatable, Sendable {
         self.error = error
     }
 }
+
+public struct APIMachineProjectSummary: Decodable, Equatable, Identifiable, Sendable {
+    public let path: String
+    public let latestUpdatedAt: String
+    public let codexThreadCount: Int
+    public let claudeSessionCount: Int
+    public let openedExplicitly: Bool
+
+    public var id: String { path }
+
+    public init(
+        path: String,
+        latestUpdatedAt: String,
+        codexThreadCount: Int,
+        claudeSessionCount: Int,
+        openedExplicitly: Bool
+    ) {
+        self.path = path
+        self.latestUpdatedAt = latestUpdatedAt
+        self.codexThreadCount = codexThreadCount
+        self.claudeSessionCount = claudeSessionCount
+        self.openedExplicitly = openedExplicitly
+    }
+}

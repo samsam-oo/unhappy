@@ -4,7 +4,7 @@ import UIKit
 #endif
 
 @MainActor
-struct AccountSettingsView: View {
+public struct AccountSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @StateObject private var accountLinkViewModel: AccountLinkSettingsViewModel
     @State private var accountAuthURLString = ""
@@ -12,7 +12,7 @@ struct AccountSettingsView: View {
     @State private var statusMessage: String?
     @State private var qrRestoreTask: Task<Void, Never>?
 
-    init(
+    public init(
         viewModel: SettingsViewModel,
         makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel
     ) {
@@ -28,7 +28,7 @@ struct AccountSettingsView: View {
         TerminalAuthURLParser.parse(accountAuthURLString)
     }
 
-    var body: some View {
+    public var body: some View {
         Form {
             Section("Account") {
                 LabeledContent("API Token") {
@@ -196,9 +196,9 @@ struct AccountSettingsView: View {
                 }
                 .disabled(!hasToken)
 
-                Button("Clear API Token", role: .destructive) {
+                Button("Log Out", role: .destructive) {
                     viewModel.apiToken = ""
-                    statusMessage = "Cleared API token"
+                    statusMessage = "Logged out"
                 }
                 .disabled(!hasToken)
 
@@ -214,6 +214,9 @@ struct AccountSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Text("Account QR link uses API token + account secret key to approve device pairing.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("Log Out removes the API token from this device. You can sign back in with an existing device or secret key.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

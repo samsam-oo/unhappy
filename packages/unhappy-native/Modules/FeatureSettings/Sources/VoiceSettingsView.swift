@@ -1,10 +1,14 @@
 import SwiftUI
 
 @MainActor
-struct VoiceSettingsView: View {
+public struct VoiceSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
 
-    var body: some View {
+    public init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         Form {
             Section("Voice") {
                 Toggle("Enable voice responses", isOn: $viewModel.voiceEnabled)

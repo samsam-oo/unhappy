@@ -30,6 +30,7 @@ struct SessionTranscriptPresentationTests {
 
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].body == "Process exited unexpectedly")
+        #expect(presentation.entries[0].sourceType == "message")
     }
 
     @Test
@@ -72,6 +73,8 @@ struct SessionTranscriptPresentationTests {
 
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].title == "Read Files")
+        #expect(presentation.entries[0].sourceType == "tool-call")
+        #expect(presentation.entries[0].toolName == "read")
     }
 
     @Test
@@ -112,8 +115,12 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries.count == 2)
         #expect(presentation.entries[0].title == "Run Task")
         #expect(presentation.entries[0].toolUseID == "toolu_task_1")
+        #expect(presentation.entries[0].sourceType == "tool_use")
+        #expect(presentation.entries[0].toolName == "task")
         #expect(presentation.entries[1].title == "Run Task Result")
         #expect(presentation.entries[1].toolUseID == "toolu_task_1")
+        #expect(presentation.entries[1].sourceType == "tool_result")
+        #expect(presentation.entries[1].toolName == "task")
     }
 
     @Test
@@ -152,6 +159,172 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].kind == .toolResult)
         #expect(presentation.entries[0].toolUseID == "toolu_subagent_1")
+        #expect(presentation.entries[0].sourceType == "tool_result")
+        #expect(presentation.entries[0].isSidechain == false)
+    }
+
+    @Test
+    func outputUserToolResultWithParentToolUseIdIsMarkedAsSidechain() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "parentToolUseId": "toolu_parent_task_0",
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_subagent_2",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].isSidechain == true)
+    }
+
+    @Test
+    func outputUserToolResultWithParentToolUseIDIsMarkedAsSidechain() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "parent_tool_use_id": "toolu_parent_task_1",
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_subagent_3",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].isSidechain == true)
+    }
+
+    @Test
+    func outputUserToolResultKeepsExplicitToolName() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "output",
+                "data": [
+                    "type": "user",
+                    "message": [
+                        "role": "user",
+                        "content": [
+                            [
+                                "type": "tool_result",
+                                "tool_use_id": "toolu_task_2",
+                                "name": "Task",
+                                "content": "done",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].toolName == "task")
+    }
+
+    @Test
+    func latestItemStartedCommandExecutionBecomesToolCallEntry() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "item_started",
+                    "item": [
+                        "type": "commandExecution",
+                        "id": "item_cmd_1",
+                        "command": "rg markdown Sources",
+                        "cwd": "/tmp/project",
+                        "commandActions": [
+                            [
+                                "type": "search",
+                                "command": "rg markdown Sources",
+                                "query": "markdown",
+                                "path": "Sources",
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolCall)
+        #expect(presentation.entries[0].toolName == "codexbash")
+        #expect(presentation.entries[0].sourceType == "item_started")
+    }
+
+    @Test
+    func latestTurnDiffBecomesToolResultEntry() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "turn_diff",
+                    "unified_diff": "@@ -1,1 +1,2 @@\n-import Foundation\n+import Foundation\n+import SwiftUI",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .toolResult)
+        #expect(presentation.entries[0].title == "Turn Diff")
     }
 
     @Test
@@ -304,6 +477,32 @@ struct SessionTranscriptPresentationTests {
 
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].body == "Explored path")
+        #expect(presentation.entries[0].title == "Streaming output")
+    }
+
+    @Test
+    func terminalOutputPreservesCallID() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "terminal-output",
+                    "callId": "tool-stream-1",
+                    "data": " user",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].toolUseID == "tool-stream-1")
+        #expect(presentation.entries[0].body == " user")
     }
 
     private func makeAgentEventMessage(eventType: String, message: String?) -> APISessionMessage {

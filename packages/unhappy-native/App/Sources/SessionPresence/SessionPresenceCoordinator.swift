@@ -202,6 +202,18 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
             return true
         }
 
+        if SessionPayloadDecoder.hasNonEmptyDictionary(
+            in: [agentState, metadata],
+            keys: [
+                "requests",
+                "pendingRequests",
+                "approvalRequestMap",
+                "permissionRequestMap",
+            ]
+        ) {
+            return true
+        }
+
         if let status = SessionPayloadDecoder.firstString(
             in: [agentState, metadata],
             keys: ["status", "state", "phase"]
@@ -245,7 +257,6 @@ struct SessionRuntimeSnapshot: Equatable, Sendable {
 protocol SessionNotificationsHandling: Sendable {
     func requestAuthorizationIfNeeded() async
     func notifySessionsCompleted(_ sessions: [SessionRuntimeSnapshot]) async
-    func notifySessionsRequiringApproval(_ sessions: [SessionRuntimeSnapshot]) async
 }
 
 protocol SessionsLiveActivityHandling: Sendable {
@@ -294,19 +305,6 @@ final class SessionPresenceCoordinator: SessionPresenceCoordinating {
         if !completedSessions.isEmpty {
             await notifications.notifySessionsCompleted(completedSessions)
         }
-
-        var approvalSessions: [SessionRuntimeSnapshot] = []
-        for (sessionID, current) in currentBySessionID {
-            guard current.isActive else { continue }
-            guard current.requiresApproval else { continue }
-            let previousRequiresApproval = previousBySessionID[sessionID]?.requiresApproval ?? false
-            if !previousRequiresApproval {
-                approvalSessions.append(current)
-            }
-        }
-        if !approvalSessions.isEmpty {
-            await notifications.notifySessionsRequiringApproval(approvalSessions)
-        }
     }
 
     private static func indexBySessionID(
@@ -322,7 +320,7 @@ actor UserNotificationsSessionNotifier: SessionNotificationsHandling {
     private let center: UNUserNotificationCenter
     private var requestedAuthorization = false
     private var lastNotificationAtByKey: [String: Date] = [:]
-    private let minimumDeduplicationInterval: TimeInterval = 12
+    private let minimumDeduplicationInterval: TimeInterval = 8
 
     init(center: UNUserNotificationCenter = .current()) {
         self.center = center
@@ -362,31 +360,6 @@ actor UserNotificationsSessionNotifier: SessionNotificationsHandling {
         )
     }
 
-    func notifySessionsRequiringApproval(_ sessions: [SessionRuntimeSnapshot]) async {
-        guard !sessions.isEmpty else { return }
-        let sorted = sessions.sorted { $0.updatedAt > $1.updatedAt }
-
-        if sorted.count == 1, let session = sorted.first {
-            let key = "approval:\(session.sessionID)"
-            guard shouldSendNotification(for: key) else { return }
-            let body = "\(session.title) needs approval in \(session.directory)."
-            await sendNotification(
-                identifierPrefix: "im.unhappy.session.approval",
-                title: "Approval needed",
-                body: body
-            )
-            return
-        }
-
-        let key = "approval-group:\(sorted.map(\.sessionID).joined(separator: ","))"
-        guard shouldSendNotification(for: key) else { return }
-        await sendNotification(
-            identifierPrefix: "im.unhappy.session.approval.group",
-            title: "Approvals needed",
-            body: "\(sorted.count) sessions are waiting for approval."
-        )
-    }
-
     private func sendNotification(
         identifierPrefix: String,
         title: String,
@@ -403,11 +376,10 @@ actor UserNotificationsSessionNotifier: SessionNotificationsHandling {
         content.body = body
         content.sound = .default
 
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
         let request = UNNotificationRequest(
             identifier: "\(identifierPrefix).\(UUID().uuidString)",
             content: content,
-            trigger: trigger
+            trigger: nil
         )
         try? await center.add(request)
     }
@@ -427,6 +399,8 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
     private var activitiesBySessionID: [String: Activity<UnhappySessionsActivityAttributes>] = [:]
     private var lastContentStateBySessionID: [String: UnhappySessionsActivityAttributes.ContentState] = [:]
     private var didLoadExistingActivities = false
+    private let inactivityTimeout: TimeInterval = 90
+    private let inactiveDismissDelay: TimeInterval = 20
 
     func startIfNeeded() async {
         guard !didLoadExistingActivities else { return }
@@ -446,17 +420,46 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
             return
         }
 
-        let activeBySessionID = activeSessions.reduce(into: [String: SessionRuntimeSnapshot]()) { partial, session in
+        let now = Date()
+        let staleActiveSessions = activeSessions.filter { session in
+            guard !session.requiresApproval else { return false }
+            return now.timeIntervalSince(session.updatedAt) >= inactivityTimeout
+        }
+        let liveSessions = activeSessions.filter { session in
+            !staleActiveSessions.contains(where: { $0.sessionID == session.sessionID })
+        }
+
+        for session in staleActiveSessions {
+            await endActivity(
+                for: session.sessionID,
+                endState: endContentState(
+                    for: session,
+                    statusText: "Inactive",
+                    updatedAt: now
+                ),
+                dismissalPolicy: .after(now.addingTimeInterval(inactiveDismissDelay))
+            )
+        }
+
+        let activeBySessionID = liveSessions.reduce(into: [String: SessionRuntimeSnapshot]()) { partial, session in
             partial[session.sessionID] = session
         }
         let activeSessionIDs = Set(activeBySessionID.keys)
         let staleSessionIDs = Set(activitiesBySessionID.keys).subtracting(activeSessionIDs)
 
         for sessionID in staleSessionIDs {
-            await endActivity(for: sessionID, dismissalPolicy: .immediate)
+            await endActivity(
+                for: sessionID,
+                endState: endContentState(
+                    for: nil,
+                    statusText: "Completed",
+                    updatedAt: now
+                ),
+                dismissalPolicy: .immediate
+            )
         }
 
-        for activeSession in activeSessions {
+        for activeSession in liveSessions {
             let contentState = contentState(for: activeSession)
             let previousContentState = lastContentStateBySessionID[activeSession.sessionID]
 
@@ -527,27 +530,43 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
     private func endAllActivities(dismissalPolicy: ActivityUIDismissalPolicy) async {
         let sessionIDs = Array(activitiesBySessionID.keys)
         for sessionID in sessionIDs {
-            await endActivity(for: sessionID, dismissalPolicy: dismissalPolicy)
+            await endActivity(
+                for: sessionID,
+                endState: endContentState(
+                    for: nil,
+                    statusText: "Completed",
+                    updatedAt: Date()
+                ),
+                dismissalPolicy: dismissalPolicy
+            )
         }
     }
 
     private func endActivity(
         for sessionID: String,
+        endState: UnhappySessionsActivityAttributes.ContentState,
         dismissalPolicy: ActivityUIDismissalPolicy
     ) async {
         guard let activity = activitiesBySessionID[sessionID] else { return }
-        let endState = UnhappySessionsActivityAttributes.ContentState(
-            title: lastContentStateBySessionID[sessionID]?.title ?? "Session",
-            agent: .unknown,
-            directory: "Directory unavailable",
-            statusText: "Completed",
-            requiresApproval: false,
-            updatedAt: Date()
-        )
         let endContent = ActivityContent(state: endState, staleDate: nil)
         await activity.end(endContent, dismissalPolicy: dismissalPolicy)
         activitiesBySessionID[sessionID] = nil
         lastContentStateBySessionID[sessionID] = nil
+    }
+
+    private func endContentState(
+        for session: SessionRuntimeSnapshot?,
+        statusText: String,
+        updatedAt: Date
+    ) -> UnhappySessionsActivityAttributes.ContentState {
+        UnhappySessionsActivityAttributes.ContentState(
+            title: session?.title ?? "Session",
+            agent: session?.agent ?? .unknown,
+            directory: session?.directory ?? "Directory unavailable",
+            statusText: statusText,
+            requiresApproval: session?.requiresApproval ?? false,
+            updatedAt: updatedAt
+        )
     }
 }
 
@@ -645,6 +664,20 @@ private enum SessionPayloadDecoder {
         for object in objects {
             guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
             if let array = value as? [Any], !array.isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func hasNonEmptyDictionary(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> Bool {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let dictionary = value as? [String: Any], !dictionary.isEmpty {
                 return true
             }
         }

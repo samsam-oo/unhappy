@@ -61,6 +61,74 @@ enum SessionPayloadValueResolver {
         return nil
     }
 
+    static func firstBool(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> Bool? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let bool = value as? Bool {
+                return bool
+            }
+            if let number = value as? NSNumber {
+                return number.boolValue
+            }
+            if let string = value as? String {
+                let normalized = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                if normalized == "true" || normalized == "1" || normalized == "yes" {
+                    return true
+                }
+                if normalized == "false" || normalized == "0" || normalized == "no" {
+                    return false
+                }
+            }
+        }
+        return nil
+    }
+
+    static func hasNonEmptyArray(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> Bool {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let array = value as? [Any], !array.isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func hasNonEmptyDictionary(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> Bool {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let dictionary = value as? [String: Any], !dictionary.isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func firstDictionary(
+        in objects: [[String: Any]],
+        keys: [String]
+    ) -> [String: Any]? {
+        let normalizedKeys = Set(keys.map(normalizeKey))
+        for object in objects {
+            guard let value = firstValue(in: object, matching: normalizedKeys) else { continue }
+            if let dictionary = value as? [String: Any], !dictionary.isEmpty {
+                return dictionary
+            }
+        }
+        return nil
+    }
+
     private static func firstValue(in object: Any, matching keys: Set<String>) -> Any? {
         if let dictionary = object as? [String: Any] {
             for (rawKey, value) in dictionary {

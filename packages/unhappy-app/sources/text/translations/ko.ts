@@ -436,6 +436,7 @@ export const ko: TranslationStructure = {
       bypassPermissions: '바이패스 모드',
       askEveryAction: '매 동작마다 확인',
       planOnly: '계획 모드만',
+      useCliConfig: '로컬 CLI config 사용',
       autoApproveEdits: '수정은 자동 승인',
       readOnlyTools: '읽기 전용 도구만',
       autoApproveAll: '모든 동작 자동 승인',

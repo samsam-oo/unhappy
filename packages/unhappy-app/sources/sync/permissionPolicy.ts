@@ -1,5 +1,6 @@
 export type CanonicalPermissionMode =
   | 'default'
+  | 'passthrough'
   | 'read-only'
   | 'allow-edits'
   | 'bypass';
@@ -9,6 +10,7 @@ export type LegacyPermissionMode =
   | 'acceptEdits'
   | 'bypassPermissions'
   | 'plan'
+  | 'passthrough'
   | 'read-only'
   | 'safe-yolo'
   | 'yolo';
@@ -35,6 +37,7 @@ export function normalizePermissionPolicy(input: PermissionPolicyInput): Normali
   if (typeof rawMode === 'string') {
     switch (rawMode) {
       case 'default':
+      case 'passthrough':
       case 'read-only':
       case 'allow-edits':
       case 'bypass':
@@ -67,6 +70,8 @@ export function toWirePermissionMode(input: PermissionPolicyInput): LegacyPermis
   switch (normalized.permissionMode) {
     case 'default':
       return 'default';
+    case 'passthrough':
+      return 'passthrough';
     case 'read-only':
       return 'read-only';
     case 'allow-edits':

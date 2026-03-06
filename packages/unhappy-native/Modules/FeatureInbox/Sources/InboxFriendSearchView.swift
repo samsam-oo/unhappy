@@ -1,7 +1,7 @@
 import SwiftUI
 
 @MainActor
-struct InboxFriendSearchView: View {
+public struct InboxFriendSearchView: View {
     @ObservedObject var viewModel: InboxViewModel
 
     @State private var query = ""
@@ -11,7 +11,11 @@ struct InboxFriendSearchView: View {
     @State private var hasSearched = false
     @State private var errorMessage: String?
 
-    var body: some View {
+    public init(viewModel: InboxViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         List {
             Section("Search") {
                 HStack {
