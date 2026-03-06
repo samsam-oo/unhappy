@@ -703,6 +703,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             value={message}
             onChangeText={setMessage}
             sessionId={sessionId}
+            machineId={machineId ?? undefined}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
             planOnly={planOnly}

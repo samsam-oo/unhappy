@@ -559,6 +559,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [agentFlavor, availableModels]);
 
     const loadModels = React.useCallback(async () => {
+        const applyListedModels = (modelsFromResponse: string[] | undefined) => {
+            const models = agentFlavor === 'claude'
+                ? (modelsFromResponse || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
+                : (modelsFromResponse || []);
+            if (models.length === 0) {
+                setAvailableModels(null);
+                setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
+                return;
+            }
+            setAvailableModels(models);
+            ensureValidSelectedModel(models);
+        };
+
         if (agentFlavor === 'gemini') {
             // Static list, no RPC required.
             const models = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
@@ -567,40 +580,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             ensureValidSelectedModel(models);
             return;
         }
-        if (!props.sessionId) {
-            // New-session flow: no sessionId yet. If we have machineId, use machine-scoped RPC.
-            if (props.machineId) {
-                setIsLoadingModels(true);
-                setModelLoadError(null);
-                try {
-                    const resp = await apiSocket.machineRPC<ListModelsResponse, { agent: 'claude' | 'codex' | 'gemini' }>(
-                        props.machineId,
-                        'list-models',
-                        { agent: agentFlavor }
-                    );
-                    if (resp.success) {
-                        const models = agentFlavor === 'claude'
-                            ? (resp.models || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
-                            : (resp.models || []);
-                        if (models.length === 0) {
-                            setAvailableModels(null);
-                            setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
-                        } else {
-                            setAvailableModels(models);
-                            ensureValidSelectedModel(models);
-                        }
-                    } else {
-                        setAvailableModels(null);
-                        setModelLoadError(resp.error || '모델 목록을 불러오지 못했습니다.');
-                    }
-                } catch (e) {
-                    setAvailableModels(null);
-                    setModelLoadError(e instanceof Error ? e.message : '모델 목록을 불러오지 못했습니다.');
-                } finally {
-                    setIsLoadingModels(false);
-                }
-                return;
-            }
+        if (!props.machineId && !props.sessionId) {
             setAvailableModels(null);
             setModelLoadError(t('newSession.noMachineSelected'));
             return;
@@ -608,18 +588,26 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         setIsLoadingModels(true);
         setModelLoadError(null);
         try {
+            if (props.machineId) {
+                const resp = await apiSocket.machineRPC<ListModelsResponse, { agent: 'claude' | 'codex' | 'gemini' }>(
+                    props.machineId,
+                    'list-models',
+                    { agent: agentFlavor }
+                );
+                if (resp.success) {
+                    applyListedModels(resp.models);
+                    return;
+                }
+                throw new Error(resp.error || '모델 목록을 불러오지 못했습니다.');
+            }
+            if (!props.sessionId) {
+                setAvailableModels(null);
+                setModelLoadError(t('newSession.noMachineSelected'));
+                return;
+            }
             const resp = await apiSocket.sessionRPC<ListModelsResponse, {}>(props.sessionId, 'list-models', {});
             if (resp.success) {
-                const models = agentFlavor === 'claude'
-                    ? (resp.models || []).filter((m) => SUPPORTED_CLAUDE_MODELS.has(m))
-                    : (resp.models || []);
-                if (models.length === 0) {
-                    setAvailableModels(null);
-                    setModelLoadError(agentFlavor === 'claude' ? '지원되는 Claude 모델이 없습니다.' : '모델이 없습니다.');
-                } else {
-                    setAvailableModels(models);
-                    ensureValidSelectedModel(models);
-                }
+                applyListedModels(resp.models);
             } else {
                 setAvailableModels(null);
                 setModelLoadError(resp.error || '모델 목록을 불러오지 못했습니다.');
