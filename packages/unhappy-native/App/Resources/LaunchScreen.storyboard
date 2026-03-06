@@ -4,6 +4,7 @@
     <dependencies>
         <deployment identifier="iOS"/>
         <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23506"/>
+        <capability name="Image references" minToolsVersion="12.0"/>
         <capability name="Safe area layout guides" minToolsVersion="9.0"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
@@ -15,18 +16,18 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="unhappy" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="MiK-c8-lx3">
-                                <rect key="frame" x="145.33333333333334" y="410" width="102.66666666666666" height="32"/>
-                                <fontDescription key="fontDescription" type="boldSystem" pointSize="28"/>
-                                <color key="textColor" red="0.090196078431372548" green="0.090196078431372548" blue="0.10588235294117647" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-                                <nil key="highlightedColor"/>
-                            </label>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" horizontalHuggingPriority="251" verticalHuggingPriority="251" translatesAutoresizingMaskIntoConstraints="NO" id="UaY-xg-Uyy">
+                                <rect key="frame" x="106.5" y="336" width="180" height="180"/>
+                                <imageReference key="image" image="Icon"/>
+                            </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeArea" id="Bcu-3y-fUS"/>
-                        <color key="backgroundColor" red="0.97254901960784312" green="0.97254901960784312" blue="0.98039215686274506" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" xcode11CocoaTouchSystemColor="systemBackgroundColor" cocoaTouchSystemColor="whiteColor"/>
                         <constraints>
-                            <constraint firstItem="MiK-c8-lx3" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="k0Y-zP-67v"/>
-                            <constraint firstItem="MiK-c8-lx3" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="pXh-27-YQn"/>
+                            <constraint firstItem="UaY-xg-Uyy" firstAttribute="centerX" secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="g6P-Y9-kmC"/>
+                            <constraint firstItem="UaY-xg-Uyy" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="JGq-ZP-SuL"/>
+                            <constraint firstItem="UaY-xg-Uyy" firstAttribute="width" constant="180" id="xB6-zy-Tnn"/>
+                            <constraint firstItem="UaY-xg-Uyy" firstAttribute="height" constant="180" id="j9R-AQ-3P2"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -35,4 +36,7 @@
             <point key="canvasLocation" x="53" y="375"/>
         </scene>
     </scenes>
+    <resources>
+        <image name="Icon" width="1024" height="1024"/>
+    </resources>
 </document>

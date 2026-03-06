@@ -32,6 +32,9 @@ let project = Project(
                 "UILaunchStoryboardName": .string("LaunchScreen"),
                 "NSSupportsLiveActivities": .boolean(true),
             ]),
+            resources: [
+                "Unhappy.icon",
+            ],
             buildableFolders: [
                 "App/Sources",
                 "App/Resources",
@@ -43,6 +46,9 @@ let project = Project(
                 .target(name: "FeatureNewSession"),
                 .target(name: "UnhappyLiveActivitiesExtension"),
             ],
+            settings: .settings(base: [
+                "ASSETCATALOG_COMPILER_APPICON_NAME": "Unhappy",
+            ]),
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:native-bootstrap",
