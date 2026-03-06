@@ -13,9 +13,7 @@
         ]
     },
     "resolutions": {
-        "react": "19.1.0",
-        "react-dom": "19.1.0",
-        "react-native": "0.81.5"
+        "react": "19.1.0"
     },
     "packageManager": "yarn@1.22.22"
 }
