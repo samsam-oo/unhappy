@@ -10,6 +10,7 @@ import FeatureSettings
 @MainActor
 public struct HomeView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var settingsViewModel: SettingsViewModel
     @StateObject private var serverStatusViewModel: HomeServerConnectionStatusViewModel
     @State private var isCreatingAccount = false
@@ -151,10 +152,7 @@ public struct HomeView: View {
             GeometryReader { proxy in
                 ZStack {
                     LinearGradient(
-                        colors: [
-                            Color(red: 0.95, green: 0.97, blue: 1.0),
-                            Color(red: 0.98, green: 0.99, blue: 1.0),
-                        ],
+                        colors: onboardingBackgroundGradientColors,
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -250,7 +248,7 @@ public struct HomeView: View {
             }
             .frame(maxWidth: 360)
             .padding(20)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .background(onboardingPanelBackground, in: RoundedRectangle(cornerRadius: 18))
         }
         .frame(maxWidth: .infinity)
     }
@@ -398,7 +396,7 @@ public struct HomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(onboardingCardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func featureBadge(title: String, systemImage: String) -> some View {
@@ -411,7 +409,42 @@ public struct HomeView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
+        .background(onboardingBadgeBackground, in: Capsule())
+    }
+
+    private var onboardingBackgroundGradientColors: [Color] {
+        if colorScheme == .dark {
+            return [
+                Color(red: 0.08, green: 0.10, blue: 0.14),
+                Color(red: 0.04, green: 0.05, blue: 0.08),
+            ]
+        }
+
+        return [
+            Color(red: 0.95, green: 0.97, blue: 1.0),
+            Color(red: 0.98, green: 0.99, blue: 1.0),
+        ]
+    }
+
+    private var onboardingPanelBackground: some ShapeStyle {
+        if colorScheme == .dark {
+            return AnyShapeStyle(Color.white.opacity(0.08))
+        }
+        return AnyShapeStyle(.ultraThinMaterial)
+    }
+
+    private var onboardingCardBackground: some ShapeStyle {
+        if colorScheme == .dark {
+            return AnyShapeStyle(Color.white.opacity(0.06))
+        }
+        return AnyShapeStyle(.regularMaterial)
+    }
+
+    private var onboardingBadgeBackground: some ShapeStyle {
+        if colorScheme == .dark {
+            return AnyShapeStyle(Color.white.opacity(0.08))
+        }
+        return AnyShapeStyle(.regularMaterial)
     }
 
     private func createAccount() {
