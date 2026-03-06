@@ -20,7 +20,7 @@ public struct AccountRestoreView: View {
 
     public var body: some View {
         Form {
-            Section("Restore") {
+            Section("Existing Account") {
                 LabeledContent("Server") {
                     Text(viewModel.serverURLString)
                         .font(.footnote.monospaced())
@@ -32,8 +32,8 @@ public struct AccountRestoreView: View {
                 }
             }
 
-            Section("Restore With QR") {
-                Text("Scan this QR from another Unhappy device to approve account restore.")
+            Section("Sign In With Another Device") {
+                Text("Open Unhappy on your iPhone or another signed-in device and scan this QR to approve sign-in.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -52,19 +52,19 @@ public struct AccountRestoreView: View {
                 }
             }
 
-            Section("Restore With Secret") {
+            Section("Sign In With Secret Key") {
                 SecureField("Account Secret (base64url)", text: $accountLinkViewModel.accountSecretBase64URL)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.footnote.monospaced())
 
                 if accountLinkViewModel.isRestoring {
-                    ProgressView("Restoring token from secret...")
+                    ProgressView("Signing in from secret key...")
                 }
             }
 
             Section("Actions") {
-                Button("Start QR Restore") {
+                Button("Start QR Sign-In") {
                     qrRestoreTask?.cancel()
                     qrRestoreTask = Task {
                         defer { qrRestoreTask = nil }
@@ -72,7 +72,7 @@ public struct AccountRestoreView: View {
                             serverURLString: viewModel.serverURLString
                         ) {
                             viewModel.apiToken = restoredToken
-                            localStatusMessage = "Restored API token from QR"
+                            localStatusMessage = "Signed in from another device"
                         }
                     }
                 }
@@ -88,13 +88,13 @@ public struct AccountRestoreView: View {
                 }
                 .disabled(!accountLinkViewModel.isRestoringByQR)
 
-                Button("Restore Token From Secret") {
+                Button("Sign In With Secret Key") {
                     Task {
                         if let restoredToken = await accountLinkViewModel.restoreToken(
                             serverURLString: viewModel.serverURLString
                         ) {
                             viewModel.apiToken = restoredToken
-                            localStatusMessage = "Restored API token from secret"
+                            localStatusMessage = "Signed in from secret key"
                         }
                     }
                 }
@@ -130,7 +130,7 @@ public struct AccountRestoreView: View {
                 }
             }
         }
-        .navigationTitle("Restore")
+        .navigationTitle("Use Existing Account")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await accountLinkViewModel.loadFromStore()

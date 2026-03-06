@@ -298,13 +298,14 @@ public struct HomeView: View {
     @ViewBuilder
     private var onboardingActions: some View {
         VStack(spacing: 10) {
-            if isPhoneLayout {
-                createAccountButton(isPrimary: true)
-                restoreAccountButton(title: "Link or Restore Account", isPrimary: false)
-            } else {
-                restoreAccountButton(title: "Login With Mobile App", isPrimary: true)
-                createAccountButton(isPrimary: false)
-            }
+            restoreAccountButton(title: "Use Existing Account", isPrimary: true)
+            createAccountButton(isPrimary: false)
+
+            Text("If you already use Unhappy on iPhone or another device, sign in with that existing account first.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 2)
         }
     }
 
@@ -334,7 +335,7 @@ public struct HomeView: View {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(isCreatingAccount ? "Creating Account..." : "Create Account")
+                    Text(isCreatingAccount ? "Creating Access Key..." : "Create New Account")
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
@@ -349,7 +350,7 @@ public struct HomeView: View {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    Text(isCreatingAccount ? "Creating Account..." : "Create Account")
+                    Text(isCreatingAccount ? "Creating Access Key..." : "Create New Account")
                         .fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
