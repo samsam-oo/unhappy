@@ -479,14 +479,14 @@ private struct HomeRegularSessionsTab: View {
                     }
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else if visibleSessions.isEmpty {
+                } else if !showsSessionSidebarList {
                     VStack(spacing: 14) {
                         Image(systemName: "sparkles.rectangle.stack")
                             .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(.secondary)
                         Text("No sessions yet")
                             .font(.headline)
-                        Text("Create a new session to start coding.")
+                        Text("Create a new session or attach one from a connected machine.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -504,6 +504,37 @@ private struct HomeRegularSessionsTab: View {
                     .padding(.horizontal, 20)
                 } else {
                     List {
+                        if showsUpstreamSessionsSection {
+                            Section("Live Machine Sessions") {
+                                if viewModel.isLoadingUpstreamSessions && viewModel.upstreamSessions.isEmpty {
+                                    ProgressView("Loading live sessions…")
+                                } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
+                                          viewModel.upstreamSessions.isEmpty {
+                                    Text(errorMessage)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(viewModel.upstreamSessions) { row in
+                                        Button {
+                                            Task {
+                                                await viewModel.linkUpstreamSession(
+                                                    row,
+                                                    serverURLString: serverURLString,
+                                                    token: token
+                                                )
+                                            }
+                                        } label: {
+                                            HomeRegularUpstreamSessionRow(
+                                                row: row,
+                                                isLinking: viewModel.linkingUpstreamSessionID == row.id
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+
                         ForEach(visibleSessions) { session in
                             Button {
                                 selectedSessionID = session.id
@@ -571,18 +602,15 @@ private struct HomeRegularSessionsTab: View {
                 )
             } else {
                 VStack(spacing: 10) {
-                    Image(systemName: visibleSessions.isEmpty ? "terminal.fill" : "bubble.left.and.bubble.right.fill")
+                    Image(systemName: detailPlaceholderIcon)
                         .font(.system(size: 28, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    Text(visibleSessions.isEmpty ? "No sessions" : "Select a Session")
+                    Text(detailPlaceholderTitle)
                         .font(.headline)
-                    Text(
-                        visibleSessions.isEmpty
-                        ? "Create a session from the left panel to begin."
-                        : "Choose a chat from the left panel to open details."
-                    )
+                    Text(detailPlaceholderBody)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(uiColor: .systemGroupedBackground))
@@ -597,9 +625,42 @@ private struct HomeRegularSessionsTab: View {
         return viewModel.sessions
     }
 
+    private var showsUpstreamSessionsSection: Bool {
+        viewModel.isLoadingUpstreamSessions ||
+        !viewModel.upstreamSessions.isEmpty ||
+        viewModel.upstreamSessionsErrorMessage != nil
+    }
+
+    private var showsSessionSidebarList: Bool {
+        !visibleSessions.isEmpty || showsUpstreamSessionsSection
+    }
+
     private var selectedSession: APISession? {
         guard let selectedSessionID else { return nil }
         return visibleSessions.first(where: { $0.id == selectedSessionID })
+    }
+
+    private var detailPlaceholderIcon: String {
+        if visibleSessions.isEmpty && showsUpstreamSessionsSection {
+            return "desktopcomputer"
+        }
+        return visibleSessions.isEmpty ? "terminal.fill" : "bubble.left.and.bubble.right.fill"
+    }
+
+    private var detailPlaceholderTitle: String {
+        if visibleSessions.isEmpty && showsUpstreamSessionsSection {
+            return "Link a Live Session"
+        }
+        return visibleSessions.isEmpty ? "No sessions" : "Select a Session"
+    }
+
+    private var detailPlaceholderBody: String {
+        if visibleSessions.isEmpty && showsUpstreamSessionsSection {
+            return "Choose a live machine session from the left panel to attach it here."
+        }
+        return visibleSessions.isEmpty
+            ? "Create a session from the left panel to begin."
+            : "Choose a chat from the left panel to open details."
     }
 
     private var sessionsChangeTaskID: String {
@@ -678,6 +739,50 @@ private struct HomeRegularSessionRow: View {
             return "\(max(1, Int(interval / 3600)))h ago"
         }
         return "\(max(1, Int(interval / 86400)))d ago"
+    }
+}
+
+private struct HomeRegularUpstreamSessionRow: View {
+    let row: SessionLinkedUpstreamSession
+    let isLinking: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(row.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                if isLinking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Link")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                }
+            }
+            HStack(spacing: 8) {
+                Text(row.summary.provider.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(row.machineDisplayName)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if let subtitle = row.subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 }
 

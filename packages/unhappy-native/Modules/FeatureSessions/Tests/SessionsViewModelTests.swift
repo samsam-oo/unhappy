@@ -124,6 +124,124 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadFiltersAlreadyMirroredUpstreamSessions() async throws {
+        let mirroredSession = APISession(
+            id: "session-1",
+            active: false,
+            activeAt: 1,
+            createdAt: 1,
+            updatedAt: 3,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let upstreamRows = [
+            SessionLinkedUpstreamSession(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIUpstreamSessionSummary(
+                    id: "thread-1",
+                    provider: .codex,
+                    title: "Existing",
+                    cwd: "/tmp/existing",
+                    updatedAt: "2026-03-06T03:00:00.000Z",
+                    createdAt: "2026-03-06T02:00:00.000Z",
+                    archived: false
+                )
+            ),
+            SessionLinkedUpstreamSession(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIUpstreamSessionSummary(
+                    id: "thread-2",
+                    provider: .codex,
+                    title: "Fresh",
+                    cwd: "/tmp/fresh",
+                    updatedAt: "2026-03-06T04:00:00.000Z",
+                    createdAt: "2026-03-06T03:00:00.000Z",
+                    archived: false
+                )
+            )
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([mirroredSession])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [mirroredSession], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            upstreamSessionsLoader: MockUpstreamSessionsLoader(result: .success(upstreamRows)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.upstreamSessions.count == 1)
+        #expect(model.upstreamSessions.first?.summary.id == "thread-2")
+        #expect(model.upstreamSessionsErrorMessage == nil)
+    }
+
+    @Test
+    func linkUpstreamSessionPublishesSuccessAndReloadsSessions() async throws {
+        let reloadedSessions = [
+            APISession(
+                id: "linked-session",
+                active: true,
+                activeAt: 10,
+                createdAt: 9,
+                updatedAt: 11,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-9",
+                provider: .codex,
+                title: "Live Bugfix",
+                cwd: "/tmp/live",
+                updatedAt: "2026-03-06T04:00:00.000Z",
+                createdAt: "2026-03-06T03:00:00.000Z",
+                archived: false
+            )
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: reloadedSessions, nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            upstreamSessionLinker: MockUpstreamSessionLinker(
+                result: .success(
+                    APISessionSpawnResult(
+                        success: true,
+                        sessionID: "linked-session",
+                        requiresUserApproval: nil,
+                        actionRequired: nil,
+                        directory: nil,
+                        error: nil
+                    )
+                )
+            ),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.linkUpstreamSession(
+            row,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.linkingUpstreamSessionID == nil)
+        #expect(model.upstreamSessionStatusMessage == "Linked Codex session linked-session")
+        #expect(model.sessions == reloadedSessions)
+    }
+
+    @Test
     func loadMessagesSuccessPublishesSelectedSessionMessages() async throws {
         let message = APISessionMessage(
             id: "m1",

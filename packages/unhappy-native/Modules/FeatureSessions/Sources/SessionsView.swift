@@ -118,8 +118,10 @@ public struct SessionsView: View {
         if viewModel.isLoading {
             ProgressView("Loading sessions…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if visibleSessions.isEmpty {
+        } else if !hasSidebarRows {
             emptyDetailState
+        } else if visibleSessions.isEmpty {
+            linkLiveSessionDetailState
         } else {
             chooseSessionDetailState
         }
@@ -141,7 +143,7 @@ public struct SessionsView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            } else if visibleSessions.isEmpty {
+            } else if !hasSidebarRows {
                 emptySidebarState
             } else {
                 sessionsNavigationList
@@ -158,7 +160,7 @@ public struct SessionsView: View {
                 .foregroundStyle(.secondary)
             Text("No sessions yet")
                 .font(.headline)
-            Text("Create a new session to start coding.")
+            Text("Create a new session or attach one from a connected machine.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -181,15 +183,16 @@ public struct SessionsView: View {
             Image(systemName: "terminal.fill")
                 .font(.system(size: 38, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text("No sessions")
+            Text(emptyDetailTitle)
                 .font(.title3.weight(.semibold))
-            Text("Create a session from the left panel to begin.")
+            Text(emptyDetailBody)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             Button {
                 isPresentingNewSession = true
             } label: {
-                Label("Create Session", systemImage: "plus")
+                Label(emptyDetailButtonTitle, systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
             .padding(.top, 4)
@@ -213,8 +216,67 @@ public struct SessionsView: View {
         .padding(24)
     }
 
+    private var linkLiveSessionDetailState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "desktopcomputer")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Link a Live Session")
+                .font(.headline)
+            Text("Choose a live machine session from the left panel to attach it here.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .padding(24)
+    }
+
     private var sessionsNavigationList: some View {
         List {
+            if showsUpstreamSessionsSection {
+                Section("Live Machine Sessions") {
+                    if viewModel.isLoadingUpstreamSessions && viewModel.upstreamSessions.isEmpty {
+                        ProgressView("Loading live sessions…")
+                    } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
+                              viewModel.upstreamSessions.isEmpty {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(viewModel.upstreamSessions) { row in
+                            Button {
+                                Task {
+                                    await viewModel.linkUpstreamSession(
+                                        row,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    UpstreamSessionRow(
+                                        summary: row.summary,
+                                        isLinking: viewModel.linkingUpstreamSessionID == row.id
+                                    )
+                                    HStack(spacing: 6) {
+                                        Text(row.summary.provider.displayName)
+                                            .font(.caption2.weight(.semibold))
+                                        Text("·")
+                                            .font(.caption2)
+                                        Text(row.machineDisplayName)
+                                            .font(.caption2)
+                                            .lineLimit(1)
+                                    }
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
             ForEach(visibleSessions) { session in
                 NavigationLink {
                     SessionDetailView(
@@ -245,6 +307,30 @@ public struct SessionsView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(sidebarCanvasColor)
+    }
+
+    private var showsUpstreamSessionsSection: Bool {
+        viewModel.isLoadingUpstreamSessions ||
+        !viewModel.upstreamSessions.isEmpty ||
+        viewModel.upstreamSessionsErrorMessage != nil
+    }
+
+    private var hasSidebarRows: Bool {
+        !visibleSessions.isEmpty || showsUpstreamSessionsSection
+    }
+
+    private var emptyDetailTitle: String {
+        showsUpstreamSessionsSection ? "Link a Live Session" : "No sessions"
+    }
+
+    private var emptyDetailBody: String {
+        showsUpstreamSessionsSection
+            ? "Attach a live machine session from the left panel or create a new one."
+            : "Create a session from the left panel to begin."
+    }
+
+    private var emptyDetailButtonTitle: String {
+        showsUpstreamSessionsSection ? "Create New Session" : "Create Session"
     }
 
     @ViewBuilder

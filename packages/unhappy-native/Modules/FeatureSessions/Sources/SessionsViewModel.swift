@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import FeatureNewSession
 
 @MainActor
 public final class SessionsViewModel: ObservableObject {
@@ -17,6 +18,11 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var selectedSessionMessages: [APISessionMessage] = []
     @Published public private(set) var isLoadingSessionMessages = false
     @Published public private(set) var selectedSessionErrorMessage: String?
+    @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
+    @Published public private(set) var isLoadingUpstreamSessions = false
+    @Published public private(set) var upstreamSessionsErrorMessage: String?
+    @Published public private(set) var linkingUpstreamSessionID: String?
+    @Published public private(set) var upstreamSessionStatusMessage: String?
     @Published public private(set) var selectedCodexThreads: [APICodexThreadSummary] = []
     @Published public private(set) var isLoadingCodexThreads = false
     @Published public private(set) var selectedCodexThreadsErrorMessage: String?
@@ -45,6 +51,8 @@ public final class SessionsViewModel: ObservableObject {
     private let pageLoader: any SessionsPageLoading
     private let poller: any SessionsPolling
     private let messageLoader: any SessionsMessagesLoading
+    private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
+    private let upstreamSessionLinker: (any NewSessionSpawningAction)?
     private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
     private let claudeSessionsLoader: (any SessionClaudeSessionsLoading)?
     private let sessionModelsLoader: (any SessionModelsLoadingAction)?
@@ -64,6 +72,8 @@ public final class SessionsViewModel: ObservableObject {
         pageLoader: any SessionsPageLoading,
         poller: any SessionsPolling,
         messageLoader: any SessionsMessagesLoading,
+        upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
+        upstreamSessionLinker: (any NewSessionSpawningAction)? = nil,
         codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
         claudeSessionsLoader: (any SessionClaudeSessionsLoading)? = nil,
         sessionModelsLoader: (any SessionModelsLoadingAction)? = nil,
@@ -77,6 +87,8 @@ public final class SessionsViewModel: ObservableObject {
         self.pageLoader = pageLoader
         self.poller = poller
         self.messageLoader = messageLoader
+        self.upstreamSessionsLoader = upstreamSessionsLoader
+        self.upstreamSessionLinker = upstreamSessionLinker
         self.codexThreadsLoader = codexThreadsLoader
         self.claudeSessionsLoader = claudeSessionsLoader
         self.sessionModelsLoader = sessionModelsLoader
@@ -198,6 +210,10 @@ public final class SessionsViewModel: ObservableObject {
             nextCursor = firstPage.nextCursor
             hasMoreSessions = firstPage.hasNext
             errorMessage = nil
+            await loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
             await maybeDispatchQueuedComposerDrafts(
                 serverURLString: serverURLString,
                 token: token
@@ -226,6 +242,10 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 sessions = mergeLatestRows(rows, into: sessions)
+                await loadUpstreamSessions(
+                    serverURLString: serverURLString,
+                    token: token
+                )
                 errorMessage = nil
                 isLoading = false
                 await maybeDispatchQueuedComposerDrafts(
@@ -239,6 +259,8 @@ public final class SessionsViewModel: ObservableObject {
             sessions = []
             nextCursor = nil
             hasMoreSessions = false
+            upstreamSessions = []
+            upstreamSessionsErrorMessage = nil
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             isLoading = false
         }
@@ -266,6 +288,10 @@ public final class SessionsViewModel: ObservableObject {
             self.nextCursor = page.nextCursor
             hasMoreSessions = page.hasNext
             errorMessage = nil
+            await loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
             await maybeDispatchQueuedComposerDrafts(
                 serverURLString: serverURLString,
                 token: token
@@ -364,6 +390,91 @@ public final class SessionsViewModel: ObservableObject {
                 }
                 selectedSessionErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
+        }
+    }
+
+    public func loadUpstreamSessions(
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let upstreamSessionsLoader else {
+            upstreamSessions = []
+            upstreamSessionsErrorMessage = nil
+            return
+        }
+
+        isLoadingUpstreamSessions = true
+        defer { isLoadingUpstreamSessions = false }
+
+        do {
+            let rows = try await upstreamSessionsLoader.loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            upstreamSessions = filterMirroredUpstreamSessions(rows)
+            upstreamSessionsErrorMessage = nil
+        } catch {
+            upstreamSessions = []
+            upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func linkUpstreamSession(
+        _ row: SessionLinkedUpstreamSession,
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let upstreamSessionLinker else {
+            upstreamSessionStatusMessage = "Upstream linking is unavailable in this build"
+            return
+        }
+
+        linkingUpstreamSessionID = row.id
+        upstreamSessionStatusMessage = nil
+        defer {
+            if linkingUpstreamSessionID == row.id {
+                linkingUpstreamSessionID = nil
+            }
+        }
+
+        let directory = row.summary.cwd?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !directory.isEmpty else {
+            upstreamSessionStatusMessage = "Missing working directory for upstream session"
+            return
+        }
+
+        do {
+            let response = try await upstreamSessionLinker.spawnSession(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: row.machineID,
+                directory: directory,
+                agent: {
+                    switch row.summary.provider {
+                    case .codex:
+                        return .codex
+                    case .claude:
+                        return .claude
+                    case .gemini:
+                        return .gemini
+                    }
+                }(),
+                approvedNewDirectoryCreation: true,
+                codexResumeThreadID: row.summary.provider == .codex ? row.summary.id : nil,
+                claudeResumeSessionID: row.summary.provider == .claude ? row.summary.id : nil,
+                sessionToken: nil,
+                environmentVariables: [:],
+                model: nil,
+                reasoningEffort: nil
+            )
+            if let sessionID = response.sessionID, !sessionID.isEmpty {
+                upstreamSessionStatusMessage = "Linked \(row.summary.provider.displayName) session \(sessionID)"
+            } else {
+                upstreamSessionStatusMessage = "Linked \(row.summary.provider.displayName) session"
+            }
+            await load(serverURLString: serverURLString, token: token)
+        } catch {
+            upstreamSessionStatusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -565,7 +676,7 @@ public final class SessionsViewModel: ObservableObject {
         }
 
         do {
-            let result = try await messageSender.sendMessage(
+            _ = try await messageSender.sendMessage(
                 serverURLString: serverURLString,
                 token: token,
                 sessionID: sessionID,
@@ -1009,6 +1120,40 @@ public final class SessionsViewModel: ObservableObject {
 
     private func mergeLatestRows(_ latestRows: [APISession], into existingRows: [APISession]) -> [APISession] {
         sessionsMergeLatestRows(latestRows, into: existingRows)
+    }
+
+    private func filterMirroredUpstreamSessions(
+        _ rows: [SessionLinkedUpstreamSession]
+    ) -> [SessionLinkedUpstreamSession] {
+        let mirroredKeys: Set<String> = Set(
+            sessions.compactMap { session in
+                let metadata = SessionPayloadValueResolver.decodeJSONObject(
+                    payload: session.metadata,
+                    dataEncryptionKey: session.dataEncryptionKey
+                )
+                let agentSessionId = SessionPayloadValueResolver.firstString(
+                    in: [metadata],
+                    keys: ["agentSessionId", "agent_session_id"]
+                )?.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let agentSessionId, !agentSessionId.isEmpty else {
+                    return nil
+                }
+                let flavor = SessionPayloadValueResolver.firstString(
+                    in: [metadata],
+                    keys: ["flavor"]
+                )?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                let machineId = SessionPayloadValueResolver.firstString(
+                    in: [metadata],
+                    keys: ["machineId", "machine_id"]
+                )?.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let flavor, let machineId, !machineId.isEmpty else {
+                    return nil
+                }
+                return "\(machineId)|\(flavor)|\(agentSessionId)"
+            }
+        )
+
+        return rows.filter { !mirroredKeys.contains($0.id) }
     }
 
     private func replaceSession(_ session: APISession) {

@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 @testable import FeatureSessions
+import FeatureNewSession
 import CoreKit
 
 enum MockSessionsLoaderError: Error, Sendable {
@@ -309,6 +310,53 @@ struct MockSessionMessageSender: SessionMessageSendingAction {
         modelOverride: SessionMessageModelOverride,
         effortOverride: SessionMessageEffortOverride
     ) async throws -> APISessionSendMessageResult {
+        switch result {
+        case .success(let response):
+            return response
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+enum MockUpstreamSessionsLoaderError: Error, Sendable {
+    case failed
+}
+
+struct MockUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
+    let result: Result<[SessionLinkedUpstreamSession], MockUpstreamSessionsLoaderError>
+
+    func loadUpstreamSessions(serverURLString: String, token: String) async throws -> [SessionLinkedUpstreamSession] {
+        switch result {
+        case .success(let rows):
+            return rows
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
+enum MockUpstreamSessionLinkerError: Error, Sendable {
+    case failed
+}
+
+struct MockUpstreamSessionLinker: NewSessionSpawningAction {
+    let result: Result<APISessionSpawnResult, MockUpstreamSessionLinkerError>
+
+    func spawnSession(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        directory: String,
+        agent: APISessionSpawnAgent,
+        approvedNewDirectoryCreation: Bool,
+        codexResumeThreadID: String?,
+        claudeResumeSessionID: String?,
+        sessionToken: String?,
+        environmentVariables: [String : String],
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
+    ) async throws -> APISessionSpawnResult {
         switch result {
         case .success(let response):
             return response
