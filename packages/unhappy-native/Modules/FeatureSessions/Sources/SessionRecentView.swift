@@ -87,6 +87,7 @@ private struct RecentSessionRow: View {
             }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 
     private var normalizedDisplayTitle: String? {

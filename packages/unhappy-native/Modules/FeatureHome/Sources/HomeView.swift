@@ -9,6 +9,12 @@ import FeatureSettings
 
 @MainActor
 public struct HomeView: View {
+    private enum AuthenticatedTab: Hashable {
+        case sessions
+        case inbox
+        case settings
+    }
+
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var settingsViewModel: SettingsViewModel
@@ -18,6 +24,7 @@ public struct HomeView: View {
     @State private var onboardingStatusMessage: String?
     @State private var isRestoreNavigationPresented = false
     @State private var isServerSettingsPresented = false
+    @State private var selectedAuthenticatedTab: AuthenticatedTab = .sessions
     private let onboarding: any HomeAccountOnboardingAction
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
@@ -89,15 +96,16 @@ public struct HomeView: View {
     }
 
     private var authenticatedCompactHome: some View {
-        TabView {
+        TabView(selection: $selectedAuthenticatedTab) {
             InboxView(
                 serverURLString: settingsViewModel.serverURLString,
                 token: settingsViewModel.apiToken,
                 makeViewModel: makeInboxViewModel
             )
-                .tabItem {
-                    Label("Inbox", systemImage: "tray.full")
-                }
+            .tabItem {
+                Label("Inbox", systemImage: "tray.full")
+            }
+            .tag(AuthenticatedTab.inbox)
 
             SessionsView(
                 serverURLString: settingsViewModel.serverURLString,
@@ -109,9 +117,10 @@ public struct HomeView: View {
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel
             )
-                .tabItem {
-                    Label("Sessions", systemImage: "bubble.left.and.bubble.right")
-                }
+            .tabItem {
+                Label("Sessions", systemImage: "bubble.left.and.bubble.right")
+            }
+            .tag(AuthenticatedTab.sessions)
 
             SettingsView(
                 viewModel: settingsViewModel,
@@ -121,9 +130,10 @@ public struct HomeView: View {
                 makeTerminalConnectViewModel: makeTerminalConnectViewModel,
                 makeAccountLinkViewModel: makeAccountLinkViewModel
             )
-                .tabItem {
-                    Label("Settings", systemImage: "gearshape")
-                }
+            .tabItem {
+                Label("Settings", systemImage: "gearshape")
+            }
+            .tag(AuthenticatedTab.settings)
         }
     }
 

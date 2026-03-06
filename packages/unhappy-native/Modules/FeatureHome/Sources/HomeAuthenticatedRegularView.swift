@@ -9,6 +9,12 @@ import FeatureSettings
 
 @MainActor
 struct HomeAuthenticatedRegularView: View {
+    private enum AuthenticatedTab: Hashable {
+        case sessions
+        case inbox
+        case settings
+    }
+
     @ObservedObject var settingsViewModel: SettingsViewModel
     let serverURLString: String
     let token: String
@@ -25,6 +31,7 @@ struct HomeAuthenticatedRegularView: View {
 
     @StateObject private var inboxViewModel: InboxViewModel
     @StateObject private var sessionsViewModel: SessionsViewModel
+    @State private var selectedTab: AuthenticatedTab = .sessions
 
     init(
         settingsViewModel: SettingsViewModel,
@@ -61,7 +68,7 @@ struct HomeAuthenticatedRegularView: View {
     }
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             HomeRegularInboxTab(
                 viewModel: inboxViewModel,
                 serverURLString: serverURLString,
@@ -70,6 +77,7 @@ struct HomeAuthenticatedRegularView: View {
             .tabItem {
                 Label("Inbox", systemImage: "tray.full")
             }
+            .tag(AuthenticatedTab.inbox)
 
             HomeRegularSessionsTab(
                 viewModel: sessionsViewModel,
@@ -84,6 +92,7 @@ struct HomeAuthenticatedRegularView: View {
             .tabItem {
                 Label("Sessions", systemImage: "bubble.left.and.bubble.right")
             }
+            .tag(AuthenticatedTab.sessions)
 
             HomeRegularSettingsTab(
                 viewModel: settingsViewModel,
@@ -96,6 +105,7 @@ struct HomeAuthenticatedRegularView: View {
             .tabItem {
                 Label("Settings", systemImage: "gearshape")
             }
+            .tag(AuthenticatedTab.settings)
         }
         .tabViewStyle(.sidebarAdaptable)
     }
@@ -325,6 +335,7 @@ private struct HomeRegularInboxTab: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private func friendRow(friend: InboxFriend) -> some View {
@@ -337,6 +348,7 @@ private struct HomeRegularInboxTab: View {
         }
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
@@ -360,6 +372,7 @@ private struct HomeRegularSessionsTab: View {
     @State private var pendingDeleteSession: APISession?
     @State private var isPresentingNewSession = false
     @State private var isPresentingRecentSessions = false
+    @State private var detailPath: [Selection] = []
 
     var body: some View {
         HStack(spacing: 0) {
@@ -389,6 +402,24 @@ private struct HomeRegularSessionsTab: View {
             guard let selection else { return }
             if case .upstream(let rowID) = selection, !ids.contains(rowID) {
                 self.selection = visibleSessions.first.map { .session($0.id) }
+            }
+        }
+        .onChange(of: selection) { _, newSelection in
+            if let newSelection {
+                if detailPath != [newSelection] {
+                    detailPath = [newSelection]
+                }
+            } else if !detailPath.isEmpty {
+                detailPath = []
+            }
+        }
+        .onChange(of: detailPath) { _, newPath in
+            if let last = newPath.last {
+                if selection != last {
+                    selection = last
+                }
+            } else if selection != nil {
+                selection = nil
             }
         }
         .alert(
@@ -595,42 +626,45 @@ private struct HomeRegularSessionsTab: View {
     }
 
     private var detail: some View {
-        NavigationStack {
-            if let session = selectedSession {
-                SessionDetailView(
-                    session: session,
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    onClose: {
-                        selection = nil
-                    },
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
-                )
-            } else if let upstreamSession = selectedUpstreamSession {
-                SessionUpstreamLinkDetailView(
-                    row: upstreamSession,
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    onLinkedSession: { linkedSessionID in
-                        selection = .session(linkedSessionID)
-                    }
-                )
-            } else {
-                VStack(spacing: 10) {
-                    Image(systemName: detailPlaceholderIcon)
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Text(detailPlaceholderTitle)
-                        .font(.headline)
-                    Text(detailPlaceholderBody)
+        NavigationStack(path: $detailPath) {
+            VStack(spacing: 10) {
+                Image(systemName: detailPlaceholderIcon)
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(detailPlaceholderTitle)
+                    .font(.headline)
+                Text(detailPlaceholderBody)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationDestination(for: Selection.self) { destination in
+                switch destination {
+                case .session(let sessionID):
+                    if let session = visibleSessions.first(where: { $0.id == sessionID }) {
+                        SessionDetailView(
+                            session: session,
+                            viewModel: viewModel,
+                            serverURLString: serverURLString,
+                            token: token,
+                            makeSessionToolsViewModel: makeSessionToolsViewModel
+                        )
+                    }
+                case .upstream(let rowID):
+                    if let upstreamSession = viewModel.upstreamSessions.first(where: { $0.id == rowID }) {
+                        SessionUpstreamLinkDetailView(
+                            row: upstreamSession,
+                            viewModel: viewModel,
+                            serverURLString: serverURLString,
+                            token: token,
+                            onLinkedSession: { linkedSessionID in
+                                selection = .session(linkedSessionID)
+                            }
+                        )
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(uiColor: .systemGroupedBackground))
             }
         }
     }
@@ -765,6 +799,7 @@ private struct HomeRegularSessionRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
@@ -846,6 +881,7 @@ private struct HomeRegularUpstreamSessionRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
