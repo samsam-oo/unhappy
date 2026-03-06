@@ -196,9 +196,9 @@ public struct AccountSettingsView: View {
                 }
                 .disabled(!hasToken)
 
-                Button("Clear API Token", role: .destructive) {
+                Button("Log Out", role: .destructive) {
                     viewModel.apiToken = ""
-                    statusMessage = "Cleared API token"
+                    statusMessage = "Logged out"
                 }
                 .disabled(!hasToken)
 
@@ -214,6 +214,9 @@ public struct AccountSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Text("Account QR link uses API token + account secret key to approve device pairing.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("Log Out removes the API token from this device. You can sign back in with an existing device or secret key.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
