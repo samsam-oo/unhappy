@@ -209,7 +209,20 @@ class EventRouter {
         if (!this.userConnections.has(userId)) {
             this.userConnections.set(userId, new Set());
         }
-        this.userConnections.get(userId)!.add(connection);
+        const connections = this.userConnections.get(userId)!;
+
+        if (connection.connectionType === 'machine-scoped') {
+            for (const existingConnection of Array.from(connections)) {
+                if (
+                    existingConnection.connectionType === 'machine-scoped' &&
+                    existingConnection.machineId === connection.machineId
+                ) {
+                    connections.delete(existingConnection);
+                }
+            }
+        }
+
+        connections.add(connection);
     }
 
     removeConnection(userId: string, connection: ClientConnection): void {

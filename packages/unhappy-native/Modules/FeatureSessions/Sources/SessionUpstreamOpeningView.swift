@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import FeatureSessionTools
 
 @MainActor
 public struct SessionUpstreamOpeningView: View {
@@ -7,25 +8,40 @@ public struct SessionUpstreamOpeningView: View {
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
-    let onLinkedSession: ((String) -> Void)?
+    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
     @State private var didStartOpen = false
+    @State private var linkedSessionID: String?
 
     public init(
         row: SessionLinkedUpstreamSession,
         viewModel: SessionsViewModel,
         serverURLString: String,
         token: String,
-        onLinkedSession: ((String) -> Void)? = nil
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
     ) {
         self.row = row
         self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
-        self.onLinkedSession = onLinkedSession
+        self.makeSessionToolsViewModel = makeSessionToolsViewModel
     }
 
     public var body: some View {
+        if let linkedSession {
+            SessionDetailView(
+                session: linkedSession,
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                makeSessionToolsViewModel: makeSessionToolsViewModel
+            )
+        } else {
+            openingStateView
+        }
+    }
+
+    private var openingStateView: some View {
         VStack(spacing: 18) {
             Image(systemName: currentStatusIcon)
                 .font(.system(size: 30, weight: .semibold))
@@ -65,7 +81,7 @@ public struct SessionUpstreamOpeningView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Open Session")
+        .navigationTitle("Resume Session")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: row.id) {
             guard !didStartOpen else { return }
@@ -76,9 +92,14 @@ public struct SessionUpstreamOpeningView: View {
                 token: token
             )
             if let linkedSessionID, !linkedSessionID.isEmpty {
-                onLinkedSession?(linkedSessionID)
+                self.linkedSessionID = linkedSessionID
             }
         }
+    }
+
+    private var linkedSession: APISession? {
+        guard let linkedSessionID else { return nil }
+        return viewModel.sessions.first(where: { $0.id == linkedSessionID })
     }
 
     private var isOpening: Bool {
@@ -94,9 +115,9 @@ public struct SessionUpstreamOpeningView: View {
 
     private var currentStatusTitle: String {
         if isOpening {
-            return "Opening Session…"
+            return "Resuming Session…"
         }
-        return statusMessage == nil ? "Session Opened" : "Couldn't Open Session"
+        return statusMessage == nil ? "Session Ready" : "Couldn't Resume Session"
     }
 
     private var currentStatusIcon: String {

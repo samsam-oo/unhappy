@@ -67,4 +67,5 @@ enum SessionDisplayTitleResolver {
         }
         return nil
     }
+
 }

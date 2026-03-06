@@ -69,16 +69,6 @@ struct HomeAuthenticatedRegularView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeRegularInboxTab(
-                viewModel: inboxViewModel,
-                serverURLString: serverURLString,
-                token: token
-            )
-            .tabItem {
-                Label("Inbox", systemImage: "tray.full")
-            }
-            .tag(AuthenticatedTab.inbox)
-
             HomeRegularSessionsTab(
                 viewModel: sessionsViewModel,
                 serverURLString: serverURLString,
@@ -93,6 +83,16 @@ struct HomeAuthenticatedRegularView: View {
                 Label("Projects", systemImage: "folder")
             }
             .tag(AuthenticatedTab.projects)
+
+            HomeRegularInboxTab(
+                viewModel: inboxViewModel,
+                serverURLString: serverURLString,
+                token: token
+            )
+            .tabItem {
+                Label("Inbox", systemImage: "tray.full")
+            }
+            .tag(AuthenticatedTab.inbox)
 
             HomeRegularSettingsTab(
                 viewModel: settingsViewModel,
@@ -446,6 +446,10 @@ private struct HomeRegularSessionsTab: View {
         }
     }
 
+    private func reloadSessions() async {
+        await viewModel.load(serverURLString: serverURLString, token: token)
+    }
+
     private var sidebar: some View {
         return VStack(spacing: 0) {
             HStack {
@@ -481,38 +485,48 @@ private struct HomeRegularSessionsTab: View {
                     ProgressView("Loading sessions…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Unable to load sessions")
-                            .font(.headline)
-                        Text(error)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else if !showsSessionSidebarList {
-                    VStack(spacing: 14) {
-                        Image(systemName: "sparkles.rectangle.stack")
-                            .font(.system(size: 26, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("No projects yet")
-                            .font(.headline)
-                        Text("Add a project to start syncing its sessions.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        Button {
-                            isPresentingProjectPicker = true
-                        } label: {
-                            Label("Add Project", systemImage: "plus.circle.fill")
-                                .font(.subheadline.weight(.semibold))
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Unable to load sessions")
+                                .font(.headline)
+                            Text(error)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .padding(.top, 2)
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 24)
-                    .padding(.horizontal, 20)
+                    .refreshable {
+                        await reloadSessions()
+                    }
+                } else if !showsSessionSidebarList {
+                    ScrollView {
+                        VStack(spacing: 14) {
+                            Image(systemName: "sparkles.rectangle.stack")
+                                .font(.system(size: 26, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text("No projects yet")
+                                .font(.headline)
+                            Text("Add a project to start syncing its sessions.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button {
+                                isPresentingProjectPicker = true
+                            } label: {
+                                Label("Add Project", systemImage: "plus.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.top, 2)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                        .padding(.top, 24)
+                        .padding(.horizontal, 20)
+                    }
+                    .refreshable {
+                        await reloadSessions()
+                    }
                 } else {
                     List {
                         Section("Projects") {
@@ -563,6 +577,9 @@ private struct HomeRegularSessionsTab: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
+                    .refreshable {
+                        await reloadSessions()
+                    }
                 }
             }
         }
@@ -596,7 +613,11 @@ private struct HomeRegularSessionsTab: View {
                             token: token,
                             defaultNewSessionAgent: defaultNewSessionAgent,
                             makeNewSessionViewModel: makeNewSessionViewModel,
-                            makeSessionToolsViewModel: makeSessionToolsViewModel
+                            makeSessionToolsViewModel: makeSessionToolsViewModel,
+                            onProjectRemoved: {
+                                selection = nil
+                                detailPath.removeAll()
+                            }
                         )
                     }
                 }

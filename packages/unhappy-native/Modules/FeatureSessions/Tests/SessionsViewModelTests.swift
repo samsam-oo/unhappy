@@ -272,6 +272,90 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func removeProjectClearsTrackedProjectAfterSuccessfulClose() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let projectsLoader = SequenceProjectsLoader(
+            results: [
+                .success([project]),
+                .success([project]),
+            ]
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            projectsLoader: projectsLoader,
+            projectRemover: MockProjectRemover(result: .success(project)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        #expect(model.projects.map(\.id) == ["machine-1|/repo/app"])
+
+        await model.removeProject(
+            machineID: "machine-1",
+            projectPath: "/repo/app",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.projects.isEmpty)
+        #expect(model.removingProjectID == nil)
+        #expect(model.projectsErrorMessage == nil)
+    }
+
+    @Test
+    func loadFirstMessagePreviewReturnsEarliestReadableMessage() async throws {
+        let messages = [
+            APISessionMessage(
+                id: "m2",
+                seq: 2,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "text", c: "Second message"),
+                createdAt: 2,
+                updatedAt: 2
+            ),
+            APISessionMessage(
+                id: "m1",
+                seq: 1,
+                localId: nil,
+                content: APIEncryptedMessageContent(t: "text", c: "First message"),
+                createdAt: 1,
+                updatedAt: 1
+            ),
+        ]
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success(messages)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        let preview = await model.loadFirstMessagePreview(
+            for: "session-1",
+            dataEncryptionKey: nil,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(preview == "First message")
+    }
+
+    @Test
     func sendMessageSuccessSkipsReloadAndAppendsOptimisticMessage() async throws {
         let existingMessage = APISessionMessage(
             id: "m1",

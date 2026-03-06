@@ -19,15 +19,6 @@ public protocol SessionProjectOpeningAction: Sendable {
     ) async throws -> SessionMachineProject
 }
 
-public protocol SessionProjectArchivingAction: Sendable {
-    func archiveProject(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        path: String
-    ) async throws -> SessionMachineProject
-}
-
 public protocol SessionProjectRemovingAction: Sendable {
     func removeProject(
         serverURLString: String,
@@ -144,56 +135,6 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
                 codexThreadCount: 0,
                 claudeSessionCount: 0,
                 openedExplicitly: true
-            )
-        )
-    }
-}
-
-public actor SessionProjectArchiveUseCase: SessionProjectArchivingAction {
-    private let service: any MachineProjectArchiving
-
-    public init(service: any MachineProjectArchiving) {
-        self.service = service
-    }
-
-    public func archiveProject(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        path: String
-    ) async throws -> SessionMachineProject {
-        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedToken.isEmpty else {
-            throw MachinesAPIError.missingToken
-        }
-        let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let serverURL = URL(string: normalizedURL),
-              serverURL.scheme != nil,
-              serverURL.host != nil else {
-            throw MachinesAPIError.invalidHTTPStatus(0)
-        }
-        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedPath.isEmpty else {
-            throw MachinesAPIError.missingPath
-        }
-        let result = try await service.archiveProject(
-            serverURL: serverURL,
-            token: normalizedToken,
-            machineID: machineID,
-            path: normalizedPath
-        )
-        if result.success == false {
-            throw MachinesAPIError.rpcCallFailed(result.error ?? result.message)
-        }
-        return SessionMachineProject(
-            machineID: machineID,
-            machineDisplayName: machineID,
-            summary: APIMachineProjectSummary(
-                path: normalizedPath,
-                latestUpdatedAt: Date().ISO8601Format(),
-                codexThreadCount: 0,
-                claudeSessionCount: 0,
-                openedExplicitly: false
             )
         )
     }

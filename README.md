@@ -1,7 +1,7 @@
 <div align="center"><img src="/.github/logotype-dark.png" width="400" title="Unhappy Coder" alt="Unhappy Coder"/></div>
 
 <h1 align="center">
-  Mobile and Web Client for Claude Code & Codex
+  Native Client for Claude Code & Codex
 </h1>
 
 <h4 align="center">
@@ -10,7 +10,7 @@ Use Claude Code or Codex from anywhere with end-to-end encryption.
 
 <div align="center">
   
-[📱 **iOS App**](https://apps.apple.com/us/app/unhappy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=im.unhappy.app) • [🌐 **Web App**](https://app.unhappy.im) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://unhappy.im/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
+[📱 **iOS App**](https://apps.apple.com/us/app/unhappy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=im.unhappy.app) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://unhappy.im/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
 
 </div>
 
@@ -67,7 +67,7 @@ On your computer, run `unhappy` instead of `claude` or `unhappy codex` instead o
 
 ## 📦 Project Components
 
-- **[Unhappy App](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-app)** - Web UI + mobile client (Expo)
+- **[Unhappy Native](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-native)** - Native iOS client
 - **[Unhappy CLI](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-cli)** - Command-line interface for Claude Code and Codex
 - **[Unhappy Server](https://github.com/samsam-oo/unhappy/tree/main/packages/unhappy-server)** - Backend server for encrypted sync
 
