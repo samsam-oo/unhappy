@@ -3,10 +3,19 @@ import CoreKit
 
 @MainActor
 public struct NewSessionView: View {
+    public enum Mode {
+        case startSession
+        case selectProject
+    }
+
     private let serverURLString: String
     private let token: String
     private let defaultAgent: APISessionSpawnAgent
+    private let initialMachineID: String?
+    private let initialDirectoryPath: String?
+    private let mode: Mode
     private let onSessionSpawned: @MainActor (String?) -> Void
+    private let onProjectSelected: @MainActor (String?, String, String?) -> Void
 
     @StateObject private var viewModel: NewSessionViewModel
     @Environment(\.dismiss) private var dismiss
@@ -17,19 +26,28 @@ public struct NewSessionView: View {
     @State private var showDirectoryBrowserSheet = false
     @State private var directoryBrowserFilterText = ""
     @State private var directoryBrowserPathDraft = ""
+    @State private var didApplyInitialProjectContext = false
     @FocusState private var focusedField: FocusedField?
 
     public init(
         serverURLString: String,
         token: String,
         defaultAgent: APISessionSpawnAgent = .claude,
+        initialMachineID: String? = nil,
+        initialDirectoryPath: String? = nil,
+        mode: Mode = .startSession,
         makeViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        onSessionSpawned: @escaping @MainActor (String?) -> Void = { _ in }
+        onSessionSpawned: @escaping @MainActor (String?) -> Void = { _ in },
+        onProjectSelected: @escaping @MainActor (String?, String, String?) -> Void = { _, _, _ in }
     ) {
         self.serverURLString = serverURLString
         self.token = token
         self.defaultAgent = defaultAgent
+        self.initialMachineID = initialMachineID
+        self.initialDirectoryPath = initialDirectoryPath
+        self.mode = mode
         self.onSessionSpawned = onSessionSpawned
+        self.onProjectSelected = onProjectSelected
         _viewModel = StateObject(wrappedValue: makeViewModel())
     }
 
@@ -38,34 +56,48 @@ public struct NewSessionView: View {
             Form {
                 machineSection
                 directorySection
-                profilesSection
-                agentSection
-                NewSessionAdvancedSection(
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    showCodexThreadsSheet: $showCodexThreadsSheet,
-                    showClaudeSessionsSheet: $showClaudeSessionsSheet,
-                    focusedField: $focusedField,
-                    selectedModelDisplayValue: selectedModelDisplayValue,
-                    codexSelectionButtonTitle: codexSelectionButtonTitle,
-                    claudeSelectionButtonTitle: claudeSelectionButtonTitle
-                )
-                NewSessionActionSection(
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    primaryActionTitle: primaryActionTitle,
-                    onSpawned: onSessionSpawned,
-                    onDismiss: { dismiss() }
-                )
+                if mode == .startSession {
+                    profilesSection
+                    agentSection
+                    NewSessionAdvancedSection(
+                        viewModel: viewModel,
+                        serverURLString: serverURLString,
+                        token: token,
+                        showCodexThreadsSheet: $showCodexThreadsSheet,
+                        showClaudeSessionsSheet: $showClaudeSessionsSheet,
+                        focusedField: $focusedField,
+                        selectedModelDisplayValue: selectedModelDisplayValue,
+                        codexSelectionButtonTitle: codexSelectionButtonTitle,
+                        claudeSelectionButtonTitle: claudeSelectionButtonTitle
+                    )
+                    NewSessionActionSection(
+                        viewModel: viewModel,
+                        serverURLString: serverURLString,
+                        token: token,
+                        primaryActionTitle: primaryActionTitle,
+                        onSpawned: onSessionSpawned,
+                        onDismiss: { dismiss() }
+                    )
+                } else {
+                    ProjectSelectionActionSection(
+                        viewModel: viewModel,
+                        onOpenProject: {
+                            onProjectSelected(
+                                viewModel.selectedMachineID,
+                                viewModel.directoryPath,
+                                selectedMachineDisplayName
+                            )
+                            dismiss()
+                        }
+                    )
+                }
                 NewSessionStatusSections(
                     infoMessage: viewModel.infoMessage,
                     errorMessage: viewModel.errorMessage
                 )
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("New Session")
+            .navigationTitle(mode == .startSession ? "New Session" : "Open Project")
             .navigationBarTitleDisplayMode(.inline)
             .alert("Save Profile", isPresented: $showSaveProfilePrompt) {
                 TextField("Profile Name", text: $draftProfileName)
@@ -121,9 +153,20 @@ public struct NewSessionView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
-            .task(id: "\(serverURLString)|\(token)") {
+            .task(id: "\(serverURLString)|\(token)|\(initialMachineID ?? "")|\(initialDirectoryPath ?? "")") {
                 viewModel.setInitialSelectedAgent(defaultAgent)
                 await viewModel.loadMachines(serverURLString: serverURLString, token: token)
+                if !didApplyInitialProjectContext,
+                   let initialDirectoryPath = initialDirectoryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !initialDirectoryPath.isEmpty {
+                    didApplyInitialProjectContext = true
+                    await viewModel.applyProjectContext(
+                        machineID: initialMachineID,
+                        directoryPath: initialDirectoryPath,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                }
             }
         }
     }
@@ -148,6 +191,14 @@ public struct NewSessionView: View {
                 .pickerStyle(.navigationLink)
             }
         }
+    }
+
+    private var selectedMachineDisplayName: String? {
+        guard let selectedMachineID = viewModel.selectedMachineID,
+              let machine = viewModel.machines.first(where: { $0.id == selectedMachineID }) else {
+            return nil
+        }
+        return NewSessionMachinePresentation.displayName(for: machine)
     }
 
     private var directorySection: some View {

@@ -10,7 +10,7 @@ import FeatureSettings
 @MainActor
 struct HomeAuthenticatedRegularView: View {
     private enum AuthenticatedTab: Hashable {
-        case sessions
+        case projects
         case inbox
         case settings
     }
@@ -31,7 +31,7 @@ struct HomeAuthenticatedRegularView: View {
 
     @StateObject private var inboxViewModel: InboxViewModel
     @StateObject private var sessionsViewModel: SessionsViewModel
-    @State private var selectedTab: AuthenticatedTab = .sessions
+    @State private var selectedTab: AuthenticatedTab = .projects
 
     init(
         settingsViewModel: SettingsViewModel,
@@ -90,9 +90,9 @@ struct HomeAuthenticatedRegularView: View {
                 onSessionsChanged: onSessionsChanged
             )
             .tabItem {
-                Label("Sessions", systemImage: "bubble.left.and.bubble.right")
+                Label("Projects", systemImage: "folder")
             }
-            .tag(AuthenticatedTab.sessions)
+            .tag(AuthenticatedTab.projects)
 
             HomeRegularSettingsTab(
                 viewModel: settingsViewModel,
@@ -355,8 +355,7 @@ private struct HomeRegularInboxTab: View {
 @MainActor
 private struct HomeRegularSessionsTab: View {
     private enum Selection: Hashable {
-        case session(String)
-        case openingUpstream(String)
+        case project(String)
     }
 
     @ObservedObject var viewModel: SessionsViewModel
@@ -369,8 +368,7 @@ private struct HomeRegularSessionsTab: View {
     let onSessionsChanged: @MainActor ([APISession]) async -> Void
 
     @State private var selection: Selection?
-    @State private var pendingDeleteSession: APISession?
-    @State private var isPresentingNewSession = false
+    @State private var isPresentingProjectPicker = false
     @State private var isPresentingRecentSessions = false
     @State private var detailPath: [Selection] = []
 
@@ -391,17 +389,11 @@ private struct HomeRegularSessionsTab: View {
         }
         .onChange(of: visibleSessions.map(\.id)) { _, ids in
             guard let selection else {
-                self.selection = ids.first.map(Selection.session)
+                self.selection = firstAvailableSelection
                 return
             }
-            if case .session(let sessionID) = selection, !ids.contains(sessionID) {
-                self.selection = ids.first.map(Selection.session)
-            }
-        }
-        .onChange(of: viewModel.upstreamSessions.map(\.id)) { _, ids in
-            guard let selection else { return }
-            if case .openingUpstream(let rowID) = selection, !ids.contains(rowID) {
-                self.selection = visibleSessions.first.map { .session($0.id) }
+            if case .project(let projectID) = selection, !ids.contains(projectID) {
+                self.selection = firstAvailableSelection
             }
         }
         .onChange(of: selection) { _, newSelection in
@@ -422,46 +414,19 @@ private struct HomeRegularSessionsTab: View {
                 selection = nil
             }
         }
-        .alert(
-            "Delete session?",
-            isPresented: Binding(
-                get: { pendingDeleteSession != nil },
-                set: { shouldPresent in
-                    if !shouldPresent {
-                        pendingDeleteSession = nil
-                    }
-                }
-            ),
-            actions: {
-                Button("Cancel", role: .cancel) {
-                    pendingDeleteSession = nil
-                }
-                Button("Delete", role: .destructive) {
-                    guard let session = pendingDeleteSession else { return }
-                    pendingDeleteSession = nil
-                    Task {
-                        await viewModel.deleteSession(
-                            sessionID: session.id,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
-            },
-            message: {
-                Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
-            }
-        )
-        .sheet(isPresented: $isPresentingNewSession) {
+        .sheet(isPresented: $isPresentingProjectPicker) {
             NewSessionView(
                 serverURLString: serverURLString,
                 token: token,
                 defaultAgent: defaultNewSessionAgent,
+                mode: .selectProject,
                 makeViewModel: makeNewSessionViewModel,
-                onSessionSpawned: { _ in
-                    Task {
-                        await viewModel.load(serverURLString: serverURLString, token: token)
-                    }
+                onProjectSelected: { machineID, directoryPath, machineDisplayName in
+                    viewModel.addProjectBookmark(
+                        machineID: machineID ?? "",
+                        machineDisplayName: machineDisplayName ?? machineID ?? "",
+                        projectPath: directoryPath
+                    )
                 }
             )
         }
@@ -478,12 +443,6 @@ private struct HomeRegularSessionsTab: View {
     }
 
     private var sidebar: some View {
-        let machineEntries = SessionListPresentationBuilder.machineEntries(
-            sessions: visibleSessions,
-            upstreamSessions: viewModel.upstreamSessions
-        )
-        let localSessions = SessionListPresentationBuilder.localSessions(from: visibleSessions)
-
         return VStack(spacing: 0) {
             HStack {
                 Button {
@@ -496,18 +455,18 @@ private struct HomeRegularSessionsTab: View {
 
                 Spacer()
 
-                Text("Sessions")
+                Text("Projects")
                     .font(.headline.weight(.semibold))
 
                 Spacer()
 
                 Button {
-                    isPresentingNewSession = true
+                    isPresentingProjectPicker = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("New Session")
+                .accessibilityLabel("Add Project")
             }
             .padding(.horizontal, 16)
             .padding(.top, 10)
@@ -532,16 +491,16 @@ private struct HomeRegularSessionsTab: View {
                         Image(systemName: "sparkles.rectangle.stack")
                             .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(.secondary)
-                        Text("No sessions yet")
+                        Text("No projects yet")
                             .font(.headline)
-                        Text("Create a new session or attach one from a connected machine.")
+                        Text("Add a project to start syncing its sessions.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                         Button {
-                            isPresentingNewSession = true
+                            isPresentingProjectPicker = true
                         } label: {
-                            Label("New Session", systemImage: "plus.circle.fill")
+                            Label("Add Project", systemImage: "plus.circle.fill")
                                 .font(.subheadline.weight(.semibold))
                         }
                         .buttonStyle(.borderedProminent)
@@ -552,43 +511,25 @@ private struct HomeRegularSessionsTab: View {
                     .padding(.horizontal, 20)
                 } else {
                     List {
-                        if showsMachineSessionsSection(machineEntries: machineEntries) {
-                            Section("Machine Sessions") {
-                                if viewModel.isLoadingUpstreamSessions && machineEntries.isEmpty {
-                                    ProgressView("Loading live sessions…")
-                                } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
-                                          machineEntries.isEmpty {
-                                    Text(errorMessage)
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(machineEntries) { entry in
-                                        machineEntryButton(entry)
-                                    }
-                                }
-                            }
-                        }
-
-                        if !localSessions.isEmpty {
-                            Section("Local Sessions") {
-                                ForEach(localSessions) { session in
+                        Section("Projects") {
+                            if viewModel.isLoadingUpstreamSessions && projectGroups.isEmpty {
+                                ProgressView("Loading projects…")
+                            } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
+                                      projectGroups.isEmpty {
+                                Text(errorMessage)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(projectGroups) { group in
                                     Button {
-                                        selection = .session(session.id)
+                                        selection = .project(group.id)
                                     } label: {
-                                        HomeRegularSessionRow(
-                                            session: session,
-                                            isDeleting: viewModel.isDeleting(sessionID: session.id),
-                                            isSelected: selection == .session(session.id)
+                                        HomeRegularProjectRow(
+                                            group: group,
+                                            isSelected: selection == .project(group.id)
                                         )
                                     }
                                     .buttonStyle(.plain)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) {
-                                            pendingDeleteSession = session
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
-                                    }
                                 }
                             }
                         }
@@ -628,12 +569,12 @@ private struct HomeRegularSessionsTab: View {
     private var detail: some View {
         NavigationStack(path: $detailPath) {
             VStack(spacing: 10) {
-                Image(systemName: detailPlaceholderIcon)
+                Image(systemName: "folder.badge.plus")
                     .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(.secondary)
-                Text(detailPlaceholderTitle)
+                Text("Add a Project")
                     .font(.headline)
-                Text(detailPlaceholderBody)
+                Text("Choose a machine and project path first. Sessions inside that project will sync automatically.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -642,26 +583,16 @@ private struct HomeRegularSessionsTab: View {
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationDestination(for: Selection.self) { destination in
                 switch destination {
-                case .session(let sessionID):
-                    if let session = visibleSessions.first(where: { $0.id == sessionID }) {
-                        SessionDetailView(
-                            session: session,
+                case .project(let projectID):
+                    if let group = projectGroups.first(where: { $0.id == projectID }) {
+                        SessionProjectDetailView(
+                            group: group,
                             viewModel: viewModel,
                             serverURLString: serverURLString,
                             token: token,
+                            defaultNewSessionAgent: defaultNewSessionAgent,
+                            makeNewSessionViewModel: makeNewSessionViewModel,
                             makeSessionToolsViewModel: makeSessionToolsViewModel
-                        )
-                    }
-                case .openingUpstream(let rowID):
-                    if let upstreamSession = viewModel.upstreamSessions.first(where: { $0.id == rowID }) {
-                        SessionUpstreamOpeningView(
-                            row: upstreamSession,
-                            viewModel: viewModel,
-                            serverURLString: serverURLString,
-                            token: token,
-                            onLinkedSession: { linkedSessionID in
-                                selection = .session(linkedSessionID)
-                            }
                         )
                     }
                 }
@@ -683,34 +614,19 @@ private struct HomeRegularSessionsTab: View {
     }
 
     private var showsSessionSidebarList: Bool {
-        !visibleSessions.isEmpty || showsUpstreamSessionsSection
+        !projectGroups.isEmpty || showsUpstreamSessionsSection
     }
 
-    private func showsMachineSessionsSection(machineEntries: [SessionListEntry]) -> Bool {
-        !machineEntries.isEmpty || showsUpstreamSessionsSection
+    private var projectGroups: [SessionProjectGroup] {
+        SessionListPresentationBuilder.projectGroups(
+            sessions: visibleSessions,
+            upstreamSessions: viewModel.upstreamSessions,
+            bookmarks: viewModel.projectBookmarks
+        )
     }
 
-    private var detailPlaceholderIcon: String {
-        if visibleSessions.isEmpty && showsUpstreamSessionsSection {
-            return "desktopcomputer"
-        }
-        return visibleSessions.isEmpty ? "terminal.fill" : "bubble.left.and.bubble.right.fill"
-    }
-
-    private var detailPlaceholderTitle: String {
-        if visibleSessions.isEmpty && showsUpstreamSessionsSection {
-            return "Open a Machine Session"
-        }
-        return visibleSessions.isEmpty ? "No sessions" : "Select a Session"
-    }
-
-    private var detailPlaceholderBody: String {
-        if visibleSessions.isEmpty && showsUpstreamSessionsSection {
-            return "Choose a machine session from the left panel to open it here."
-        }
-        return visibleSessions.isEmpty
-            ? "Create a session from the left panel to begin."
-            : "Choose a chat from the left panel to open details."
+    private var firstAvailableSelection: Selection? {
+        projectGroups.first.map { .project($0.id) }
     }
 
     private var sessionsChangeTaskID: String {
@@ -721,70 +637,48 @@ private struct HomeRegularSessionsTab: View {
             .joined(separator: ",")
     }
 
-    @ViewBuilder
-    private func machineEntryButton(_ entry: SessionListEntry) -> some View {
-        switch entry {
-        case .mirroredSession(let session):
-            Button {
-                selection = .session(session.id)
-            } label: {
-                HomeRegularSessionRow(
-                    session: session,
-                    isDeleting: viewModel.isDeleting(sessionID: session.id),
-                    isSelected: selection == .session(session.id)
-                )
-            }
-            .buttonStyle(.plain)
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button(role: .destructive) {
-                    pendingDeleteSession = session
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-        case .upstreamSession(let row):
-            Button {
-                selection = .openingUpstream(row.id)
-            } label: {
-                HomeRegularUpstreamSessionRow(
-                    row: row,
-                    isLinking: viewModel.linkingUpstreamSessionID == row.id,
-                    isSelected: selection == .openingUpstream(row.id)
-                )
-            }
-            .buttonStyle(.plain)
-        }
-    }
 }
 
-private struct HomeRegularSessionRow: View {
-    let session: APISession
-    let isDeleting: Bool
+private struct HomeRegularProjectRow: View {
+    let group: SessionProjectGroup
     let isSelected: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(sessionDisplayTitle)
+                Text(group.title)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(hasDisplayTitle ? .primary : .secondary)
                     .lineLimit(1)
-                if isDeleting {
-                    ProgressView()
-                        .controlSize(.small)
-                }
+                Spacer()
+                Text("\(group.allSessionCount)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
             HStack(spacing: 8) {
-                Circle()
-                    .fill(session.active ? .green : .gray)
-                    .frame(width: 8, height: 8)
-                Text(session.active ? "Active" : "Inactive")
+                Text(group.machineDisplayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Updated \(updatedLabel)")
+                    .lineLimit(1)
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(updatedLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if group.activeSessionCount > 0 {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("\(group.activeSessionCount) active")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
             }
+            Text(group.projectPath)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -796,25 +690,8 @@ private struct HomeRegularSessionRow: View {
         )
     }
 
-    private var normalizedDisplayTitle: String? {
-        let trimmed = session.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let trimmed, !trimmed.isEmpty else { return nil }
-        return trimmed
-    }
-
-    private var hasDisplayTitle: Bool {
-        normalizedDisplayTitle != nil
-    }
-
-    private var sessionDisplayTitle: String {
-        if let normalizedDisplayTitle {
-            return normalizedDisplayTitle
-        }
-        return "Session \(session.id.prefix(6))"
-    }
-
     private var updatedLabel: String {
-        let interval = Date().timeIntervalSince1970 - session.updatedAt
+        let interval = Date().timeIntervalSince1970 - group.latestUpdatedAt
         if interval < 60 {
             return "just now"
         }
@@ -825,57 +702,6 @@ private struct HomeRegularSessionRow: View {
             return "\(max(1, Int(interval / 3600)))h ago"
         }
         return "\(max(1, Int(interval / 86400)))d ago"
-    }
-}
-
-private struct HomeRegularUpstreamSessionRow: View {
-    let row: SessionLinkedUpstreamSession
-    let isLinking: Bool
-    let isSelected: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(row.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer()
-                if isLinking {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            HStack(spacing: 8) {
-                Text(row.summary.provider.displayName)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("·")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(row.machineDisplayName)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            if let subtitle = row.subtitle, !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
-        )
     }
 }
 

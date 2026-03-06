@@ -236,6 +236,23 @@ struct NewSessionActionSection: View {
     }
 }
 
+struct ProjectSelectionActionSection: View {
+    @ObservedObject var viewModel: NewSessionViewModel
+    let onOpenProject: () -> Void
+
+    var body: some View {
+        Section("Action") {
+            Button("Open Project") {
+                onOpenProject()
+            }
+            .disabled(
+                viewModel.selectedMachineID == nil ||
+                viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
+        }
+    }
+}
+
 struct NewSessionStatusSections: View {
     let infoMessage: String?
     let errorMessage: String?

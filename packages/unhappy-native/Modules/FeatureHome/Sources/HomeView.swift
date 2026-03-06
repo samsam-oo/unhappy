@@ -10,7 +10,7 @@ import FeatureSettings
 @MainActor
 public struct HomeView: View {
     private enum AuthenticatedTab: Hashable {
-        case sessions
+        case projects
         case inbox
         case settings
     }
@@ -24,7 +24,7 @@ public struct HomeView: View {
     @State private var onboardingStatusMessage: String?
     @State private var isRestoreNavigationPresented = false
     @State private var isServerSettingsPresented = false
-    @State private var selectedAuthenticatedTab: AuthenticatedTab = .sessions
+    @State private var selectedAuthenticatedTab: AuthenticatedTab = .projects
     private let onboarding: any HomeAccountOnboardingAction
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
@@ -118,9 +118,9 @@ public struct HomeView: View {
                 makeSessionToolsViewModel: makeSessionToolsViewModel
             )
             .tabItem {
-                Label("Sessions", systemImage: "bubble.left.and.bubble.right")
+                Label("Projects", systemImage: "folder")
             }
-            .tag(AuthenticatedTab.sessions)
+            .tag(AuthenticatedTab.projects)
 
             SettingsView(
                 viewModel: settingsViewModel,

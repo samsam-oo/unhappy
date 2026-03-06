@@ -6,8 +6,7 @@ import FeatureSessionTools
 @MainActor
 public struct SessionsView: View {
     private enum Selection: Hashable {
-        case session(String)
-        case openingUpstream(String)
+        case project(String)
     }
 
     @StateObject private var viewModel: SessionsViewModel
@@ -18,8 +17,7 @@ public struct SessionsView: View {
     private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    @State private var pendingDeleteSession: APISession?
-    @State private var isPresentingNewSession = false
+    @State private var isPresentingProjectPicker = false
     @State private var selection: Selection?
 
     public init(
@@ -46,7 +44,7 @@ public struct SessionsView: View {
         NavigationSplitView {
             sidebarContent
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
-                .navigationTitle("Sessions")
+                .navigationTitle("Projects")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { sessionsToolbarContent }
                 .refreshable {
@@ -71,61 +69,28 @@ public struct SessionsView: View {
         .task(id: sessionsChangeTaskID) {
             await onSessionsChanged(viewModel.sessions)
         }
-        .onChange(of: visibleSessions.map(\.id)) { _, ids in
-            guard let selection else { return }
-            if case .session(let sessionID) = selection, !ids.contains(sessionID) {
+        .onChange(of: projectGroups.map(\.id)) { _, ids in
+            guard let selection else {
+                self.selection = projectGroups.first.map { .project($0.id) }
+                return
+            }
+            if case .project(let projectID) = selection, !ids.contains(projectID) {
                 self.selection = nil
             }
         }
-        .onChange(of: viewModel.upstreamSessions.map(\.id)) { _, ids in
-            guard let selection else { return }
-            if case .openingUpstream(let rowID) = selection, !ids.contains(rowID) {
-                self.selection = nil
-            }
-        }
-        .alert(
-            "Delete session?",
-            isPresented: Binding(
-                get: { pendingDeleteSession != nil },
-                set: { shouldPresent in
-                    if !shouldPresent {
-                        pendingDeleteSession = nil
-                    }
-                }
-            ),
-            actions: {
-                Button("Cancel", role: .cancel) {
-                    pendingDeleteSession = nil
-                }
-                Button("Delete", role: .destructive) {
-                    guard let session = pendingDeleteSession else { return }
-                    pendingDeleteSession = nil
-                    Task {
-                        await viewModel.deleteSession(
-                            sessionID: session.id,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
-                }
-            },
-            message: {
-                Text("This first tries to terminate the local session process, then permanently deletes the session record from the server. Project files and directories are not deleted.")
-            }
-        )
-        .sheet(isPresented: $isPresentingNewSession) {
+        .sheet(isPresented: $isPresentingProjectPicker) {
             NewSessionView(
                 serverURLString: serverURLString,
                 token: token,
                 defaultAgent: defaultNewSessionAgent,
+                mode: .selectProject,
                 makeViewModel: makeNewSessionViewModel,
-                onSessionSpawned: { _ in
-                    Task {
-                        await viewModel.load(
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
+                onProjectSelected: { machineID, directoryPath, machineDisplayName in
+                    viewModel.addProjectBookmark(
+                        machineID: machineID ?? "",
+                        machineDisplayName: machineDisplayName ?? machineID ?? "",
+                        projectPath: directoryPath
+                    )
                 }
             )
         }
@@ -137,16 +102,24 @@ public struct SessionsView: View {
     @ViewBuilder
     private var splitDetailPlaceholder: some View {
         if viewModel.isLoading {
-            ProgressView("Loading sessions…")
+            ProgressView("Loading projects…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let selection {
             destinationView(for: selection)
         } else if !hasSidebarRows {
             emptyDetailState
-        } else if visibleSessions.isEmpty {
-            openMachineSessionDetailState
+        } else if let firstProject = projectGroups.first {
+            SessionProjectDetailView(
+                group: firstProject,
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                defaultNewSessionAgent: defaultNewSessionAgent,
+                makeNewSessionViewModel: makeNewSessionViewModel,
+                makeSessionToolsViewModel: makeSessionToolsViewModel
+            )
         } else {
-            chooseSessionDetailState
+            emptyDetailState
         }
     }
 
@@ -181,16 +154,16 @@ public struct SessionsView: View {
             Image(systemName: "sparkles.rectangle.stack")
                 .font(.system(size: 26, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text("No sessions yet")
+            Text("No projects yet")
                 .font(.headline)
-            Text("Create a new session or attach one from a connected machine.")
+            Text("Add a project to start syncing its sessions.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button {
-                isPresentingNewSession = true
+                isPresentingProjectPicker = true
             } label: {
-                Label("New Session", systemImage: "plus.circle.fill")
+                Label("Add Project", systemImage: "plus.circle.fill")
                     .font(.subheadline.weight(.semibold))
             }
             .buttonStyle(.borderedProminent)
@@ -203,19 +176,19 @@ public struct SessionsView: View {
 
     private var emptyDetailState: some View {
         VStack(spacing: 14) {
-            Image(systemName: "terminal.fill")
+            Image(systemName: "folder.badge.plus")
                 .font(.system(size: 38, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(emptyDetailTitle)
+            Text("Add a Project")
                 .font(.title3.weight(.semibold))
-            Text(emptyDetailBody)
+            Text("Choose a machine and project path first. Sessions inside that project will sync automatically.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button {
-                isPresentingNewSession = true
+                isPresentingProjectPicker = true
             } label: {
-                Label(emptyDetailButtonTitle, systemImage: "plus")
+                Label("Add Project", systemImage: "plus")
             }
             .buttonStyle(.borderedProminent)
             .padding(.top, 4)
@@ -224,78 +197,20 @@ public struct SessionsView: View {
         .padding(24)
     }
 
-    private var chooseSessionDetailState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "bubble.left.and.bubble.right.fill")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text("Select a Session")
-                .font(.headline)
-            Text("Choose a chat from the left panel to open details.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .padding(24)
-    }
-
-    private var openMachineSessionDetailState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "desktopcomputer")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text("Open a Machine Session")
-                .font(.headline)
-            Text("Choose a machine session from the left panel to open it here.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .padding(24)
-    }
-
     private var sessionsNavigationList: some View {
-        let machineEntries = SessionListPresentationBuilder.machineEntries(
-            sessions: visibleSessions,
-            upstreamSessions: viewModel.upstreamSessions
-        )
-        let localSessions = SessionListPresentationBuilder.localSessions(from: visibleSessions)
-
         return List(selection: $selection) {
-            if showsMachineSessionsSection(machineEntries: machineEntries) {
-                Section("Machine Sessions") {
-                    if viewModel.isLoadingUpstreamSessions && machineEntries.isEmpty {
-                        ProgressView("Loading live sessions…")
-                    } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
-                              machineEntries.isEmpty {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(machineEntries) { entry in
-                            machineNavigationLink(entry)
-                        }
-                    }
-                }
-            }
-
-            if !localSessions.isEmpty {
-                Section("Local Sessions") {
-                    ForEach(localSessions) { session in
-                        NavigationLink(value: Selection.session(session.id)) {
-                            SessionsRow(
-                                session: session,
-                                isDeleting: viewModel.isDeleting(sessionID: session.id)
-                            )
-                        }
-                        .disabled(viewModel.isDeleting(sessionID: session.id))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                pendingDeleteSession = session
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+            Section("Projects") {
+                if viewModel.isLoadingUpstreamSessions && projectGroups.isEmpty {
+                    ProgressView("Loading projects…")
+                } else if let errorMessage = viewModel.upstreamSessionsErrorMessage,
+                          projectGroups.isEmpty {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(projectGroups) { group in
+                        NavigationLink(value: Selection.project(group.id)) {
+                            ProjectRow(group: group)
                         }
                     }
                 }
@@ -315,21 +230,7 @@ public struct SessionsView: View {
     }
 
     private var hasSidebarRows: Bool {
-        !visibleSessions.isEmpty || showsUpstreamSessionsSection
-    }
-
-    private func showsMachineSessionsSection(machineEntries: [SessionListEntry]) -> Bool {
-        !machineEntries.isEmpty || showsUpstreamSessionsSection
-    }
-
-    private var emptyDetailTitle: String {
-        showsUpstreamSessionsSection ? "Open a Machine Session" : "No sessions"
-    }
-
-    private var emptyDetailBody: String {
-        showsUpstreamSessionsSection
-            ? "Open a machine session from the left panel or create a new one."
-            : "Create a session from the left panel to begin."
+        !projectGroups.isEmpty
     }
 
     private var emptyDetailButtonTitle: String {
@@ -379,11 +280,11 @@ public struct SessionsView: View {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
-                isPresentingNewSession = true
+                isPresentingProjectPicker = true
             } label: {
                 Image(systemName: "plus.circle.fill")
             }
-            .accessibilityLabel("New Session")
+            .accessibilityLabel("Add Project")
         }
     }
 
@@ -411,71 +312,29 @@ public struct SessionsView: View {
     }
 
     @ViewBuilder
-    private func machineNavigationLink(_ entry: SessionListEntry) -> some View {
-        switch entry {
-        case .mirroredSession(let session):
-            NavigationLink(value: Selection.session(session.id)) {
-                SessionsRow(
-                    session: session,
-                    isDeleting: viewModel.isDeleting(sessionID: session.id)
+    private func destinationView(for selection: Selection) -> some View {
+        switch selection {
+        case .project(let projectID):
+            if let group = projectGroups.first(where: { $0.id == projectID }) {
+                SessionProjectDetailView(
+                    group: group,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    defaultNewSessionAgent: defaultNewSessionAgent,
+                    makeNewSessionViewModel: makeNewSessionViewModel,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
                 )
-            }
-            .disabled(viewModel.isDeleting(sessionID: session.id))
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button(role: .destructive) {
-                    pendingDeleteSession = session
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-        case .upstreamSession(let row):
-            NavigationLink(value: Selection.openingUpstream(row.id)) {
-                VStack(alignment: .leading, spacing: 6) {
-                    UpstreamSessionRow(
-                        summary: row.summary,
-                        isLinking: viewModel.linkingUpstreamSessionID == row.id
-                    )
-                    HStack(spacing: 6) {
-                        Text(row.summary.provider.displayName)
-                            .font(.caption2.weight(.semibold))
-                        Text("·")
-                            .font(.caption2)
-                        Text(row.machineDisplayName)
-                            .font(.caption2)
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(.secondary)
-                }
             }
         }
     }
 
-    @ViewBuilder
-    private func destinationView(for selection: Selection) -> some View {
-        switch selection {
-        case .session(let sessionID):
-            if let session = visibleSessions.first(where: { $0.id == sessionID }) {
-                SessionDetailView(
-                    session: session,
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
-                )
-            }
-        case .openingUpstream(let rowID):
-            if let row = viewModel.upstreamSessions.first(where: { $0.id == rowID }) {
-                SessionUpstreamOpeningView(
-                    row: row,
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    onLinkedSession: { linkedSessionID in
-                        self.selection = .session(linkedSessionID)
-                    }
-                )
-            }
-        }
+    private var projectGroups: [SessionProjectGroup] {
+        SessionListPresentationBuilder.projectGroups(
+            sessions: visibleSessions,
+            upstreamSessions: viewModel.upstreamSessions,
+            bookmarks: viewModel.projectBookmarks
+        )
     }
 }
 
@@ -538,5 +397,50 @@ private struct SessionsRow: View {
 
     private var machineDisplayName: String? {
         SessionUpstreamIdentity(session: session)?.machineDisplayName
+    }
+}
+
+private struct ProjectRow: View {
+    let group: SessionProjectGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(group.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Text("\(group.allSessionCount)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Text(group.machineDisplayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text("·")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(SessionTimestampPresentation.updatedLabel(for: group.latestUpdatedAt))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if group.activeSessionCount > 0 {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("\(group.activeSessionCount) active")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            Text(group.projectPath)
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
 }

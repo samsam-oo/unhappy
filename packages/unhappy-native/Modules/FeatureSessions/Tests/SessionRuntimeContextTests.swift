@@ -50,6 +50,6 @@ struct SessionRuntimeContextTests {
         #expect(context.provider == .claude)
         #expect(context.sessionAgent == .claude)
         #expect(context.upstreamIdentity == nil)
-        #expect(context.workingDirectory == nil)
+        #expect(context.workingDirectory == "/tmp/project")
     }
 }

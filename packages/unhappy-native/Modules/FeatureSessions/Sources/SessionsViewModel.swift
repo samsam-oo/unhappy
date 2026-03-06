@@ -19,6 +19,7 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var isLoadingSessionMessages = false
     @Published public private(set) var selectedSessionErrorMessage: String?
     @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
+    @Published public private(set) var projectBookmarks: [SessionProjectBookmark] = []
     @Published public private(set) var isLoadingUpstreamSessions = false
     @Published public private(set) var upstreamSessionsErrorMessage: String?
     @Published public private(set) var linkingUpstreamSessionID: String?
@@ -478,6 +479,37 @@ public final class SessionsViewModel: ObservableObject {
             upstreamSessionStatusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return nil
         }
+    }
+
+    public func addProjectBookmark(
+        machineID: String,
+        machineDisplayName: String,
+        projectPath: String
+    ) {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedMachineDisplayName = machineDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedProjectPath = projectPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty, !normalizedProjectPath.isEmpty else { return }
+
+        let bookmark = SessionProjectBookmark(
+            machineID: normalizedMachineID,
+            machineDisplayName: normalizedMachineDisplayName.isEmpty ? normalizedMachineID : normalizedMachineDisplayName,
+            projectPath: normalizedProjectPath
+        )
+        if projectBookmarks.contains(where: { $0.id == bookmark.id }) {
+            return
+        }
+        projectBookmarks.append(bookmark)
+        projectBookmarks.sort { lhs, rhs in
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.projectPath.localizedCaseInsensitiveCompare(rhs.projectPath) == .orderedAscending
+        }
+    }
+
+    public func removeProjectBookmark(projectID: String) {
+        projectBookmarks.removeAll { $0.id == projectID }
     }
 
     public func loadCodexThreads(

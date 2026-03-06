@@ -545,6 +545,44 @@ public final class NewSessionViewModel: ObservableObject {
         await loadDirectory(serverURLString: serverURLString, token: token)
     }
 
+    public func applyProjectContext(
+        machineID: String?,
+        directoryPath: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        let normalizedDirectory = normalizedPath(directoryPath)
+        self.directoryPath = normalizedDirectory
+
+        let normalizedMachineID = machineID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedMachineID,
+           !normalizedMachineID.isEmpty,
+           machines.contains(where: { $0.id == normalizedMachineID }) {
+            selectedMachineID = normalizedMachineID
+        } else if selectedMachineID == nil {
+            selectedMachineID = machines.first?.id
+        }
+
+        codexResumeThreadID = ""
+        claudeResumeSessionID = ""
+        approvalDirectory = nil
+        spawnedSessionID = nil
+        infoMessage = nil
+        errorMessage = nil
+
+        guard selectedMachineID != nil else { return }
+        async let directoryLoad: Void = loadDirectory(
+            serverURLString: serverURLString,
+            token: token
+        )
+        async let modelsLoad: Void = loadModels(
+            serverURLString: serverURLString,
+            token: token,
+            agent: selectedAgent
+        )
+        _ = await (directoryLoad, modelsLoad)
+    }
+
     public func applyProfile(
         id: String,
         serverURLString: String,

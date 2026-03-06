@@ -6,6 +6,8 @@ struct SessionRuntimeContext {
     let metadata: [String: Any]
     let agentState: [String: Any]
     let upstreamIdentity: SessionUpstreamIdentity?
+    let machineID: String?
+    let machineDisplayName: String?
     let provider: APIUpstreamSessionProvider?
     let sessionAgent: APISessionSpawnAgent?
     let currentModelLabel: String?
@@ -25,6 +27,11 @@ struct SessionRuntimeContext {
             dataEncryptionKey: session.dataEncryptionKey
         )
         self.upstreamIdentity = SessionUpstreamIdentity(session: session)
+        self.machineID = SessionPayloadValueResolver.firstString(
+            in: [agentState, metadata],
+            keys: ["machineId", "machine_id"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.machineDisplayName = upstreamIdentity?.machineDisplayName
         self.provider = SessionRuntimeContext.resolveProvider(
             upstreamIdentity: upstreamIdentity,
             metadata: metadata,
@@ -75,7 +82,20 @@ struct SessionRuntimeContext {
     }
 
     var workingDirectory: String? {
-        upstreamIdentity?.workingDirectory
+        if let workingDirectory = upstreamIdentity?.workingDirectory {
+            return workingDirectory
+        }
+        return SessionPayloadValueResolver.firstString(
+            in: [agentState, metadata],
+            keys: [
+                "cwd",
+                "path",
+                "directory",
+                "workingDirectory",
+                "workDir",
+                "projectPath",
+            ]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var upstreamSessionID: String? {

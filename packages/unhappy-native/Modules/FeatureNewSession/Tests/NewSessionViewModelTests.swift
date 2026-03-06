@@ -364,6 +364,43 @@ struct NewSessionViewModelTests {
         #expect(model.codexResumeThreadID.isEmpty)
         #expect(model.directoryPath == "~/Downloads/unhappy")
     }
+
+    @Test
+    func applyProjectContextSetsDirectoryAndClearsResumeSelections() async throws {
+        let model = NewSessionViewModel(
+            machinesLoader: ViewModelMachinesLoader(machines: [makeMachine(id: "machine-1")]),
+            directoryLister: ViewModelDirectoryLister(),
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        model.selectCodexThread(
+            APICodexThreadSummary(
+                id: "thread-123",
+                name: "Resume Target",
+                cwd: "/repo/old",
+                updatedAt: nil,
+                createdAt: nil,
+                archived: false
+            )
+        )
+
+        await model.applyProjectContext(
+            machineID: "machine-1",
+            directoryPath: "/repo/app",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.selectedMachineID == "machine-1")
+        #expect(model.directoryPath == "/repo/app")
+        #expect(model.codexResumeThreadID.isEmpty)
+        #expect(model.claudeResumeSessionID.isEmpty)
+    }
 }
 
 private func makeMachine(id: String) -> APIMachine {
