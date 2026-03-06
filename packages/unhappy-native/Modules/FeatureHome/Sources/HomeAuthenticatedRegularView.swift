@@ -356,7 +356,7 @@ private struct HomeRegularInboxTab: View {
 private struct HomeRegularSessionsTab: View {
     private enum Selection: Hashable {
         case session(String)
-        case upstream(String)
+        case openingUpstream(String)
     }
 
     @ObservedObject var viewModel: SessionsViewModel
@@ -400,7 +400,7 @@ private struct HomeRegularSessionsTab: View {
         }
         .onChange(of: viewModel.upstreamSessions.map(\.id)) { _, ids in
             guard let selection else { return }
-            if case .upstream(let rowID) = selection, !ids.contains(rowID) {
+            if case .openingUpstream(let rowID) = selection, !ids.contains(rowID) {
                 self.selection = visibleSessions.first.map { .session($0.id) }
             }
         }
@@ -652,9 +652,9 @@ private struct HomeRegularSessionsTab: View {
                             makeSessionToolsViewModel: makeSessionToolsViewModel
                         )
                     }
-                case .upstream(let rowID):
+                case .openingUpstream(let rowID):
                     if let upstreamSession = viewModel.upstreamSessions.first(where: { $0.id == rowID }) {
-                        SessionUpstreamLinkDetailView(
+                        SessionUpstreamOpeningView(
                             row: upstreamSession,
                             viewModel: viewModel,
                             serverURLString: serverURLString,
@@ -690,16 +690,6 @@ private struct HomeRegularSessionsTab: View {
         !machineEntries.isEmpty || showsUpstreamSessionsSection
     }
 
-    private var selectedSession: APISession? {
-        guard case .session(let sessionID)? = selection else { return nil }
-        return visibleSessions.first(where: { $0.id == sessionID })
-    }
-
-    private var selectedUpstreamSession: SessionLinkedUpstreamSession? {
-        guard case .upstream(let rowID)? = selection else { return nil }
-        return viewModel.upstreamSessions.first(where: { $0.id == rowID })
-    }
-
     private var detailPlaceholderIcon: String {
         if visibleSessions.isEmpty && showsUpstreamSessionsSection {
             return "desktopcomputer"
@@ -709,14 +699,14 @@ private struct HomeRegularSessionsTab: View {
 
     private var detailPlaceholderTitle: String {
         if visibleSessions.isEmpty && showsUpstreamSessionsSection {
-            return "Link a Live Session"
+            return "Open a Machine Session"
         }
         return visibleSessions.isEmpty ? "No sessions" : "Select a Session"
     }
 
     private var detailPlaceholderBody: String {
         if visibleSessions.isEmpty && showsUpstreamSessionsSection {
-            return "Choose a live machine session from the left panel to attach it here."
+            return "Choose a machine session from the left panel to open it here."
         }
         return visibleSessions.isEmpty
             ? "Create a session from the left panel to begin."
@@ -754,12 +744,12 @@ private struct HomeRegularSessionsTab: View {
             }
         case .upstreamSession(let row):
             Button {
-                selection = .upstream(row.id)
+                selection = .openingUpstream(row.id)
             } label: {
                 HomeRegularUpstreamSessionRow(
                     row: row,
                     isLinking: viewModel.linkingUpstreamSessionID == row.id,
-                    isSelected: selection == .upstream(row.id)
+                    isSelected: selection == .openingUpstream(row.id)
                 )
             }
             .buttonStyle(.plain)
@@ -854,9 +844,9 @@ private struct HomeRegularUpstreamSessionRow: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Text("Link")
+                    Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(.secondary)
                 }
             }
             HStack(spacing: 8) {

@@ -279,5 +279,7 @@ private struct SessionDirectoryEntryRow: View {
                     .foregroundStyle(.tertiary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }

@@ -166,5 +166,7 @@ private struct NewSessionDirectoryBrowserEntryRow: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }

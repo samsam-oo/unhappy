@@ -264,9 +264,9 @@ struct UpstreamSessionRow: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Text("Link")
+                    Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(.secondary)
                 }
             }
 

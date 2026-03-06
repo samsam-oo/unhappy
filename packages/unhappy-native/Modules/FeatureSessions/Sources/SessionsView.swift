@@ -7,7 +7,7 @@ import FeatureSessionTools
 public struct SessionsView: View {
     private enum Selection: Hashable {
         case session(String)
-        case upstream(String)
+        case openingUpstream(String)
     }
 
     @StateObject private var viewModel: SessionsViewModel
@@ -79,7 +79,7 @@ public struct SessionsView: View {
         }
         .onChange(of: viewModel.upstreamSessions.map(\.id)) { _, ids in
             guard let selection else { return }
-            if case .upstream(let rowID) = selection, !ids.contains(rowID) {
+            if case .openingUpstream(let rowID) = selection, !ids.contains(rowID) {
                 self.selection = nil
             }
         }
@@ -144,7 +144,7 @@ public struct SessionsView: View {
         } else if !hasSidebarRows {
             emptyDetailState
         } else if visibleSessions.isEmpty {
-            linkLiveSessionDetailState
+            openMachineSessionDetailState
         } else {
             chooseSessionDetailState
         }
@@ -239,14 +239,14 @@ public struct SessionsView: View {
         .padding(24)
     }
 
-    private var linkLiveSessionDetailState: some View {
+    private var openMachineSessionDetailState: some View {
         VStack(spacing: 10) {
             Image(systemName: "desktopcomputer")
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text("Link a Live Session")
+            Text("Open a Machine Session")
                 .font(.headline)
-            Text("Choose a live machine session from the left panel to attach it here.")
+            Text("Choose a machine session from the left panel to open it here.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -323,12 +323,12 @@ public struct SessionsView: View {
     }
 
     private var emptyDetailTitle: String {
-        showsUpstreamSessionsSection ? "Link a Live Session" : "No sessions"
+        showsUpstreamSessionsSection ? "Open a Machine Session" : "No sessions"
     }
 
     private var emptyDetailBody: String {
         showsUpstreamSessionsSection
-            ? "Attach a live machine session from the left panel or create a new one."
+            ? "Open a machine session from the left panel or create a new one."
             : "Create a session from the left panel to begin."
     }
 
@@ -429,7 +429,7 @@ public struct SessionsView: View {
                 }
             }
         case .upstreamSession(let row):
-            NavigationLink(value: Selection.upstream(row.id)) {
+            NavigationLink(value: Selection.openingUpstream(row.id)) {
                 VStack(alignment: .leading, spacing: 6) {
                     UpstreamSessionRow(
                         summary: row.summary,
@@ -463,9 +463,9 @@ public struct SessionsView: View {
                     makeSessionToolsViewModel: makeSessionToolsViewModel
                 )
             }
-        case .upstream(let rowID):
+        case .openingUpstream(let rowID):
             if let row = viewModel.upstreamSessions.first(where: { $0.id == rowID }) {
-                SessionUpstreamLinkDetailView(
+                SessionUpstreamOpeningView(
                     row: row,
                     viewModel: viewModel,
                     serverURLString: serverURLString,
