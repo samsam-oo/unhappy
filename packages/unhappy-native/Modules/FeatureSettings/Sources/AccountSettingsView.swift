@@ -4,7 +4,7 @@ import UIKit
 #endif
 
 @MainActor
-struct AccountSettingsView: View {
+public struct AccountSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @StateObject private var accountLinkViewModel: AccountLinkSettingsViewModel
     @State private var accountAuthURLString = ""
@@ -12,7 +12,7 @@ struct AccountSettingsView: View {
     @State private var statusMessage: String?
     @State private var qrRestoreTask: Task<Void, Never>?
 
-    init(
+    public init(
         viewModel: SettingsViewModel,
         makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel
     ) {
@@ -28,7 +28,7 @@ struct AccountSettingsView: View {
         TerminalAuthURLParser.parse(accountAuthURLString)
     }
 
-    var body: some View {
+    public var body: some View {
         Form {
             Section("Account") {
                 LabeledContent("API Token") {

@@ -78,7 +78,16 @@ public struct HomeView: View {
             .isEmpty
     }
 
+    @ViewBuilder
     private var authenticatedHome: some View {
+        if horizontalSizeClass == .regular {
+            authenticatedRegularHome
+        } else {
+            authenticatedCompactHome
+        }
+    }
+
+    private var authenticatedCompactHome: some View {
         TabView {
             InboxView(
                 serverURLString: settingsViewModel.serverURLString,
@@ -115,6 +124,26 @@ public struct HomeView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
         }
+    }
+
+    private var authenticatedRegularHome: some View {
+        HomeAuthenticatedRegularView(
+            settingsViewModel: settingsViewModel,
+            serverURLString: settingsViewModel.serverURLString,
+            token: settingsViewModel.apiToken,
+            hideInactiveSessions: settingsViewModel.hideInactiveSessions,
+            defaultNewSessionAgent: settingsViewModel.defaultNewSessionAgent,
+            makeInboxViewModel: makeInboxViewModel,
+            makeSessionsViewModel: makeSessionsViewModel,
+            makeNewSessionViewModel: makeNewSessionViewModel,
+            makeSessionToolsViewModel: makeSessionToolsViewModel,
+            onSessionsChanged: onSessionsChanged,
+            makeMachinesViewModel: makeMachinesViewModel,
+            makeUsageViewModel: makeUsageViewModel,
+            makeDaemonStatusViewModel: makeDaemonStatusViewModel,
+            makeTerminalConnectViewModel: makeTerminalConnectViewModel,
+            makeAccountLinkViewModel: makeAccountLinkViewModel
+        )
     }
 
     private var unauthenticatedHome: some View {

@@ -1,10 +1,14 @@
 import SwiftUI
 
 @MainActor
-struct InboxFriendsView: View {
+public struct InboxFriendsView: View {
     @ObservedObject var viewModel: InboxViewModel
 
-    var body: some View {
+    public init(viewModel: InboxViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         content
         .navigationTitle("Friends")
         .toolbar {

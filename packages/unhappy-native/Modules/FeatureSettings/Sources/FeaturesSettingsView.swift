@@ -1,12 +1,16 @@
 import SwiftUI
 
 @MainActor
-struct FeaturesSettingsView: View {
+public struct FeaturesSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @AppStorage("unhappy.native.showReasoningDetails")
     private var showReasoningDetails = false
 
-    var body: some View {
+    public init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         Form {
             Section("Experimental Features") {
                 Toggle("Enable experiments", isOn: $viewModel.experimentsEnabled)

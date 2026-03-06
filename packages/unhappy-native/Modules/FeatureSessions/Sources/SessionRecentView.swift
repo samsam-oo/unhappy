@@ -3,13 +3,25 @@ import CoreKit
 import FeatureSessionTools
 
 @MainActor
-struct SessionRecentView: View {
+public struct SessionRecentView: View {
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
 
-    var body: some View {
+    public init(
+        viewModel: SessionsViewModel,
+        serverURLString: String,
+        token: String,
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
+    ) {
+        self.viewModel = viewModel
+        self.serverURLString = serverURLString
+        self.token = token
+        self.makeSessionToolsViewModel = makeSessionToolsViewModel
+    }
+
+    public var body: some View {
         let sections = SessionRecentPresentationBuilder.make(sessions: viewModel.sessions)
 
         List {

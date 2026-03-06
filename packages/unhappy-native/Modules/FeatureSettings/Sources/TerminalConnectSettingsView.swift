@@ -5,7 +5,7 @@ import UIKit
 #endif
 
 @MainActor
-struct TerminalConnectSettingsView: View {
+public struct TerminalConnectSettingsView: View {
     @StateObject private var viewModel: TerminalConnectSettingsViewModel
     @State private var authURLString = ""
     @State private var showingScanner = false
@@ -13,7 +13,7 @@ struct TerminalConnectSettingsView: View {
     private let serverURLString: String
     private let token: String
 
-    init(
+    public init(
         serverURLString: String,
         token: String,
         makeViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel
@@ -27,7 +27,7 @@ struct TerminalConnectSettingsView: View {
         TerminalAuthURLParser.parse(authURLString)
     }
 
-    var body: some View {
+    public var body: some View {
         Form {
             connectionURLSection
             requestPreviewSection

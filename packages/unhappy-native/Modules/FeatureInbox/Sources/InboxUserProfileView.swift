@@ -1,7 +1,7 @@
 import SwiftUI
 
 @MainActor
-struct InboxUserProfileView: View {
+public struct InboxUserProfileView: View {
     let userID: String
     @ObservedObject var viewModel: InboxViewModel
 
@@ -10,7 +10,12 @@ struct InboxUserProfileView: View {
     @State private var profile: InboxUserProfile?
     @State private var errorMessage: String?
 
-    var body: some View {
+    public init(userID: String, viewModel: InboxViewModel) {
+        self.userID = userID
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         Group {
             if isLoading {
                 ProgressView("Loading user…")

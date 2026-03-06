@@ -1,13 +1,13 @@
 import SwiftUI
 
 @MainActor
-struct UsageSettingsView: View {
+public struct UsageSettingsView: View {
     let serverURLString: String
     let token: String
 
     @StateObject private var viewModel: UsageSettingsViewModel
 
-    init(
+    public init(
         serverURLString: String,
         token: String,
         makeViewModel: @escaping @MainActor () -> UsageSettingsViewModel
@@ -17,7 +17,7 @@ struct UsageSettingsView: View {
         _viewModel = StateObject(wrappedValue: makeViewModel())
     }
 
-    var body: some View {
+    public var body: some View {
         Form {
             Section("Usage") {
                 if viewModel.isLoading {

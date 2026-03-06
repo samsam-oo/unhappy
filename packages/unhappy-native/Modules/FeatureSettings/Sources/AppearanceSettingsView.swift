@@ -1,10 +1,14 @@
 import SwiftUI
 
 @MainActor
-struct AppearanceSettingsView: View {
+public struct AppearanceSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
 
-    var body: some View {
+    public init(viewModel: SettingsViewModel) {
+        self.viewModel = viewModel
+    }
+
+    public var body: some View {
         Form {
             Section("Appearance") {
                 Picker("Theme", selection: $viewModel.selectedAppearance) {
