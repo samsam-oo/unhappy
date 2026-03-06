@@ -447,6 +447,7 @@ export const zhHans: TranslationStructure = {
       bypassPermissions: 'Yolo 模式',
       askEveryAction: 'Ask every action',
       planOnly: 'Plan only',
+      useCliConfig: 'Use local CLI config',
       autoApproveEdits: 'Auto-approve edits',
       readOnlyTools: 'Read-only tools',
       autoApproveAll: 'Auto-approve all',

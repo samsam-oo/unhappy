@@ -1,1 +1,1 @@
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo' | 'allow-edits' | 'bypass';
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'passthrough' | 'read-only' | 'safe-yolo' | 'yolo' | 'allow-edits' | 'bypass';

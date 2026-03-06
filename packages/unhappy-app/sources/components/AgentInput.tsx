@@ -99,6 +99,21 @@ const SUPPORTED_CLAUDE_MODELS = new Set([
     'claude-haiku-4-5',
 ]);
 
+type PermissionOverlayRow =
+    | {
+        kind: 'mode';
+        value: CanonicalPermissionMode;
+        label: string;
+        hint: string;
+        icon: string;
+    }
+    | {
+        kind: 'plan';
+        label: string;
+        hint: string;
+        icon: string;
+    };
+
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         alignItems: 'center',
@@ -706,10 +721,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     );
     const normalizedPermissionMode = normalizedPermissionPolicy.permissionMode;
     const isPlanOnly = normalizedPermissionPolicy.planOnly;
+    const supportsPassthroughPermission = agentFlavor === 'codex';
 
     const permissionModeLabel = React.useMemo(() => {
         if (isPlanOnly) {
             return t('agentInput.permissionMode.plan');
+        }
+        if (normalizedPermissionMode === 'passthrough') {
+            return supportsPassthroughPermission
+                ? t('agentInput.codexPermissionMode.default')
+                : t('agentInput.permissionMode.default');
         }
         if (normalizedPermissionMode === 'default') {
             return t('agentInput.permissionMode.default');
@@ -721,7 +742,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             return t('agentInput.permissionMode.acceptEdits');
         }
         return t('agentInput.permissionMode.badgeBypassAllPermissions');
-    }, [isPlanOnly, normalizedPermissionMode]);
+    }, [isPlanOnly, normalizedPermissionMode, supportsPassthroughPermission]);
 
     const permissionModeColor = React.useMemo(() => {
         if (isPlanOnly) return theme.colors.permission.plan;
@@ -732,6 +753,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 return theme.colors.permission.bypass;
             case 'read-only':
                 return theme.colors.permission.readOnly;
+            case 'passthrough':
             case 'default':
             default:
                 return theme.colors.button.secondary.tint;
@@ -747,11 +769,33 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 return 'create-outline' as const;
             case 'bypass':
                 return 'flash-outline' as const;
+            case 'passthrough':
+                return 'settings-outline' as const;
             case 'default':
             default:
                 return 'shield-checkmark-outline' as const;
         }
     }, [isPlanOnly, normalizedPermissionMode]);
+    const permissionRows = React.useMemo(() => {
+        const passthroughRows: PermissionOverlayRow[] = supportsPassthroughPermission
+            ? [{
+                kind: 'mode',
+                value: 'passthrough',
+                label: t('agentInput.codexPermissionMode.default'),
+                hint: t('agentInput.permissionMode.useCliConfig'),
+                icon: 'settings-outline',
+            }]
+            : [];
+        const rows: PermissionOverlayRow[] = [
+            { kind: 'mode', value: 'default', label: t('agentInput.permissionMode.default'), hint: t('agentInput.permissionMode.askEveryAction'), icon: 'shield-checkmark-outline' },
+            ...passthroughRows,
+            { kind: 'plan', label: t('agentInput.permissionMode.plan'), hint: t('agentInput.permissionMode.planOnly'), icon: 'list-outline' },
+            { kind: 'mode', value: 'allow-edits', label: t('agentInput.permissionMode.acceptEdits'), hint: t('agentInput.permissionMode.autoApproveEdits'), icon: 'create-outline' },
+            { kind: 'mode', value: 'read-only', label: t('agentInput.codexPermissionMode.readOnly'), hint: t('agentInput.permissionMode.readOnlyTools'), icon: 'eye-outline' },
+            { kind: 'mode', value: 'bypass', label: t('agentInput.permissionMode.bypassPermissions'), hint: t('agentInput.permissionMode.autoApproveAll'), icon: 'flash-outline' },
+        ];
+        return rows;
+    }, [supportsPassthroughPermission]);
 
     const effectiveEffortLabel: string = React.useMemo(() => {
         if (!props.effortMode) {
@@ -855,7 +899,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             }
             // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: CanonicalPermissionMode[] = ['default', 'read-only', 'allow-edits', 'bypass'];
+                const modeOrder: CanonicalPermissionMode[] = supportsPassthroughPermission
+                    ? ['default', 'passthrough', 'read-only', 'allow-edits', 'bypass']
+                    : ['default', 'read-only', 'allow-edits', 'bypass'];
                 const currentIndex = modeOrder.indexOf(normalizedPermissionMode);
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
@@ -865,7 +911,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, normalizedPermissionMode, props.onPermissionModeChange]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.value, props.onSend, normalizedPermissionMode, props.onPermissionModeChange, supportsPassthroughPermission]);
 
 
 
@@ -913,13 +959,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         <Text style={styles.overlaySectionTitle}>
                                             {t('agentInput.permissionMode.title')}
                                         </Text>
-                                        {([
-                                            { kind: 'mode', value: 'default', label: t('agentInput.permissionMode.default'), hint: t('agentInput.permissionMode.askEveryAction'), icon: 'shield-checkmark-outline' },
-                                            { kind: 'plan', label: t('agentInput.permissionMode.plan'), hint: t('agentInput.permissionMode.planOnly'), icon: 'list-outline' },
-                                            { kind: 'mode', value: 'allow-edits', label: t('agentInput.permissionMode.acceptEdits'), hint: t('agentInput.permissionMode.autoApproveEdits'), icon: 'create-outline' },
-                                            { kind: 'mode', value: 'read-only', label: t('agentInput.codexPermissionMode.readOnly'), hint: t('agentInput.permissionMode.readOnlyTools'), icon: 'eye-outline' },
-                                            { kind: 'mode', value: 'bypass', label: t('agentInput.permissionMode.bypassPermissions'), hint: t('agentInput.permissionMode.autoApproveAll'), icon: 'flash-outline' },
-                                        ] as const).map((row) => {
+                                        {permissionRows.map((row) => {
                                             if (row.kind === 'plan' && !props.onPlanOnlyChange) return null;
                                             const isSelected = row.kind === 'plan' ? isPlanOnly : !isPlanOnly && normalizedPermissionMode === row.value;
                                             return (

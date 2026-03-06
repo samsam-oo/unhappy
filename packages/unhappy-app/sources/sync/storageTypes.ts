@@ -117,6 +117,7 @@ export interface Session {
     | 'acceptEdits'
     | 'bypassPermissions'
     | 'plan'
+    | 'passthrough'
     | 'read-only'
     | 'safe-yolo'
     | 'yolo'

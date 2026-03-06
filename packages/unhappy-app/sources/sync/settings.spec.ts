@@ -509,8 +509,8 @@ describe('settings', () => {
             expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
         });
 
-        it('accepts all 7 permission modes', () => {
-            const modes = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'];
+        it('accepts all supported permission modes', () => {
+            const modes = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'passthrough', 'read-only', 'safe-yolo', 'yolo'];
             modes.forEach(mode => {
                 const profile = {
                     id: crypto.randomUUID(),
