@@ -37,6 +37,7 @@ interface AgentInputProps {
     planOnly?: boolean;
     onPlanOnlyChange?: (planOnly: boolean) => void;
     modelMode?: string | null;
+    activeModelMode?: string | null;
     onModelModeChange?: (mode: string | null) => void;
     effortMode?: ReasoningEffortMode | null;
     onEffortModeChange?: (mode: ReasoningEffortMode | null) => void;
@@ -521,14 +522,20 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const [isLoadingModels, setIsLoadingModels] = React.useState(false);
     const [modelLoadError, setModelLoadError] = React.useState<string | null>(null);
     const isResolvingModel = !!props.onModelModeChange && isLoadingModels && !availableModels;
+    const effectiveModelMode = React.useMemo(() => {
+        const explicit = typeof props.modelMode === 'string' ? props.modelMode.trim() : '';
+        if (explicit && explicit !== 'default') return explicit;
+        const active = typeof props.activeModelMode === 'string' ? props.activeModelMode.trim() : '';
+        return active || null;
+    }, [props.activeModelMode, props.modelMode]);
     const ensureValidSelectedModel = React.useCallback((models: string[]) => {
         if (!props.onModelModeChange) return;
         if (!models || models.length === 0) return;
-        const current = typeof props.modelMode === 'string' ? props.modelMode.trim() : '';
+        const current = effectiveModelMode ?? '';
         if (!current || current === 'default' || !models.includes(current)) {
             props.onModelModeChange(models[0]);
         }
-    }, [props.onModelModeChange, props.modelMode]);
+    }, [effectiveModelMode, props.onModelModeChange]);
 
     // Prevent cross-session/provider stale lists from sticking around.
     React.useEffect(() => {
@@ -646,7 +653,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         ensureValidSelectedModel(availableModels);
     }, [
         props.onModelModeChange,
-        props.modelMode,
+        effectiveModelMode,
         isLoadingModels,
         modelLoadError,
         availableModels,
@@ -1082,7 +1089,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         ) : (
                                             <>
                                                 {(availableModels || []).map((model) => {
-                                                    const isSelected = props.modelMode === model;
+                                                    const isSelected = effectiveModelMode === model;
                                                     return (
                                                         <Pressable
                                                             key={model}
@@ -1600,8 +1607,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         }} numberOfLines={1}>
                                             {isLoadingModels && !availableModels
                                                 ? t('common.loading')
-                                                : (props.modelMode && props.modelMode !== 'default'
-                                                    ? props.modelMode
+                                                : (effectiveModelMode
+                                                    ? effectiveModelMode
                                                     : t('agentInput.model.selectModel'))}
                                         </Text>
                                         <Ionicons

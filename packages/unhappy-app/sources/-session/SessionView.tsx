@@ -551,7 +551,11 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const planOnly = permissionPolicy.planOnly;
     // Get model mode from session object - for Gemini sessions use explicit model, default to gemini-2.5-pro
     const isGeminiSession = session.metadata?.flavor === 'gemini';
-    const modelMode: string | null = session.modelMode ?? (isGeminiSession ? 'gemini-2.5-pro' : null);
+    const modelMode: string | null = session.modelMode ?? null;
+    const activeModelMode: string | null =
+        modelMode ??
+        session.agentState?.mode?.model ??
+        (isGeminiSession ? 'gemini-2.5-pro' : null);
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const [codexSteerMode, setCodexSteerMode] = React.useState<'queue' | 'immediate'>('queue');
@@ -704,6 +708,7 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             planOnly={planOnly}
             onPlanOnlyChange={updatePlanOnly}
             modelMode={modelMode}
+            activeModelMode={activeModelMode}
             onModelModeChange={updateModelMode}
             effortMode={session.effortMode ?? null}
             onEffortModeChange={updateEffortMode}

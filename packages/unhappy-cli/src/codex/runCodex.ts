@@ -965,8 +965,14 @@ export async function runCodex(opts: {
   // Register abort handler
   session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
-  // Model listing for UI dropdown (best-effort; cached per session process).
+  // Model listing for UI dropdown (best-effort; cached briefly per session process).
+  const LIST_CODEX_MODELS_TTL_MS = 5 * 60 * 1000;
+  const LIST_CODEX_MODELS_ERROR_TTL_MS = 15 * 1000;
   let cachedModelList: Awaited<ReturnType<typeof listCodexModels>> | null = null;
+  let cachedModelListExpiresAt = 0;
+  let modelListInFlight:
+    | Promise<Awaited<ReturnType<typeof listCodexModels>>>
+    | null = null;
   const normalizeCodexReasoningEfforts = (values: string[] | undefined): string[] => {
     const deduped: string[] = [];
     const seen = new Set<string>();
@@ -982,30 +988,46 @@ export async function runCodex(opts: {
     }
     return ['auto', ...withoutAuto];
   };
-  session.rpcHandlerManager.registerHandler('list-models', async () => {
-    if (cachedModelList?.success && cachedModelList.models.length > 0) {
-      return {
-        ...cachedModelList,
-        reasoningEfforts: normalizeCodexReasoningEfforts(
-          cachedModelList.reasoningEfforts,
-        ),
-      };
-    }
-    cachedModelList = await listCodexModels();
-    // Guard: never cache an "empty success" result; UI should show an error instead.
-    if (cachedModelList.success && cachedModelList.models.length === 0) {
-      cachedModelList = {
-        success: false,
-        error: 'No Codex models returned',
-      };
-    }
-    if (!cachedModelList.success) {
+  const getCachedModelList = async () => {
+    const now = Date.now();
+    if (cachedModelList && cachedModelListExpiresAt > now) {
       return cachedModelList;
     }
+    if (modelListInFlight) {
+      return await modelListInFlight;
+    }
+
+    modelListInFlight = (async () => {
+      let nextModelList = await listCodexModels();
+      // Guard: never cache an "empty success" result; UI should show an error instead.
+      if (nextModelList.success && nextModelList.models.length === 0) {
+        nextModelList = {
+          success: false,
+          error: 'No Codex models returned',
+        };
+      }
+      cachedModelList = nextModelList;
+      cachedModelListExpiresAt =
+        Date.now() +
+        (nextModelList.success
+          ? LIST_CODEX_MODELS_TTL_MS
+          : LIST_CODEX_MODELS_ERROR_TTL_MS);
+      return nextModelList;
+    })().finally(() => {
+      modelListInFlight = null;
+    });
+
+    return await modelListInFlight;
+  };
+  session.rpcHandlerManager.registerHandler('list-models', async () => {
+    const modelList = await getCachedModelList();
+    if (!modelList.success) {
+      return modelList;
+    }
     return {
-      ...cachedModelList,
+      ...modelList,
       reasoningEfforts: normalizeCodexReasoningEfforts(
-        cachedModelList.reasoningEfforts,
+        modelList.reasoningEfforts,
       ),
     };
   });

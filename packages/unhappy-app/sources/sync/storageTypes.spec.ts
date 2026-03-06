@@ -2,6 +2,24 @@ import { describe, it, expect } from 'vitest';
 import { AgentStateSchema, MachineMetadataSchema } from './storageTypes';
 
 describe('AgentStateSchema', () => {
+    it('preserves provider mode metadata for active sessions', () => {
+        const parsed = AgentStateSchema.parse({
+            mode: {
+                model: 'gpt-5.4-codex',
+                effort: 'high',
+                permissionMode: 'default',
+                fallbackModel: 'gpt-5.3-codex',
+            },
+        });
+
+        expect(parsed.mode).toEqual({
+            model: 'gpt-5.4-codex',
+            effort: 'high',
+            permissionMode: 'default',
+            fallbackModel: 'gpt-5.3-codex',
+        });
+    });
+
     it('maps completedRequests.allowTools -> allowedTools (backward compatible)', () => {
         const parsed = AgentStateSchema.parse({
             completedRequests: {
