@@ -118,26 +118,6 @@ public enum MachinesAPI {
         return request
     }
 
-    public static func makeArchiveProjectRequest(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        path: String
-    ) throws -> URLRequest {
-        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedMachineID.isEmpty else {
-            throw MachinesAPIError.missingMachineID
-        }
-        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedPath.isEmpty else {
-            throw MachinesAPIError.missingPath
-        }
-        let archiveProjectURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/projects/archive")
-        var request = try makeRequest(url: archiveProjectURL, method: "POST", token: token)
-        request.httpBody = try JSONEncoder().encode(["path": normalizedPath])
-        return request
-    }
-
     public static func makeRemoveProjectRequest(
         serverURL: URL,
         token: String,
@@ -718,15 +698,6 @@ public protocol MachineProjectOpening: Sendable {
     ) async throws -> APIMachineCommandResult
 }
 
-public protocol MachineProjectArchiving: Sendable {
-    func archiveProject(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        path: String
-    ) async throws -> APIMachineCommandResult
-}
-
 public protocol MachineProjectRemoving: Sendable {
     func removeProject(
         serverURL: URL,
@@ -789,7 +760,7 @@ public struct APIMachineModelCapability: Equatable, Sendable {
     }
 }
 
-public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing, MachineProjectsFetching, MachineProjectOpening, MachineProjectArchiving, MachineProjectRemoving {
+public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing, MachineProjectsFetching, MachineProjectOpening, MachineProjectRemoving {
     let rpcDirectoryService: any MachineRPCDirectoryListing
 
     public init(

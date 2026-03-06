@@ -97,6 +97,13 @@ public struct SessionsView: View {
         }
     }
 
+    private func reloadSessions() async {
+        await viewModel.load(
+            serverURLString: serverURLString,
+            token: token
+        )
+    }
+
     @ViewBuilder
     private var sidebarContent: some View {
         VStack(spacing: 0) {
@@ -104,15 +111,20 @@ public struct SessionsView: View {
                 ProgressView("Loading sessions…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Unable to load sessions")
-                        .font(.headline)
-                    Text(error)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Unable to load sessions")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .padding(24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .refreshable {
+                    await reloadSessions()
+                }
             } else if !hasSidebarRows {
                 emptySidebarState
             } else {
@@ -124,28 +136,33 @@ public struct SessionsView: View {
     }
 
     private var emptySidebarState: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "sparkles.rectangle.stack")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text("No projects yet")
-                .font(.headline)
-            Text("Add a project to start syncing its sessions.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button {
-                isPresentingProjectPicker = true
-            } label: {
-                Label("Add Project", systemImage: "plus.circle.fill")
-                    .font(.subheadline.weight(.semibold))
+        ScrollView {
+            VStack(spacing: 14) {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text("No projects yet")
+                    .font(.headline)
+                Text("Add a project to start syncing its sessions.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button {
+                    isPresentingProjectPicker = true
+                } label: {
+                    Label("Add Project", systemImage: "plus.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.top, 2)
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 2)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .padding(.top, 24)
+            .padding(.horizontal, 20)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, 24)
-        .padding(.horizontal, 20)
+        .refreshable {
+            await reloadSessions()
+        }
     }
 
     private var sessionsNavigationList: some View {

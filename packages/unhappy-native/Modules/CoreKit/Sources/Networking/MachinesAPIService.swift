@@ -47,29 +47,6 @@ extension URLSessionMachinesService {
         return try MachinesAPI.decodeCommandResponse(data)
     }
 
-    public func archiveProject(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        path: String
-    ) async throws -> APIMachineCommandResult {
-        let request = try MachinesAPI.makeArchiveProjectRequest(
-            serverURL: serverURL,
-            token: token,
-            machineID: machineID,
-            path: path
-        )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-        return try MachinesAPI.decodeCommandResponse(data)
-    }
-
     public func removeProject(
         serverURL: URL,
         token: String,

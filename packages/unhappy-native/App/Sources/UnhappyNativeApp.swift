@@ -107,7 +107,6 @@ struct UnhappyNativeApp: App {
         let sessionMessagesLoader = SessionMessagesLoadUseCase(service: sessionsService)
         let sessionProjectsLoader = SessionProjectsLoadUseCase(service: machinesService)
         let sessionProjectOpener = SessionProjectOpenUseCase(service: machinesService)
-        let sessionProjectArchiver = SessionProjectArchiveUseCase(service: machinesService)
         let sessionProjectRemover = SessionProjectRemoveUseCase(service: machinesService)
         let sessionModelsLoader = SessionModelsLoadUseCase(service: sessionsService)
         let sessionSpawnUseCase = SessionSpawnUseCase(service: sessionsService)
@@ -136,7 +135,6 @@ struct UnhappyNativeApp: App {
                 messageLoader: sessionMessagesLoader,
                 projectsLoader: sessionProjectsLoader,
                 projectOpener: sessionProjectOpener,
-                projectArchiver: sessionProjectArchiver,
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
                 upstreamSessionLinker: newSessionSpawner,

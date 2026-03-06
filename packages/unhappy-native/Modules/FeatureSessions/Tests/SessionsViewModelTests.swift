@@ -287,7 +287,7 @@ struct SessionsViewModelTests {
         let projectsLoader = SequenceProjectsLoader(
             results: [
                 .success([project]),
-                .success([]),
+                .success([project]),
             ]
         )
         let model = SessionsViewModel(

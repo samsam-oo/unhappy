@@ -22,7 +22,6 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var isLoadingProjects = false
     @Published public private(set) var projectsErrorMessage: String?
     @Published public private(set) var openingProjectID: String?
-    @Published public private(set) var archivingProjectID: String?
     @Published public private(set) var removingProjectID: String?
     @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
     @Published public private(set) var isLoadingUpstreamSessions = false
@@ -59,7 +58,6 @@ public final class SessionsViewModel: ObservableObject {
     private let messageLoader: any SessionsMessagesLoading
     private let projectsLoader: (any SessionProjectsLoadingAction)?
     private let projectOpener: (any SessionProjectOpeningAction)?
-    private let projectArchiver: (any SessionProjectArchivingAction)?
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
     private let upstreamSessionLinker: (any NewSessionSpawningAction)?
@@ -84,7 +82,6 @@ public final class SessionsViewModel: ObservableObject {
         messageLoader: any SessionsMessagesLoading,
         projectsLoader: (any SessionProjectsLoadingAction)? = nil,
         projectOpener: (any SessionProjectOpeningAction)? = nil,
-        projectArchiver: (any SessionProjectArchivingAction)? = nil,
         projectRemover: (any SessionProjectRemovingAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
         upstreamSessionLinker: (any NewSessionSpawningAction)? = nil,
@@ -103,7 +100,6 @@ public final class SessionsViewModel: ObservableObject {
         self.messageLoader = messageLoader
         self.projectsLoader = projectsLoader
         self.projectOpener = projectOpener
-        self.projectArchiver = projectArchiver
         self.projectRemover = projectRemover
         self.upstreamSessionsLoader = upstreamSessionsLoader
         self.upstreamSessionLinker = upstreamSessionLinker
@@ -188,10 +184,6 @@ public final class SessionsViewModel: ObservableObject {
 
     public func isSendingMessage(sessionID: String) -> Bool {
         sendingMessageSessionID == sessionID
-    }
-
-    public func isArchiving(projectID: String) -> Bool {
-        archivingProjectID == projectID
     }
 
     public func isRemoving(projectID: String) -> Bool {
@@ -524,42 +516,6 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
-    public func archiveProject(
-        machineID: String,
-        projectPath: String,
-        serverURLString: String,
-        token: String
-    ) async {
-        guard let projectArchiver else {
-            projectsErrorMessage = "Project archiving is unavailable in this build"
-            return
-        }
-
-        let projectID = "\(machineID)|\(projectPath)"
-        archivingProjectID = projectID
-        defer {
-            if archivingProjectID == projectID {
-                archivingProjectID = nil
-            }
-        }
-
-        do {
-            _ = try await projectArchiver.archiveProject(
-                serverURLString: serverURLString,
-                token: token,
-                machineID: machineID,
-                path: projectPath
-            )
-            projects.removeAll { $0.id == projectID }
-            await loadProjects(
-                serverURLString: serverURLString,
-                token: token
-            )
-        } catch {
-            projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
     @discardableResult
     public func removeProject(
         machineID: String,
@@ -588,10 +544,7 @@ public final class SessionsViewModel: ObservableObject {
                 path: projectPath
             )
             projects.removeAll { $0.id == projectID }
-            await loadProjects(
-                serverURLString: serverURLString,
-                token: token
-            )
+            projectsErrorMessage = nil
             return true
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
