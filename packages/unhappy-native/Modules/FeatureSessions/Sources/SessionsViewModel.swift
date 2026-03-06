@@ -531,6 +531,7 @@ public final class SessionsViewModel: ObservableObject {
     public func sendMessage(
         for sessionID: String,
         text: String,
+        attachments: [SessionComposerImageAttachment] = [],
         steerMode: APISessionSteerMode,
         permissionMode: APISessionMessagePermissionMode? = nil,
         modelOverride: SessionMessageModelOverride = .inherit,
@@ -560,6 +561,7 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 sessionID: sessionID,
                 text: text,
+                attachments: attachments,
                 steerMode: steerMode,
                 permissionMode: permissionMode,
                 modelOverride: modelOverride,
@@ -573,7 +575,11 @@ public final class SessionsViewModel: ObservableObject {
                 sentText: text,
                 response: result
             )
-            appendOptimisticUserMessageIfPossible(for: sessionID, text: text)
+            appendOptimisticUserMessageIfPossible(
+                for: sessionID,
+                text: text,
+                attachments: attachments
+            )
             return true
         } catch {
             sendMessageStatusMessage = nil
@@ -858,10 +864,14 @@ public final class SessionsViewModel: ObservableObject {
         sessionsNormalizeMessageOrder(messages)
     }
 
-    private func appendOptimisticUserMessageIfPossible(for sessionID: String, text: String) {
+    private func appendOptimisticUserMessageIfPossible(
+        for sessionID: String,
+        text: String,
+        attachments: [SessionComposerImageAttachment]
+    ) {
         guard selectedSessionID == sessionID else { return }
         let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedText.isEmpty else { return }
+        guard !normalizedText.isEmpty || !attachments.isEmpty else { return }
 
         let currentMessages = messagesBySessionID[sessionID] ?? selectedSessionMessages
         let timestamp = Date().timeIntervalSince1970
@@ -872,7 +882,10 @@ public final class SessionsViewModel: ObservableObject {
             localId: optimisticID,
             content: APIEncryptedMessageContent(
                 t: "optimistic-user",
-                c: makeOptimisticUserPayload(text: normalizedText)
+                c: makeOptimisticUserPayload(
+                    text: normalizedText,
+                    imageDataURLs: attachments.map(\.dataURLString)
+                )
             ),
             createdAt: timestamp,
             updatedAt: timestamp
@@ -882,8 +895,8 @@ public final class SessionsViewModel: ObservableObject {
         setSelectedSessionMessagesIfNeeded(normalizedMessages)
     }
 
-    private func makeOptimisticUserPayload(text: String) -> String {
-        sessionsMakeOptimisticUserPayload(text: text)
+    private func makeOptimisticUserPayload(text: String, imageDataURLs: [String]) -> String {
+        sessionsMakeOptimisticUserPayload(text: text, imageDataURLs: imageDataURLs)
     }
 
     private func setSelectedSessionMessagesIfNeeded(_ messages: [APISessionMessage]) {

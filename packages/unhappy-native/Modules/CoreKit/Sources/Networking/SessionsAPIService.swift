@@ -362,6 +362,7 @@ extension URLSessionSessionsService {
         token: String,
         sessionID: String,
         text: String,
+        imageDataURLs: [String],
         steerMode: APISessionSteerMode?,
         permissionMode: APISessionMessagePermissionMode?,
         model: String?,
@@ -370,11 +371,20 @@ extension URLSessionSessionsService {
         resetReasoningEffort: Bool
     ) async throws -> APISessionSendMessageResult {
         let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedText.isEmpty else {
+        let normalizedImageDataURLs = imageDataURLs
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !normalizedText.isEmpty || !normalizedImageDataURLs.isEmpty else {
             throw SessionsAPIError.missingMessageText
         }
 
-        var params: [String: Any] = ["text": normalizedText]
+        var params: [String: Any] = [:]
+        if !normalizedText.isEmpty {
+            params["text"] = normalizedText
+        }
+        if !normalizedImageDataURLs.isEmpty {
+            params["images"] = normalizedImageDataURLs
+        }
         if let steerMode {
             params["steerMode"] = steerMode.rawValue
         }

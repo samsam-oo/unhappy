@@ -7,6 +7,7 @@ public protocol SessionMessageSendingAction: Sendable {
         token: String,
         sessionID: String,
         text: String,
+        attachments: [SessionComposerImageAttachment],
         steerMode: APISessionSteerMode,
         permissionMode: APISessionMessagePermissionMode?,
         modelOverride: SessionMessageModelOverride,
@@ -43,6 +44,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
         let token: String
         let sessionID: String
         let text: String
+        let attachmentIDs: [String]
         let steerMode: APISessionSteerMode
         let permissionMode: APISessionMessagePermissionMode?
         let modelOverride: SessionMessageModelOverride
@@ -61,6 +63,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
         token: String,
         sessionID: String,
         text: String,
+        attachments: [SessionComposerImageAttachment] = [],
         steerMode: APISessionSteerMode,
         permissionMode: APISessionMessagePermissionMode? = nil,
         modelOverride: SessionMessageModelOverride = .inherit,
@@ -87,7 +90,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
         }
 
         let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedText.isEmpty else {
+        guard !normalizedText.isEmpty || !attachments.isEmpty else {
             throw SessionMessageSendError.missingMessageText
         }
 
@@ -96,6 +99,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
             token: normalizedToken,
             sessionID: normalizedSessionID,
             text: normalizedText,
+            attachmentIDs: attachments.map(\.id),
             steerMode: steerMode,
             permissionMode: permissionMode,
             modelOverride: modelOverride,
@@ -135,6 +139,7 @@ public actor SessionMessageSendUseCase: SessionMessageSendingAction {
                 token: normalizedToken,
                 sessionID: normalizedSessionID,
                 text: normalizedText,
+                imageDataURLs: attachments.map(\.dataURLString),
                 steerMode: steerMode,
                 permissionMode: permissionMode,
                 model: modelValue,

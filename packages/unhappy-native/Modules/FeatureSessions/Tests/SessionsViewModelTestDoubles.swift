@@ -303,6 +303,7 @@ struct MockSessionMessageSender: SessionMessageSendingAction {
         token: String,
         sessionID: String,
         text: String,
+        attachments: [SessionComposerImageAttachment],
         steerMode: APISessionSteerMode,
         permissionMode: APISessionMessagePermissionMode?,
         modelOverride: SessionMessageModelOverride,

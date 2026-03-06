@@ -281,17 +281,90 @@ export const CreateSessionResponseSchema = z.object({
 
 export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
+const UserTextContentSchema = z.object({
+  type: z.literal('text'),
+  text: z.string()
+});
+
+const UserStructuredTextItemSchema = z.object({
+  type: z.enum(['text', 'input_text']),
+  text: z.string().optional(),
+  input_text: z.string().optional(),
+}).refine((value) => {
+  const text = typeof value.text === 'string' ? value.text.trim() : '';
+  const inputText = typeof value.input_text === 'string' ? value.input_text.trim() : '';
+  return text.length > 0 || inputText.length > 0;
+}, {
+  message: 'User text content item must include text',
+});
+
+const UserStructuredImageItemSchema = z.object({
+  type: z.enum(['input_image', 'image_url', 'image']),
+  image_url: z.string().optional(),
+  url: z.string().optional(),
+}).refine((value) => {
+  const imageURL = typeof value.image_url === 'string' ? value.image_url.trim() : '';
+  const url = typeof value.url === 'string' ? value.url.trim() : '';
+  return imageURL.length > 0 || url.length > 0;
+}, {
+  message: 'User image content item must include a URL',
+});
+
+const UserStructuredContentItemSchema = z.union([
+  UserStructuredTextItemSchema,
+  UserStructuredImageItemSchema,
+]);
+
 export const UserMessageSchema = z.object({
   role: z.literal('user'),
-  content: z.object({
-    type: z.literal('text'),
-    text: z.string()
-  }),
+  content: z.union([
+    UserTextContentSchema,
+    z.array(UserStructuredContentItemSchema).min(1),
+  ]),
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
 })
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
+
+export function extractUserMessageText(content: UserMessage['content']): string {
+  if (!Array.isArray(content)) {
+    return typeof content.text === 'string' ? content.text : '';
+  }
+  return content
+    .map((item) => {
+      if (item.type === 'text' || item.type === 'input_text') {
+        if (typeof item.text === 'string' && item.text.trim()) {
+          return item.text;
+        }
+        if (typeof item.input_text === 'string' && item.input_text.trim()) {
+          return item.input_text;
+        }
+      }
+      return '';
+    })
+    .filter((item) => item.trim().length > 0)
+    .join('\n');
+}
+
+export function extractUserMessageImageUrls(content: UserMessage['content']): string[] {
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  return content
+    .map((item) => {
+      if (item.type === 'input_image' || item.type === 'image_url' || item.type === 'image') {
+        if (typeof item.image_url === 'string' && item.image_url.trim()) {
+          return item.image_url;
+        }
+        if (typeof item.url === 'string' && item.url.trim()) {
+          return item.url;
+        }
+      }
+      return '';
+    })
+    .filter((item) => item.trim().length > 0);
+}
 
 export const AgentMessageSchema = z.object({
   role: z.literal('agent'),

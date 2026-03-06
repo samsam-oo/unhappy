@@ -1,5 +1,6 @@
 import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
+import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
@@ -435,6 +436,9 @@ export async function runCodex(opts: {
     model?: string;
     effort?: ReasoningEffortMode;
     effortResetToDefault?: boolean;
+    inputText?: string;
+    imageDataURLs?: string[];
+    messageKey?: string;
   }
   interface QueuedMessage {
     message: string;
@@ -558,6 +562,9 @@ export async function runCodex(opts: {
       model: mode.model,
       effort: mode.effort,
       effortResetToDefault: mode.effortResetToDefault,
+      inputText: mode.inputText,
+      imageDataURLs: mode.imageDataURLs,
+      messageKey: mode.messageKey,
     }),
   );
   let thinking = false;
@@ -720,19 +727,46 @@ export async function runCodex(opts: {
       );
     }
 
+    const structuredContent = Array.isArray(message.content)
+      ? message.content
+      : null;
+    const imageDataURLs =
+      structuredContent !== null ? extractUserMessageImageUrls(message.content) : [];
+    const textParts = structuredContent
+      ? structuredContent
+          .map(collectTextFromUserContentItem)
+          .filter((value): value is string => !!value)
+      : [];
+    const inputText =
+      structuredContent !== null
+        ? textParts.join('\n').trim()
+        : extractUserMessageText(message.content);
+    const userText = (() => {
+      const normalizedText = inputText.trim();
+      if (imageDataURLs.length === 0) {
+        return normalizedText;
+      }
+      if (normalizedText) {
+        return `${normalizedText} [+${imageDataURLs.length} image${imageDataURLs.length === 1 ? '' : 's'}]`;
+      }
+      return `[${imageDataURLs.length} image${imageDataURLs.length === 1 ? '' : 's'}]`;
+    })();
     const enhancedMode: EnhancedMode = {
       permissionMode: messagePermissionMode || 'default',
       model: messageModel,
       effort: messageEffort,
       effortResetToDefault: messageEffortResetToDefault,
+      inputText,
+      imageDataURLs: imageDataURLs.length > 0 ? imageDataURLs : undefined,
+      messageKey: imageDataURLs.length > 0 ? randomUUID() : undefined,
     };
 
-    const userText = message.content.text;
     const steerMode =
       message.meta?.steerMode === 'immediate' ? 'immediate' : 'queue';
     const shouldTrySteer =
       steerMode === 'immediate' &&
       message.meta?.sentFrom !== 'native' &&
+      imageDataURLs.length === 0 &&
       typeof userText === 'string' &&
       userText.trim().length > 0 &&
       thinking &&
@@ -1756,6 +1790,44 @@ export async function runCodex(opts: {
     }
     return 'command';
   };
+  const collectTextFromUserContentItem = (item: any): string | null => {
+    if (!item || typeof item !== 'object') return null;
+    const itemType =
+      typeof item.type === 'string' ? item.type.trim().toLowerCase() : '';
+    if (itemType !== 'text' && itemType !== 'input_text') {
+      return null;
+    }
+    const text =
+      typeof item.text === 'string'
+        ? item.text
+        : typeof item.input_text === 'string'
+          ? item.input_text
+          : '';
+    const normalized = text.trim();
+    return normalized || null;
+  };
+  const buildCodexTurnInputs = (
+    inputText: string,
+    imageDataURLs?: string[],
+  ): Array<Record<string, unknown>> => {
+    const inputs: Array<Record<string, unknown>> = [];
+    const normalizedText = inputText.trim();
+    if (normalizedText) {
+      inputs.push({
+        type: 'text',
+        text: normalizedText,
+      });
+    }
+    for (const imageURL of imageDataURLs ?? []) {
+      const normalized = imageURL.trim();
+      if (!normalized) continue;
+      inputs.push({
+        type: 'image',
+        url: normalized,
+      });
+    }
+    return inputs;
+  };
   client.setHandler((msg: any) => {
     // Avoid logging the full raw Codex event payloads (can be huge and include prompt contents).
     const msgType = typeof msg?.type === 'string' ? msg.type : 'unknown';
@@ -2255,6 +2327,14 @@ export async function runCodex(opts: {
       messageBuffer.addMessage(message.message, 'user');
 
       try {
+        const turnInputText =
+          typeof message.mode.inputText === 'string'
+            ? message.mode.inputText
+            : message.message;
+        const turnInputs = buildCodexTurnInputs(
+          turnInputText,
+          message.mode.imageDataURLs,
+        );
         const permissionOverrides = mapPermissionModeToCodexOverrides(
           message.mode.permissionMode,
         );
@@ -2265,7 +2345,7 @@ export async function runCodex(opts: {
         if (!wasCreated) {
           const startConfig: CodexSessionConfig = {
             prompt: (() => {
-              const base = message.message;
+              const base = turnInputText;
               // NOTE: TS control-flow can't see assignments from the onUserMessage callback,
               // so it may incorrectly narrow these to `undefined` here. Normalize explicitly.
               const instructionParts = [
@@ -2290,6 +2370,7 @@ export async function runCodex(opts: {
               }
               return base + maybeInject;
             })(),
+            initialInputs: turnInputs,
             config: {
               mcp_servers: mcpServers,
               ...(codexReasoningEffort !== undefined
@@ -2381,7 +2462,7 @@ export async function runCodex(opts: {
           wasCreated = true;
           first = false;
         } else {
-          const response = await client.continueSession(message.message, {
+          const response = await client.continueSession(turnInputs, {
             signal: abortController.signal,
             overrides: {
               approvalPolicy,

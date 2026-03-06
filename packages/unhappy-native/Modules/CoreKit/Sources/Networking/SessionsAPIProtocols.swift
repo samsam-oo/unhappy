@@ -95,6 +95,7 @@ public protocol SessionMessaging: Sendable {
         token: String,
         sessionID: String,
         text: String,
+        imageDataURLs: [String],
         steerMode: APISessionSteerMode?,
         permissionMode: APISessionMessagePermissionMode?,
         model: String?,

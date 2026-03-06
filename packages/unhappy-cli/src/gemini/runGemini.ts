@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import React from 'react';
 
 import { ApiClient } from '@/api/api';
+import { extractUserMessageText } from '@/api/types';
 import type { ACPMessageData, ApiSessionClient } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
@@ -321,7 +322,7 @@ export async function runGemini(opts: {
 
     // Build the full prompt with appendSystemPrompt if provided
     // Only include system prompt for the first message to avoid forcing tool usage on every message
-    const originalUserMessage = message.content.text;
+    const originalUserMessage = extractUserMessageText(message.content);
     let fullPrompt = originalUserMessage;
     if (isFirstMessage && message.meta?.appendSystemPrompt) {
       // Prepend system prompt to user message only for first message

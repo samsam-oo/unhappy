@@ -1,6 +1,8 @@
 import SwiftUI
 import CoreKit
 import FeatureSessionTools
+import PhotosUI
+import UniformTypeIdentifiers
 
 extension SessionDetailView {
     var sessionSectionContent: some View {
@@ -209,6 +211,9 @@ extension SessionDetailView {
             selectedModelOverrideOption: selectedModelOverrideOption,
             customModelOverrideOption: Self.customModelOverrideOption,
             sendErrorMessage: viewModel.sendMessageErrorMessage,
+            supportsImageAttachments: parsedSessionFlavor == .codex,
+            imageAttachments: draftImageAttachments,
+            photoPickerSelection: $selectedImagePickerItems,
             focusedComposerField: $focusedComposerField,
             draftMessage: $draftMessage,
             modelOverrideDraft: $modelOverrideDraft,
@@ -217,6 +222,9 @@ extension SessionDetailView {
             },
             onSend: {
                 submitDraftMessage(with: .immediate)
+            },
+            onRemoveImageAttachment: { attachmentID in
+                draftImageAttachments.removeAll { $0.id == attachmentID }
             },
             onEditQueuedMessage: { queueIndex, fallbackText in
                 let restored = viewModel.takeQueuedComposerMessage(
@@ -231,7 +239,7 @@ extension SessionDetailView {
 
     func submitDraftMessage(with steerMode: APISessionSteerMode) {
         let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || !draftImageAttachments.isEmpty else { return }
         focusedComposerField = nil
 
         let modelOverride: SessionMessageModelOverride
@@ -260,6 +268,7 @@ extension SessionDetailView {
             let sent = await viewModel.sendMessage(
                 for: session.id,
                 text: text,
+                attachments: draftImageAttachments,
                 steerMode: steerMode,
                 permissionMode: selectedPermissionModeOverride,
                 modelOverride: modelOverride,
@@ -271,8 +280,61 @@ extension SessionDetailView {
                 shouldFollowTranscript = true
                 scrollToBottomRequestID = UUID()
                 draftMessage = ""
+                draftImageAttachments = []
+                selectedImagePickerItems = []
             }
         }
+    }
+
+    func handleSelectedImagePickerItemsChange(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty else { return }
+        Task {
+            var nextAttachments = draftImageAttachments
+            for item in items {
+                guard let data = try? await item.loadTransferable(type: Data.self), !data.isEmpty else {
+                    continue
+                }
+                let mimeType = mimeType(for: item, data: data)
+                let candidate = SessionComposerImageAttachment(data: data, mimeType: mimeType)
+                if nextAttachments.contains(where: { $0.data == candidate.data && $0.mimeType == candidate.mimeType }) {
+                    continue
+                }
+                nextAttachments.append(candidate)
+            }
+            draftImageAttachments = nextAttachments
+            selectedImagePickerItems = []
+        }
+    }
+
+    func mimeType(for item: PhotosPickerItem, data: Data) -> String {
+        if let type = item.supportedContentTypes.first {
+            if type.conforms(to: .png) {
+                return "image/png"
+            }
+            if type.conforms(to: .gif) {
+                return "image/gif"
+            }
+            if type.conforms(to: .heic) || type.conforms(to: .heif) {
+                return "image/heic"
+            }
+            if type.conforms(to: .webP) {
+                return "image/webp"
+            }
+            if type.conforms(to: .jpeg) {
+                return "image/jpeg"
+            }
+        }
+
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            return "image/png"
+        }
+        if data.starts(with: [0x47, 0x49, 0x46]) {
+            return "image/gif"
+        }
+        if data.starts(with: [0xFF, 0xD8, 0xFF]) {
+            return "image/jpeg"
+        }
+        return "image/jpeg"
     }
 
     var supportsReasoningEffortOverride: Bool {

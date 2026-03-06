@@ -151,8 +151,14 @@ export class ApiSessionClient extends EventEmitter {
                 if (command === 'sendMessage') {
                     const textRaw = typeof data?.params?.text === 'string' ? data.params.text : '';
                     const text = textRaw.trim();
-                    if (!text) {
-                        callback({ success: false, error: 'Message text is required' });
+                    const images = Array.isArray(data?.params?.images)
+                        ? data.params.images
+                            .filter((item: unknown): item is string => typeof item === 'string')
+                            .map((item: string) => item.trim())
+                            .filter((item: string) => item.length > 0)
+                        : [];
+                    if (!text && images.length === 0) {
+                        callback({ success: false, error: 'Message text or image is required' });
                         return;
                     }
                     const steerModeRaw = data?.params?.steerMode;
@@ -205,12 +211,24 @@ export class ApiSessionClient extends EventEmitter {
                     }
 
                     const localKey = `native-${randomUUID()}`;
+                    const userContent =
+                        images.length === 0
+                            ? {
+                                type: 'text' as const,
+                                text,
+                            }
+                            : [
+                                ...(text
+                                    ? [{ type: 'text' as const, text }]
+                                    : []),
+                                ...images.map((imageURL: string) => ({
+                                    type: 'input_image' as const,
+                                    image_url: imageURL,
+                                })),
+                            ];
                     const content: UserMessage = {
                         role: 'user',
-                        content: {
-                            type: 'text',
-                            text
-                        },
+                        content: userContent,
                         localKey,
                         meta: {
                             sentFrom: 'native',

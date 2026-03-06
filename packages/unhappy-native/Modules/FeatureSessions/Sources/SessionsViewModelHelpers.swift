@@ -37,14 +37,43 @@ func sessionsNormalizeMessageOrder(_ messages: [APISessionMessage]) -> [APISessi
     }
 }
 
-func sessionsMakeOptimisticUserPayload(text: String) -> String {
-    let payload: [String: Any] = [
-        "role": "user",
-        "content": [
-            "type": "text",
-            "text": text,
-        ],
-    ]
+func sessionsMakeOptimisticUserPayload(text: String, imageDataURLs: [String] = []) -> String {
+    let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let normalizedImageDataURLs = imageDataURLs
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+    let payload: [String: Any]
+    if normalizedImageDataURLs.isEmpty {
+        payload = [
+            "role": "user",
+            "content": [
+                "type": "text",
+                "text": normalizedText,
+            ],
+        ]
+    } else {
+        var content: [[String: Any]] = []
+        if !normalizedText.isEmpty {
+            content.append([
+                "type": "text",
+                "text": normalizedText,
+            ])
+        }
+        content.append(
+            contentsOf: normalizedImageDataURLs.map { imageURL in
+                [
+                    "type": "input_image",
+                    "image_url": imageURL,
+                ]
+            }
+        )
+        payload = [
+            "role": "user",
+            "content": content,
+        ]
+    }
+
     guard JSONSerialization.isValidJSONObject(payload),
           let data = try? JSONSerialization.data(withJSONObject: payload),
           let encodedPayload = String(data: data, encoding: .utf8) else {

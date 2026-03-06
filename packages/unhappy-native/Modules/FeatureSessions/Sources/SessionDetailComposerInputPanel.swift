@@ -1,5 +1,7 @@
 import SwiftUI
 import CoreKit
+import PhotosUI
+import UIKit
 
 struct SessionComposerInputPanel: View {
     let isKeyboardActive: Bool
@@ -10,17 +12,25 @@ struct SessionComposerInputPanel: View {
     let selectedModelOverrideOption: String
     let customModelOverrideOption: String
     let sendErrorMessage: String?
+    let supportsImageAttachments: Bool
+    let imageAttachments: [SessionComposerImageAttachment]
+    let photoPickerSelection: Binding<[PhotosPickerItem]>
     let focusedComposerField: FocusState<SessionDetailView.SessionComposerFocusField?>.Binding
     @Binding var draftMessage: String
     @Binding var modelOverrideDraft: String
     let onQueue: () -> Void
     let onSend: () -> Void
+    let onRemoveImageAttachment: (_ attachmentID: String) -> Void
     let onEditQueuedMessage: (_ queueIndex: Int, _ fallbackText: String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: isKeyboardActive ? 8 : 10) {
             if !queuedComposerMessages.isEmpty {
                 queuePreviewCard
+            }
+
+            if supportsImageAttachments && !imageAttachments.isEmpty {
+                imageAttachmentsRow
             }
 
             composerTextField
@@ -131,6 +141,29 @@ struct SessionComposerInputPanel: View {
 
     private var actionButtonsRow: some View {
         HStack(spacing: 8) {
+            if supportsImageAttachments {
+                PhotosPicker(
+                    selection: photoPickerSelection,
+                    maxSelectionCount: 4,
+                    matching: .images
+                ) {
+                    Label(
+                        imageAttachments.isEmpty ? "Photo" : "\(imageAttachments.count)",
+                        systemImage: "photo.on.rectangle.angled"
+                    )
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(AppPalette.secondaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppPalette.controlSurface)
+                    )
+                }
+                .buttonStyle(PressableScaleButtonStyle())
+                .disabled(isSending)
+            }
+
             Button(action: onQueue) {
                 Label("Queue", systemImage: "clock")
                     .font(.footnote.weight(.semibold))
@@ -168,6 +201,51 @@ struct SessionComposerInputPanel: View {
             }
             .buttonStyle(PressableScaleButtonStyle())
             .disabled(isSending)
+        }
+    }
+
+    private var imageAttachmentsRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(imageAttachments) { attachment in
+                    ZStack(alignment: .topTrailing) {
+                        attachmentThumbnail(for: attachment)
+                            .frame(width: 72, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(AppPalette.composerFieldStroke.opacity(0.5), lineWidth: 1)
+                            }
+
+                        Button {
+                            onRemoveImageAttachment(attachment.id)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.white, Color.black.opacity(0.55))
+                        }
+                        .offset(x: 6, y: -6)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    @ViewBuilder
+    private func attachmentThumbnail(for attachment: SessionComposerImageAttachment) -> some View {
+        if let image = UIImage(data: attachment.data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppPalette.controlSurface)
+                .overlay {
+                    Image(systemName: "photo")
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
         }
     }
 

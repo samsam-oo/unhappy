@@ -16,6 +16,7 @@ struct SessionMessageSendUseCaseTests {
                 token: "token",
                 sessionID: "session-1",
                 text: " ",
+                attachments: [],
                 steerMode: APISessionSteerMode.queue
             )
         }
@@ -32,7 +33,31 @@ struct SessionMessageSendUseCaseTests {
             token: "token",
             sessionID: "session-1",
             text: "run tests",
+            attachments: [],
             steerMode: APISessionSteerMode.immediate
+        )
+
+        #expect(result.success == true)
+    }
+
+    @Test
+    func sendMessageAllowsImageOnlyPayload() async throws {
+        let useCase = SessionMessageSendUseCase(
+            service: MessageService(result: .init(success: true, queueCount: nil, queuedMessages: nil, error: nil))
+        )
+
+        let result = try await useCase.sendMessage(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            sessionID: "session-1",
+            text: "",
+            attachments: [
+                SessionComposerImageAttachment(
+                    data: Data([0xFF, 0xD8, 0xFF]),
+                    mimeType: "image/jpeg"
+                ),
+            ],
+            steerMode: APISessionSteerMode.queue
         )
 
         #expect(result.success == true)
@@ -47,6 +72,7 @@ private struct MessageService: SessionMessaging {
         token: String,
         sessionID: String,
         text: String,
+        imageDataURLs: [String],
         steerMode: APISessionSteerMode?,
         permissionMode: APISessionMessagePermissionMode?,
         model: String?,

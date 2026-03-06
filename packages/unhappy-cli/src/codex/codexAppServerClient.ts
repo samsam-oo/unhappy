@@ -343,7 +343,7 @@ export class CodexAppServerClient {
       isRecord(config.config) ? config.config.model_reasoning_effort : undefined,
     );
 
-    return this.startTurn(config.prompt, {
+    return this.startTurn(config.initialInputs ?? config.prompt, {
       signal: options?.signal,
       overrides: {
         approvalPolicy: config['approval-policy'] ?? undefined,
@@ -356,7 +356,7 @@ export class CodexAppServerClient {
   }
 
   async continueSession(
-    prompt: string,
+    prompt: string | Array<Record<string, unknown>>,
     options?: ContinueSessionOptions,
   ): Promise<CodexToolResponse> {
     if (!this.connected) await this.connect();
@@ -777,7 +777,7 @@ export class CodexAppServerClient {
   }
 
   private async startTurn(
-    prompt: string,
+    prompt: string | Array<Record<string, unknown>>,
     options?: ContinueSessionOptions,
   ): Promise<CodexToolResponse> {
     if (!this.sessionId) {
@@ -788,7 +788,9 @@ export class CodexAppServerClient {
     const cwd = options?.overrides?.cwd ?? process.cwd();
     const turnParams: Record<string, unknown> = {
       threadId: this.sessionId,
-      input: [{ type: 'text', text: prompt }],
+      input: Array.isArray(prompt)
+        ? prompt
+        : [{ type: 'text', text: prompt }],
     };
 
     if (options?.overrides?.approvalPolicy !== undefined) {

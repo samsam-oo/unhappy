@@ -2,6 +2,7 @@ import SwiftUI
 import CoreKit
 import FeatureSessionTools
 import UIKit
+import PhotosUI
 
 @MainActor
 public struct SessionDetailView: View {
@@ -126,6 +127,8 @@ public struct SessionDetailView: View {
     @State var transcriptPresentationCache: [String: CachedTranscriptPresentation] = [:]
     @State var cachedVisibleTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State var linkedFilePathToOpen: String?
+    @State var selectedImagePickerItems: [PhotosPickerItem] = []
+    @State var draftImageAttachments: [SessionComposerImageAttachment] = []
     @State var respondingPermissionRequestID: String?
     @State var isRecoveringDisconnectedSession = false
     @State var permissionActionStatusMessage: String?
@@ -407,6 +410,9 @@ public struct SessionDetailView: View {
             }
             .sheet(isPresented: $showClaudeSessionsSheet) {
                 claudeSessionsSheet
+            }
+            .onChange(of: selectedImagePickerItems) { _, items in
+                handleSelectedImagePickerItemsChange(items)
             }
             .alert(
                 "Delete session?",

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
 import { ApiClient } from '@/api/api';
-import { AgentState, Metadata } from '@/api/types';
+import { AgentState, Metadata, extractUserMessageText } from '@/api/types';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { loop } from '@/claude/loop';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
@@ -488,7 +488,8 @@ export async function runClaude(
     syncAgentModeState(currentModel, currentEffort, currentFallbackModel);
 
     // Check for special commands before processing
-    const specialCommand = parseSpecialCommand(message.content.text);
+    const userText = extractUserMessageText(message.content);
+    const specialCommand = parseSpecialCommand(userText);
 
     if (specialCommand.type === 'compact') {
       logger.debug('[start] Detected /compact command');
@@ -503,7 +504,7 @@ export async function runClaude(
         disallowedTools: messageDisallowedTools,
       };
       messageQueue.pushIsolateAndClear(
-        specialCommand.originalMessage || message.content.text,
+        specialCommand.originalMessage || userText,
         enhancedMode,
       );
       logger.debugLargeJson(
@@ -526,7 +527,7 @@ export async function runClaude(
         disallowedTools: messageDisallowedTools,
       };
       messageQueue.pushIsolateAndClear(
-        specialCommand.originalMessage || message.content.text,
+        specialCommand.originalMessage || userText,
         enhancedMode,
       );
       logger.debugLargeJson(
@@ -547,7 +548,7 @@ export async function runClaude(
       allowedTools: messageAllowedTools,
       disallowedTools: messageDisallowedTools,
     };
-    messageQueue.push(message.content.text, enhancedMode);
+    messageQueue.push(userText, enhancedMode);
     logger.debugLargeJson('User message pushed to queue:', message);
   });
 

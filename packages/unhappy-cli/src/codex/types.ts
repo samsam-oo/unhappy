@@ -4,6 +4,7 @@
 
 export interface CodexSessionConfig {
     prompt: string;
+    initialInputs?: Array<Record<string, unknown>>;
     'approval-policy'?: 'untrusted' | 'on-failure' | 'on-request' | 'never';
     'base-instructions'?: string;
     'compact-prompt'?: string;
