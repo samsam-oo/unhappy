@@ -54,6 +54,13 @@ describe('permissionModeAdapter', () => {
     });
   });
 
+  it('codex missing permission override also preserves local config', () => {
+    expect(mapPermissionModeToCodexOverrides(undefined)).toEqual({
+      approvalPolicy: undefined,
+      sandbox: undefined,
+    });
+  });
+
   it('maps all modes to claude sdk compatible values', () => {
     const claudeModes = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
     for (const mode of ALL_PERMISSION_MODES) {

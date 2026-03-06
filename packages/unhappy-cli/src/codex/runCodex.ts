@@ -426,6 +426,7 @@ export async function runCodex(opts: {
   resumeThreadId?: string;
   model?: string;
   reasoningEffort?: ReasoningEffortMode;
+  permissionMode?: import('@/api/types').PermissionMode;
 }): Promise<void> {
   // Use shared PermissionMode type for cross-agent compatibility
   type PermissionMode = import('@/api/types').PermissionMode;
@@ -526,7 +527,7 @@ export async function runCodex(opts: {
       ...(currentState?.mode ?? {}),
       model: opts.model,
       effort: opts.reasoningEffort,
-      permissionMode: undefined,
+      permissionMode: opts.permissionMode ?? 'passthrough',
     },
   }));
 
@@ -596,7 +597,7 @@ export async function runCodex(opts: {
   // Track current overrides to apply per message
   // Use shared PermissionMode type from api/types for cross-agent compatibility
   let currentPermissionMode: import('@/api/types').PermissionMode | undefined =
-    undefined;
+    opts.permissionMode ?? 'passthrough';
   let currentModel: string | undefined = opts.model;
   let currentEffort: ReasoningEffortMode | undefined = opts.reasoningEffort;
   const syncAgentModeState = (

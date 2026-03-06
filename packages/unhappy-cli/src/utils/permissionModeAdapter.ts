@@ -171,8 +171,15 @@ export function mapPermissionModeToClaudeSdkMode(
 }
 
 export function mapPermissionModeToCodexOverrides(
-  mode: PermissionMode,
+  mode: PermissionMode | undefined,
 ): CodexPermissionOverrides {
+  if (mode === undefined) {
+    return {
+      approvalPolicy: undefined,
+      sandbox: undefined,
+    };
+  }
+
   switch (mode) {
     case 'passthrough':
       return {
