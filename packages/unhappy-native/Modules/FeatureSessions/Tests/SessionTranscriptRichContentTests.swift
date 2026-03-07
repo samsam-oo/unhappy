@@ -97,6 +97,54 @@ struct SessionTranscriptRichContentTests {
     }
 
     @Test
+    func commandSummaryUsesExploredForReadFileCounts() {
+        let singleReadBody = """
+        {
+          "commandActions": [
+            { "type": "read", "path": "README.md" }
+          ]
+        }
+        """
+        let multiReadBody = """
+        {
+          "commandActions": [
+            { "type": "read", "path": "README.md" },
+            { "type": "read", "path": "Package.swift" },
+            { "type": "search", "query": "TODO" }
+          ]
+        }
+        """
+
+        let singleReadEntry = SessionTranscriptEntry(
+            id: "tool-single-read",
+            role: .agent,
+            kind: .toolCall,
+            title: "Run Command",
+            body: singleReadBody,
+            toolUseID: "call_single",
+            sourceType: "tool-call",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+        let multiReadEntry = SessionTranscriptEntry(
+            id: "tool-multi-read",
+            role: .agent,
+            kind: .toolCall,
+            title: "Run Command",
+            body: multiReadBody,
+            toolUseID: "call_multi",
+            sourceType: "tool-call",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: singleReadEntry) == "Explored 1 file")
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Explored 2 files, 1 search")
+    }
+
+    @Test
     func richToolParserBuildsFileChangeCardsFromLatestItemPayload() {
         let body = """
         {

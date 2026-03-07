@@ -142,9 +142,13 @@ extension SessionDetailView {
 
     func refreshTranscriptPresentationCacheForCurrentState() {
         refreshTranscriptPresentationCache(
-            messages: viewModel.selectedSessionMessages,
+            messages: currentSessionMessages,
             dataEncryptionKey: currentSession.dataEncryptionKey
         )
+    }
+
+    var currentSessionMessages: [APISessionMessage] {
+        viewModel.messages(for: currentSession.id)
     }
 
     var visibleTranscriptPresentations: [SessionTranscriptMessagePresentation] {

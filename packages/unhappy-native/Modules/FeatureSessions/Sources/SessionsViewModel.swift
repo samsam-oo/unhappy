@@ -169,6 +169,16 @@ public final class SessionsViewModel: ObservableObject {
         (queuedComposerDraftsBySessionID[sessionID] ?? []).map(\.previewText)
     }
 
+    public func messages(for sessionID: String) -> [APISessionMessage] {
+        if let cachedMessages = messagesBySessionID[sessionID] {
+            return cachedMessages
+        }
+        if selectedSessionID == sessionID {
+            return selectedSessionMessages
+        }
+        return []
+    }
+
     func takeQueuedComposerDraft(for sessionID: String, at index: Int) -> SessionQueuedComposerDraft? {
         guard var queued = queuedComposerDraftsBySessionID[sessionID] else { return nil }
         guard queued.indices.contains(index) else { return nil }

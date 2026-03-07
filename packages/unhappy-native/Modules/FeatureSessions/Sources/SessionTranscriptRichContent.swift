@@ -720,14 +720,14 @@ enum SessionTranscriptRichContentParser {
         if exploreCount > 0 {
             parts.append("Explored \(exploreCount) \(exploreCount == 1 ? "path" : "paths")")
         }
+        if readCount > 0 {
+            parts.append("Explored \(readCount) \(readCount == 1 ? "file" : "files")")
+        }
         if searchCount > 0 {
             parts.append("\(searchCount) \(searchCount == 1 ? "search" : "searches")")
         }
-        if readCount > 0 {
-            parts.append("Read \(readCount) \(readCount == 1 ? "file" : "files")")
-        }
         if editCount > 0 {
-            parts.append("Edited \(editCount) \(editCount == 1 ? "file" : "files")")
+            parts.append("\(editCount) \(editCount == 1 ? "edit" : "edits")")
         }
         if commandCount > 0 || parts.isEmpty {
             parts.append("Ran \(commandActions.count) \(commandActions.count == 1 ? "command" : "commands")")

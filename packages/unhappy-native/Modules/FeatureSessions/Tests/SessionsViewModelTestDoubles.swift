@@ -170,6 +170,14 @@ struct SessionAwareMessagesLoader: SessionsMessagesLoading {
     }
 }
 
+struct SessionMappedMessagesLoader: SessionsMessagesLoading {
+    let rowsBySessionID: [String: [APISessionMessage]]
+
+    func loadMessages(serverURLString: String, token: String, sessionID: String) async throws -> [APISessionMessage] {
+        rowsBySessionID[sessionID] ?? []
+    }
+}
+
 actor CallOrderRecorder {
     var calls: [String] = []
 
