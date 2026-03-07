@@ -302,7 +302,9 @@ public struct NewSessionView: View {
     }
 
     private func loadDirectoryFromBrowserPath(_ path: String) async {
-        viewModel.directoryPath = path
+        let normalizedPath = NewSessionDirectoryPathResolver.normalizedPath(path)
+        directoryBrowserPathDraft = normalizedPath
+        viewModel.directoryPath = normalizedPath
         await viewModel.loadDirectory(
             serverURLString: serverURLString,
             token: token
