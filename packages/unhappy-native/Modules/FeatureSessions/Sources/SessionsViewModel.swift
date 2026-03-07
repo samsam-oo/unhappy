@@ -545,6 +545,11 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async -> String? {
+        if let existingSession = existingMirroredSession(for: row) {
+            upstreamSessionStatusMessage = "Opened existing \(row.summary.provider.displayName) session"
+            return existingSession.id
+        }
+
         guard let upstreamSessionLinker else {
             upstreamSessionStatusMessage = "Upstream linking is unavailable in this build"
             return nil
@@ -1092,6 +1097,23 @@ public final class SessionsViewModel: ObservableObject {
         )
 
         return rows.filter { !mirroredKeys.contains($0.id) }
+    }
+
+    private func existingMirroredSession(for row: SessionLinkedUpstreamSession) -> APISession? {
+        sessions
+            .filter { session in
+                SessionUpstreamIdentity(session: session)?.key == row.id
+            }
+            .sorted { lhs, rhs in
+                if lhs.active != rhs.active {
+                    return lhs.active && !rhs.active
+                }
+                if lhs.updatedAt != rhs.updatedAt {
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+                return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
+            }
+            .first
     }
 
     private func replaceSession(_ session: APISession) {

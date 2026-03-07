@@ -198,4 +198,67 @@ struct SessionListPresentationTests {
 
         #expect(resolvedGroup?.upstreamSessions.map(\.summary.id) == ["thread-1"])
     }
+
+    @Test
+    func projectGroupsCollapseMirroredDuplicatesAndMatchingUpstreamRows() {
+        let olderMirroredSession = APISession(
+            id: "session-1",
+            active: false,
+            activeAt: 10,
+            createdAt: 1,
+            updatedAt: 18,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let newerMirroredSession = APISession(
+            id: "session-2",
+            active: true,
+            activeAt: 11,
+            createdAt: 2,
+            updatedAt: 22,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let matchingUpstreamRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote Live",
+                cwd: "/repo/app",
+                updatedAt: "2026-03-06T05:00:00.000Z",
+                createdAt: "2026-03-06T03:00:00.000Z",
+                archived: false
+            )
+        )
+
+        let groups = SessionListPresentationBuilder.projectGroups(
+            sessions: [olderMirroredSession, newerMirroredSession],
+            upstreamSessions: [matchingUpstreamRow],
+            projects: [
+                SessionMachineProject(
+                    machineID: "machine-1",
+                    machineDisplayName: "Work Mac",
+                    summary: APIMachineProjectSummary(
+                        path: "/repo/app",
+                        latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                )
+            ]
+        )
+
+        #expect(groups.count == 1)
+        #expect(groups.first?.displayMirroredSessions.map(\.id) == ["session-2"])
+        #expect(groups.first?.displayUpstreamSessions.isEmpty == true)
+        #expect(groups.first?.activeSessionCount == 1)
+        #expect(groups.first?.allSessionCount == 1)
+    }
 }

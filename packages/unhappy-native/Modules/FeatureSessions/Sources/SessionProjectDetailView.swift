@@ -205,7 +205,7 @@ public struct SessionProjectDetailView: View {
                 HStack(spacing: 8) {
                     Text(group.machineDisplayName)
                         .modifier(DockChipModifier(tone: .neutral))
-                    Text("\(group.allSessionCount) sessions")
+                    Text("\(sessionEntries.count) sessions")
                         .modifier(DockChipModifier(tone: .primary))
                 }
 
@@ -224,8 +224,8 @@ public struct SessionProjectDetailView: View {
     }
 
     private var sessionEntries: [SessionListEntry] {
-        let combined = group.mirroredSessions.map(SessionListEntry.mirrored)
-            + group.upstreamSessions.map(SessionListEntry.upstream)
+        let combined = group.displayMirroredSessions.map(SessionListEntry.mirrored)
+            + group.displayUpstreamSessions.map(SessionListEntry.upstream)
         return combined.sorted { lhs, rhs in
             if lhs.sortTimestamp != rhs.sortTimestamp {
                 return lhs.sortTimestamp > rhs.sortTimestamp
@@ -274,7 +274,7 @@ public struct SessionProjectDetailView: View {
     }
 
     private var firstMessagePreviewTaskID: String {
-        group.mirroredSessions
+        group.displayMirroredSessions
             .map { session in
                 "\(session.id)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
             }
@@ -305,7 +305,7 @@ public struct SessionProjectDetailView: View {
     }
 
     private func loadMissingFirstMessagePreviews() async {
-        let pendingSessions = group.mirroredSessions.filter { session in
+        let pendingSessions = group.displayMirroredSessions.filter { session in
             SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) == nil
                 && firstMessagePreviewBySessionID[session.id] == nil
         }

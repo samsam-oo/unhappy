@@ -45,18 +45,38 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
     }
 
     public var latestUpdatedAt: TimeInterval {
-        let mirroredTimestamp = mirroredSessions.map(\.updatedAt).max() ?? 0
-        let upstreamTimestamp = upstreamSessions.map(\.sortTimestamp).max() ?? 0
+        let mirroredTimestamp = displayMirroredSessions.map(\.updatedAt).max() ?? 0
+        let upstreamTimestamp = displayUpstreamSessions.map(\.sortTimestamp).max() ?? 0
         return max(mirroredTimestamp, upstreamTimestamp, catalogLatestUpdatedAt)
     }
 
     public var activeSessionCount: Int {
-        mirroredSessions.filter(\.active).count
+        displayMirroredSessions.filter(\.active).count
     }
 
     public var allSessionCount: Int {
-        max(mirroredSessions.count + upstreamSessions.count, catalogSessionCount)
+        max(displayMirroredSessions.count + displayUpstreamSessions.count, catalogSessionCount)
     }
+
+    public var displayMirroredSessions: [APISession] {
+        logicalProjection.mirroredSessions
+    }
+
+    public var displayUpstreamSessions: [SessionLinkedUpstreamSession] {
+        logicalProjection.upstreamSessions
+    }
+
+    private var logicalProjection: LogicalProjection {
+        makeLogicalProjection(
+            mirroredSessions: mirroredSessions,
+            upstreamSessions: upstreamSessions
+        )
+    }
+}
+
+private struct LogicalProjection {
+    let mirroredSessions: [APISession]
+    let upstreamSessions: [SessionLinkedUpstreamSession]
 }
 
 public extension SessionListPresentationBuilder {
@@ -202,6 +222,64 @@ public extension SessionListPresentationBuilder {
         ISO8601DateFormatter.withFractional.date(from: value)
             ?? ISO8601DateFormatter.withInternet.date(from: value)
     }
+}
+
+private func makeLogicalProjection(
+    mirroredSessions: [APISession],
+    upstreamSessions: [SessionLinkedUpstreamSession]
+) -> LogicalProjection {
+    var mirroredByKey: [String: APISession] = [:]
+
+    for session in mirroredSessions {
+        let key = SessionUpstreamIdentity(session: session)?.key ?? "mirrored:\(session.id)"
+        if let existing = mirroredByKey[key] {
+            if compareMirroredSession(session, existing) {
+                mirroredByKey[key] = session
+            }
+        } else {
+            mirroredByKey[key] = session
+        }
+    }
+
+    let mirroredKeys = Set(
+        mirroredByKey.keys.filter { !$0.hasPrefix("mirrored:") }
+    )
+
+    var upstreamByKey: [String: SessionLinkedUpstreamSession] = [:]
+    for row in upstreamSessions where !mirroredKeys.contains(row.id) {
+        if let existing = upstreamByKey[row.id] {
+            if compareUpstreamSession(row, existing) {
+                upstreamByKey[row.id] = row
+            }
+        } else {
+            upstreamByKey[row.id] = row
+        }
+    }
+
+    return LogicalProjection(
+        mirroredSessions: mirroredByKey.values.sorted(by: compareMirroredSession),
+        upstreamSessions: upstreamByKey.values.sorted(by: compareUpstreamSession)
+    )
+}
+
+private func compareMirroredSession(_ lhs: APISession, _ rhs: APISession) -> Bool {
+    if lhs.active != rhs.active {
+        return lhs.active && !rhs.active
+    }
+    if lhs.updatedAt != rhs.updatedAt {
+        return lhs.updatedAt > rhs.updatedAt
+    }
+    return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
+}
+
+private func compareUpstreamSession(
+    _ lhs: SessionLinkedUpstreamSession,
+    _ rhs: SessionLinkedUpstreamSession
+) -> Bool {
+    if lhs.sortTimestamp != rhs.sortTimestamp {
+        return lhs.sortTimestamp > rhs.sortTimestamp
+    }
+    return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
 }
 
 private extension ISO8601DateFormatter {
