@@ -50,7 +50,9 @@ public actor SessionsLoadUseCase: SessionsLoading {
         let service = self.service
         let task = Task<[APISession], Error> {
             let rows = try await service.fetchSessions(serverURL: serverURL, token: normalizedToken)
-            return rows.sorted { $0.updatedAt > $1.updatedAt }
+            return rows
+                .filter { $0.archived != true }
+                .sorted { $0.updatedAt > $1.updatedAt }
         }
 
         inFlightTask = task

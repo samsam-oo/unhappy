@@ -8,6 +8,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
     public let activeAt: TimeInterval
     public let createdAt: TimeInterval
     public let updatedAt: TimeInterval
+    public let archived: Bool?
     public let metadataVersion: Int
     public let metadata: String
     public let agentState: String?
@@ -23,6 +24,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         activeAt: TimeInterval,
         createdAt: TimeInterval,
         updatedAt: TimeInterval,
+        archived: Bool? = nil,
         metadataVersion: Int,
         metadata: String,
         agentState: String? = nil,
@@ -37,6 +39,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         self.activeAt = activeAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.archived = archived
         self.metadataVersion = metadataVersion
         self.metadata = metadata
         self.agentState = agentState
@@ -53,6 +56,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         case activeAt
         case createdAt
         case updatedAt
+        case archived
         case metadataVersion
         case metadata
         case agentState
@@ -73,6 +77,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         activeAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .activeAt) ?? 0
         createdAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .createdAt) ?? 0
         updatedAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .updatedAt) ?? 0
+        archived = try? container.decodeIfPresent(Bool.self, forKey: .archived)
         metadataVersion = container.decodeFlexibleIntIfPresent(forKey: .metadataVersion) ?? 0
         metadata = (try? container.decode(String.self, forKey: .metadata)) ?? ""
         agentState = try? container.decodeIfPresent(String.self, forKey: .agentState)

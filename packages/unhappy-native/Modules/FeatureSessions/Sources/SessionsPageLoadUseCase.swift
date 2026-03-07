@@ -81,7 +81,9 @@ public actor SessionsPageLoadUseCase: SessionsPageLoading {
             )
 
             return SessionsPageResult(
-                sessions: page.sessions.sorted { $0.updatedAt > $1.updatedAt },
+                sessions: page.sessions
+                    .filter { $0.archived != true }
+                    .sorted { $0.updatedAt > $1.updatedAt },
                 nextCursor: page.nextCursor,
                 hasNext: page.hasNext
             )

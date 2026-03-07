@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
-import { sessionDelete } from "@/app/session/sessionDelete";
+import { sessionArchive } from "@/app/session/sessionArchive";
 import {
     findConnectedMachine,
     findConnectedSession,
@@ -59,7 +59,8 @@ export function sessionRoutes(app: Fastify) {
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
-                accountId: userId
+                accountId: userId,
+                archivedAt: null,
             },
             select: { id: true }
         });
@@ -95,12 +96,16 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
 
         const sessions = await db.session.findMany({
-            where: { accountId: userId },
+            where: {
+                accountId: userId,
+                archivedAt: null,
+            },
             select: {
                 id: true,
                 seq: true,
                 displayName: true,
                 createdAt: true,
+                archivedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -128,6 +133,7 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
+                archived: Boolean(v.archivedAt),
                 metadata: v.metadata,
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
@@ -165,6 +171,7 @@ export function sessionRoutes(app: Fastify) {
         const sessions = await db.session.findMany({
             where: {
                 accountId: userId,
+                archivedAt: null,
                 active: true,
                 lastActiveAt: { gt: new Date(Date.now() - 1000 * 60 * 15) /* 15 minutes */ }
             },
@@ -175,6 +182,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 displayName: true,
                 createdAt: true,
+                archivedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -202,6 +210,7 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
+                archived: Boolean(v.archivedAt),
                 metadata: v.metadata,
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
@@ -236,7 +245,10 @@ export function sessionRoutes(app: Fastify) {
         }
 
         // Build where clause
-        const where: Prisma.SessionWhereInput = { accountId: userId };
+        const where: Prisma.SessionWhereInput = {
+            accountId: userId,
+            archivedAt: null,
+        };
 
         // Add changedSince filter (just a filter, doesn't affect pagination)
         // Keep this bound to Session.updatedAt for sync invalidation semantics.
@@ -265,6 +277,7 @@ export function sessionRoutes(app: Fastify) {
                 seq: true,
                 displayName: true,
                 createdAt: true,
+                archivedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -303,6 +316,7 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: resolveSessionApiUpdatedAt(v.createdAt, v.messages[0]),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
+                archived: Boolean(v.archivedAt),
                 metadata: v.metadata,
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
@@ -338,6 +352,7 @@ export function sessionRoutes(app: Fastify) {
                 id: true,
                 seq: true,
                 displayName: true,
+                archivedAt: true,
                 metadata: true,
                 metadataVersion: true,
                 agentState: true,
@@ -357,12 +372,19 @@ export function sessionRoutes(app: Fastify) {
             }
         });
         if (session) {
+            if (session.archivedAt) {
+                await db.session.update({
+                    where: { id: session.id },
+                    data: { archivedAt: null },
+                });
+            }
             log({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
             return reply.send({
                 session: {
                     id: session.id,
                     seq: session.seq,
                     displayName: session.displayName,
+                    archived: false,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -413,6 +435,7 @@ export function sessionRoutes(app: Fastify) {
                     id: session.id,
                     seq: session.seq,
                     displayName: session.displayName,
+                    archived: false,
                     metadata: session.metadata,
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
@@ -443,7 +466,8 @@ export function sessionRoutes(app: Fastify) {
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
-                accountId: userId
+                accountId: userId,
+                archivedAt: null,
             }
         });
 
@@ -477,7 +501,7 @@ export function sessionRoutes(app: Fastify) {
         });
     });
 
-    // Delete session
+    // Archive session
     app.delete('/v1/sessions/:sessionId', {
         schema: {
             params: z.object({
@@ -489,7 +513,7 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { sessionId } = request.params;
 
-        const deleted = await sessionDelete({ uid: userId }, sessionId);
+        const deleted = await sessionArchive({ uid: userId }, sessionId);
 
         if (!deleted) {
             return reply.code(404).send({ error: 'Session not found or not owned by user' });
@@ -516,7 +540,8 @@ export function sessionRoutes(app: Fastify) {
             const updated = await db.session.updateMany({
                 where: {
                     id: sessionId,
-                    accountId: userId
+                    accountId: userId,
+                    archivedAt: null,
                 },
                 data: {
                     displayName: normalizedTitle
@@ -1038,7 +1063,8 @@ export function sessionRoutes(app: Fastify) {
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
-                accountId: userId
+                accountId: userId,
+                archivedAt: null,
             },
             select: { id: true }
         });
@@ -1103,7 +1129,8 @@ export function sessionRoutes(app: Fastify) {
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
-                accountId: userId
+                accountId: userId,
+                archivedAt: null,
             },
             select: { id: true }
         });
@@ -1185,7 +1212,8 @@ export function sessionRoutes(app: Fastify) {
         const session = await db.session.findFirst({
             where: {
                 id: sessionId,
-                accountId: userId
+                accountId: userId,
+                archivedAt: null,
             },
             select: { id: true }
         });
@@ -1274,7 +1302,8 @@ export function sessionRoutes(app: Fastify) {
             const session = await db.session.findFirst({
                 where: {
                     id: sessionId,
-                    accountId: userId
+                    accountId: userId,
+                    archivedAt: null,
                 },
                 select: { id: true }
             });
@@ -1303,7 +1332,8 @@ export function sessionRoutes(app: Fastify) {
             const updated = await db.session.updateMany({
                 where: {
                     id: sessionId,
-                    accountId: userId
+                    accountId: userId,
+                    archivedAt: null,
                 },
                 data: {
                     displayName: normalizedName
