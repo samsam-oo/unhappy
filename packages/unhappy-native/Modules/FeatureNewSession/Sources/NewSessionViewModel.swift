@@ -685,6 +685,8 @@ public final class NewSessionViewModel: ObservableObject {
         defer { isSpawning = false }
 
         do {
+            let codexResumeSelection = selectedAgent == .codex ? codexResumeThreadID : nil
+            let claudeResumeSelection = selectedAgent == .claude ? claudeResumeSessionID : nil
             let result = try await spawner.spawnSession(
                 NewSessionSpawnRequest(
                     serverURLString: serverURLString,
@@ -693,8 +695,8 @@ public final class NewSessionViewModel: ObservableObject {
                     directory: directory,
                     agent: selectedAgent,
                     approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-                    codexResumeThreadID: codexResumeThreadID,
-                    claudeResumeSessionID: claudeResumeSessionID,
+                    codexResumeThreadID: codexResumeSelection,
+                    claudeResumeSessionID: claudeResumeSelection,
                     sessionToken: sessionToken,
                     environmentVariables: environmentVariables,
                     model: selectedModel,

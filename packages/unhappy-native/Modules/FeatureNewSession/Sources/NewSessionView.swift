@@ -21,8 +21,7 @@ public struct NewSessionView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showSaveProfilePrompt = false
     @State private var draftProfileName = ""
-    @State private var showCodexThreadsSheet = false
-    @State private var showClaudeSessionsSheet = false
+    @State private var showExistingSessionsSheet = false
     @State private var showDirectoryBrowserSheet = false
     @State private var directoryBrowserFilterText = ""
     @State private var directoryBrowserPathDraft = ""
@@ -55,20 +54,29 @@ public struct NewSessionView: View {
         NavigationStack {
             Form {
                 machineSection
-                directorySection
+                if !isProjectScopedStartSession {
+                    directorySection
+                }
                 if mode == .startSession {
-                    profilesSection
+                    if !isProjectScopedStartSession {
+                        profilesSection
+                    }
                     agentSection
                     NewSessionAdvancedSection(
                         viewModel: viewModel,
                         serverURLString: serverURLString,
                         token: token,
-                        showCodexThreadsSheet: $showCodexThreadsSheet,
-                        showClaudeSessionsSheet: $showClaudeSessionsSheet,
+                        showExistingSessionsSheet: $showExistingSessionsSheet,
                         focusedField: $focusedField,
                         selectedModelDisplayValue: selectedModelDisplayValue,
-                        codexSelectionButtonTitle: codexSelectionButtonTitle,
-                        claudeSelectionButtonTitle: claudeSelectionButtonTitle
+                        existingSessionButtonTitle: existingSessionButtonTitle,
+                        existingSessionErrorMessage: existingSessionErrorMessage,
+                        existingSessionSelectionID: activeResumeSelectionID,
+                        existingSessionSelectionLabel: existingSessionSelectionLabel,
+                        existingSessionSelectionClearAction: clearExistingSessionSelection,
+                        loadExistingSessionsAction: {
+                            await loadExistingSessions()
+                        }
                     )
                     NewSessionActionSection(
                         viewModel: viewModel,
@@ -115,15 +123,6 @@ public struct NewSessionView: View {
                     Button("Close") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showCodexThreadsSheet) {
-                NewSessionCodexSessionsSheet(
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    onClose: { showCodexThreadsSheet = false }
-                )
-                .presentationDetents([.medium, .large])
-            }
             .sheet(isPresented: $showDirectoryBrowserSheet) {
                 NewSessionDirectoryBrowserSheet(
                     viewModel: viewModel,
@@ -144,13 +143,8 @@ public struct NewSessionView: View {
                 )
                 .presentationDetents([.large])
             }
-            .sheet(isPresented: $showClaudeSessionsSheet) {
-                NewSessionClaudeSessionsSheet(
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    onClose: { showClaudeSessionsSheet = false }
-                )
+            .sheet(isPresented: $showExistingSessionsSheet) {
+                existingSessionsSheet
                 .presentationDetents([.medium, .large])
             }
             .task(id: "\(serverURLString)|\(token)|\(initialMachineID ?? "")|\(initialDirectoryPath ?? "")") {
@@ -356,7 +350,7 @@ public struct NewSessionView: View {
     }
 
     private var hasResumeSelection: Bool {
-        selectedCodexResumeID != nil || selectedClaudeResumeID != nil
+        activeResumeSelectionID != nil
     }
 
     private var selectedModelDisplayValue: String {
@@ -372,18 +366,100 @@ public struct NewSessionView: View {
         NewSessionDirectoryPathResolver.normalizedOptionalPath(viewModel.claudeResumeSessionID)
     }
 
-    private var codexSelectionButtonTitle: String {
-        if let id = selectedCodexResumeID {
-            return "Codex Session: \(abbreviatedIdentifier(id))"
-        }
-        return "Choose Existing Codex Session"
+    private var isProjectScopedStartSession: Bool {
+        NewSessionViewPresentation.isProjectScopedStartSession(
+            mode: mode,
+            initialDirectoryPath: initialDirectoryPath
+        )
     }
 
-    private var claudeSelectionButtonTitle: String {
-        if let id = selectedClaudeResumeID {
-            return "Claude Session: \(abbreviatedIdentifier(id))"
+    private var activeResumeSelectionID: String? {
+        NewSessionViewPresentation.activeResumeSelectionID(
+            selectedAgent: viewModel.selectedAgent,
+            codexResumeThreadID: viewModel.codexResumeThreadID,
+            claudeResumeSessionID: viewModel.claudeResumeSessionID
+        )
+    }
+
+    private var existingSessionButtonTitle: String? {
+        NewSessionViewPresentation.existingSessionButtonTitle(
+            selectedAgent: viewModel.selectedAgent,
+            codexResumeThreadID: viewModel.codexResumeThreadID,
+            claudeResumeSessionID: viewModel.claudeResumeSessionID
+        )
+    }
+
+    private var existingSessionErrorMessage: String? {
+        NewSessionViewPresentation.existingSessionErrorMessage(
+            selectedAgent: viewModel.selectedAgent,
+            codexErrorMessage: viewModel.codexThreadsErrorMessage,
+            claudeErrorMessage: viewModel.claudeSessionsErrorMessage
+        )
+    }
+
+    private var existingSessionSelectionLabel: String? {
+        switch viewModel.selectedAgent {
+        case .codex:
+            return activeResumeSelectionID == nil ? nil : "Selected Codex Session"
+        case .claude:
+            return activeResumeSelectionID == nil ? nil : "Selected Claude Session"
+        case .gemini:
+            return nil
         }
-        return "Choose Existing Claude Session"
+    }
+
+    @ViewBuilder
+    private var existingSessionsSheet: some View {
+        switch viewModel.selectedAgent {
+        case .codex:
+            NewSessionCodexSessionsSheet(
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                onClose: { showExistingSessionsSheet = false }
+            )
+        case .claude:
+            NewSessionClaudeSessionsSheet(
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                onClose: { showExistingSessionsSheet = false }
+            )
+        case .gemini:
+            ContentUnavailableView(
+                "Existing sessions unavailable",
+                systemImage: "wand.and.stars",
+                description: Text("Gemini does not support session resume from this screen.")
+            )
+        }
+    }
+
+    private func loadExistingSessions() async {
+        switch viewModel.selectedAgent {
+        case .codex:
+            await viewModel.loadCodexThreads(
+                serverURLString: serverURLString,
+                token: token
+            )
+        case .claude:
+            await viewModel.loadClaudeSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+        case .gemini:
+            return
+        }
+    }
+
+    private func clearExistingSessionSelection() {
+        switch viewModel.selectedAgent {
+        case .codex:
+            viewModel.clearCodexSelection()
+        case .claude:
+            viewModel.clearClaudeSelection()
+        case .gemini:
+            break
+        }
     }
 }
 
