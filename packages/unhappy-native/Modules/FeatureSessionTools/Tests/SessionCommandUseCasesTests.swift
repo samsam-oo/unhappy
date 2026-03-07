@@ -12,10 +12,12 @@ struct SessionCommandUseCasesTests {
 
         await #expect(throws: SessionCommandError.missingToken) {
             _ = try await useCase.abortTask(
-                serverURLString: "https://api.unhappy.im",
-                token: " ",
-                sessionID: "session-1",
-                reason: nil
+                SessionAbortTaskRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: " ",
+                    sessionID: "session-1",
+                    reason: nil
+                )
             )
         }
     }
@@ -27,10 +29,12 @@ struct SessionCommandUseCasesTests {
         )
 
         let result = try await useCase.abortTask(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            reason: "user-requested"
+            SessionAbortTaskRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                reason: "user-requested"
+            )
         )
 
         #expect(result.success == true)
@@ -44,14 +48,16 @@ struct SessionCommandUseCasesTests {
 
         await #expect(throws: SessionCommandError.missingPermissionRequestID) {
             _ = try await useCase.respondPermission(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                sessionID: "session-1",
-                permissionRequestID: " ",
-                approved: true,
-                mode: .default,
-                allowTools: nil,
-                decision: .approved
+                SessionPermissionResponseRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    sessionID: "session-1",
+                    permissionRequestID: " ",
+                    approved: true,
+                    mode: .default,
+                    allowTools: nil,
+                    decision: .approved
+                )
             )
         }
     }
@@ -63,10 +69,12 @@ struct SessionCommandUseCasesTests {
         )
 
         let result = try await useCase.switchMode(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            to: .local
+            SessionModeSwitchRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                targetMode: .local
+            )
         )
 
         #expect(result.success == true)
@@ -81,12 +89,14 @@ struct SessionCommandUseCasesTests {
 
         await #expect(throws: SessionCommandError.missingCommand) {
             _ = try await useCase.runBash(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                sessionID: "session-1",
-                command: "   ",
-                cwd: nil,
-                timeout: nil
+                SessionBashCommandRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    sessionID: "session-1",
+                    command: "   ",
+                    cwd: nil,
+                    timeout: nil
+                )
             )
         }
     }
@@ -98,11 +108,13 @@ struct SessionCommandUseCasesTests {
         )
 
         let result = try await useCase.runRipgrep(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            args: ["TODO", "Sources"],
-            cwd: "/tmp/work"
+            SessionArgumentCommandRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                arguments: ["TODO", "Sources"],
+                cwd: "/tmp/work"
+            )
         )
 
         #expect(result.success == true)
@@ -117,11 +129,13 @@ struct SessionCommandUseCasesTests {
         )
 
         let result = try await useCase.runDifftastic(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            args: ["--display", "inline", "HEAD~1", "HEAD"],
-            cwd: "/tmp/work"
+            SessionArgumentCommandRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                arguments: ["--display", "inline", "HEAD~1", "HEAD"],
+                cwd: "/tmp/work"
+            )
         )
 
         #expect(result.success == true)

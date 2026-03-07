@@ -2,65 +2,69 @@ import Foundation
 import CoreKit
 
 public protocol SessionTaskAbortAction: Sendable {
-    func abortTask(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        reason: String?
-    ) async throws -> APISessionCommandResult
+    func abortTask(_ request: SessionAbortTaskRequest) async throws -> APISessionCommandResult
 }
 
 public protocol SessionPermissionResponseAction: Sendable {
-    func respondPermission(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        permissionRequestID: String,
-        approved: Bool,
-        mode: APISessionPermissionMode?,
-        allowTools: [String]?,
-        decision: APISessionPermissionDecision?
-    ) async throws -> APISessionCommandResult
+    func respondPermission(_ request: SessionPermissionResponseRequest) async throws -> APISessionCommandResult
 }
 
 public protocol SessionModeSwitchAction: Sendable {
-    func switchMode(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        to: APISessionSwitchTarget
-    ) async throws -> APISessionSwitchResult
+    func switchMode(_ request: SessionModeSwitchRequest) async throws -> APISessionSwitchResult
 }
 
 public protocol SessionBashRunAction: Sendable {
-    func runBash(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        command: String,
-        cwd: String?,
-        timeout: Int?
-    ) async throws -> APISessionBashResult
+    func runBash(_ request: SessionBashCommandRequest) async throws -> APISessionBashResult
 }
 
 public protocol SessionRipgrepRunAction: Sendable {
-    func runRipgrep(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        args: [String],
-        cwd: String?
-    ) async throws -> APISessionBashResult
+    func runRipgrep(_ request: SessionArgumentCommandRequest) async throws -> APISessionBashResult
 }
 
 public protocol SessionDifftasticRunAction: Sendable {
-    func runDifftastic(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        args: [String],
-        cwd: String?
-    ) async throws -> APISessionBashResult
+    func runDifftastic(_ request: SessionArgumentCommandRequest) async throws -> APISessionBashResult
+}
+
+public struct SessionAbortTaskRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let reason: String?
+}
+
+public struct SessionPermissionResponseRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let permissionRequestID: String
+    public let approved: Bool
+    public let mode: APISessionPermissionMode?
+    public let allowTools: [String]?
+    public let decision: APISessionPermissionDecision?
+}
+
+public struct SessionModeSwitchRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let targetMode: APISessionSwitchTarget
+}
+
+public struct SessionBashCommandRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let command: String
+    public let cwd: String?
+    public let timeout: Int?
+}
+
+public struct SessionArgumentCommandRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let arguments: [String]
+    public let cwd: String?
 }
 
 public enum SessionCommandError: LocalizedError, Equatable {
@@ -107,18 +111,13 @@ public actor SessionTaskAbortUseCase: SessionTaskAbortAction {
         self.service = service
     }
 
-    public func abortTask(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        reason: String?
-    ) async throws -> APISessionCommandResult {
+    public func abortTask(_ request: SessionAbortTaskRequest) async throws -> APISessionCommandResult {
         let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID
         )
-        let normalizedReason = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedReason = request.reason?.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = RequestKey(
             serverURLString: serverURL.absoluteString,
             token: normalizedToken,
@@ -172,26 +171,17 @@ public actor SessionPermissionUseCase: SessionPermissionResponseAction {
         self.service = service
     }
 
-    public func respondPermission(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        permissionRequestID: String,
-        approved: Bool,
-        mode: APISessionPermissionMode?,
-        allowTools: [String]?,
-        decision: APISessionPermissionDecision?
-    ) async throws -> APISessionCommandResult {
+    public func respondPermission(_ request: SessionPermissionResponseRequest) async throws -> APISessionCommandResult {
         let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID
         )
-        let normalizedPermissionRequestID = permissionRequestID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPermissionRequestID = request.permissionRequestID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedPermissionRequestID.isEmpty else {
             throw SessionCommandError.missingPermissionRequestID
         }
-        let normalizedAllowTools = allowTools?.compactMap { raw in
+        let normalizedAllowTools = request.allowTools?.compactMap { raw in
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
@@ -200,10 +190,10 @@ public actor SessionPermissionUseCase: SessionPermissionResponseAction {
             token: normalizedToken,
             sessionID: normalizedSessionID,
             permissionRequestID: normalizedPermissionRequestID,
-            approved: approved,
-            mode: mode,
+            approved: request.approved,
+            mode: request.mode,
             allowTools: normalizedAllowTools,
-            decision: decision
+            decision: request.decision
         )
         if let inFlightTask = inFlightTasks[key] {
             return try await inFlightTask.value
@@ -216,10 +206,10 @@ public actor SessionPermissionUseCase: SessionPermissionResponseAction {
                 token: normalizedToken,
                 sessionID: normalizedSessionID,
                 permissionRequestID: normalizedPermissionRequestID,
-                approved: approved,
-                mode: mode,
+                approved: request.approved,
+                mode: request.mode,
                 allowTools: normalizedAllowTools,
-                decision: decision
+                decision: request.decision
             )
             if result.success {
                 return result
@@ -251,22 +241,17 @@ public actor SessionModeSwitchUseCase: SessionModeSwitchAction {
         self.service = service
     }
 
-    public func switchMode(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        to: APISessionSwitchTarget
-    ) async throws -> APISessionSwitchResult {
+    public func switchMode(_ request: SessionModeSwitchRequest) async throws -> APISessionSwitchResult {
         let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID
         )
         let key = RequestKey(
             serverURLString: serverURL.absoluteString,
             token: normalizedToken,
             sessionID: normalizedSessionID,
-            to: to
+            to: request.targetMode
         )
         if let inFlightTask = inFlightTasks[key] {
             return try await inFlightTask.value
@@ -278,7 +263,7 @@ public actor SessionModeSwitchUseCase: SessionModeSwitchAction {
                 serverURL: serverURL,
                 token: normalizedToken,
                 sessionID: normalizedSessionID,
-                to: to
+                to: request.targetMode
             )
             if result.success {
                 return result
@@ -312,31 +297,24 @@ public actor SessionBashUseCase: SessionBashRunAction {
         self.service = service
     }
 
-    public func runBash(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        command: String,
-        cwd: String?,
-        timeout: Int?
-    ) async throws -> APISessionBashResult {
+    public func runBash(_ request: SessionBashCommandRequest) async throws -> APISessionBashResult {
         let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID
         )
-        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCommand = request.command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedCommand.isEmpty else {
             throw SessionCommandError.missingCommand
         }
-        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCWD = request.cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = RequestKey(
             serverURLString: serverURL.absoluteString,
             token: normalizedToken,
             sessionID: normalizedSessionID,
             command: normalizedCommand,
             cwd: normalizedCWD,
-            timeout: timeout
+            timeout: request.timeout
         )
         if let inFlightTask = inFlightTasks[key] {
             return try await inFlightTask.value
@@ -350,7 +328,7 @@ public actor SessionBashUseCase: SessionBashRunAction {
                 sessionID: normalizedSessionID,
                 command: normalizedCommand,
                 cwd: normalizedCWD,
-                timeout: timeout
+                timeout: request.timeout
             )
             if result.success {
                 return result
@@ -383,26 +361,20 @@ public actor SessionRipgrepUseCase: SessionRipgrepRunAction {
         self.service = service
     }
 
-    public func runRipgrep(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        args: [String],
-        cwd: String?
-    ) async throws -> APISessionBashResult {
+    public func runRipgrep(_ request: SessionArgumentCommandRequest) async throws -> APISessionBashResult {
         let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID
         )
-        let normalizedArgs = args.compactMap { raw in
+        let normalizedArgs = request.arguments.compactMap { raw in
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
         guard !normalizedArgs.isEmpty else {
             throw SessionCommandError.missingArguments
         }
-        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCWD = request.cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = RequestKey(
             serverURLString: serverURL.absoluteString,
             token: normalizedToken,
@@ -454,26 +426,20 @@ public actor SessionDifftasticUseCase: SessionDifftasticRunAction {
         self.service = service
     }
 
-    public func runDifftastic(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        args: [String],
-        cwd: String?
-    ) async throws -> APISessionBashResult {
+    public func runDifftastic(_ request: SessionArgumentCommandRequest) async throws -> APISessionBashResult {
         let (serverURL, normalizedToken, normalizedSessionID) = try normalizeSessionInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID
         )
-        let normalizedArgs = args.compactMap { raw in
+        let normalizedArgs = request.arguments.compactMap { raw in
             let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
         guard !normalizedArgs.isEmpty else {
             throw SessionCommandError.missingArguments
         }
-        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCWD = request.cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = RequestKey(
             serverURLString: serverURL.absoluteString,
             token: normalizedToken,

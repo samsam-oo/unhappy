@@ -282,10 +282,12 @@ public final class SessionToolsViewModel: ObservableObject {
 
         do {
             _ = try await aborter.abortTask(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                reason: normalizedOptional(abortReason)
+                SessionAbortTaskRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    reason: normalizedOptional(abortReason)
+                )
             )
             abortStatusMessage = "Abort request sent"
             abortErrorMessage = nil
@@ -309,14 +311,16 @@ public final class SessionToolsViewModel: ObservableObject {
             let decision = permissionDecision
             let approved = decision == .approved || decision == .approvedForSession
             _ = try await permissionResponder.respondPermission(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                permissionRequestID: permissionRequestID,
-                approved: approved,
-                mode: permissionMode,
-                allowTools: parsedAllowTools(permissionAllowTools),
-                decision: decision
+                SessionPermissionResponseRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    permissionRequestID: permissionRequestID,
+                    approved: approved,
+                    mode: permissionMode,
+                    allowTools: parsedAllowTools(permissionAllowTools),
+                    decision: decision
+                )
             )
             permissionStatusMessage = "Permission response sent"
             permissionErrorMessage = nil
@@ -338,10 +342,12 @@ public final class SessionToolsViewModel: ObservableObject {
 
         do {
             let result = try await modeSwitcher.switchMode(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                to: switchTarget
+                SessionModeSwitchRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    targetMode: switchTarget
+                )
             )
             if let switched = result.switched {
                 switchStatusMessage = switched ? "Switched to \(switchTarget.rawValue)" : "No mode change"
@@ -370,12 +376,14 @@ public final class SessionToolsViewModel: ObservableObject {
         do {
             let timeoutValue = parsedTimeoutMilliseconds(bashTimeoutMilliseconds)
             let result = try await basher.runBash(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                command: bashCommand,
-                cwd: normalizedOptional(bashWorkingDirectory),
-                timeout: timeoutValue
+                SessionBashCommandRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    command: bashCommand,
+                    cwd: normalizedOptional(bashWorkingDirectory),
+                    timeout: timeoutValue
+                )
             )
             bashStdout = truncatedOutput(result.stdout)
             bashStderr = truncatedOutput(result.stderr)
@@ -401,11 +409,13 @@ public final class SessionToolsViewModel: ObservableObject {
         do {
             let args = parsedCommandArguments(ripgrepArgs)
             let result = try await ripgrepRunner.runRipgrep(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                args: args,
-                cwd: normalizedOptional(ripgrepWorkingDirectory)
+                SessionArgumentCommandRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    arguments: args,
+                    cwd: normalizedOptional(ripgrepWorkingDirectory)
+                )
             )
             ripgrepStdout = truncatedOutput(result.stdout)
             ripgrepStderr = truncatedOutput(result.stderr)
@@ -431,11 +441,13 @@ public final class SessionToolsViewModel: ObservableObject {
         do {
             let args = parsedCommandArguments(difftasticArgs)
             let result = try await difftasticRunner.runDifftastic(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                args: args,
-                cwd: normalizedOptional(difftasticWorkingDirectory)
+                SessionArgumentCommandRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    arguments: args,
+                    cwd: normalizedOptional(difftasticWorkingDirectory)
+                )
             )
             difftasticStdout = truncatedOutput(result.stdout)
             difftasticStderr = truncatedOutput(result.stderr)

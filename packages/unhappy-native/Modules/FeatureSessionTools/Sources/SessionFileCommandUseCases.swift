@@ -237,12 +237,14 @@ public actor SessionFileDiffPreviewUseCase: SessionFileDiffPreviewAction {
                 workingDirectory: normalizedWorkingDirectory
             )
             return try await basher.runBash(
-                serverURLString: request.serverURLString,
-                token: normalized.token,
-                sessionID: normalized.sessionID,
-                command: command,
-                cwd: nil,
-                timeout: request.timeout
+                SessionBashCommandRequest(
+                    serverURLString: request.serverURLString,
+                    token: normalized.token,
+                    sessionID: normalized.sessionID,
+                    command: command,
+                    cwd: nil,
+                    timeout: request.timeout
+                )
             )
         }
 

@@ -161,21 +161,14 @@ private actor RecordingBashAction: SessionBashRunAction {
         self.result = result
     }
 
-    func runBash(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        command: String,
-        cwd: String?,
-        timeout: Int?
-    ) async throws -> APISessionBashResult {
+    func runBash(_ bashRequest: SessionBashCommandRequest) async throws -> APISessionBashResult {
         request = BashRequest(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID,
-            command: command,
-            cwd: cwd,
-            timeout: timeout
+            serverURLString: bashRequest.serverURLString,
+            token: bashRequest.token,
+            sessionID: bashRequest.sessionID,
+            command: bashRequest.command,
+            cwd: bashRequest.cwd,
+            timeout: bashRequest.timeout
         )
         return result
     }
