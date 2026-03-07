@@ -406,7 +406,9 @@ actor ActivityKitSessionsLiveActivityService: SessionsLiveActivityHandling {
         didLoadExistingActivities = true
         var mapped: [String: Activity<UnhappySessionsActivityAttributes>] = [:]
         for activity in Activity<UnhappySessionsActivityAttributes>.activities {
-            mapped[activity.attributes.sessionID] = activity
+            let sessionID = activity.attributes.sessionID
+            mapped[sessionID] = activity
+            lastContentStateBySessionID[sessionID] = activity.content.state
         }
         activitiesBySessionID = mapped
     }

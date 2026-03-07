@@ -139,6 +139,7 @@ public actor SocketIOSessionRPCCommandService: SessionRPCCommandDispatching {
             config: [
                 .path("/v1/updates"),
                 .version(.three),
+                .forceWebsockets(true),
                 .reconnects(false),
                 .log(false),
                 .compress,

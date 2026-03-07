@@ -267,6 +267,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             config: [
                 .path("/v1/updates"),
                 .version(.three),
+                .forceWebsockets(true),
                 .reconnects(false),
                 .log(false),
                 .compress,
