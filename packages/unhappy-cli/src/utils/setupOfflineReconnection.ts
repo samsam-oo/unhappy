@@ -26,6 +26,8 @@ export interface SetupOfflineReconnectionOptions {
     metadata: Metadata;
     /** Agent state */
     state: AgentState;
+    /** Optional provided session encryption key for deterministic session reuse */
+    encryptionKey?: Uint8Array;
     /** Initial API response (null if server unreachable) */
     response: Session | null;
     /**
@@ -75,7 +77,7 @@ export interface SetupOfflineReconnectionResult {
  * ```
  */
 export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions): SetupOfflineReconnectionResult {
-    const { api, sessionTag, metadata, state, response, onSessionSwap } = opts;
+    const { api, sessionTag, metadata, state, encryptionKey, response, onSessionSwap } = opts;
 
     let session: ApiSessionClient;
     let reconnectionHandle: ReturnType<typeof startOfflineReconnection<ApiSessionClient>> | null = null;
@@ -89,7 +91,12 @@ export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions):
         reconnectionHandle = startOfflineReconnection<ApiSessionClient>({
             serverUrl: configuration.serverUrl,
             onReconnected: async () => {
-                const resp = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+                const resp = await api.getOrCreateSession({
+                    tag: sessionTag,
+                    metadata,
+                    state,
+                    encryptionKey,
+                });
                 if (!resp) throw new Error('Server unavailable');
                 const realSession = api.sessionSyncClient(resp);
                 // Notify caller to swap the session reference

@@ -28,6 +28,10 @@ import {
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import {
+  resolveProvidedSessionDataKey,
+  resolveProvidedSessionTag,
+} from '@/utils/upstreamSessionBinding';
 import { listCodexModels } from '@/modules/common/listModels';
 import { render } from 'ink';
 import { createHash, randomUUID } from 'node:crypto';
@@ -452,7 +456,8 @@ export async function runCodex(opts: {
   // Define session
   //
 
-  const sessionTag = randomUUID();
+  const sessionTag = resolveProvidedSessionTag() ?? randomUUID();
+  const sessionDataKey = resolveProvidedSessionDataKey();
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Codex');
@@ -495,6 +500,7 @@ export async function runCodex(opts: {
     tag: sessionTag,
     metadata,
     state,
+    encryptionKey: sessionDataKey ?? undefined,
   });
 
   // Handle server unreachable case - create offline stub with hot reconnection
@@ -509,6 +515,7 @@ export async function runCodex(opts: {
       sessionTag,
       metadata,
       state,
+      encryptionKey: sessionDataKey ?? undefined,
       response,
       onSessionSwap: (newSession) => {
         session = newSession;

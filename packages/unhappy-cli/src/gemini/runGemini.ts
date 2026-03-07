@@ -30,6 +30,10 @@ import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter'
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import {
+  resolveProvidedSessionDataKey,
+  resolveProvidedSessionTag,
+} from '@/utils/upstreamSessionBinding';
 
 import type { AgentBackend, AgentMessage } from '@/agent';
 import { createGeminiBackend } from '@/agent/factories/gemini';
@@ -65,7 +69,8 @@ export async function runGemini(opts: {
   // Define session
   //
 
-  const sessionTag = randomUUID();
+  const sessionTag = resolveProvidedSessionTag() ?? randomUUID();
+  const sessionDataKey = resolveProvidedSessionDataKey();
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Gemini');
@@ -136,6 +141,7 @@ export async function runGemini(opts: {
     tag: sessionTag,
     metadata,
     state,
+    encryptionKey: sessionDataKey ?? undefined,
   });
 
   // Handle server unreachable case - create offline stub with hot reconnection
@@ -170,6 +176,7 @@ export async function runGemini(opts: {
       sessionTag,
       metadata,
       state,
+      encryptionKey: sessionDataKey ?? undefined,
       response,
       onSessionSwap: (newSession) => {
         // If we're processing a message, queue the swap for later

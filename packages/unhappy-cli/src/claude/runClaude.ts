@@ -30,6 +30,10 @@ import {
   connectionState,
   startOfflineReconnection,
 } from '@/utils/serverConnectionErrors';
+import {
+  resolveProvidedSessionDataKey,
+  resolveProvidedSessionTag,
+} from '@/utils/upstreamSessionBinding';
 import fs from 'node:fs';
 import { join, resolve } from 'node:path';
 import packageJson from '../../package.json';
@@ -63,7 +67,8 @@ export async function runClaude(
   logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
 
   const workingDirectory = process.cwd();
-  const sessionTag = randomUUID();
+  const sessionTag = resolveProvidedSessionTag() ?? randomUUID();
+  const sessionDataKey = resolveProvidedSessionDataKey();
 
   // Log environment info at startup
   logger.debugLargeJson(
@@ -129,6 +134,7 @@ export async function runClaude(
     tag: sessionTag,
     metadata,
     state,
+    encryptionKey: sessionDataKey ?? undefined,
   });
 
   // Handle server unreachable case - run Claude locally with hot reconnection
@@ -140,9 +146,10 @@ export async function runClaude(
       serverUrl: configuration.serverUrl,
       onReconnected: async () => {
         const resp = await api.getOrCreateSession({
-          tag: randomUUID(),
+          tag: sessionTag,
           metadata,
           state,
+          encryptionKey: sessionDataKey ?? undefined,
         });
         if (!resp) throw new Error('Server unavailable');
         const session = api.sessionSyncClient(resp);

@@ -235,6 +235,31 @@ describe('Api server error handling', () => {
       );
       consoleSpy.mockRestore();
     });
+
+    it('should reuse a provided session encryption key', async () => {
+      const providedKey = new Uint8Array(Array.from({ length: 32 }, (_, index) => index));
+      mockPost.mockResolvedValue({
+        data: {
+          session: {
+            id: 'session-1',
+            seq: 1,
+            metadata: testMetadata,
+            metadataVersion: 1,
+            agentState: null,
+            agentStateVersion: 0,
+          },
+        },
+      });
+
+      const result = await api.getOrCreateSession({
+        tag: 'test-tag',
+        metadata: testMetadata,
+        state: null,
+        encryptionKey: providedKey,
+      });
+
+      expect(result?.encryptionKey).toEqual(providedKey);
+    });
   });
 
   describe('getOrCreateMachine', () => {

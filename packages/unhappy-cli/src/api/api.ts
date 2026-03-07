@@ -51,8 +51,9 @@ export class ApiClient {
     tag: string;
     metadata: Metadata;
     state: AgentState | null;
+    encryptionKey?: Uint8Array;
   }): Promise<Session | null> {
-    const encryptionKey = getRandomBytes(32);
+    const encryptionKey = opts.encryptionKey ?? getRandomBytes(32);
     const dataEncryptionKey = libsodiumEncryptForPublicKey(
       encryptionKey,
       this.credential.encryption.publicKey,
