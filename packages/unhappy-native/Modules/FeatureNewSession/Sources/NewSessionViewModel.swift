@@ -246,7 +246,7 @@ public final class NewSessionViewModel: ObservableObject {
             return
         }
 
-        let path = normalizedPath(directoryPath)
+        let path = NewSessionDirectoryPathResolver.normalizedPath(directoryPath)
         directoryPath = path
         isLoadingDirectory = true
         errorMessage = nil
@@ -328,7 +328,7 @@ public final class NewSessionViewModel: ObservableObject {
                 token: token,
                 machineID: machineID,
                 limit: limit,
-                cwd: normalizedPath(directoryPath),
+                cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: nil
             )
             codexThreads = page.threads
@@ -372,7 +372,7 @@ public final class NewSessionViewModel: ObservableObject {
                 token: token,
                 machineID: machineID,
                 limit: limit,
-                cwd: normalizedPath(directoryPath),
+                cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: nil
             )
             claudeSessions = page.sessions
@@ -414,7 +414,7 @@ public final class NewSessionViewModel: ObservableObject {
                 token: token,
                 machineID: machineID,
                 limit: limit,
-                cwd: normalizedPath(directoryPath),
+                cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: cursor
             )
             codexThreads = mergeUniqueByID(existing: codexThreads, incoming: page.threads)
@@ -453,7 +453,7 @@ public final class NewSessionViewModel: ObservableObject {
                 token: token,
                 machineID: machineID,
                 limit: limit,
-                cwd: normalizedPath(directoryPath),
+                cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: cursor
             )
             claudeSessions = mergeUniqueByID(existing: claudeSessions, incoming: page.sessions)
@@ -474,10 +474,10 @@ public final class NewSessionViewModel: ObservableObject {
         selectedModel = selectedModelByAgent[.codex] ?? ""
         selectedReasoningEffort = selectedReasoningEffortByAgent[.codex] ?? .auto
         lastSelectedAgent = .codex
-        if let threadCWD = normalizedOptionalPath(thread.cwd) {
-            directoryPath = normalizedPath(threadCWD)
+        if let threadCWD = NewSessionDirectoryPathResolver.normalizedOptionalPath(thread.cwd) {
+            directoryPath = NewSessionDirectoryPathResolver.normalizedPath(threadCWD)
         }
-        selectedModel = normalizedOptionalPath(thread.model) ?? ""
+        selectedModel = NewSessionDirectoryPathResolver.normalizedOptionalPath(thread.model) ?? ""
         selectedReasoningEffort = NewSessionReasoningEffort(threadEffort: thread.effort)
         selectedModelByAgent[.codex] = selectedModel
         selectedReasoningEffortByAgent[.codex] = selectedReasoningEffort
@@ -493,8 +493,8 @@ public final class NewSessionViewModel: ObservableObject {
         selectedModel = selectedModelByAgent[.claude] ?? ""
         selectedReasoningEffort = selectedReasoningEffortByAgent[.claude] ?? .auto
         lastSelectedAgent = .claude
-        if let sessionCWD = normalizedOptionalPath(session.cwd) {
-            directoryPath = normalizedPath(sessionCWD)
+        if let sessionCWD = NewSessionDirectoryPathResolver.normalizedOptionalPath(session.cwd) {
+            directoryPath = NewSessionDirectoryPathResolver.normalizedPath(sessionCWD)
         }
         infoMessage = "Selected Claude session \(session.id)"
         errorMessage = nil
@@ -532,7 +532,10 @@ public final class NewSessionViewModel: ObservableObject {
         token: String
     ) async {
         guard entry.type == "directory" else { return }
-        directoryPath = resolvedPath(current: directoryPath, entryName: entry.name)
+        directoryPath = NewSessionDirectoryPathResolver.resolvedPath(
+            current: directoryPath,
+            entryName: entry.name
+        )
         await loadDirectory(serverURLString: serverURLString, token: token)
     }
 
@@ -551,7 +554,7 @@ public final class NewSessionViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async {
-        let normalizedDirectory = normalizedPath(directoryPath)
+        let normalizedDirectory = NewSessionDirectoryPathResolver.normalizedPath(directoryPath)
         self.directoryPath = normalizedDirectory
 
         let normalizedMachineID = machineID?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -593,7 +596,7 @@ public final class NewSessionViewModel: ObservableObject {
         if let machineID = profile.machineID, machines.contains(where: { $0.id == machineID }) {
             selectedMachineID = machineID
         }
-        directoryPath = normalizedPath(profile.directoryPath)
+        directoryPath = NewSessionDirectoryPathResolver.normalizedPath(profile.directoryPath)
         selectedAgent = profile.agent
         lastSelectedAgent = profile.agent
         codexResumeThreadID = profile.codexResumeThreadID ?? ""
@@ -617,12 +620,12 @@ public final class NewSessionViewModel: ObservableObject {
             id: UUID().uuidString.lowercased(),
             name: normalizedName,
             machineID: selectedMachineID,
-            directoryPath: normalizedPath(directoryPath),
+            directoryPath: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
             agent: selectedAgent,
-            codexResumeThreadID: normalizedOptionalPath(codexResumeThreadID),
-            claudeResumeSessionID: normalizedOptionalPath(claudeResumeSessionID),
-            sessionToken: normalizedOptionalPath(sessionToken),
-            model: normalizedOptionalPath(selectedModel),
+            codexResumeThreadID: NewSessionDirectoryPathResolver.normalizedOptionalPath(codexResumeThreadID),
+            claudeResumeSessionID: NewSessionDirectoryPathResolver.normalizedOptionalPath(claudeResumeSessionID),
+            sessionToken: NewSessionDirectoryPathResolver.normalizedOptionalPath(sessionToken),
+            model: NewSessionDirectoryPathResolver.normalizedOptionalPath(selectedModel),
             reasoningEffort: selectedReasoningEffort.apiValue,
             environmentVariablesText: environmentVariablesText
         )
@@ -703,13 +706,15 @@ public final class NewSessionViewModel: ObservableObject {
             } else {
                 infoMessage = "Spawned session"
             }
-            recentProjects = await recentProjectsManager.recordRecentProject(normalizedPath(directory))
+            recentProjects = await recentProjectsManager.recordRecentProject(
+                NewSessionDirectoryPathResolver.normalizedPath(directory)
+            )
             approvalDirectory = nil
             errorMessage = nil
             return true
         } catch let error as NewSessionError {
             if case .requiresUserApproval(let directory) = error {
-                approvalDirectory = normalizedOptionalPath(directory)
+                approvalDirectory = NewSessionDirectoryPathResolver.normalizedOptionalPath(directory)
                 errorMessage = nil
                 infoMessage = nil
                 return false
@@ -790,7 +795,7 @@ private struct CursorPaginationMetadata {
 }
 
 private func paginationMetadata(nextCursor: String?, hasNext: Bool) -> CursorPaginationMetadata {
-    let normalizedCursor = normalizedOptionalPath(nextCursor)
+    let normalizedCursor = NewSessionDirectoryPathResolver.normalizedOptionalPath(nextCursor)
     return CursorPaginationMetadata(
         nextCursor: normalizedCursor,
         hasNext: hasNext && normalizedCursor != nil
@@ -821,58 +826,4 @@ private func normalizeReasoningEfforts(_ rawValues: [String]) -> [NewSessionReas
     }
 
     return normalized
-}
-
-private func normalizedPath(_ raw: String) -> String {
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? "~" : trimmed
-}
-
-private func normalizedOptionalPath(_ raw: String?) -> String? {
-    guard let raw else { return nil }
-    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
-}
-
-private func resolvedPath(current: String, entryName: String) -> String {
-    let path = normalizedPath(current)
-    let trimmedName = entryName.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedName.isEmpty else { return path }
-    if trimmedName == "." {
-        return path
-    }
-    if trimmedName == ".." {
-        if path == "~" {
-            return "~"
-        }
-        if path.hasPrefix("~/") {
-            let suffix = String(path.dropFirst(2))
-            let components = suffix.split(separator: "/").dropLast()
-            if components.isEmpty {
-                return "~"
-            }
-            return "~/" + components.joined(separator: "/")
-        }
-        if path == "/" {
-            return "/"
-        }
-        let components = path.split(separator: "/").dropLast()
-        if components.isEmpty {
-            return "/"
-        }
-        return "/" + components.joined(separator: "/")
-    }
-    if trimmedName.hasPrefix("/") {
-        return trimmedName
-    }
-    if path == "/" {
-        return "/" + trimmedName
-    }
-    if path.hasSuffix("/") {
-        return path + trimmedName
-    }
-    if path == "~" {
-        return "~/" + trimmedName
-    }
-    return path + "/" + trimmedName
 }

@@ -295,18 +295,10 @@ public struct NewSessionView: View {
     }
 
     private func directoryEntryFullPath(_ entry: APIMachineDirectoryEntry) -> String {
-        let current = viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let path = current.isEmpty ? "~" : current
-        let trimmedName = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmedName.isEmpty else { return path }
-        if trimmedName == "." { return path }
-        if trimmedName == ".." { return parentDirectoryPath(from: path) }
-        if trimmedName.hasPrefix("/") { return trimmedName }
-        if path == "/" { return "/" + trimmedName }
-        if path.hasSuffix("/") { return path + trimmedName }
-        if path == "~" { return "~/" + trimmedName }
-        return path + "/" + trimmedName
+        NewSessionDirectoryPathResolver.resolvedPath(
+            current: viewModel.directoryPath,
+            entryName: entry.name
+        )
     }
 
     private func loadDirectoryFromBrowserPath(_ path: String) async {
@@ -319,28 +311,10 @@ public struct NewSessionView: View {
     }
 
     private func goToParentDirectoryFromBrowser() async {
-        let current = viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parent = parentDirectoryPath(from: current.isEmpty ? "~" : current)
+        let draftPath = directoryBrowserPathDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let basePath = draftPath.isEmpty ? viewModel.directoryPath : draftPath
+        let parent = NewSessionDirectoryPathResolver.parentDirectory(from: basePath)
         await loadDirectoryFromBrowserPath(parent)
-    }
-
-    private func parentDirectoryPath(from path: String) -> String {
-        if path == "~" || path == "/" {
-            return path
-        }
-        if path.hasPrefix("~/") {
-            let suffix = String(path.dropFirst(2))
-            let components = suffix.split(separator: "/").dropLast()
-            if components.isEmpty {
-                return "~"
-            }
-            return "~/" + components.joined(separator: "/")
-        }
-        let components = path.split(separator: "/").dropLast()
-        if components.isEmpty {
-            return "/"
-        }
-        return "/" + components.joined(separator: "/")
     }
 
     private var machineSelectionBinding: Binding<String> {
@@ -389,11 +363,11 @@ public struct NewSessionView: View {
     }
 
     private var selectedCodexResumeID: String? {
-        normalized(viewModel.codexResumeThreadID)
+        NewSessionDirectoryPathResolver.normalizedOptionalPath(viewModel.codexResumeThreadID)
     }
 
     private var selectedClaudeResumeID: String? {
-        normalized(viewModel.claudeResumeSessionID)
+        NewSessionDirectoryPathResolver.normalizedOptionalPath(viewModel.claudeResumeSessionID)
     }
 
     private var codexSelectionButtonTitle: String {
@@ -416,12 +390,6 @@ enum FocusedField: Hashable {
     case environmentVariables
     case directoryPath
     case directoryFilter
-}
-
-private func normalized(_ value: String?) -> String? {
-    guard let value else { return nil }
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
 }
 
 private func abbreviatedIdentifier(_ value: String) -> String {
