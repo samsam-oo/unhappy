@@ -124,6 +124,68 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadProjectsFailurePreservesExistingProjects() async throws {
+        let existingProject = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            projectsLoader: SequenceProjectsLoader(results: [.success([existingProject]), .failure(.failed)]),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.projects.map(\.id) == [existingProject.id])
+        #expect(model.projectsErrorMessage?.isEmpty == false)
+    }
+
+    @Test
+    func loadUpstreamSessionsFailurePreservesExistingRows() async throws {
+        let existingRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote",
+                cwd: "/repo/app",
+                updatedAt: "2026-03-06T03:00:00.000Z",
+                createdAt: "2026-03-06T02:00:00.000Z",
+                archived: false
+            )
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            upstreamSessionsLoader: SequenceUpstreamSessionsLoader(results: [.success([existingRow]), .failure(.failed)]),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.loadUpstreamSessions(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.loadUpstreamSessions(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.upstreamSessions.map(\.id) == [existingRow.id])
+        #expect(model.upstreamSessionsErrorMessage?.isEmpty == false)
+    }
+
+    @Test
     func loadFiltersAlreadyMirroredUpstreamSessions() async throws {
         let mirroredSession = APISession(
             id: "session-1",

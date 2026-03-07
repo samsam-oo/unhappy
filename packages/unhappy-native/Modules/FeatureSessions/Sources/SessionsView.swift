@@ -290,6 +290,7 @@ public struct SessionsView: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
+                    hideInactiveSessions: hideInactiveSessions,
                     defaultNewSessionAgent: defaultNewSessionAgent,
                     makeNewSessionViewModel: makeNewSessionViewModel,
                     makeSessionToolsViewModel: makeSessionToolsViewModel,

@@ -241,9 +241,6 @@ public final class SessionsViewModel: ObservableObject {
                 token: token
             )
         } catch {
-            sessions = []
-            nextCursor = nil
-            hasMoreSessions = false
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -282,13 +279,6 @@ public final class SessionsViewModel: ObservableObject {
         } catch is CancellationError {
             // Stream cancellation is expected when the view task is torn down.
         } catch {
-            sessions = []
-            nextCursor = nil
-            hasMoreSessions = false
-            projects = []
-            projectsErrorMessage = nil
-            upstreamSessions = []
-            upstreamSessionsErrorMessage = nil
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             isLoading = false
         }
@@ -475,7 +465,6 @@ public final class SessionsViewModel: ObservableObject {
             upstreamSessions = filterMirroredUpstreamSessions(rows)
             upstreamSessionsErrorMessage = nil
         } catch {
-            upstreamSessions = []
             upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -500,7 +489,6 @@ public final class SessionsViewModel: ObservableObject {
             ).filter(\.summary.openedExplicitly)
             projectsErrorMessage = nil
         } catch {
-            projects = []
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }

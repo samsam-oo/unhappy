@@ -327,6 +327,27 @@ struct MockUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
     }
 }
 
+actor SequenceUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
+    var results: [Result<[SessionLinkedUpstreamSession], MockUpstreamSessionsLoaderError>]
+
+    init(results: [Result<[SessionLinkedUpstreamSession], MockUpstreamSessionsLoaderError>]) {
+        self.results = results
+    }
+
+    func loadUpstreamSessions(serverURLString: String, token: String) async throws -> [SessionLinkedUpstreamSession] {
+        if results.isEmpty {
+            return []
+        }
+        let next = results.removeFirst()
+        switch next {
+        case .success(let rows):
+            return rows
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
 enum MockUpstreamSessionLinkerError: Error, Sendable {
     case failed
 }

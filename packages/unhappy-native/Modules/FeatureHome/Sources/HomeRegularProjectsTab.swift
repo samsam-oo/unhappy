@@ -277,6 +277,7 @@ struct HomeRegularProjectsTab: View {
                         viewModel: viewModel,
                         serverURLString: serverURLString,
                         token: token,
+                        hideInactiveSessions: hideInactiveSessions,
                         defaultNewSessionAgent: defaultNewSessionAgent,
                         makeNewSessionViewModel: makeNewSessionViewModel,
                         makeSessionToolsViewModel: makeSessionToolsViewModel,

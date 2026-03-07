@@ -155,4 +155,47 @@ struct SessionListPresentationTests {
         #expect(groups.first?.projectPath == "/Users/skyline23/Downloads/unhappy")
         #expect(groups.first?.mirroredSessions.map(\.id) == ["session-1"])
     }
+
+    @Test
+    func projectGroupResolvesUpdatedRowsForExistingID() {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-07T00:00:00.000Z",
+                codexThreadCount: 0,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let initialGroup = SessionListPresentationBuilder.projectGroups(
+            sessions: [],
+            upstreamSessions: [],
+            projects: [project]
+        ).first
+
+        let upstreamRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote",
+                cwd: "/repo/app",
+                updatedAt: "2026-03-07T01:00:00.000Z",
+                createdAt: "2026-03-07T00:30:00.000Z",
+                archived: false
+            )
+        )
+
+        let resolvedGroup = SessionListPresentationBuilder.projectGroup(
+            id: initialGroup?.id ?? "",
+            sessions: [],
+            upstreamSessions: [upstreamRow],
+            projects: [project]
+        )
+
+        #expect(resolvedGroup?.upstreamSessions.map(\.summary.id) == ["thread-1"])
+    }
 }

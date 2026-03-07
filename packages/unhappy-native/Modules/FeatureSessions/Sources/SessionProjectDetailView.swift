@@ -28,10 +28,11 @@ public struct SessionProjectDetailView: View {
         }
     }
 
-    let group: SessionProjectGroup
+    let initialGroup: SessionProjectGroup
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
+    let hideInactiveSessions: Bool
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
@@ -46,15 +47,17 @@ public struct SessionProjectDetailView: View {
         viewModel: SessionsViewModel,
         serverURLString: String,
         token: String,
+        hideInactiveSessions: Bool,
         defaultNewSessionAgent: APISessionSpawnAgent,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
         onProjectRemoved: (() -> Void)? = nil
     ) {
-        self.group = group
+        self.initialGroup = group
         self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
+        self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
@@ -172,6 +175,22 @@ public struct SessionProjectDetailView: View {
             }
             .accessibilityLabel("Project Actions")
         }
+    }
+
+    private var group: SessionProjectGroup {
+        SessionListPresentationBuilder.projectGroup(
+            id: initialGroup.id,
+            sessions: visibleSessions,
+            upstreamSessions: viewModel.upstreamSessions,
+            projects: viewModel.projects
+        ) ?? initialGroup
+    }
+
+    private var visibleSessions: [APISession] {
+        if hideInactiveSessions {
+            return viewModel.sessions.filter(\.active)
+        }
+        return viewModel.sessions
     }
 
     private var summaryCard: some View {
