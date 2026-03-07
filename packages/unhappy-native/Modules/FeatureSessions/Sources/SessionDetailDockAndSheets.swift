@@ -158,191 +158,6 @@ struct SessionQuickToolsDockBar: View {
     }
 }
 
-struct SessionCodexSessionsSheet: View {
-    @ObservedObject var viewModel: SessionsViewModel
-    let sessionID: String
-    let serverURLString: String
-    let token: String
-    @Binding var isPresented: Bool
-    @Binding var cwdFilterDraft: String
-    @Binding var resumeDirectoryDraft: String
-    private let adapter = SessionCodexUpstreamAdapter()
-
-    var body: some View {
-        SessionUpstreamSessionsSheet(
-            viewModel: viewModel,
-            sessionID: sessionID,
-            serverURLString: serverURLString,
-            token: token,
-            isPresented: $isPresented,
-            cwdFilterDraft: $cwdFilterDraft,
-            resumeDirectoryDraft: $resumeDirectoryDraft,
-            adapter: adapter,
-            statusMessage: viewModel.codexResumeStatusMessage,
-            errorMessage: viewModel.codexResumeErrorMessage
-        )
-    }
-
-    private func normalizedCWD(from value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-}
-
-struct SessionClaudeSessionsSheet: View {
-    @ObservedObject var viewModel: SessionsViewModel
-    let sessionID: String
-    let serverURLString: String
-    let token: String
-    @Binding var isPresented: Bool
-    @Binding var cwdFilterDraft: String
-    @Binding var resumeDirectoryDraft: String
-    private let adapter = SessionClaudeUpstreamAdapter()
-
-    var body: some View {
-        SessionUpstreamSessionsSheet(
-            viewModel: viewModel,
-            sessionID: sessionID,
-            serverURLString: serverURLString,
-            token: token,
-            isPresented: $isPresented,
-            cwdFilterDraft: $cwdFilterDraft,
-            resumeDirectoryDraft: $resumeDirectoryDraft,
-            adapter: adapter,
-            statusMessage: viewModel.claudeResumeStatusMessage,
-            errorMessage: viewModel.claudeResumeErrorMessage
-        )
-    }
-
-    private func normalizedCWD(from value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-}
-
-struct SessionUpstreamSessionsSheet<Adapter: SessionUpstreamSessionAdapter>: View {
-    @ObservedObject var viewModel: SessionsViewModel
-    let sessionID: String
-    let serverURLString: String
-    let token: String
-    @Binding var isPresented: Bool
-    @Binding var cwdFilterDraft: String
-    @Binding var resumeDirectoryDraft: String
-    let adapter: Adapter
-    let statusMessage: String?
-    let errorMessage: String?
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Path Filter") {
-                    TextField("Optional cwd path", text: $cwdFilterDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button("Apply Filter") {
-                        Task {
-                            await adapter.load(
-                                in: viewModel,
-                                sessionID: sessionID,
-                                serverURLString: serverURLString,
-                                token: token,
-                                cwd: normalizedCWD(from: cwdFilterDraft)
-                            )
-                        }
-                    }
-                    .disabled(adapter.isLoading(in: viewModel))
-                }
-                Section("Link") {
-                    TextField("Directory for linked session", text: $resumeDirectoryDraft)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Text("If empty, selected row cwd is used.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if let statusMessage, !statusMessage.isEmpty {
-                        Text(statusMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.green)
-                    }
-                    if let errorMessage, !errorMessage.isEmpty {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                }
-
-                if adapter.isLoading(in: viewModel) {
-                    ProgressView("Loading \(adapter.provider.displayName) sessions…")
-                } else if let loadError = adapter.errorMessage(in: viewModel) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Unable to load \(adapter.provider.displayName) sessions")
-                            .font(.headline)
-                        Text(loadError)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Button("Retry") {
-                            Task {
-                                await adapter.load(
-                                    in: viewModel,
-                                    sessionID: sessionID,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    cwd: normalizedCWD(from: cwdFilterDraft)
-                                )
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                } else if adapter.summaries(in: viewModel).isEmpty {
-                    Text(adapter.emptyStateTitle)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(adapter.summaries(in: viewModel)) { summary in
-                        Button {
-                            let resumeDirectory =
-                                normalizedCWD(from: resumeDirectoryDraft)
-                                ?? normalizedCWD(from: summary.cwd ?? "")
-                                ?? normalizedCWD(from: cwdFilterDraft)
-                                ?? ""
-                            Task {
-                                await adapter.resume(
-                                    in: viewModel,
-                                    sourceSessionID: sessionID,
-                                    summary: summary,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    directory: resumeDirectory
-                                )
-                            }
-                        } label: {
-                            UpstreamSessionRow(
-                                summary: summary,
-                                isLinking: adapter.isResuming(summary: summary, in: viewModel)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .navigationTitle(adapter.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        isPresented = false
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-
-    private func normalizedCWD(from value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-}
-
 struct SessionRenameSheet: View {
     @Binding var isPresented: Bool
     @Binding var renameDraft: String
@@ -383,20 +198,16 @@ struct SessionRenameSheet: View {
 
 struct SessionToolbarTrailingMenu: View {
     let isBusy: Bool
-    let onListCodexSessions: () -> Void
-    let onListClaudeSessions: () -> Void
     let onRename: () -> Void
-    let onDelete: () -> Void
+    let onArchive: () -> Void
 
     var body: some View {
         if isBusy {
             ProgressView()
         } else {
             Menu {
-                Button("List Codex Sessions", systemImage: "list.bullet", action: onListCodexSessions)
-                Button("List Claude Sessions", systemImage: "list.bullet.rectangle", action: onListClaudeSessions)
                 Button("Rename", systemImage: "pencil", action: onRename)
-                Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+                Button("Archive", systemImage: "archivebox", role: .destructive, action: onArchive)
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.title3.weight(.semibold))

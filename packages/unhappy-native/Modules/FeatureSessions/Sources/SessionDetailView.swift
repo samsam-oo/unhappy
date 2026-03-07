@@ -43,13 +43,13 @@ public struct SessionDetailView: View {
     static let modelPickerDefaultOption = "__model_default__"
     static let modelPickerCustomOption = "__model_custom__"
     static let modelPickerPresetPrefix = "__model_preset__:"
+    static let effortPickerCurrentOption = "__effort_current__"
     static let effortPickerPresetPrefix = "__effort_preset__:"
     static let permissionModePickerDefaultOption = "__permission_mode_default__"
     static let permissionModePickerPresetPrefix = "__permission_mode_preset__:"
     static let transcriptBottomAnchorID = "__session_transcript_bottom__"
 
     enum SessionComposerEffortSelection: String, CaseIterable, Identifiable {
-        case auto
         case low
         case medium
         case high
@@ -60,8 +60,6 @@ public struct SessionDetailView: View {
 
         var label: String {
             switch self {
-            case .auto:
-                return "Auto"
             case .low:
                 return "Low"
             case .medium:
@@ -77,8 +75,6 @@ public struct SessionDetailView: View {
 
         var overrideValue: SessionMessageEffortOverride {
             switch self {
-            case .auto:
-                return .auto
             case .low:
                 return .low
             case .medium:
@@ -104,22 +100,16 @@ public struct SessionDetailView: View {
     @Environment(\.colorScheme) var colorScheme
     @AppStorage("unhappy.native.showReasoningDetails")
     var showReasoningDetails = false
-    @State var showDeleteConfirmation = false
+    @State var showArchiveConfirmation = false
     @State var showRenameSheet = false
-    @State var showCodexThreadsSheet = false
-    @State var showClaudeSessionsSheet = false
     @State var renameDraft = ""
-    @State var codexCwdFilterDraft = ""
-    @State var codexResumeDirectoryDraft = ""
-    @State var claudeCwdFilterDraft = ""
-    @State var claudeResumeDirectoryDraft = ""
     @State var draftMessage = ""
     @State var presentedQuickTool: SessionQuickTool?
     @State var applyModelOverride = false
     @State var modelOverrideDraft = ""
     @State var selectedModelOverrideOption = ""
     @State var applyEffortOverride = false
-    @State var selectedEffortOverride: SessionComposerEffortSelection = .auto
+    @State var selectedEffortOverride: SessionComposerEffortSelection = .medium
     @State var selectedPermissionModeOverride: APISessionMessagePermissionMode?
     @State var serverModelOverrideOptions: [String] = []
     @State var shouldFollowTranscript = true
@@ -405,21 +395,15 @@ public struct SessionDetailView: View {
             .sheet(item: $presentedQuickTool) { tool in
                 quickToolSheet(for: tool)
             }
-            .sheet(isPresented: $showCodexThreadsSheet) {
-                codexSessionsSheet
-            }
-            .sheet(isPresented: $showClaudeSessionsSheet) {
-                claudeSessionsSheet
-            }
             .onChange(of: selectedImagePickerItems) { _, items in
                 handleSelectedImagePickerItemsChange(items)
             }
             .alert(
-                "Delete session?",
-                isPresented: $showDeleteConfirmation,
+                "Archive session?",
+                isPresented: $showArchiveConfirmation,
                 actions: {
                     Button("Cancel", role: .cancel) {}
-                    Button("Delete", role: .destructive) {
+                    Button("Archive", role: .destructive) {
                         Task {
                             await viewModel.deleteSession(
                                 sessionID: currentSession.id,
@@ -479,29 +463,4 @@ public struct SessionDetailView: View {
                 }
         }
     }
-
-    var codexSessionsSheet: some View {
-        SessionCodexSessionsSheet(
-            viewModel: viewModel,
-            sessionID: session.id,
-            serverURLString: serverURLString,
-            token: token,
-            isPresented: $showCodexThreadsSheet,
-            cwdFilterDraft: $codexCwdFilterDraft,
-            resumeDirectoryDraft: $codexResumeDirectoryDraft
-        )
-    }
-
-    var claudeSessionsSheet: some View {
-        SessionClaudeSessionsSheet(
-            viewModel: viewModel,
-            sessionID: session.id,
-            serverURLString: serverURLString,
-            token: token,
-            isPresented: $showClaudeSessionsSheet,
-            cwdFilterDraft: $claudeCwdFilterDraft,
-            resumeDirectoryDraft: $claudeResumeDirectoryDraft
-        )
-    }
-
 }

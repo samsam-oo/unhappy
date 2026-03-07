@@ -114,8 +114,6 @@ struct UnhappyNativeApp: App {
         let sessionPreDeleteKillUseCase = SessionPreDeleteKillUseCase(service: sessionsService)
         let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
         let sessionTitleUpdateUseCase = SessionTitleUpdateUseCase(service: sessionsService)
-        let sessionCodexThreadsLoader = SessionCodexThreadsLoadUseCase(service: sessionsService)
-        let sessionClaudeSessionsLoader = SessionClaudeSessionsLoadUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
         self.sessionPresenceCoordinator = sessionPresenceCoordinator
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
@@ -138,8 +136,6 @@ struct UnhappyNativeApp: App {
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
                 upstreamSessionLinker: newSessionSpawner,
-                codexThreadsLoader: sessionCodexThreadsLoader,
-                claudeSessionsLoader: sessionClaudeSessionsLoader,
                 sessionModelsLoader: sessionModelsLoader,
                 spawnUseCase: sessionSpawnUseCase,
                 messageSender: sessionMessageSender,

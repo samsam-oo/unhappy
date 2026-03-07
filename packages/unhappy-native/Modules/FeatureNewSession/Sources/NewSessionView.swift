@@ -355,7 +355,7 @@ public struct NewSessionView: View {
 
     private var selectedModelDisplayValue: String {
         let normalized = viewModel.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? "Default" : normalized
+        return normalized.isEmpty ? "Select Model" : normalized
     }
 
     private var selectedCodexResumeID: String? {

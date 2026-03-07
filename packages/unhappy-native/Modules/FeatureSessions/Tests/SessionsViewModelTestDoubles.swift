@@ -232,40 +232,6 @@ struct MockSessionTitleUseCase: SessionTitleUpdatingAction {
     }
 }
 
-enum MockSessionCodexThreadsLoaderError: Error, Sendable {
-    case failed
-}
-
-struct MockSessionCodexThreadsLoader: SessionCodexThreadsLoading {
-    let result: Result<[APICodexThreadSummary], MockSessionCodexThreadsLoaderError>
-
-    func loadCodexThreads(serverURLString: String, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APICodexThreadSummary] {
-        switch result {
-        case .success(let rows):
-            return rows
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-enum MockSessionClaudeSessionsLoaderError: Error, Sendable {
-    case failed
-}
-
-struct MockSessionClaudeSessionsLoader: SessionClaudeSessionsLoading {
-    let result: Result<[APIClaudeSessionSummary], MockSessionClaudeSessionsLoaderError>
-
-    func loadClaudeSessions(serverURLString: String, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
-        switch result {
-        case .success(let rows):
-            return rows
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
 enum MockSessionSpawnUseCaseError: Error, Sendable {
     case failed
 }

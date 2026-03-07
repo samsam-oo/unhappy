@@ -28,20 +28,6 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var upstreamSessionsErrorMessage: String?
     @Published public private(set) var linkingUpstreamSessionID: String?
     @Published public private(set) var upstreamSessionStatusMessage: String?
-    @Published public private(set) var selectedCodexThreads: [APICodexThreadSummary] = []
-    @Published public private(set) var isLoadingCodexThreads = false
-    @Published public private(set) var selectedCodexThreadsErrorMessage: String?
-    @Published public private(set) var selectedCodexThreadsSessionID: String?
-    @Published public private(set) var codexResumeInProgressThreadID: String?
-    @Published public private(set) var codexResumeStatusMessage: String?
-    @Published public private(set) var codexResumeErrorMessage: String?
-    @Published public private(set) var selectedClaudeSessions: [APIClaudeSessionSummary] = []
-    @Published public private(set) var isLoadingClaudeSessions = false
-    @Published public private(set) var selectedClaudeSessionsErrorMessage: String?
-    @Published public private(set) var selectedClaudeSessionsSessionID: String?
-    @Published public private(set) var claudeResumeInProgressSessionID: String?
-    @Published public private(set) var claudeResumeStatusMessage: String?
-    @Published public private(set) var claudeResumeErrorMessage: String?
     @Published public private(set) var deletingSessionIDs: Set<String> = []
     @Published public private(set) var renamingSessionIDs: Set<String> = []
     @Published public private(set) var sendingMessageSessionID: String?
@@ -61,8 +47,6 @@ public final class SessionsViewModel: ObservableObject {
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
     private let upstreamSessionLinker: (any NewSessionSpawningAction)?
-    private let codexThreadsLoader: (any SessionCodexThreadsLoading)?
-    private let claudeSessionsLoader: (any SessionClaudeSessionsLoading)?
     private let sessionModelsLoader: (any SessionModelsLoadingAction)?
     private let spawnUseCase: (any SessionSpawningAction)?
     private let messageSender: (any SessionMessageSendingAction)?
@@ -85,8 +69,6 @@ public final class SessionsViewModel: ObservableObject {
         projectRemover: (any SessionProjectRemovingAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
         upstreamSessionLinker: (any NewSessionSpawningAction)? = nil,
-        codexThreadsLoader: (any SessionCodexThreadsLoading)? = nil,
-        claudeSessionsLoader: (any SessionClaudeSessionsLoading)? = nil,
         sessionModelsLoader: (any SessionModelsLoadingAction)? = nil,
         spawnUseCase: (any SessionSpawningAction)? = nil,
         messageSender: (any SessionMessageSendingAction)? = nil,
@@ -103,8 +85,6 @@ public final class SessionsViewModel: ObservableObject {
         self.projectRemover = projectRemover
         self.upstreamSessionsLoader = upstreamSessionsLoader
         self.upstreamSessionLinker = upstreamSessionLinker
-        self.codexThreadsLoader = codexThreadsLoader
-        self.claudeSessionsLoader = claudeSessionsLoader
         self.sessionModelsLoader = sessionModelsLoader
         self.spawnUseCase = spawnUseCase
         self.messageSender = messageSender
@@ -114,7 +94,7 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     public convenience init(
-        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating & SessionCodexThreadsFetching & SessionClaudeSessionsFetching & SessionSpawning
+        service: any SessionsFetching & SessionsPagingFetching & SessionMessagesFetching & SessionDeleting & SessionTitleUpdating & SessionSpawning
     ) {
         let loader = SessionsLoadUseCase(service: service)
         let messageSenderUseCase: (any SessionMessageSendingAction)?
@@ -134,8 +114,6 @@ public final class SessionsViewModel: ObservableObject {
             pageLoader: SessionsPageLoadUseCase(service: service),
             poller: SessionsPollingUseCase(loader: loader),
             messageLoader: SessionMessagesLoadUseCase(service: service),
-            codexThreadsLoader: SessionCodexThreadsLoadUseCase(service: service),
-            claudeSessionsLoader: SessionClaudeSessionsLoadUseCase(service: service),
             sessionModelsLoader: (service as? any SessionModelsListing).map {
                 SessionModelsLoadUseCase(service: $0)
             },
@@ -156,14 +134,6 @@ public final class SessionsViewModel: ObservableObject {
 
     public var activeSessionsCount: Int {
         sessions.filter(\.active).count
-    }
-
-    public var isResumingClaudeSession: Bool {
-        claudeResumeInProgressSessionID != nil
-    }
-
-    public var isResumingCodexSession: Bool {
-        codexResumeInProgressThreadID != nil
     }
 
     var cachedSessionMessagesCount: Int {
@@ -633,180 +603,6 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
-    public func loadCodexThreads(
-        for sessionID: String,
-        serverURLString: String,
-        token: String,
-        limit: Int = 20,
-        cwd: String? = nil
-    ) async {
-        selectedCodexThreadsSessionID = sessionID
-        selectedCodexThreadsErrorMessage = nil
-        selectedCodexThreads = []
-        isLoadingCodexThreads = true
-        defer { isLoadingCodexThreads = false }
-
-        guard let codexThreadsLoader else {
-            selectedCodexThreadsErrorMessage = "Codex thread listing is unavailable in this build"
-            return
-        }
-
-        do {
-            let threads = try await codexThreadsLoader.loadCodexThreads(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                limit: limit,
-                cwd: cwd
-            )
-            if selectedCodexThreadsSessionID == sessionID {
-                selectedCodexThreads = threads
-                selectedCodexThreadsErrorMessage = nil
-            }
-        } catch {
-            if selectedCodexThreadsSessionID == sessionID {
-                selectedCodexThreads = []
-                selectedCodexThreadsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
-        }
-    }
-
-    public func loadClaudeSessions(
-        for sessionID: String,
-        serverURLString: String,
-        token: String,
-        limit: Int = 20,
-        cwd: String? = nil
-    ) async {
-        selectedClaudeSessionsSessionID = sessionID
-        selectedClaudeSessionsErrorMessage = nil
-        selectedClaudeSessions = []
-        isLoadingClaudeSessions = true
-        defer { isLoadingClaudeSessions = false }
-
-        guard let claudeSessionsLoader else {
-            selectedClaudeSessionsErrorMessage = "Claude session listing is unavailable in this build"
-            return
-        }
-
-        do {
-            let rows = try await claudeSessionsLoader.loadClaudeSessions(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                limit: limit,
-                cwd: cwd
-            )
-            if selectedClaudeSessionsSessionID == sessionID {
-                selectedClaudeSessions = rows
-                selectedClaudeSessionsErrorMessage = nil
-            }
-        } catch {
-            if selectedClaudeSessionsSessionID == sessionID {
-                selectedClaudeSessions = []
-                selectedClaudeSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
-        }
-    }
-
-    public func resumeCodexThread(
-        from sourceSessionID: String,
-        codexResumeThreadID: String,
-        serverURLString: String,
-        token: String,
-        directory: String
-    ) async {
-        codexResumeInProgressThreadID = codexResumeThreadID
-        codexResumeStatusMessage = nil
-        codexResumeErrorMessage = nil
-        defer {
-            if codexResumeInProgressThreadID == codexResumeThreadID {
-                codexResumeInProgressThreadID = nil
-            }
-        }
-
-        guard let spawnUseCase else {
-            codexResumeErrorMessage = "Thread resume is unavailable in this build"
-            return
-        }
-
-        do {
-            let response = try await spawnUseCase.spawnSession(
-                SessionSpawnRequest(
-                    serverURLString: serverURLString,
-                    token: token,
-                    sessionID: sourceSessionID,
-                    directory: directory,
-                    agent: .codex,
-                    codexResumeThreadID: codexResumeThreadID,
-                    claudeResumeSessionID: nil,
-                    approvedNewDirectoryCreation: true
-                )
-            )
-
-            if let sessionID = response.sessionID, !sessionID.isEmpty {
-                codexResumeStatusMessage = "Resumed into new session \(sessionID)"
-            } else {
-                codexResumeStatusMessage = "Resumed Codex thread"
-            }
-            codexResumeErrorMessage = nil
-
-            await load(serverURLString: serverURLString, token: token)
-        } catch {
-            codexResumeStatusMessage = nil
-            codexResumeErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
-    public func resumeClaudeSession(
-        from sourceSessionID: String,
-        claudeResumeSessionID: String,
-        serverURLString: String,
-        token: String,
-        directory: String
-    ) async {
-        claudeResumeInProgressSessionID = claudeResumeSessionID
-        claudeResumeStatusMessage = nil
-        claudeResumeErrorMessage = nil
-        defer {
-            if claudeResumeInProgressSessionID == claudeResumeSessionID {
-                claudeResumeInProgressSessionID = nil
-            }
-        }
-
-        guard let spawnUseCase else {
-            claudeResumeErrorMessage = "Session resume is unavailable in this build"
-            return
-        }
-
-        do {
-            let response = try await spawnUseCase.spawnSession(
-                SessionSpawnRequest(
-                    serverURLString: serverURLString,
-                    token: token,
-                    sessionID: sourceSessionID,
-                    directory: directory,
-                    agent: .claude,
-                    codexResumeThreadID: nil,
-                    claudeResumeSessionID: claudeResumeSessionID,
-                    approvedNewDirectoryCreation: true
-                )
-            )
-
-            if let sessionID = response.sessionID, !sessionID.isEmpty {
-                claudeResumeStatusMessage = "Resumed into new session \(sessionID)"
-            } else {
-                claudeResumeStatusMessage = "Resumed Claude session"
-            }
-            claudeResumeErrorMessage = nil
-
-            await load(serverURLString: serverURLString, token: token)
-        } catch {
-            claudeResumeStatusMessage = nil
-            claudeResumeErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
-    }
-
     public func sendMessage(
         for sessionID: String,
         text: String,
@@ -966,14 +762,14 @@ public final class SessionsViewModel: ObservableObject {
             }
             messageCacheLRU.removeAll { $0 == sessionID }
             if let killFailureMessage {
-                errorMessage = "Deleted session record, but failed to terminate local session process: \(killFailureMessage)"
+                errorMessage = "Archived session, but failed to terminate the local session process: \(killFailureMessage)"
             } else {
                 errorMessage = nil
             }
         } catch {
             let deleteFailureMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             if let killFailureMessage {
-                errorMessage = "Failed to terminate local session process: \(killFailureMessage). Session record delete also failed: \(deleteFailureMessage)"
+                errorMessage = "Failed to terminate the local session process: \(killFailureMessage). Session archive also failed: \(deleteFailureMessage)"
             } else {
                 errorMessage = deleteFailureMessage
             }
@@ -986,22 +782,6 @@ public final class SessionsViewModel: ObservableObject {
         selectedSessionID = nil
         setSelectedSessionMessagesIfNeeded([])
         selectedSessionErrorMessage = nil
-        if selectedCodexThreadsSessionID == sessionID {
-            selectedCodexThreadsSessionID = nil
-            selectedCodexThreads = []
-            selectedCodexThreadsErrorMessage = nil
-        }
-        if selectedClaudeSessionsSessionID == sessionID {
-            selectedClaudeSessionsSessionID = nil
-            selectedClaudeSessions = []
-            selectedClaudeSessionsErrorMessage = nil
-        }
-        codexResumeInProgressThreadID = nil
-        codexResumeStatusMessage = nil
-        codexResumeErrorMessage = nil
-        claudeResumeInProgressSessionID = nil
-        claudeResumeStatusMessage = nil
-        claudeResumeErrorMessage = nil
         sendingMessageSessionID = nil
         sendingMessageSteerMode = nil
         sendMessageStatusMessage = nil

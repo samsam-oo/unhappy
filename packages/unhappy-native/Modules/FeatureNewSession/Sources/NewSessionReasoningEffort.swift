@@ -61,7 +61,7 @@ public struct NewSessionReasoningEffort: Hashable, Sendable {
         if let threadEffort {
             self = NewSessionReasoningEffort(rawValue: threadEffort.rawValue)
         } else {
-            self = .auto
+            self = .medium
         }
     }
 

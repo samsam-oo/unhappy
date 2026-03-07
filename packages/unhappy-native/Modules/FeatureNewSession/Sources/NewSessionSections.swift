@@ -41,21 +41,20 @@ struct NewSessionAdvancedSection: View {
             }
         }
 
-        Menu {
-            Button("Default") {
-                viewModel.setSelectedModel("")
-            }
-            ForEach(viewModel.availableModels, id: \.self) { model in
-                Button(model) {
-                    viewModel.setSelectedModel(model)
+        if !viewModel.availableModels.isEmpty {
+            Menu {
+                ForEach(viewModel.availableModels, id: \.self) { model in
+                    Button(model) {
+                        viewModel.setSelectedModel(model)
+                    }
                 }
-            }
-        } label: {
-            HStack {
-                Text("Model")
-                Spacer()
-                Text(selectedModelDisplayValue)
-                    .foregroundStyle(.secondary)
+            } label: {
+                HStack {
+                    Text("Model")
+                    Spacer()
+                    Text(selectedModelDisplayValue)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
 
@@ -75,19 +74,22 @@ struct NewSessionAdvancedSection: View {
         }
     }
 
+    @ViewBuilder
     private var reasoningEffortMenu: some View {
-        Menu {
-            ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
-                Button(value.displayName) {
-                    viewModel.setSelectedReasoningEffort(value)
+        if !viewModel.availableReasoningEfforts.isEmpty {
+            Menu {
+                ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
+                    Button(value.displayName) {
+                        viewModel.setSelectedReasoningEffort(value)
+                    }
                 }
-            }
-        } label: {
-            HStack {
-                Text("Reasoning Effort")
-                Spacer()
-                Text(viewModel.selectedReasoningEffort.displayName)
-                    .foregroundStyle(.secondary)
+            } label: {
+                HStack {
+                    Text("Reasoning Effort")
+                    Spacer()
+                    Text(viewModel.selectedReasoningEffort.displayName)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

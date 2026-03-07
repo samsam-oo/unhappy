@@ -163,40 +163,12 @@ extension SessionDetailView {
     var toolbarTrailingContent: some View {
         SessionToolbarTrailingMenu(
             isBusy: viewModel.isDeleting(sessionID: session.id) || viewModel.isRenaming(sessionID: session.id),
-            onListCodexSessions: {
-                showCodexThreadsSheet = true
-                if codexResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    codexResumeDirectoryDraft = codexCwdFilterDraft
-                }
-                Task {
-                    await viewModel.loadCodexThreads(
-                        for: session.id,
-                        serverURLString: serverURLString,
-                        token: token,
-                        cwd: normalizedCWD(from: codexCwdFilterDraft)
-                    )
-                }
-            },
-            onListClaudeSessions: {
-                showClaudeSessionsSheet = true
-                if claudeResumeDirectoryDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    claudeResumeDirectoryDraft = claudeCwdFilterDraft
-                }
-                Task {
-                    await viewModel.loadClaudeSessions(
-                        for: session.id,
-                        serverURLString: serverURLString,
-                        token: token,
-                        cwd: normalizedCWD(from: claudeCwdFilterDraft)
-                    )
-                }
-            },
             onRename: {
                 renameDraft = currentSession.displayName ?? ""
                 showRenameSheet = true
             },
-            onDelete: {
-                showDeleteConfirmation = true
+            onArchive: {
+                showArchiveConfirmation = true
             }
         )
     }
@@ -361,15 +333,15 @@ extension SessionDetailView {
 
     var availableEffortSelections: [SessionComposerEffortSelection] {
         guard let flavor = parsedSessionFlavor else {
-            return [.auto, .low, .medium, .high]
+            return [.low, .medium, .high]
         }
         switch flavor {
         case .codex:
-            return [.auto, .low, .medium, .high, .xhigh]
+            return [.low, .medium, .high, .xhigh]
         case .claude:
-            return [.auto, .low, .medium, .high, .max]
+            return [.low, .medium, .high, .max]
         case .gemini:
-            return [.auto]
+            return []
         }
     }
 
@@ -436,7 +408,7 @@ extension SessionDetailView {
     }
 
     var selectedModelOverrideLabel: String {
-        guard applyModelOverride else { return resolvedCurrentModelLabel ?? "Default" }
+        guard applyModelOverride else { return resolvedCurrentModelLabel ?? "Current Model" }
         switch selectedModelOverrideOption {
         case Self.customModelOverrideOption:
             let normalized = modelOverrideDraft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -447,7 +419,7 @@ extension SessionDetailView {
     }
 
     var selectedReasoningOverrideLabel: String {
-        guard applyEffortOverride else { return resolvedCurrentEffortLabel ?? "Auto" }
+        guard applyEffortOverride else { return resolvedCurrentEffortLabel ?? "Current Effort" }
         return selectedEffortOverride.label
     }
 
@@ -486,12 +458,19 @@ extension SessionDetailView {
     }
 
     var effortPickerOptions: [SessionQuickToolPickerOption] {
-        availableEffortSelections.map { effort in
+        var options: [SessionQuickToolPickerOption] = [
+            SessionQuickToolPickerOption(
+                id: Self.effortPickerCurrentOption,
+                label: "Use current effort"
+            ),
+        ]
+        options.append(contentsOf: availableEffortSelections.map { effort in
             SessionQuickToolPickerOption(
                 id: Self.effortPickerPresetPrefix + effort.rawValue,
                 label: effort.label
             )
-        }
+        })
+        return options
     }
 
     var availablePermissionModeOptions: [APISessionMessagePermissionMode] {
@@ -563,14 +542,22 @@ extension SessionDetailView {
                 if applyEffortOverride {
                     return Self.effortPickerPresetPrefix + selectedEffortOverride.rawValue
                 }
-                return Self.effortPickerPresetPrefix + SessionComposerEffortSelection.auto.rawValue
+                return Self.effortPickerCurrentOption
             },
             set: { value in
+                if value == Self.effortPickerCurrentOption {
+                    applyEffortOverride = false
+                    if !availableEffortSelections.contains(selectedEffortOverride),
+                       let first = availableEffortSelections.first {
+                        selectedEffortOverride = first
+                    }
+                    return
+                }
                 guard value.hasPrefix(Self.effortPickerPresetPrefix) else { return }
                 let raw = String(value.dropFirst(Self.effortPickerPresetPrefix.count))
                 guard let selected = SessionComposerEffortSelection(rawValue: raw) else { return }
                 selectedEffortOverride = selected
-                applyEffortOverride = selected != .auto
+                applyEffortOverride = true
             }
         )
     }
@@ -636,11 +623,6 @@ extension SessionDetailView {
             .navigationTitle("Finish Worktree")
             .navigationBarTitleDisplayMode(.inline)
         }
-    }
-
-    func normalizedCWD(from value: String) -> String? {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     func scrollTranscriptToBottom(
