@@ -277,6 +277,9 @@ extension SessionDetailView {
                 )
             }
             if sent {
+                if steerMode == .immediate {
+                    detailState.syncFromCache()
+                }
                 shouldFollowTranscript = true
                 scrollToBottomRequestID = UUID()
                 draftMessage = ""

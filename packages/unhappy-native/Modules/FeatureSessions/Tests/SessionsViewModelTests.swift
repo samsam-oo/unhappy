@@ -990,6 +990,55 @@ struct SessionsViewModelTests {
         #expect(model.messages(for: "other-session") == [otherSessionMessage])
     }
 
+    @Test
+    func refreshMessagesSnapshotDoesNotMutateSelectedSessionState() async throws {
+        let selectedSessionMessage = APISessionMessage(
+            id: "selected-message",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "selected"),
+            createdAt: 1,
+            updatedAt: 1
+        )
+        let otherSessionMessage = APISessionMessage(
+            id: "other-message",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "other"),
+            createdAt: 2,
+            updatedAt: 2
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: SessionMappedMessagesLoader(
+                rowsBySessionID: [
+                    "selected-session": [selectedSessionMessage],
+                    "other-session": [otherSessionMessage]
+                ]
+            ),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.loadMessages(
+            for: "selected-session",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        let snapshot = await model.refreshMessagesSnapshot(
+            for: "other-session",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(snapshot.messages == [otherSessionMessage])
+        #expect(model.selectedSessionID == "selected-session")
+        #expect(model.selectedSessionMessages == [selectedSessionMessage])
+    }
+
     func refreshAndSelectSessionLoadsSpawnedSessionIntoDetailState() async throws {
         let spawnedSession = APISession(
             id: "spawned-session",

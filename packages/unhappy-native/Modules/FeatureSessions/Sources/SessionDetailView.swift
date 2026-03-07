@@ -96,6 +96,7 @@ public struct SessionDetailView: View {
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     let onClose: (() -> Void)?
 
+    @StateObject var detailState: SessionDetailStateModel
     @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) var colorScheme
     @AppStorage("unhappy.native.showReasoningDetails")
@@ -141,6 +142,14 @@ public struct SessionDetailView: View {
         self.token = token
         self.onClose = onClose
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        _detailState = StateObject(
+            wrappedValue: SessionDetailStateModel(
+                sessionID: session.id,
+                sessionsViewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token
+            )
+        )
     }
 
     var tabBarVisibility: Visibility {
@@ -172,8 +181,8 @@ public struct SessionDetailView: View {
 
     func makeMessagesSectionRows() -> MessagesSectionRows {
         MessagesSectionRows(
-            isLoading: viewModel.isLoadingSessionMessages,
-            errorMessage: viewModel.selectedSessionErrorMessage,
+            isLoading: detailState.isLoading,
+            errorMessage: detailState.errorMessage,
             visibleTranscriptPresentations: visibleTranscriptPresentations,
             liveStatusText: liveStatusText,
             transcriptBottomAnchorID: Self.transcriptBottomAnchorID,
@@ -187,10 +196,9 @@ public struct SessionDetailView: View {
             },
             onRetry: {
                 Task {
-                    await viewModel.loadMessages(
-                        for: session.id,
-                        serverURLString: serverURLString,
-                        token: token
+                    _ = await detailState.loadMessages(
+                        showsLoadingState: true,
+                        clearsMessagesOnFailure: true
                     )
                 }
             }
@@ -294,8 +302,7 @@ public struct SessionDetailView: View {
                 handleTranscriptOnAppear(using: scrollProxy)
             }
             .onDisappear {
-                viewModel.stopSelectedSessionMessagesPolling()
-                viewModel.clearDetailSelectionIfNeeded(sessionID: session.id)
+                detailState.stopPolling()
             }
     }
 
@@ -318,7 +325,7 @@ public struct SessionDetailView: View {
         using scrollProxy: ScrollViewProxy
     ) -> some View {
         content
-            .onChange(of: viewModel.selectedSessionMessages) { _, messages in
+            .onChange(of: detailState.messages) { _, messages in
                 handleSelectedSessionMessagesChange(messages)
             }
             .onChange(of: currentSession.dataEncryptionKey) { _, _ in
@@ -347,7 +354,7 @@ public struct SessionDetailView: View {
                     using: scrollProxy
                 )
             }
-            .onChange(of: viewModel.isLoadingSessionMessages) { wasLoading, isLoading in
+            .onChange(of: detailState.isLoading) { wasLoading, isLoading in
                 handleLoadingSessionMessagesChange(
                     wasLoading: wasLoading,
                     isLoading: isLoading,
@@ -392,11 +399,7 @@ public struct SessionDetailView: View {
                 await loadServerModelOptions()
             }
         }
-        viewModel.startSelectedSessionMessagesPolling(
-            for: session.id,
-            serverURLString: serverURLString,
-            token: token
-        )
+        detailState.startPolling()
         refreshTranscriptPresentationCacheForCurrentState()
         scrollTranscriptToBottom(using: scrollProxy, animated: false)
     }

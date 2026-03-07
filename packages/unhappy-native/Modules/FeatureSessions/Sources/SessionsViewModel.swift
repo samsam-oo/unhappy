@@ -356,6 +356,26 @@ public final class SessionsViewModel: ObservableObject {
             }
         }
 
+        let snapshot = await refreshMessagesSnapshot(
+            for: sessionID,
+            serverURLString: serverURLString,
+            token: token,
+            clearsMessagesOnFailure: clearsMessagesOnFailure
+        )
+        if selectedSessionID == sessionID {
+            setSelectedSessionMessagesIfNeeded(snapshot.messages)
+            selectedSessionErrorMessage = snapshot.errorMessage
+        }
+    }
+
+    public func refreshMessagesSnapshot(
+        for sessionID: String,
+        serverURLString: String,
+        token: String,
+        clearsMessagesOnFailure: Bool = true
+    ) async -> SessionMessagesSnapshot {
+        let cachedMessages = messagesBySessionID[sessionID] ?? []
+
         do {
             let fetchedMessages = try await messageLoader.loadMessages(
                 serverURLString: serverURLString,
@@ -364,34 +384,37 @@ public final class SessionsViewModel: ObservableObject {
             )
             let mergedMessages = mergeFetchedMessages(fetchedMessages, for: sessionID)
             let normalizedMessages = cacheMessages(mergedMessages, for: sessionID)
-            if selectedSessionID == sessionID {
-                setSelectedSessionMessagesIfNeeded(normalizedMessages)
-                selectedSessionErrorMessage = nil
-            }
+            return SessionMessagesSnapshot(
+                sessionID: sessionID,
+                messages: normalizedMessages,
+                errorMessage: nil,
+                sessionMissing: false
+            )
         } catch let apiError as SessionsAPIError {
             if case .invalidHTTPStatus(404) = apiError {
                 sessions.removeAll { $0.id == sessionID }
                 messagesBySessionID[sessionID] = nil
                 messageCacheLRU.removeAll { $0 == sessionID }
-                if selectedSessionID == sessionID {
-                    setSelectedSessionMessagesIfNeeded([])
-                    selectedSessionErrorMessage = "Session no longer exists on server."
-                }
-                return
+                return SessionMessagesSnapshot(
+                    sessionID: sessionID,
+                    messages: [],
+                    errorMessage: "Session no longer exists on server.",
+                    sessionMissing: true
+                )
             }
-            if selectedSessionID == sessionID {
-                if clearsMessagesOnFailure {
-                    setSelectedSessionMessagesIfNeeded([])
-                }
-                selectedSessionErrorMessage = apiError.errorDescription ?? apiError.localizedDescription
-            }
+            return SessionMessagesSnapshot(
+                sessionID: sessionID,
+                messages: clearsMessagesOnFailure ? [] : cachedMessages,
+                errorMessage: apiError.errorDescription ?? apiError.localizedDescription,
+                sessionMissing: false
+            )
         } catch {
-            if selectedSessionID == sessionID {
-                if clearsMessagesOnFailure {
-                    setSelectedSessionMessagesIfNeeded([])
-                }
-                selectedSessionErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            }
+            return SessionMessagesSnapshot(
+                sessionID: sessionID,
+                messages: clearsMessagesOnFailure ? [] : cachedMessages,
+                errorMessage: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription,
+                sessionMissing: false
+            )
         }
     }
 
@@ -959,11 +982,11 @@ public final class SessionsViewModel: ObservableObject {
         text: String,
         attachments: [SessionComposerImageAttachment]
     ) {
-        guard selectedSessionID == sessionID else { return }
         let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedText.isEmpty || !attachments.isEmpty else { return }
 
-        let currentMessages = messagesBySessionID[sessionID] ?? selectedSessionMessages
+        let currentMessages = messagesBySessionID[sessionID]
+            ?? (selectedSessionID == sessionID ? selectedSessionMessages : [])
         let timestamp = Date().timeIntervalSince1970
         let optimisticID = "optimistic-\(UUID().uuidString.lowercased())"
         let optimisticMessage = APISessionMessage(
@@ -982,7 +1005,9 @@ public final class SessionsViewModel: ObservableObject {
         )
 
         let normalizedMessages = cacheMessages(currentMessages + [optimisticMessage], for: sessionID)
-        setSelectedSessionMessagesIfNeeded(normalizedMessages)
+        if selectedSessionID == sessionID {
+            setSelectedSessionMessagesIfNeeded(normalizedMessages)
+        }
     }
 
     private func makeOptimisticUserPayload(text: String, imageDataURLs: [String]) -> String {
@@ -1131,5 +1156,24 @@ public final class SessionsViewModel: ObservableObject {
         var nextSessions = sessions
         nextSessions[index] = session
         sessions = nextSessions
+    }
+}
+
+public struct SessionMessagesSnapshot: Equatable, Sendable {
+    public let sessionID: String
+    public let messages: [APISessionMessage]
+    public let errorMessage: String?
+    public let sessionMissing: Bool
+
+    public init(
+        sessionID: String,
+        messages: [APISessionMessage],
+        errorMessage: String?,
+        sessionMissing: Bool
+    ) {
+        self.sessionID = sessionID
+        self.messages = messages
+        self.errorMessage = errorMessage
+        self.sessionMissing = sessionMissing
     }
 }
