@@ -87,7 +87,7 @@ struct SessionRuntimeContext {
         if let workingDirectory = upstreamIdentity?.workingDirectory {
             return workingDirectory
         }
-        return SessionPayloadValueResolver.firstString(
+        let rawDirectory = SessionPayloadValueResolver.firstString(
             in: [agentState, metadata],
             keys: [
                 "cwd",
@@ -98,10 +98,21 @@ struct SessionRuntimeContext {
                 "projectPath",
             ]
         )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return SessionProjectPathCanonicalizer.canonicalPath(
+            rawDirectory,
+            homeDirectory: homeDirectory
+        )
     }
 
     var upstreamSessionID: String? {
         upstreamIdentity?.upstreamSessionID
+    }
+
+    private var homeDirectory: String? {
+        SessionPayloadValueResolver.firstString(
+            in: [agentState, metadata],
+            keys: ["homeDir", "home_dir"]
+        )?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func resolveProvider(

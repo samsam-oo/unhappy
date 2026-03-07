@@ -155,18 +155,7 @@ public extension SessionListPresentationBuilder {
     }
 
     private static func normalizedProjectPath(_ raw: String?) -> String? {
-        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else {
-            return nil
-        }
-        if raw == "/" {
-            return raw
-        }
-        var normalized = raw
-        while normalized.count > 1 && normalized.hasSuffix("/") {
-            normalized.removeLast()
-        }
-        return normalized
+        SessionProjectPathCanonicalizer.canonicalPath(raw)
     }
 
     private static func compareProjectGroups(_ lhs: SessionProjectGroup, _ rhs: SessionProjectGroup) -> Bool {

@@ -118,4 +118,41 @@ struct SessionListPresentationTests {
 
         #expect(groups.isEmpty)
     }
+
+    @Test
+    func projectGroupsMatchHomeRelativeSessionPathToAbsoluteProject() {
+        let mirroredSession = APISession(
+            id: "session-1",
+            active: true,
+            activeAt: 10,
+            createdAt: 1,
+            updatedAt: 20,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","displayName":"Work Mac","path":"~/Downloads/unhappy","homeDir":"/Users/skyline23"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+
+        let groups = SessionListPresentationBuilder.projectGroups(
+            sessions: [mirroredSession],
+            upstreamSessions: [],
+            projects: [
+                SessionMachineProject(
+                    machineID: "machine-1",
+                    machineDisplayName: "Work Mac",
+                    summary: APIMachineProjectSummary(
+                        path: "/Users/skyline23/Downloads/unhappy",
+                        latestUpdatedAt: "2026-03-07T00:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                )
+            ]
+        )
+
+        #expect(groups.count == 1)
+        #expect(groups.first?.projectPath == "/Users/skyline23/Downloads/unhappy")
+        #expect(groups.first?.mirroredSessions.map(\.id) == ["session-1"])
+    }
 }
