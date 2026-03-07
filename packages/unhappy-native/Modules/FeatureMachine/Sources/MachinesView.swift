@@ -53,6 +53,7 @@ public struct MachinesView: View {
             }
         }
         .navigationTitle("Machines")
+        .navigationBarTitleDisplayMode(.inline)
         .task(id: "\(serverURLString)|\(token)") {
             await viewModel.loadMachines(serverURLString: serverURLString, token: token)
         }

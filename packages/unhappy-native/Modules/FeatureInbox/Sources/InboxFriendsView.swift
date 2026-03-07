@@ -11,6 +11,7 @@ public struct InboxFriendsView: View {
     public var body: some View {
         content
         .navigationTitle("Friends")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {

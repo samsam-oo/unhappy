@@ -68,6 +68,7 @@ struct HomeRegularInboxTab: View {
                 list
             }
         }
+        .contentMargins(.top, 8, for: .scrollContent)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .systemBackground))
     }
@@ -176,6 +177,7 @@ struct HomeRegularInboxTab: View {
             }
         }
         .listStyle(.plain)
+        .contentMargins(.top, 8, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemBackground))
     }

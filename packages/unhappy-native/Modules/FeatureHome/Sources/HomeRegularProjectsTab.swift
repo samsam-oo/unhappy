@@ -223,6 +223,7 @@ struct HomeRegularProjectsTab: View {
                     }
                 }
                 .listStyle(.plain)
+                .contentMargins(.top, 8, for: .scrollContent)
                 .scrollContentBackground(.hidden)
                 .refreshable {
                     await reloadSessions()

@@ -30,6 +30,7 @@ public struct ChangelogView: View {
             }
         }
         .navigationTitle("Changelog")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

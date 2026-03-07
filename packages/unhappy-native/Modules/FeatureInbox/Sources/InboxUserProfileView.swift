@@ -61,6 +61,7 @@ public struct InboxUserProfileView: View {
             }
         }
         .navigationTitle("User")
+        .navigationBarTitleDisplayMode(.inline)
         .task(id: userID) {
             await refresh()
         }
