@@ -39,6 +39,7 @@ public struct SessionProjectDetailView: View {
     let onProjectRemoved: (() -> Void)?
 
     @State private var isPresentingNewSession = false
+    @State private var isPresentingProjectActions = false
     @State private var firstMessagePreviewBySessionID: [String: String] = [:]
     @State private var spawnedSessionNavigationSessionID: String?
 
@@ -148,8 +149,23 @@ public struct SessionProjectDetailView: View {
         }
 
         ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button(role: .destructive) {
+            Button {
+                isPresentingProjectActions = true
+            } label: {
+                if viewModel.isRemoving(projectID: group.id) {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+            .accessibilityLabel("Project Actions")
+            .confirmationDialog(
+                "Project Actions",
+                isPresented: $isPresentingProjectActions,
+                titleVisibility: .visible
+            ) {
+                Button("Stop Syncing Project", role: .destructive) {
                     Task {
                         let didRemove = await viewModel.removeProject(
                             machineID: group.machineID,
@@ -161,19 +177,9 @@ public struct SessionProjectDetailView: View {
                             onProjectRemoved?()
                         }
                     }
-                } label: {
-                    Label("Stop Syncing Project", systemImage: "xmark.bin")
                 }
                 .disabled(viewModel.isRemoving(projectID: group.id))
-            } label: {
-                if viewModel.isRemoving(projectID: group.id) {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "ellipsis.circle")
-                }
             }
-            .accessibilityLabel("Project Actions")
         }
     }
 

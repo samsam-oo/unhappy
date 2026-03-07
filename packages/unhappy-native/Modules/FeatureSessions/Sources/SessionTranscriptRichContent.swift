@@ -1050,7 +1050,6 @@ struct SessionTranscriptMonospaceBlock: View {
                     Text(text.isEmpty ? " " : text)
                         .font(.footnote.monospaced())
                         .foregroundStyle(AppPalette.primaryText)
-                        .textSelection(.enabled)
                         .lineSpacing(1.5)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

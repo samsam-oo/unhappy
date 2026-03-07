@@ -7,6 +7,14 @@ struct SessionQuickToolPickerOption: Identifiable, Equatable {
 }
 
 struct SessionQuickToolsDockBar: View {
+    private enum PresentedPicker: String, Identifiable {
+        case model
+        case effort
+        case permissionMode
+
+        var id: String { rawValue }
+    }
+
     let supportsReasoningEffortOverride: Bool
     let selectedModelOverrideLabel: String
     let selectedReasoningOverrideLabel: String
@@ -26,6 +34,7 @@ struct SessionQuickToolsDockBar: View {
 
     private let quickToolsFadeWidth: CGFloat = 16
     private let quickToolsBarHeight: CGFloat = 36
+    @State private var presentedPicker: PresentedPicker?
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -65,6 +74,9 @@ struct SessionQuickToolsDockBar: View {
         .defaultScrollAnchor(.leading)
         .id(sessionIdentity)
         .frame(height: quickToolsBarHeight)
+        .sheet(item: $presentedPicker) { picker in
+            pickerSheet(for: picker)
+        }
         .overlay(alignment: .leading) {
             LinearGradient(
                 colors: [surfaceColor, surfaceColor.opacity(0)],
@@ -86,63 +98,30 @@ struct SessionQuickToolsDockBar: View {
     }
 
     private var modelMenuButton: some View {
-        Menu {
-            ForEach(modelPickerOptions) { option in
-                Button {
-                    modelPickerSelection.wrappedValue = option.id
-                } label: {
-                    if modelPickerSelection.wrappedValue == option.id {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            Label(selectedModelOverrideLabel, systemImage: "cpu")
-                .modifier(DockChipModifier(tone: .neutral))
+        dockChipButton(
+            title: selectedModelOverrideLabel,
+            systemImage: "cpu"
+        ) {
+            presentedPicker = .model
         }
-        .tint(.primary)
     }
 
     private var effortMenuButton: some View {
-        Menu {
-            ForEach(effortPickerOptions) { option in
-                Button {
-                    effortPickerSelection.wrappedValue = option.id
-                } label: {
-                    if effortPickerSelection.wrappedValue == option.id {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            Label(selectedReasoningOverrideLabel, systemImage: "brain.head.profile")
-                .modifier(DockChipModifier(tone: .neutral))
+        dockChipButton(
+            title: selectedReasoningOverrideLabel,
+            systemImage: "brain.head.profile"
+        ) {
+            presentedPicker = .effort
         }
-        .tint(.primary)
     }
 
     private var fileModeMenuButton: some View {
-        Menu {
-            ForEach(permissionModePickerOptions) { option in
-                Button {
-                    permissionModePickerSelection.wrappedValue = option.id
-                } label: {
-                    if permissionModePickerSelection.wrappedValue == option.id {
-                        Label(option.label, systemImage: "checkmark")
-                    } else {
-                        Text(option.label)
-                    }
-                }
-            }
-        } label: {
-            Label(selectedFileModeLabel, systemImage: "doc.badge.gearshape")
-                .modifier(DockChipModifier(tone: .neutral))
+        dockChipButton(
+            title: selectedFileModeLabel,
+            systemImage: "doc.badge.gearshape"
+        ) {
+            presentedPicker = .permissionMode
         }
-        .tint(.primary)
     }
 
     private func dockChipButton(
@@ -155,6 +134,79 @@ struct SessionQuickToolsDockBar: View {
                 .modifier(DockChipModifier(tone: .neutral))
         }
         .buttonStyle(PressableScaleButtonStyle())
+    }
+
+    @ViewBuilder
+    private func pickerSheet(for picker: PresentedPicker) -> some View {
+        switch picker {
+        case .model:
+            SessionQuickToolSelectionSheet(
+                title: "Model",
+                selectedOptionID: modelPickerSelection.wrappedValue,
+                options: modelPickerOptions
+            ) { optionID in
+                modelPickerSelection.wrappedValue = optionID
+                presentedPicker = nil
+            }
+        case .effort:
+            SessionQuickToolSelectionSheet(
+                title: "Reasoning Effort",
+                selectedOptionID: effortPickerSelection.wrappedValue,
+                options: effortPickerOptions
+            ) { optionID in
+                effortPickerSelection.wrappedValue = optionID
+                presentedPicker = nil
+            }
+        case .permissionMode:
+            SessionQuickToolSelectionSheet(
+                title: "File Mode",
+                selectedOptionID: permissionModePickerSelection.wrappedValue,
+                options: permissionModePickerOptions
+            ) { optionID in
+                permissionModePickerSelection.wrappedValue = optionID
+                presentedPicker = nil
+            }
+        }
+    }
+}
+
+private struct SessionQuickToolSelectionSheet: View {
+    let title: String
+    let selectedOptionID: String
+    let options: [SessionQuickToolPickerOption]
+    let onSelect: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List(options) { option in
+                Button {
+                    onSelect(option.id)
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(option.label)
+                        Spacer()
+                        if option.id == selectedOptionID {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 
@@ -200,14 +252,14 @@ struct SessionToolbarTrailingMenu: View {
     let isBusy: Bool
     let onRename: () -> Void
     let onArchive: () -> Void
+    @State private var isShowingActions = false
 
     var body: some View {
         if isBusy {
             ProgressView()
         } else {
-            Menu {
-                Button("Rename", systemImage: "pencil", action: onRename)
-                Button("Archive", systemImage: "archivebox", role: .destructive, action: onArchive)
+            Button {
+                isShowingActions = true
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.title3.weight(.semibold))
@@ -215,6 +267,14 @@ struct SessionToolbarTrailingMenu: View {
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(PressableScaleButtonStyle())
+            .confirmationDialog(
+                "Session Actions",
+                isPresented: $isShowingActions,
+                titleVisibility: .visible
+            ) {
+                Button("Rename", action: onRename)
+                Button("Archive", role: .destructive, action: onArchive)
+            }
         }
     }
 }

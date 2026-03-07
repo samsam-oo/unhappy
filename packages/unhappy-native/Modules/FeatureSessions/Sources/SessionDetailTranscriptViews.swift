@@ -324,7 +324,6 @@ struct SessionTranscriptLogLine: View {
                 Text(entry.body)
                     .font(bodyFont)
                     .foregroundStyle(AppPalette.secondaryText)
-                    .textSelection(.enabled)
                     .lineLimit(nil)
                     .lineSpacing(1.5)
             }
