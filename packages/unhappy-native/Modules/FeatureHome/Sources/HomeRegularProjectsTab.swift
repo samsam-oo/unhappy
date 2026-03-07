@@ -113,7 +113,7 @@ struct HomeRegularProjectsTab: View {
     @ViewBuilder
     private var sidebar: some View {
         Group {
-            if viewModel.isLoading {
+            if shouldShowFullScreenLoading {
                 ProgressView("Loading sessions…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
@@ -161,6 +161,14 @@ struct HomeRegularProjectsTab: View {
                 }
             } else {
                 List {
+                    if shouldShowProjectsStatusRow {
+                        ProjectSyncStatusRow(
+                            activeSessionsCount: viewModel.activeSessionsCount,
+                            isRefreshing: isRefreshingProjectContent
+                        )
+                        .listRowSeparator(.hidden)
+                    }
+
                     Section("Projects") {
                         if viewModel.isLoadingProjects && projectGroups.isEmpty {
                             ProgressView("Loading projects…")
@@ -300,6 +308,18 @@ struct HomeRegularProjectsTab: View {
 
     private var showsSessionSidebarList: Bool {
         !projectGroups.isEmpty
+    }
+
+    private var isRefreshingProjectContent: Bool {
+        viewModel.isLoading || viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions
+    }
+
+    private var shouldShowProjectsStatusRow: Bool {
+        showsSessionSidebarList && (isRefreshingProjectContent || viewModel.activeSessionsCount > 0)
+    }
+
+    private var shouldShowFullScreenLoading: Bool {
+        isRefreshingProjectContent && !showsSessionSidebarList && viewModel.sessions.isEmpty
     }
 
     private var projectGroups: [SessionProjectGroup] {

@@ -107,7 +107,7 @@ public struct SessionsView: View {
     @ViewBuilder
     private var sidebarContent: some View {
         VStack(spacing: 0) {
-            if viewModel.isLoading {
+            if shouldShowFullScreenLoading {
                 ProgressView("Loading sessions…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
@@ -167,6 +167,14 @@ public struct SessionsView: View {
 
     private var sessionsNavigationList: some View {
         return List {
+            if shouldShowProjectsStatusRow {
+                ProjectSyncStatusRow(
+                    activeSessionsCount: viewModel.activeSessionsCount,
+                    isRefreshing: isRefreshingProjectContent
+                )
+                .listRowSeparator(.hidden)
+            }
+
             Section("Projects") {
                 if viewModel.isLoadingProjects && projectGroups.isEmpty {
                     ProgressView("Loading projects…")
@@ -208,6 +216,18 @@ public struct SessionsView: View {
 
     private var hasSidebarRows: Bool {
         !projectGroups.isEmpty
+    }
+
+    private var isRefreshingProjectContent: Bool {
+        viewModel.isLoading || viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions
+    }
+
+    private var shouldShowProjectsStatusRow: Bool {
+        hasSidebarRows && (isRefreshingProjectContent || viewModel.activeSessionsCount > 0)
+    }
+
+    private var shouldShowFullScreenLoading: Bool {
+        isRefreshingProjectContent && !hasSidebarRows && viewModel.sessions.isEmpty
     }
 
     @ViewBuilder
