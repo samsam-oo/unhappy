@@ -123,6 +123,7 @@ public struct SessionDetailView: View {
     @State var isRecoveringDisconnectedSession = false
     @State var permissionActionStatusMessage: String?
     @State var permissionActionErrorMessage: String?
+    @State var bottomDockHeight: CGFloat = 0
     @GestureState var isInteractingWithBottomDock = false
     @FocusState var focusedComposerField: SessionComposerFocusField?
 
@@ -159,9 +160,14 @@ public struct SessionDetailView: View {
     }
 
     func transcriptListContent(using scrollProxy: ScrollViewProxy) -> some View {
-        let messagesSectionRows = makeMessagesSectionRows()
-        let listBase = transcriptListBase(messagesSectionRows: messagesSectionRows)
-        return applyTranscriptLifecycleHandlers(to: listBase, using: scrollProxy)
+        GeometryReader { geometry in
+            let messagesSectionRows = makeMessagesSectionRows()
+            let listBase = transcriptListBase(
+                messagesSectionRows: messagesSectionRows,
+                availableHeight: geometry.size.height
+            )
+            applyTranscriptLifecycleHandlers(to: listBase, using: scrollProxy)
+        }
     }
 
     func makeMessagesSectionRows() -> MessagesSectionRows {
@@ -191,18 +197,22 @@ public struct SessionDetailView: View {
         )
     }
 
-    func transcriptListBase(messagesSectionRows: MessagesSectionRows) -> some View {
-        List {
-            Section {
+    func transcriptListBase(
+        messagesSectionRows: MessagesSectionRows,
+        availableHeight: CGFloat
+    ) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
                 sessionSectionContent
-            }
-
-            Section {
+                Spacer(minLength: 0)
                 messagesSectionRows
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(
+                minHeight: max(0, availableHeight - bottomDockHeight),
+                alignment: .top
+            )
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(transcriptBackground)
         .scrollDismissesKeyboard(.immediately)
         .scrollDisabled(isInteractingWithBottomDock)
@@ -232,9 +242,13 @@ public struct SessionDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomInsetContent
         }
-        // Keep auto-follow behavior via explicit scroll requests below.
-        // Avoid defaultScrollAnchor on List because rapid shrink/grow updates can trigger
-        // UICollectionView target index assertions on some iOS versions.
+        .defaultScrollAnchor(.bottom)
+        .onPreferenceChange(SessionBottomDockHeightPreferenceKey.self) { height in
+            let normalized = max(0, height)
+            if abs(bottomDockHeight - normalized) > 0.5 {
+                bottomDockHeight = normalized
+            }
+        }
         .toolbar(tabBarVisibility, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)

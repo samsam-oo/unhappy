@@ -4,6 +4,14 @@ import FeatureSessionTools
 import PhotosUI
 import UniformTypeIdentifiers
 
+struct SessionBottomDockHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 extension SessionDetailView {
     var sessionSectionContent: some View {
         SessionSummarySectionRows(
@@ -99,6 +107,14 @@ extension SessionDetailView {
         .background(
             RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
                 .fill(bottomSheetSurfaceColor)
+        )
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: SessionBottomDockHeightPreferenceKey.self,
+                    value: proxy.size.height
+                )
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: bottomSheetCornerRadius, style: .continuous)
