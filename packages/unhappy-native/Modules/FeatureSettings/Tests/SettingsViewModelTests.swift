@@ -147,29 +147,17 @@ private actor MemorySettingsManager: SettingsManaging {
         )
     }
 
-    func persistSettings(
-        serverURLString: String,
-        apiToken: String,
-        appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption,
-        experimentsEnabled: Bool,
-        hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool,
-        voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent,
-        lastViewedChangelogID: String
-    ) async {
-        savedServerURLString = serverURLString
-        savedAPIToken = apiToken
-        savedLanguage = appLanguage
-        savedAppearance = appearance
-        savedExperimentsEnabled = experimentsEnabled
-        savedHideInactiveSessions = hideInactiveSessions
-        savedUseEnhancedSessionWizard = useEnhancedSessionWizard
-        savedVoiceEnabled = voiceEnabled
-        savedVoiceLanguage = voiceLanguage
-        savedDefaultNewSessionAgent = defaultNewSessionAgent
-        savedLastViewedChangelogID = lastViewedChangelogID
+    func persistSettings(_ snapshot: AppSettingsSnapshot) async {
+        savedServerURLString = snapshot.serverURLString
+        savedAPIToken = snapshot.apiToken
+        savedLanguage = snapshot.appLanguage
+        savedAppearance = snapshot.appearance
+        savedExperimentsEnabled = snapshot.experimentsEnabled
+        savedHideInactiveSessions = snapshot.hideInactiveSessions
+        savedUseEnhancedSessionWizard = snapshot.useEnhancedSessionWizard
+        savedVoiceEnabled = snapshot.voiceEnabled
+        savedVoiceLanguage = snapshot.voiceLanguage
+        savedDefaultNewSessionAgent = snapshot.defaultNewSessionAgent
+        savedLastViewedChangelogID = snapshot.lastViewedChangelogID
     }
 }

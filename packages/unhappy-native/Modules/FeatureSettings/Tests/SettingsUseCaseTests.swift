@@ -42,17 +42,19 @@ struct SettingsUseCaseTests {
         let useCase = SettingsUseCase(store: store)
 
         await useCase.persistSettings(
-            serverURLString: "https://new.example.com",
-            apiToken: "next-token",
-            appLanguage: .english,
-            appearance: .light,
-            experimentsEnabled: true,
-            hideInactiveSessions: true,
-            useEnhancedSessionWizard: false,
-            voiceEnabled: true,
-            voiceLanguage: .english,
-            defaultNewSessionAgent: .gemini,
-            lastViewedChangelogID: "2026.02.26"
+            AppSettingsSnapshot(
+                serverURLString: "https://new.example.com",
+                apiToken: "next-token",
+                appLanguage: .english,
+                appearance: .light,
+                experimentsEnabled: true,
+                hideInactiveSessions: true,
+                useEnhancedSessionWizard: false,
+                voiceEnabled: true,
+                voiceLanguage: .english,
+                defaultNewSessionAgent: .gemini,
+                lastViewedChangelogID: "2026.02.26"
+            )
         )
 
         #expect(await store.serverURLString() == "https://new.example.com")
@@ -79,17 +81,19 @@ struct SettingsUseCaseTests {
         #expect(SettingsChangelog.hasUnread(lastViewedID: loadedBefore.lastViewedChangelogID))
 
         await useCase.persistSettings(
-            serverURLString: loadedBefore.serverURLString,
-            apiToken: loadedBefore.apiToken,
-            appLanguage: loadedBefore.appLanguage,
-            appearance: loadedBefore.appearance,
-            experimentsEnabled: loadedBefore.experimentsEnabled,
-            hideInactiveSessions: loadedBefore.hideInactiveSessions,
-            useEnhancedSessionWizard: loadedBefore.useEnhancedSessionWizard,
-            voiceEnabled: loadedBefore.voiceEnabled,
-            voiceLanguage: loadedBefore.voiceLanguage,
-            defaultNewSessionAgent: loadedBefore.defaultNewSessionAgent,
-            lastViewedChangelogID: SettingsChangelog.latestEntryID
+            AppSettingsSnapshot(
+                serverURLString: loadedBefore.serverURLString,
+                apiToken: loadedBefore.apiToken,
+                appLanguage: loadedBefore.appLanguage,
+                appearance: loadedBefore.appearance,
+                experimentsEnabled: loadedBefore.experimentsEnabled,
+                hideInactiveSessions: loadedBefore.hideInactiveSessions,
+                useEnhancedSessionWizard: loadedBefore.useEnhancedSessionWizard,
+                voiceEnabled: loadedBefore.voiceEnabled,
+                voiceLanguage: loadedBefore.voiceLanguage,
+                defaultNewSessionAgent: loadedBefore.defaultNewSessionAgent,
+                lastViewedChangelogID: SettingsChangelog.latestEntryID
+            )
         )
 
         let loadedAfter = await useCase.loadSettings()

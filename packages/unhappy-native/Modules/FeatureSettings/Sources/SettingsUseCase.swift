@@ -161,19 +161,7 @@ public struct AppSettingsSnapshot: Sendable, Equatable {
 
 public protocol SettingsManaging: Sendable {
     func loadSettings() async -> AppSettingsSnapshot
-    func persistSettings(
-        serverURLString: String,
-        apiToken: String,
-        appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption,
-        experimentsEnabled: Bool,
-        hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool,
-        voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent,
-        lastViewedChangelogID: String
-    ) async
+    func persistSettings(_ snapshot: AppSettingsSnapshot) async
 }
 
 public actor SettingsUseCase: SettingsManaging {
@@ -203,29 +191,17 @@ public actor SettingsUseCase: SettingsManaging {
         )
     }
 
-    public func persistSettings(
-        serverURLString: String,
-        apiToken: String,
-        appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption,
-        experimentsEnabled: Bool,
-        hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool,
-        voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent,
-        lastViewedChangelogID: String
-    ) async {
-        await store.setServerURLString(serverURLString)
-        await store.setAPIToken(apiToken)
-        await store.setAppLanguageCode(appLanguage.rawValue)
-        await store.setAppearanceMode(appearance.rawValue)
-        await store.setExperimentsEnabled(experimentsEnabled)
-        await store.setHideInactiveSessions(hideInactiveSessions)
-        await store.setUseEnhancedSessionWizard(useEnhancedSessionWizard)
-        await store.setVoiceEnabled(voiceEnabled)
-        await store.setVoiceLanguageCode(voiceLanguage.rawValue)
-        await store.setDefaultNewSessionAgent(defaultNewSessionAgent.rawValue)
-        await store.setLastViewedChangelogID(lastViewedChangelogID)
+    public func persistSettings(_ snapshot: AppSettingsSnapshot) async {
+        await store.setServerURLString(snapshot.serverURLString)
+        await store.setAPIToken(snapshot.apiToken)
+        await store.setAppLanguageCode(snapshot.appLanguage.rawValue)
+        await store.setAppearanceMode(snapshot.appearance.rawValue)
+        await store.setExperimentsEnabled(snapshot.experimentsEnabled)
+        await store.setHideInactiveSessions(snapshot.hideInactiveSessions)
+        await store.setUseEnhancedSessionWizard(snapshot.useEnhancedSessionWizard)
+        await store.setVoiceEnabled(snapshot.voiceEnabled)
+        await store.setVoiceLanguageCode(snapshot.voiceLanguage.rawValue)
+        await store.setDefaultNewSessionAgent(snapshot.defaultNewSessionAgent.rawValue)
+        await store.setLastViewedChangelogID(snapshot.lastViewedChangelogID)
     }
 }

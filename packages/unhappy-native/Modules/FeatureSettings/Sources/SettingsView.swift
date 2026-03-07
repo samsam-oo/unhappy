@@ -230,19 +230,7 @@ private actor PreviewSettingsManager: SettingsManaging {
         )
     }
 
-    func persistSettings(
-        serverURLString: String,
-        apiToken: String,
-        appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption,
-        experimentsEnabled: Bool,
-        hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool,
-        voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent,
-        lastViewedChangelogID: String
-    ) async {}
+    func persistSettings(_ snapshot: AppSettingsSnapshot) async {}
 }
 
 private struct ChangelogRow: View {
