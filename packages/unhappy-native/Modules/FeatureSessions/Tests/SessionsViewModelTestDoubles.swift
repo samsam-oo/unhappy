@@ -317,7 +317,11 @@ enum MockUpstreamSessionsLoaderError: Error, Sendable {
 struct MockUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
     let result: Result<[SessionLinkedUpstreamSession], MockUpstreamSessionsLoaderError>
 
-    func loadUpstreamSessions(serverURLString: String, token: String) async throws -> [SessionLinkedUpstreamSession] {
+    func loadUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async throws -> [SessionLinkedUpstreamSession] {
         switch result {
         case .success(let rows):
             return rows
@@ -334,7 +338,11 @@ actor SequenceUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
         self.results = results
     }
 
-    func loadUpstreamSessions(serverURLString: String, token: String) async throws -> [SessionLinkedUpstreamSession] {
+    func loadUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async throws -> [SessionLinkedUpstreamSession] {
         if results.isEmpty {
             return []
         }

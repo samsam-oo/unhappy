@@ -460,7 +460,8 @@ public final class SessionsViewModel: ObservableObject {
         do {
             let rows = try await upstreamSessionsLoader.loadUpstreamSessions(
                 serverURLString: serverURLString,
-                token: token
+                token: token,
+                projects: projects
             )
             upstreamSessions = filterMirroredUpstreamSessions(rows)
             upstreamSessionsErrorMessage = nil

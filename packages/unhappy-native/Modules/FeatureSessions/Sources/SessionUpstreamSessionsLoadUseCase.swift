@@ -4,7 +4,8 @@ import CoreKit
 public protocol SessionUpstreamSessionsLoadingAction: Sendable {
     func loadUpstreamSessions(
         serverURLString: String,
-        token: String
+        token: String,
+        projects: [SessionMachineProject]
     ) async throws -> [SessionLinkedUpstreamSession]
 }
 
@@ -17,7 +18,8 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
 
     public func loadUpstreamSessions(
         serverURLString: String,
-        token: String
+        token: String,
+        projects: [SessionMachineProject]
     ) async throws -> [SessionLinkedUpstreamSession] {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else { return [] }
@@ -34,24 +36,39 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
 
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
+        let explicitProjects = projects.filter(\.summary.openedExplicitly)
         var rows: [SessionLinkedUpstreamSession] = []
+        var seenRowIDs = Set<String>()
 
         for machine in activeMachines {
+            let machineProjects = explicitProjects
+                .filter { $0.machineID == machine.id }
+                .map(\.summary.path)
+            guard !machineProjects.isEmpty else { continue }
+
             let machineDisplayName = machineName(for: machine)
-            async let codexRows = loadCodexRows(
-                machine: machine,
-                machineDisplayName: machineDisplayName,
-                serverURL: serverURL,
-                token: normalizedToken
-            )
-            async let claudeRows = loadClaudeRows(
-                machine: machine,
-                machineDisplayName: machineDisplayName,
-                serverURL: serverURL,
-                token: normalizedToken
-            )
-            rows.append(contentsOf: try await codexRows)
-            rows.append(contentsOf: try await claudeRows)
+            for projectPath in machineProjects {
+                async let codexRows = loadCodexRows(
+                    machine: machine,
+                    machineDisplayName: machineDisplayName,
+                    projectPath: projectPath,
+                    serverURL: serverURL,
+                    token: normalizedToken
+                )
+                async let claudeRows = loadClaudeRows(
+                    machine: machine,
+                    machineDisplayName: machineDisplayName,
+                    projectPath: projectPath,
+                    serverURL: serverURL,
+                    token: normalizedToken
+                )
+                for row in try await codexRows where seenRowIDs.insert(row.id).inserted {
+                    rows.append(row)
+                }
+                for row in try await claudeRows where seenRowIDs.insert(row.id).inserted {
+                    rows.append(row)
+                }
+            }
         }
 
         return rows.sorted { lhs, rhs in
@@ -70,6 +87,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
     private func loadCodexRows(
         machine: APIMachine,
         machineDisplayName: String,
+        projectPath: String,
         serverURL: URL,
         token: String
     ) async throws -> [SessionLinkedUpstreamSession] {
@@ -78,7 +96,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
             token: token,
             machineID: machine.id,
             limit: 50,
-            cwd: nil
+            cwd: projectPath
         )
         return threads.map {
             SessionLinkedUpstreamSession(
@@ -92,6 +110,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
     private func loadClaudeRows(
         machine: APIMachine,
         machineDisplayName: String,
+        projectPath: String,
         serverURL: URL,
         token: String
     ) async throws -> [SessionLinkedUpstreamSession] {
@@ -100,7 +119,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
             token: token,
             machineID: machine.id,
             limit: 50,
-            cwd: nil
+            cwd: projectPath
         )
         return sessions.map {
             SessionLinkedUpstreamSession(
