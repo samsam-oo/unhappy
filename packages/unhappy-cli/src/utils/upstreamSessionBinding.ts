@@ -70,3 +70,29 @@ export function resolveProvidedSessionDataKey(
     return null;
   }
 }
+
+export function resolveClaudeResumeSessionIdFromArgs(
+  args: string[] | undefined,
+  resolveMostRecentSessionId: () => string | null
+): string | null {
+  for (let index = 0; index < (args?.length ?? 0); index += 1) {
+    const flag = args?.[index]?.trim();
+    if (!flag) {
+      continue;
+    }
+
+    if (flag === '--continue' || flag === '-c') {
+      return resolveMostRecentSessionId();
+    }
+
+    if (flag === '--resume' || flag === '-r') {
+      const candidate = args?.[index + 1]?.trim();
+      if (candidate && !candidate.startsWith('-')) {
+        return candidate;
+      }
+      return resolveMostRecentSessionId();
+    }
+  }
+
+  return null;
+}

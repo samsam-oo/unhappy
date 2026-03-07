@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveUpstreamSessionBinding,
+  resolveClaudeResumeSessionIdFromArgs,
   resolveProvidedSessionDataKey,
   resolveProvidedSessionTag,
 } from './upstreamSessionBinding';
@@ -57,5 +58,20 @@ describe('upstreamSessionBinding', () => {
 
     expect(resolveProvidedSessionTag(env)).toBe('upstream-tag');
     expect(resolveProvidedSessionDataKey(env)).toEqual(key);
+  });
+
+  it('resolves explicit Claude resume ids and fallback continue ids from args', () => {
+    expect(
+      resolveClaudeResumeSessionIdFromArgs(['--resume', 'session-123'], () => 'latest-session')
+    ).toBe('session-123');
+    expect(
+      resolveClaudeResumeSessionIdFromArgs(['--continue'], () => 'latest-session')
+    ).toBe('latest-session');
+    expect(
+      resolveClaudeResumeSessionIdFromArgs(['-r'], () => 'latest-session')
+    ).toBe('latest-session');
+    expect(
+      resolveClaudeResumeSessionIdFromArgs(undefined, () => 'latest-session')
+    ).toBeNull();
   });
 });

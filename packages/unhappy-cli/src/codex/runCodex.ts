@@ -29,6 +29,7 @@ import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
 import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import {
+  deriveUpstreamSessionBinding,
   resolveProvidedSessionDataKey,
   resolveProvidedSessionTag,
 } from '@/utils/upstreamSessionBinding';
@@ -456,8 +457,51 @@ export async function runCodex(opts: {
   // Define session
   //
 
-  const sessionTag = resolveProvidedSessionTag() ?? randomUUID();
-  const sessionDataKey = resolveProvidedSessionDataKey();
+  const cwd = process.cwd();
+  const settings = await readSettings();
+  let machineId = settings?.machineId;
+  if (!machineId) {
+    console.error(
+      `[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/samsam-oo/unhappy-cli/issues`,
+    );
+    process.exit(1);
+  }
+
+  const explicitResumeThreadId =
+    typeof opts.resumeThreadId === 'string' && opts.resumeThreadId.trim()
+      ? opts.resumeThreadId.trim()
+      : null;
+  const resumeEnabled = explicitResumeThreadId ? true : opts.resume !== false;
+  const initialResumeEntry =
+    resumeEnabled && !opts.clearResume && !explicitResumeThreadId
+      ? await readCodexResumeEntry(cwd)
+      : null;
+  const initialResumeThreadId =
+    explicitResumeThreadId ??
+    (typeof initialResumeEntry?.codexSessionId === 'string' &&
+    initialResumeEntry.codexSessionId.trim()
+      ? initialResumeEntry.codexSessionId.trim()
+      : null);
+
+  const providedSessionTag = resolveProvidedSessionTag();
+  const providedSessionDataKey = resolveProvidedSessionDataKey();
+  const derivedUpstreamBinding =
+    !providedSessionTag && !providedSessionDataKey && initialResumeThreadId
+      ? deriveUpstreamSessionBinding({
+          machineId,
+          agent: 'codex',
+          upstreamSessionId: initialResumeThreadId,
+          machineKey: opts.credentials.encryption.machineKey,
+        })
+      : null;
+  const sessionTag =
+    providedSessionTag ??
+    derivedUpstreamBinding?.sessionTag ??
+    randomUUID();
+  const sessionDataKey =
+    providedSessionDataKey ??
+    derivedUpstreamBinding?.sessionDataKey ??
+    null;
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Codex');
@@ -473,14 +517,6 @@ export async function runCodex(opts: {
   // Machine
   //
 
-  const settings = await readSettings();
-  let machineId = settings?.machineId;
-  if (!machineId) {
-    console.error(
-      `[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/samsam-oo/unhappy-cli/issues`,
-    );
-    process.exit(1);
-  }
   logger.debug(`Using machineId: ${machineId}`);
   await api.getOrCreateMachine({
     machineId,
@@ -869,12 +905,6 @@ export async function runCodex(opts: {
   let storedSessionIdForResume: string | null = null;
   let storedCodexHomeDirForResume: string | null = null;
   let storedResumeFileForResume: string | null = null;
-  const explicitResumeThreadId =
-    typeof opts.resumeThreadId === 'string' && opts.resumeThreadId.trim()
-      ? opts.resumeThreadId.trim()
-      : null;
-  const cwd = process.cwd();
-  const resumeEnabled = explicitResumeThreadId ? true : opts.resume !== false;
   const getEffectiveCodexHomeDir = (): string => {
     const fromEnv =
       typeof process.env.CODEX_HOME === 'string' ? process.env.CODEX_HOME.trim() : '';
@@ -1202,7 +1232,7 @@ export async function runCodex(opts: {
 
   if (resumeEnabled && !opts.clearResume && !explicitResumeThreadId) {
     try {
-      const entry = await readCodexResumeEntry(cwd);
+      const entry = initialResumeEntry ?? await readCodexResumeEntry(cwd);
       if (entry?.codexSessionId) {
         storedSessionIdForResume = entry.codexSessionId;
         storedCodexHomeDirForResume =

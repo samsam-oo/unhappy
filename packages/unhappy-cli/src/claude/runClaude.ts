@@ -32,8 +32,10 @@ import {
 } from '@/utils/serverConnectionErrors';
 import {
   resolveProvidedSessionDataKey,
+  resolveClaudeResumeSessionIdFromArgs,
   resolveProvidedSessionTag,
 } from '@/utils/upstreamSessionBinding';
+import { deriveUpstreamSessionBinding } from '@/utils/upstreamSessionBinding';
 import fs from 'node:fs';
 import { join, resolve } from 'node:path';
 import packageJson from '../../package.json';
@@ -41,6 +43,7 @@ import { projectPath } from '../projectPath';
 import { EnhancedMode, PermissionMode } from './loop';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { Session } from './session';
+import { claudeFindLastSession } from './utils/claudeFindLastSession';
 import { getProjectPath } from './utils/path';
 
 /** JavaScript runtime to use for spawning Claude Code */
@@ -67,8 +70,8 @@ export async function runClaude(
   logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
 
   const workingDirectory = process.cwd();
-  const sessionTag = resolveProvidedSessionTag() ?? randomUUID();
-  const sessionDataKey = resolveProvidedSessionDataKey();
+  let sessionTag = resolveProvidedSessionTag() ?? randomUUID();
+  let sessionDataKey = resolveProvidedSessionDataKey();
 
   // Log environment info at startup
   logger.debugLargeJson(
@@ -111,6 +114,21 @@ export async function runClaude(
     machineId,
     metadata: initialMachineMetadata,
   });
+
+  const initialClaudeResumeSessionId = resolveClaudeResumeSessionIdFromArgs(
+    options.claudeArgs,
+    () => claudeFindLastSession(workingDirectory)
+  );
+  if (!resolveProvidedSessionTag() && !resolveProvidedSessionDataKey() && initialClaudeResumeSessionId) {
+    const upstreamBinding = deriveUpstreamSessionBinding({
+      machineId,
+      agent: 'claude',
+      upstreamSessionId: initialClaudeResumeSessionId,
+      machineKey: credentials.encryption.machineKey,
+    });
+    sessionTag = upstreamBinding.sessionTag;
+    sessionDataKey = upstreamBinding.sessionDataKey;
+  }
 
   let metadata: Metadata = {
     path: workingDirectory,
