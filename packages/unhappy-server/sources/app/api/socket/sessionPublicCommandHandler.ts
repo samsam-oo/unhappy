@@ -36,6 +36,7 @@ const ALLOWED_SESSION_COMMANDS = new Set<string>([
 const MACHINE_FALLBACK_COMMANDS = new Set<string>([
     "codex-list-threads",
     "claude-list-sessions",
+    "killSession",
 ]);
 
 async function ensureSessionBelongsToUser(userId: string, sessionId: string): Promise<boolean> {
@@ -117,7 +118,12 @@ async function invokeMachineFallbackCommand(
         };
     }
 
-    const result = await invokePublicCommand(machineTarget, { command, params });
+    const machineCommand = command === "killSession" ? "stop-session" : command;
+    const machineParams = command === "killSession" ? { sessionId } : params;
+    const result = await invokePublicCommand(machineTarget, {
+        command: machineCommand,
+        params: machineParams,
+    });
     return { ok: true, result };
 }
 
@@ -237,10 +243,6 @@ export function sessionPublicCommandHandler(userId: string, socket: Socket) {
                 }
 
                 if (!invoked.ok) {
-                    if (command === "killSession" && invoked.error === "Session RPC is not connected") {
-                        callback(success({ success: true, message: "Session is already unavailable" }));
-                        return;
-                    }
                     callback(failure(invoked.statusCode, invoked.error));
                     return;
                 }

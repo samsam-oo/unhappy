@@ -1024,6 +1024,23 @@ export function sessionRoutes(app: Fastify) {
         );
         if (!invoked.ok) {
             if (invoked.error === 'Session RPC is not connected') {
+                const machineId = await findConnectedMachineForSession(userId, sessionId);
+                if (machineId) {
+                    const machineTarget = findConnectedMachine(userId, machineId);
+                    if (machineTarget) {
+                        const fallbackResult = await invokePublicCommand(machineTarget, {
+                            command: 'stop-session',
+                            params: { sessionId },
+                        });
+                        if (fallbackResult?.success !== false) {
+                            const fallbackMessage =
+                                typeof fallbackResult?.message === 'string' && fallbackResult.message.trim().length > 0
+                                    ? fallbackResult.message.trim()
+                                    : 'Session killed';
+                            return reply.send({ success: true, message: fallbackMessage });
+                        }
+                    }
+                }
                 return reply.send({ success: true, message: 'Session is already unavailable' });
             }
             return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });

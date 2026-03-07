@@ -616,7 +616,7 @@ extension URLSessionSessionsService {
             sessionID: sessionID,
             command: "killSession",
             params: [:],
-            allowMachineFallback: false
+            allowMachineFallback: true
         )
         return try SessionsAPI.decodeSessionKillResponse(data)
     }
