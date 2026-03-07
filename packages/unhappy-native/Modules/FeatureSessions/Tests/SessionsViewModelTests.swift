@@ -309,7 +309,7 @@ struct SessionsViewModelTests {
             id: "m1",
             seq: 1,
             localId: "l1",
-            content: APIEncryptedMessageContent(t: "encrypted", c: "abc"),
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "abc"),
             createdAt: 10,
             updatedAt: 12
         )
@@ -385,7 +385,7 @@ struct SessionsViewModelTests {
                 id: "m2",
                 seq: 2,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "text", c: "Second message"),
+                content: APIEncryptedMessageContent(type: "text", payload: "Second message"),
                 createdAt: 2,
                 updatedAt: 2
             ),
@@ -393,7 +393,7 @@ struct SessionsViewModelTests {
                 id: "m1",
                 seq: 1,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "text", c: "First message"),
+                content: APIEncryptedMessageContent(type: "text", payload: "First message"),
                 createdAt: 1,
                 updatedAt: 1
             ),
@@ -423,7 +423,7 @@ struct SessionsViewModelTests {
             id: "m1",
             seq: 1,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "encrypted", c: "first"),
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "first"),
             createdAt: 1,
             updatedAt: 1
         )
@@ -458,9 +458,9 @@ struct SessionsViewModelTests {
         #expect(model.selectedSessionMessages.count == 2)
         #expect(model.selectedSessionMessages.last?.id.hasPrefix("optimistic-") == true)
         #expect(model.selectedSessionMessages.last?.localId == model.selectedSessionMessages.last?.id)
-        #expect(model.selectedSessionMessages.last?.content?.t == "optimistic-user")
-        #expect(model.selectedSessionMessages.last?.content?.c.contains("\"role\":\"user\"") == true)
-        #expect(model.selectedSessionMessages.last?.content?.c.contains("hello optimistic") == true)
+        #expect(model.selectedSessionMessages.last?.content?.type == "optimistic-user")
+        #expect(model.selectedSessionMessages.last?.content?.payload.contains("\"role\":\"user\"") == true)
+        #expect(model.selectedSessionMessages.last?.content?.payload.contains("hello optimistic") == true)
     }
 
     @Test
@@ -469,7 +469,7 @@ struct SessionsViewModelTests {
             id: "m1",
             seq: 1,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "encrypted", c: "first"),
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "first"),
             createdAt: 1,
             updatedAt: 1
         )
@@ -477,7 +477,7 @@ struct SessionsViewModelTests {
             id: "m2",
             seq: 2,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "encrypted", c: "second"),
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "second"),
             createdAt: 2,
             updatedAt: 2
         )
@@ -510,7 +510,7 @@ struct SessionsViewModelTests {
             id: "m1",
             seq: 1,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "encrypted", c: "stable"),
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "stable"),
             createdAt: 1,
             updatedAt: 1
         )
@@ -677,7 +677,7 @@ struct SessionsViewModelTests {
                 id: "m\(idx)",
                 seq: idx,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "encrypted", c: "\(idx)"),
+                content: APIEncryptedMessageContent(type: "encrypted", payload: "\(idx)"),
                 createdAt: TimeInterval(idx),
                 updatedAt: TimeInterval(idx)
             )
@@ -709,7 +709,7 @@ struct SessionsViewModelTests {
                 id: "m\(idx)",
                 seq: idx,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "encrypted", c: "\(idx)"),
+                content: APIEncryptedMessageContent(type: "encrypted", payload: "\(idx)"),
                 createdAt: TimeInterval(idx),
                 updatedAt: TimeInterval(idx)
             )
@@ -719,7 +719,7 @@ struct SessionsViewModelTests {
                 id: "m\(idx)",
                 seq: idx,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "encrypted", c: "\(idx)"),
+                content: APIEncryptedMessageContent(type: "encrypted", payload: "\(idx)"),
                 createdAt: TimeInterval(idx),
                 updatedAt: TimeInterval(idx)
             )
@@ -898,7 +898,7 @@ struct SessionsViewModelTests {
             id: "message-1",
             seq: 1,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "encrypted", c: "payload"),
+            content: APIEncryptedMessageContent(type: "encrypted", payload: "payload"),
             createdAt: 10,
             updatedAt: 10
         )

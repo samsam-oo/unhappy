@@ -6,7 +6,17 @@ import CoreKit
 struct MachineSpawnUseCaseTests {
     @Test
     func spawnThrowsMissingDirectory() async {
-        let useCase = MachineSpawnUseCase(service: ImmediateMachineSpawnService(response: .init(success: true, sessionID: nil, requiresUserApproval: nil, actionRequired: nil, directory: nil, error: nil)))
+        let response = APISessionSpawnResult(
+            success: true,
+            sessionID: nil,
+            requiresUserApproval: nil,
+            actionRequired: nil,
+            directory: nil,
+            error: nil
+        )
+        let useCase = MachineSpawnUseCase(
+            service: ImmediateMachineSpawnService(response: response)
+        )
 
         await #expect(throws: MachineSpawnError.missingDirectory) {
             _ = try await useCase.spawnSession(
@@ -83,20 +93,7 @@ struct MachineSpawnUseCaseTests {
 private struct ImmediateMachineSpawnService: MachineSessionSpawning {
     let response: APISessionSpawnResult
 
-    func spawnSession(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?,
-        sessionToken: String?,
-        environmentVariables: [String : String]?,
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult {
         response
     }
 }
@@ -109,20 +106,7 @@ private actor SlowCountingMachineSpawnService: MachineSessionSpawning {
         self.response = response
     }
 
-    func spawnSession(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?,
-        sessionToken: String?,
-        environmentVariables: [String : String]?,
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult {
         count += 1
         try await Task.sleep(nanoseconds: 80_000_000)
         return response

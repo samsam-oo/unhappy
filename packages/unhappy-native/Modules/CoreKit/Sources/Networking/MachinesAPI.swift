@@ -204,32 +204,6 @@ public enum MachinesAPI {
         return try makeRequest(url: url, method: "GET", token: token)
     }
 
-    public static func makeStopDaemonRequest(
-        serverURL: URL,
-        token: String,
-        machineID: String
-    ) throws -> URLRequest {
-        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedMachineID.isEmpty else {
-            throw MachinesAPIError.missingMachineID
-        }
-        let stopURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/daemon/stop")
-        return try makeRequest(url: stopURL, method: "POST", token: token)
-    }
-
-    public static func makeUpdateDaemonRequest(
-        serverURL: URL,
-        token: String,
-        machineID: String
-    ) throws -> URLRequest {
-        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedMachineID.isEmpty else {
-            throw MachinesAPIError.missingMachineID
-        }
-        let updateURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/daemon/update")
-        return try makeRequest(url: updateURL, method: "POST", token: token)
-    }
-
     public static func makeListDirectoryRequest(
         serverURL: URL,
         token: String,
@@ -499,18 +473,49 @@ private struct MachinesModelReasoningEffort: Decodable {
     let reasoningEffort: String?
     let description: String?
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: CodingKey {
         case reasoningEffort
-        case reasoning_effort
+        case legacyReasoningEffort
         case effort
         case description
+
+        init?(stringValue: String) {
+            switch stringValue {
+            case "reasoningEffort":
+                self = .reasoningEffort
+            case "reasoning_effort":
+                self = .legacyReasoningEffort
+            case "effort":
+                self = .effort
+            case "description":
+                self = .description
+            default:
+                return nil
+            }
+        }
+
+        var stringValue: String {
+            switch self {
+            case .reasoningEffort:
+                return "reasoningEffort"
+            case .legacyReasoningEffort:
+                return "reasoning_effort"
+            case .effort:
+                return "effort"
+            case .description:
+                return "description"
+            }
+        }
+
+        init?(intValue: Int) { nil }
+        var intValue: Int? { nil }
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         reasoningEffort =
             (try? container.decodeIfPresent(String.self, forKey: .reasoningEffort))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .reasoning_effort))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .legacyReasoningEffort))
             ?? (try? container.decodeIfPresent(String.self, forKey: .effort))
         description = try? container.decodeIfPresent(String.self, forKey: .description)
     }
@@ -528,7 +533,7 @@ private struct MachinesModelMetadata: Decodable {
     let supportedReasoningEfforts: [MachinesModelReasoningEffort]?
     let upgrade: String?
 
-    private enum CodingKeys: String, CodingKey {
+    private enum CodingKeys: CodingKey {
         case id
         case model
         case displayName
@@ -537,10 +542,73 @@ private struct MachinesModelMetadata: Decodable {
         case isDefault
         case supportsPersonality
         case defaultReasoningEffort
-        case default_reasoning_effort
+        case legacyDefaultReasoningEffort
         case supportedReasoningEfforts
-        case supported_reasoning_efforts
+        case legacySupportedReasoningEfforts
         case upgrade
+
+        init?(stringValue: String) {
+            switch stringValue {
+            case "id":
+                self = .id
+            case "model":
+                self = .model
+            case "displayName":
+                self = .displayName
+            case "description":
+                self = .description
+            case "hidden":
+                self = .hidden
+            case "isDefault":
+                self = .isDefault
+            case "supportsPersonality":
+                self = .supportsPersonality
+            case "defaultReasoningEffort":
+                self = .defaultReasoningEffort
+            case "default_reasoning_effort":
+                self = .legacyDefaultReasoningEffort
+            case "supportedReasoningEfforts":
+                self = .supportedReasoningEfforts
+            case "supported_reasoning_efforts":
+                self = .legacySupportedReasoningEfforts
+            case "upgrade":
+                self = .upgrade
+            default:
+                return nil
+            }
+        }
+
+        var stringValue: String {
+            switch self {
+            case .id:
+                return "id"
+            case .model:
+                return "model"
+            case .displayName:
+                return "displayName"
+            case .description:
+                return "description"
+            case .hidden:
+                return "hidden"
+            case .isDefault:
+                return "isDefault"
+            case .supportsPersonality:
+                return "supportsPersonality"
+            case .defaultReasoningEffort:
+                return "defaultReasoningEffort"
+            case .legacyDefaultReasoningEffort:
+                return "default_reasoning_effort"
+            case .supportedReasoningEfforts:
+                return "supportedReasoningEfforts"
+            case .legacySupportedReasoningEfforts:
+                return "supported_reasoning_efforts"
+            case .upgrade:
+                return "upgrade"
+            }
+        }
+
+        init?(intValue: Int) { nil }
+        var intValue: Int? { nil }
     }
 
     init(from decoder: Decoder) throws {
@@ -554,10 +622,10 @@ private struct MachinesModelMetadata: Decodable {
         supportsPersonality = try? container.decodeIfPresent(Bool.self, forKey: .supportsPersonality)
         defaultReasoningEffort =
             (try? container.decodeIfPresent(String.self, forKey: .defaultReasoningEffort))
-            ?? (try? container.decodeIfPresent(String.self, forKey: .default_reasoning_effort))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .legacyDefaultReasoningEffort))
         supportedReasoningEfforts =
             (try? container.decodeIfPresent([MachinesModelReasoningEffort].self, forKey: .supportedReasoningEfforts))
-            ?? (try? container.decodeIfPresent([MachinesModelReasoningEffort].self, forKey: .supported_reasoning_efforts))
+            ?? (try? container.decodeIfPresent([MachinesModelReasoningEffort].self, forKey: .legacySupportedReasoningEfforts))
         upgrade = try? container.decodeIfPresent(String.self, forKey: .upgrade)
     }
 }
@@ -599,21 +667,51 @@ public protocol MachinesFetching: Sendable {
     func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine]
 }
 
-public protocol MachineSessionSpawning: Sendable {
-    func spawnSession(
+public struct MachineSessionSpawnServiceRequest: Sendable, Equatable {
+    public let serverURL: URL
+    public let token: String
+    public let machineID: String
+    public let directory: String
+    public let agent: APISessionSpawnAgent?
+    public let codexResumeThreadID: String?
+    public let claudeResumeSessionID: String?
+    public let approvedNewDirectoryCreation: Bool?
+    public let sessionToken: String?
+    public let environmentVariables: [String: String]?
+    public let model: String?
+    public let reasoningEffort: APISessionReasoningEffort?
+
+    public init(
         serverURL: URL,
         token: String,
         machineID: String,
         directory: String,
         agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?,
-        sessionToken: String?,
-        environmentVariables: [String: String]?,
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult
+        codexResumeThreadID: String? = nil,
+        claudeResumeSessionID: String? = nil,
+        approvedNewDirectoryCreation: Bool? = nil,
+        sessionToken: String? = nil,
+        environmentVariables: [String: String]? = nil,
+        model: String? = nil,
+        reasoningEffort: APISessionReasoningEffort? = nil
+    ) {
+        self.serverURL = serverURL
+        self.token = token
+        self.machineID = machineID
+        self.directory = directory
+        self.agent = agent
+        self.codexResumeThreadID = codexResumeThreadID
+        self.claudeResumeSessionID = claudeResumeSessionID
+        self.approvedNewDirectoryCreation = approvedNewDirectoryCreation
+        self.sessionToken = sessionToken
+        self.environmentVariables = environmentVariables
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+    }
+}
+
+public protocol MachineSessionSpawning: Sendable {
+    func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult
 }
 
 public protocol MachineDaemonStopping: Sendable {
@@ -707,6 +805,26 @@ public protocol MachineProjectRemoving: Sendable {
     ) async throws -> APIMachineCommandResult
 }
 
+public protocol MachineHTTPClient: Sendable {
+    func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
+}
+
+public struct URLSessionMachineHTTPClient: MachineHTTPClient {
+    private let session: URLSession
+
+    public init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        return (data, httpResponse)
+    }
+}
+
 public struct APIMachineAgentCapabilities: Equatable, Sendable {
     public let models: [String]
     public let reasoningEfforts: [String]
@@ -760,12 +878,26 @@ public struct APIMachineModelCapability: Equatable, Sendable {
     }
 }
 
-public actor URLSessionMachinesService: MachinesFetching, MachineSessionSpawning, MachineDaemonStopping, MachineDaemonUpdating, MachineDirectoryListing, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineModelsListing, MachineProjectsFetching, MachineProjectOpening, MachineProjectRemoving {
+public actor URLSessionMachinesService:
+    MachinesFetching,
+    MachineSessionSpawning,
+    MachineDaemonStopping,
+    MachineDaemonUpdating,
+    MachineDirectoryListing,
+    MachineCodexThreadsFetching,
+    MachineClaudeSessionsFetching,
+    MachineModelsListing,
+    MachineProjectsFetching,
+    MachineProjectOpening,
+    MachineProjectRemoving {
+    let httpClient: any MachineHTTPClient
     let rpcDirectoryService: any MachineRPCDirectoryListing
 
     public init(
+        httpClient: any MachineHTTPClient = URLSessionMachineHTTPClient(),
         rpcDirectoryService: any MachineRPCDirectoryListing = SocketIOMachineRPCDirectoryService()
     ) {
+        self.httpClient = httpClient
         self.rpcDirectoryService = rpcDirectoryService
     }
 }

@@ -956,8 +956,8 @@ public final class SessionsViewModel: ObservableObject {
             seq: (currentMessages.last?.seq ?? 0) + 1,
             localId: optimisticID,
             content: APIEncryptedMessageContent(
-                t: "optimistic-user",
-                c: makeOptimisticUserPayload(
+                type: "optimistic-user",
+                payload: makeOptimisticUserPayload(
                     text: normalizedText,
                     imageDataURLs: attachments.map(\.dataURLString)
                 )

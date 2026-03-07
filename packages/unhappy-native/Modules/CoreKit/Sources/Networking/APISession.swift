@@ -173,25 +173,60 @@ public struct APISessionMessage: Decodable, Equatable, Identifiable, Sendable {
 }
 
 public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
-    public let t: String
-    public let c: String
+    public let type: String
+    public let payload: String
 
-    public init(t: String, c: String) {
-        self.t = t
-        self.c = c
+    public init(type: String, payload: String) {
+        self.type = type
+        self.payload = payload
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case t
-        case c
+    private enum CodingKeys: CodingKey {
+        case legacyType
+        case legacyPayload
         case type
         case text
         case payload
+
+        init?(stringValue: String) {
+            switch stringValue {
+            case "t":
+                self = .legacyType
+            case "c":
+                self = .legacyPayload
+            case "type":
+                self = .type
+            case "text":
+                self = .text
+            case "payload":
+                self = .payload
+            default:
+                return nil
+            }
+        }
+
+        var stringValue: String {
+            switch self {
+            case .legacyType:
+                return "t"
+            case .legacyPayload:
+                return "c"
+            case .type:
+                return "type"
+            case .text:
+                return "text"
+            case .payload:
+                return "payload"
+            }
+        }
+
+        init?(intValue: Int) { nil }
+        var intValue: Int? { nil }
     }
 
     public init(from decoder: Decoder) throws {
         if let encoded = Self.decodeSingleValueString(from: decoder) {
-            self = APIEncryptedMessageContent(t: "encrypted", c: encoded)
+            self = APIEncryptedMessageContent(type: "encrypted", payload: encoded)
             return
         }
 
@@ -199,7 +234,7 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
         let decodedType = Self.decodeType(from: container)
         let decodedPayload = Self.decodePayload(from: container)
 
-        self = APIEncryptedMessageContent(t: decodedType, c: decodedPayload)
+        self = APIEncryptedMessageContent(type: decodedType, payload: decodedPayload)
     }
 
     private static func decodeSingleValueString(from decoder: Decoder) -> String? {
@@ -210,7 +245,7 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     private static func decodeType(
         from container: KeyedDecodingContainer<CodingKeys>
     ) -> String {
-        if let value = try? container.decodeIfPresent(String.self, forKey: .t) {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .legacyType) {
             return value
         }
         if let value = try? container.decodeIfPresent(String.self, forKey: .type) {
@@ -222,7 +257,7 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     private static func decodePayload(
         from container: KeyedDecodingContainer<CodingKeys>
     ) -> String {
-        if let value = try? container.decodeIfPresent(String.self, forKey: .c) {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .legacyPayload) {
             return value
         }
         if let value = try? container.decodeIfPresent(String.self, forKey: .payload) {

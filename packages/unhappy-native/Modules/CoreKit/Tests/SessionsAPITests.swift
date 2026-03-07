@@ -182,7 +182,7 @@ struct SessionsAPITests {
         #expect(messages.first?.id == "m1")
         #expect(messages.first?.seq == 7)
         #expect(messages.first?.localId == "l-1")
-        #expect(messages.first?.content?.t == "encrypted")
+        #expect(messages.first?.content?.type == "encrypted")
     }
 
     @Test
@@ -206,8 +206,8 @@ struct SessionsAPITests {
         let first = try #require(messages.first)
 
         #expect(first.seq == 7)
-        #expect(first.content?.t == "encrypted")
-        #expect(first.content?.c == "ZW5jcnlwdGVk")
+        #expect(first.content?.type == "encrypted")
+        #expect(first.content?.payload == "ZW5jcnlwdGVk")
         #expect(first.createdAt == 1_700_000_001)
         #expect(first.updatedAt == 1_700_000_002)
     }

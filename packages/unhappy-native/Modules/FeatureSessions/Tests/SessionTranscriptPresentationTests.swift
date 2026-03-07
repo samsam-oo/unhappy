@@ -527,7 +527,7 @@ struct SessionTranscriptPresentationTests {
             id: UUID().uuidString,
             seq: 1,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "json", c: text),
+            content: APIEncryptedMessageContent(type: "json", payload: text),
             createdAt: 0,
             updatedAt: 0
         )

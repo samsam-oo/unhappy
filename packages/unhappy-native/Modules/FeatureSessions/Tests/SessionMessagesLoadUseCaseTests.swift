@@ -37,7 +37,7 @@ struct SessionMessagesLoadUseCaseTests {
                 id: "m2",
                 seq: 2,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "encrypted", c: "2"),
+                content: APIEncryptedMessageContent(type: "encrypted", payload: "2"),
                 createdAt: 20,
                 updatedAt: 20
             ),
@@ -45,7 +45,7 @@ struct SessionMessagesLoadUseCaseTests {
                 id: "m1",
                 seq: 1,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "encrypted", c: "1"),
+                content: APIEncryptedMessageContent(type: "encrypted", payload: "1"),
                 createdAt: 10,
                 updatedAt: 10
             )

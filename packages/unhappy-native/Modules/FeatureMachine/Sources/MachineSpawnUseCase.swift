@@ -117,18 +117,14 @@ public actor MachineSpawnUseCase: MachineSpawnAction {
         let service = self.service
         let task = Task<APISessionSpawnResult, Error> {
             let response = try await service.spawnSession(
-                serverURL: serverURL,
-                token: normalizedToken,
-                machineID: normalizedMachineID,
-                directory: normalizedDirectory,
-                agent: request.agent,
-                codexResumeThreadID: nil,
-                claudeResumeSessionID: nil,
-                approvedNewDirectoryCreation: request.approvedNewDirectoryCreation,
-                sessionToken: nil,
-                environmentVariables: nil,
-                model: nil,
-                reasoningEffort: nil
+                MachineSessionSpawnServiceRequest(
+                    serverURL: serverURL,
+                    token: normalizedToken,
+                    machineID: normalizedMachineID,
+                    directory: normalizedDirectory,
+                    agent: request.agent,
+                    approvedNewDirectoryCreation: request.approvedNewDirectoryCreation
+                )
             )
 
             if response.success {

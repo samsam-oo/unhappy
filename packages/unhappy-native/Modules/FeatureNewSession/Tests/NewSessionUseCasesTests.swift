@@ -562,31 +562,18 @@ private actor SpawnService: MachineSessionSpawning {
         self.lastRequest = nil
     }
 
-    func spawnSession(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?,
-        sessionToken: String?,
-        environmentVariables: [String : String]?,
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult {
         lastRequest = SpawnRequest(
-            machineID: machineID,
-            directory: directory,
-            agent: agent,
-            codexResumeThreadID: codexResumeThreadID,
-            claudeResumeSessionID: claudeResumeSessionID,
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-            sessionToken: sessionToken,
-            environmentVariables: environmentVariables,
-            model: model,
-            reasoningEffort: reasoningEffort
+            machineID: request.machineID,
+            directory: request.directory,
+            agent: request.agent,
+            codexResumeThreadID: request.codexResumeThreadID,
+            claudeResumeSessionID: request.claudeResumeSessionID,
+            approvedNewDirectoryCreation: request.approvedNewDirectoryCreation,
+            sessionToken: request.sessionToken,
+            environmentVariables: request.environmentVariables,
+            model: request.model,
+            reasoningEffort: request.reasoningEffort
         )
         return response
     }

@@ -29,9 +29,9 @@ enum SessionMessageDetailPresentationBuilder {
         from message: APISessionMessage,
         timestampFormatter: (TimeInterval) -> String = defaultTimestampFormatter
     ) -> SessionMessageDetailPresentation {
-        let normalizedContentType = message.content?.t.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedContentType = message.content?.type.trimmingCharacters(in: .whitespacesAndNewlines)
         let contentType = normalizedContentType?.isEmpty == false ? normalizedContentType : nil
-        let payload = message.content?.c
+        let payload = message.content?.payload
         let payloadCharacterCount = payload?.count ?? 0
 
         let payloadPreview: String?

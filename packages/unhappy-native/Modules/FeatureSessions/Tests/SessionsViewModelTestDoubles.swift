@@ -162,7 +162,7 @@ struct SessionAwareMessagesLoader: SessionsMessagesLoading {
                 id: "m-\(sessionID)",
                 seq: 1,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "encrypted", c: "payload"),
+                content: APIEncryptedMessageContent(type: "encrypted", payload: "payload"),
                 createdAt: 1,
                 updatedAt: 1
             )
