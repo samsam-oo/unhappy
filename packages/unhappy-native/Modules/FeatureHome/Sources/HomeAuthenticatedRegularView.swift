@@ -526,6 +526,21 @@ private struct HomeRegularSessionsTab: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        Task {
+                                            await viewModel.removeProject(
+                                                machineID: group.machineID,
+                                                projectPath: group.projectPath,
+                                                serverURLString: serverURLString,
+                                                token: token
+                                            )
+                                        }
+                                    } label: {
+                                        Label("Stop Syncing", systemImage: "xmark.bin")
+                                    }
+                                    .disabled(viewModel.isRemoving(projectID: group.id))
+                                }
                             }
                         }
                     }
