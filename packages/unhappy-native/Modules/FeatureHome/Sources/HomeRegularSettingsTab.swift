@@ -108,6 +108,7 @@ struct HomeRegularSettingsTab: View {
             }
         }
         .listStyle(.plain)
+        .contentMargins(.top, 8, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .systemBackground))
@@ -126,7 +127,9 @@ struct HomeRegularSettingsTab: View {
                         .foregroundStyle(Color.accentColor)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
