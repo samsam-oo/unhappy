@@ -43,6 +43,7 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
 struct SessionTranscriptMessagePresentation: Equatable, Sendable {
     let messageID: String
     let sequenceText: String
+    let createdAt: TimeInterval
     let createdAtText: String
     let entries: [SessionTranscriptEntry]
 }
@@ -68,6 +69,7 @@ enum SessionTranscriptPresentationBuilder {
         return SessionTranscriptMessagePresentation(
             messageID: message.id,
             sequenceText: "\(message.seq)",
+            createdAt: message.createdAt,
             createdAtText: timestampFormatter(message.createdAt),
             entries: visibleEntries
         )

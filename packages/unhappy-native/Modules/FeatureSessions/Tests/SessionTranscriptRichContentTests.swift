@@ -186,4 +186,46 @@ struct SessionTranscriptRichContentTests {
         #expect(changes[0].path == "Sources/ComposerView.swift")
         #expect(changes[0].kind == .modified)
     }
+
+    @Test
+    func richToolParserBuildsCommandExecutionCard() {
+        let body = """
+        {
+          "type": "commandExecutionPresentation",
+          "command": "git status",
+          "cwd": "/tmp/project",
+          "summary": "Explored 2 files, 4 searches",
+          "logs": "line 1\\nline 2",
+          "success": true,
+          "exitCode": 0,
+          "durationMs": 11000
+        }
+        """
+        let entry = SessionTranscriptEntry(
+            id: "tool-command",
+            role: .agent,
+            kind: .toolResult,
+            title: "Ran command",
+            body: body,
+            toolUseID: "call_cmd",
+            sourceType: "item_completed",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected command execution rich content")
+            return
+        }
+
+        #expect(command.command == "git status")
+        #expect(command.cwd == "/tmp/project")
+        #expect(command.summary == "Explored 2 files, 4 searches")
+        #expect(command.logs == "line 1\nline 2")
+        #expect(command.status == .succeeded)
+        #expect(command.exitCode == 0)
+        #expect(command.durationText == "11s")
+    }
 }

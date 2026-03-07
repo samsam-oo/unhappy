@@ -106,7 +106,60 @@ struct SessionTranscriptFileChangePresentation: Equatable, Identifiable, Sendabl
     let diffFiles: [SessionTranscriptDiffFilePresentation]
 }
 
+struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
+    let command: String?
+    let cwd: String?
+    let summary: String?
+    let logs: String?
+    let stdout: String?
+    let stderr: String?
+    let success: Bool?
+    let exitCode: Int?
+    let status: String?
+    let durationMs: Int?
+
+    var displayedLogs: String? {
+        let normalizedLogs = logs?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedStdout = stdout?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedStderr = stderr?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let normalizedLogs, !normalizedLogs.isEmpty {
+            if let normalizedStderr,
+               !normalizedStderr.isEmpty,
+               normalizedLogs.contains(normalizedStderr) == false {
+                return normalizedLogs + "\n" + normalizedStderr
+            }
+            return normalizedLogs
+        }
+
+        let parts = [normalizedStdout, normalizedStderr]
+            .compactMap { value -> String? in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
+        guard !parts.isEmpty else { return nil }
+        return parts.joined(separator: "\n")
+    }
+}
+
+struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
+    enum Status: Equatable, Sendable {
+        case running
+        case succeeded
+        case failed
+    }
+
+    let command: String
+    let cwd: String?
+    let summary: String?
+    let logs: String?
+    let status: Status
+    let exitCode: Int?
+    let durationText: String?
+}
+
 enum SessionTranscriptRichToolContent: Equatable, Sendable {
+    case commandExecution(SessionTranscriptCommandRunPresentation)
     case fileChanges([SessionTranscriptFileChangePresentation])
     case diff([SessionTranscriptDiffFilePresentation])
 }
@@ -209,6 +262,9 @@ enum SessionTranscriptRichContentParser {
     }
 
     static func richToolContent(for entry: SessionTranscriptEntry) -> SessionTranscriptRichToolContent? {
+        if let command = commandPresentation(for: entry) {
+            return .commandExecution(command)
+        }
         if let fileChanges = parseFileChanges(from: entry.body), !fileChanges.isEmpty {
             return .fileChanges(fileChanges)
         }
@@ -222,6 +278,8 @@ enum SessionTranscriptRichContentParser {
     static func summaryTitle(for entry: SessionTranscriptEntry) -> String? {
         if let richContent = richToolContent(for: entry) {
             switch richContent {
+            case .commandExecution:
+                return "Ran command"
             case .fileChanges(let changes):
                 if changes.count == 1, let first = changes.first {
                     return "\(first.kind.label) \(fileName(from: first.path))"
@@ -241,7 +299,58 @@ enum SessionTranscriptRichContentParser {
         guard entry.toolName == "codexbash" || entry.toolName == "bash" else {
             return nil
         }
-        return commandSummary(from: entry.body)
+        return commandSummaryText(from: entry.body)
+    }
+
+    static func commandPayload(for entry: SessionTranscriptEntry) -> SessionTranscriptCommandExecutionPayload? {
+        commandPayload(from: entry.body)
+    }
+
+    static func encodeCommandPayload(_ payload: SessionTranscriptCommandExecutionPayload) -> String {
+        var object: [String: Any] = [
+            "type": "commandExecutionPresentation"
+        ]
+        if let command = payload.command, !command.isEmpty {
+            object["command"] = command
+        }
+        if let cwd = payload.cwd, !cwd.isEmpty {
+            object["cwd"] = cwd
+        }
+        if let summary = payload.summary, !summary.isEmpty {
+            object["summary"] = summary
+        }
+        if let logs = payload.logs, !logs.isEmpty {
+            object["logs"] = logs
+        }
+        if let stdout = payload.stdout, !stdout.isEmpty {
+            object["stdout"] = stdout
+        }
+        if let stderr = payload.stderr, !stderr.isEmpty {
+            object["stderr"] = stderr
+        }
+        if let success = payload.success {
+            object["success"] = success
+        }
+        if let exitCode = payload.exitCode {
+            object["exitCode"] = exitCode
+        }
+        if let status = payload.status, !status.isEmpty {
+            object["status"] = status
+        }
+        if let durationMs = payload.durationMs {
+            object["durationMs"] = durationMs
+        }
+
+        guard JSONSerialization.isValidJSONObject(object),
+              let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+              let string = String(data: data, encoding: .utf8) else {
+            return "{}"
+        }
+        return string
+    }
+
+    static func commandSummaryText(from rawBody: String) -> String? {
+        commandSummary(from: rawBody)
     }
 
     static func attributedInlineMarkdown(_ raw: String) -> AttributedString? {
@@ -253,6 +362,140 @@ enum SessionTranscriptRichContentParser {
                 failurePolicy: .returnPartiallyParsedIfPossible
             )
         )
+    }
+
+    static func commandPresentation(
+        for entry: SessionTranscriptEntry
+    ) -> SessionTranscriptCommandRunPresentation? {
+        guard let payload = commandPayload(from: entry.body) else {
+            return nil
+        }
+
+        let command = payload.command?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let command, !command.isEmpty else {
+            return nil
+        }
+
+        let normalizedStatus = payload.status?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let status: SessionTranscriptCommandRunPresentation.Status = {
+            if payload.success == false {
+                return .failed
+            }
+            if payload.success == true {
+                return .succeeded
+            }
+            if let normalizedStatus {
+                if normalizedStatus.contains("fail") || normalizedStatus.contains("error") {
+                    return .failed
+                }
+                if normalizedStatus.contains("complete") ||
+                    normalizedStatus.contains("success") ||
+                    normalizedStatus.contains("done") {
+                    return .succeeded
+                }
+            }
+            return entry.kind == .toolResult ? .succeeded : .running
+        }()
+
+        let cwd = payload.cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = payload.summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return SessionTranscriptCommandRunPresentation(
+            command: command,
+            cwd: cwd?.isEmpty == false ? cwd : nil,
+            summary: summary?.isEmpty == false ? summary : nil,
+            logs: payload.displayedLogs,
+            status: status,
+            exitCode: payload.exitCode,
+            durationText: formatCommandDuration(milliseconds: payload.durationMs)
+        )
+    }
+
+    private static func commandPayload(from rawBody: String) -> SessionTranscriptCommandExecutionPayload? {
+        guard let object = parseJSONObject(from: rawBody) else {
+            return nil
+        }
+
+        let summary = normalizeString(object["summary"]) ?? commandSummary(from: rawBody)
+        let command = normalizeString(object["command"]) ??
+            extractCommand(from: object["commandActions"]) ??
+            extractCommand(from: object["parsed_cmd"]) ??
+            extractCommand(from: object["parsedCmd"])
+        let cwd = normalizeString(object["cwd"])
+        let logs = normalizeString(object["logs"])
+        let stdout = normalizeString(object["stdout"]) ??
+            normalizeString(object["aggregatedOutput"]) ??
+            normalizeString(object["aggregated_output"]) ??
+            normalizeString(object["formatted_output"]) ??
+            normalizeString(object["output"])
+        let stderr = normalizeString(object["stderr"]) ??
+            normalizeString(object["error"])
+        let success = normalizeBool(object["success"])
+        let exitCode = normalizeInt(object["exitCode"]) ??
+            normalizeInt(object["exit_code"]) ??
+            normalizeInt(object["code"])
+        let status = normalizeString(object["status"]) ??
+            normalizeString(object["state"])
+        let durationMs = normalizeInt(object["durationMs"]) ??
+            normalizeInt(object["duration_ms"])
+
+        guard [command, summary, logs, stdout, stderr].contains(where: { $0?.isEmpty == false }) ||
+                success != nil ||
+                exitCode != nil ||
+                status != nil ||
+                durationMs != nil else {
+            return nil
+        }
+
+        return SessionTranscriptCommandExecutionPayload(
+            command: command,
+            cwd: cwd,
+            summary: summary,
+            logs: logs,
+            stdout: stdout,
+            stderr: stderr,
+            success: success,
+            exitCode: exitCode,
+            status: status,
+            durationMs: durationMs
+        )
+    }
+
+    private static func extractCommand(from value: Any?) -> String? {
+        if let text = normalizeString(value) {
+            return text
+        }
+        if let actions = value as? [[String: Any]] {
+            for action in actions {
+                if let command = normalizeString(action["command"]) {
+                    return command
+                }
+                if let command = normalizeString(action["cmd"]) {
+                    return command
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func formatCommandDuration(milliseconds: Int?) -> String? {
+        guard let milliseconds, milliseconds > 0 else { return nil }
+        let totalSeconds = milliseconds / 1_000
+        if totalSeconds < 1 {
+            let tenths = max(1, Int((Double(milliseconds) / 100.0).rounded()))
+            return "\(Double(tenths) / 10.0)s"
+        }
+        if totalSeconds < 60 {
+            return "\(totalSeconds)s"
+        }
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        if seconds == 0 {
+            return "\(minutes)m"
+        }
+        return "\(minutes)m \(seconds)s"
     }
 
     private static func parseHeading(_ line: String) -> (level: Int, text: String)? {
@@ -659,6 +902,39 @@ enum SessionTranscriptRichContentParser {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    private static func normalizeBool(_ value: Any?) -> Bool? {
+        if let bool = value as? Bool {
+            return bool
+        }
+        if let number = value as? NSNumber {
+            return number.boolValue
+        }
+        if let string = normalizeString(value)?.lowercased() {
+            switch string {
+            case "true", "success", "succeeded", "completed", "complete", "ok":
+                return true
+            case "false", "failed", "error":
+                return false
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    private static func normalizeInt(_ value: Any?) -> Int? {
+        if let int = value as? Int {
+            return int
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let string = normalizeString(value) {
+            return Int(string)
+        }
+        return nil
+    }
+
     private static func firstString(_ values: Any?...) -> String? {
         for value in values {
             if let normalized = normalizeString(value) {
@@ -847,6 +1123,8 @@ struct SessionTranscriptToolRichContentView: View {
     var body: some View {
         if let richContent {
             switch richContent {
+            case .commandExecution(let command):
+                commandExecutionCard(command)
             case .fileChanges(let changes):
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(changes) { change in
@@ -862,6 +1140,82 @@ struct SessionTranscriptToolRichContentView: View {
                 language: nil,
                 accentColor: AppPalette.terminalLineTool
             )
+        }
+    }
+
+    @ViewBuilder
+    private func commandExecutionCard(
+        _ command: SessionTranscriptCommandRunPresentation
+    ) -> some View {
+        SessionSurfaceCard(
+            cornerRadius: 14,
+            fillColor: AppPalette.chatToolBackground.opacity(0.96),
+            strokeColor: commandStatusTint(command.status).opacity(0.24)
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "terminal")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(commandStatusTint(command.status))
+                    Text("Ran command")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppPalette.primaryText)
+                    Spacer(minLength: 0)
+                    if let durationText = command.durationText {
+                        Text(durationText)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+                }
+
+                SessionTranscriptMonospaceBlock(
+                    text: "$ " + command.command,
+                    language: "shell",
+                    accentColor: commandStatusTint(command.status)
+                )
+
+                if let cwd = command.cwd {
+                    LabeledContent {
+                        Text(cwd)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    } label: {
+                        Text("Shell")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+                }
+
+                if let summary = command.summary {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+
+                if let logs = command.logs, !logs.isEmpty {
+                    ScrollView(.vertical) {
+                        SessionTranscriptMonospaceBlock(
+                            text: logs,
+                            language: nil,
+                            accentColor: commandStatusTint(command.status)
+                        )
+                    }
+                    .frame(maxHeight: 240)
+                }
+
+                HStack(alignment: .center, spacing: 8) {
+                    statusBadge(for: command)
+                    Spacer(minLength: 0)
+                    if let exitCode = command.exitCode {
+                        Text("Exit code \(exitCode)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+                }
+            }
+            .padding(12)
         }
     }
 
@@ -921,6 +1275,52 @@ struct SessionTranscriptToolRichContentView: View {
                 }
             }
             .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private func statusBadge(
+        for command: SessionTranscriptCommandRunPresentation
+    ) -> some View {
+        switch command.status {
+        case .running:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(AppPalette.accent)
+                Text("Running")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.secondaryText)
+            }
+        case .succeeded:
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.bold))
+                Text("Success")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(.green)
+        case .failed:
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.bold))
+                Text("Failed")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(.red)
+        }
+    }
+
+    private func commandStatusTint(
+        _ status: SessionTranscriptCommandRunPresentation.Status
+    ) -> Color {
+        switch status {
+        case .running:
+            return AppPalette.accent
+        case .succeeded:
+            return .green
+        case .failed:
+            return .red
         }
     }
 
