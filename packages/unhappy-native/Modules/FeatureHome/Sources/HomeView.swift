@@ -97,16 +97,6 @@ public struct HomeView: View {
 
     private var authenticatedCompactHome: some View {
         TabView(selection: $selectedAuthenticatedTab) {
-            InboxView(
-                serverURLString: settingsViewModel.serverURLString,
-                token: settingsViewModel.apiToken,
-                makeViewModel: makeInboxViewModel
-            )
-            .tabItem {
-                Label("Inbox", systemImage: "tray.full")
-            }
-            .tag(AuthenticatedTab.inbox)
-
             SessionsView(
                 serverURLString: settingsViewModel.serverURLString,
                 token: settingsViewModel.apiToken,
@@ -121,6 +111,16 @@ public struct HomeView: View {
                 Label("Projects", systemImage: "folder")
             }
             .tag(AuthenticatedTab.projects)
+
+            InboxView(
+                serverURLString: settingsViewModel.serverURLString,
+                token: settingsViewModel.apiToken,
+                makeViewModel: makeInboxViewModel
+            )
+            .tabItem {
+                Label("Inbox", systemImage: "tray.full")
+            }
+            .tag(AuthenticatedTab.inbox)
 
             SettingsView(
                 viewModel: settingsViewModel,

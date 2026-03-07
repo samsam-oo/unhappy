@@ -101,6 +101,16 @@ struct FeatureHomeTests {
             }
         )
     }
+
+    @Test
+    func regularProjectsSelectionReducerDoesNotAutoSelectFirstProject() {
+        #expect(
+            HomeRegularProjectsSelectionState.retainedSelectionID(
+                currentSelectionID: nil,
+                availableProjectIDs: ["project-1", "project-2"]
+            ) == nil
+        )
+    }
 }
 
 private actor MockSettingsManager: SettingsManaging {

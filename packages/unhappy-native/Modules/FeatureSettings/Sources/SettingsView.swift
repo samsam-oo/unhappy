@@ -32,7 +32,7 @@ public struct SettingsView: View {
             settingsSidebarContent
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
                 .navigationTitle("Settings")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.large)
         } detail: {
             splitDetailPlaceholder
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

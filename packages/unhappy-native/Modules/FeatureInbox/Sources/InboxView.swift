@@ -21,7 +21,7 @@ public struct InboxView: View {
             sidebarContent
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
                 .navigationTitle("Inbox")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.large)
                 .toolbar { inboxToolbarContent }
                 .refreshable {
                     await viewModel.load()

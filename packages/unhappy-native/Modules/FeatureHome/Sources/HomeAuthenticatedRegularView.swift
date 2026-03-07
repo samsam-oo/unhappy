@@ -127,7 +127,7 @@ private struct HomeRegularInboxTab: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
+            sidebarNavigation
                 .frame(width: 340)
             Divider()
             detail
@@ -139,70 +139,68 @@ private struct HomeRegularInboxTab: View {
         }
     }
 
+    private var sidebarNavigation: some View {
+        NavigationStack {
+            sidebar
+                .navigationTitle("Inbox")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar { inboxSidebarToolbar }
+        }
+    }
+
+    @ViewBuilder
     private var sidebar: some View {
-        VStack(spacing: 0) {
-            header
-            Group {
-                if viewModel.isLoading {
-                    ProgressView("Loading inbox…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let errorMessage = viewModel.errorMessage {
-                    ContentUnavailableView(
-                        "Unable to load inbox",
-                        systemImage: "tray.full",
-                        description: Text(errorMessage)
-                    )
-                } else if viewModel.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Image(systemName: "tray")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("No inbox items")
-                            .font(.subheadline.weight(.semibold))
-                        Text("Notifications and requests will appear here.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                } else {
-                    list
+        Group {
+            if viewModel.isLoading {
+                ProgressView("Loading inbox…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage = viewModel.errorMessage {
+                ContentUnavailableView(
+                    "Unable to load inbox",
+                    systemImage: "tray.full",
+                    description: Text(errorMessage)
+                )
+            } else if viewModel.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("No inbox items")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Notifications and requests will appear here.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+            } else {
+                list
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .systemBackground))
     }
 
-    private var header: some View {
-        HStack {
+    @ToolbarContentBuilder
+    private var inboxSidebarToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
             Button {
                 selection = .friends
             } label: {
                 Image(systemName: "person.2")
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Open friends")
+        }
 
-            Spacer()
-
-            Text("Inbox")
-                .font(.headline.weight(.semibold))
-
-            Spacer()
-
+        ToolbarItem(placement: .topBarTrailing) {
             Button {
                 selection = .search
             } label: {
                 Image(systemName: "person.badge.plus")
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Search users")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
     }
 
     private var list: some View {
@@ -354,10 +352,6 @@ private struct HomeRegularInboxTab: View {
 
 @MainActor
 private struct HomeRegularSessionsTab: View {
-    private enum Selection: Hashable {
-        case project(String)
-    }
-
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
@@ -367,14 +361,14 @@ private struct HomeRegularSessionsTab: View {
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     let onSessionsChanged: @MainActor ([APISession]) async -> Void
 
-    @State private var selection: Selection?
+    @State private var selectedProjectID: String?
     @State private var isPresentingProjectPicker = false
     @State private var isPresentingRecentSessions = false
-    @State private var detailPath: [Selection] = []
+    @State private var detailPath: [String] = []
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
+            sidebarNavigation
                 .frame(width: 360)
             Divider()
             detail
@@ -388,15 +382,18 @@ private struct HomeRegularSessionsTab: View {
             await onSessionsChanged(viewModel.sessions)
         }
         .onChange(of: projectGroups.map(\.id)) { _, ids in
-            guard let selection else {
-                self.selection = firstAvailableSelection
-                return
+            let retainedSelection = HomeRegularProjectsSelectionState.retainedSelectionID(
+                currentSelectionID: selectedProjectID,
+                availableProjectIDs: ids
+            )
+            if retainedSelection != selectedProjectID {
+                selectedProjectID = retainedSelection
             }
-            if case .project(let projectID) = selection, !ids.contains(projectID) {
-                self.selection = firstAvailableSelection
+            if retainedSelection == nil, !detailPath.isEmpty {
+                detailPath.removeAll()
             }
         }
-        .onChange(of: selection) { _, newSelection in
+        .onChange(of: selectedProjectID) { _, newSelection in
             if let newSelection {
                 if detailPath != [newSelection] {
                     detailPath = [newSelection]
@@ -407,11 +404,11 @@ private struct HomeRegularSessionsTab: View {
         }
         .onChange(of: detailPath) { _, newPath in
             if let last = newPath.last {
-                if selection != last {
-                    selection = last
+                if selectedProjectID != last {
+                    selectedProjectID = last
                 }
-            } else if selection != nil {
-                selection = nil
+            } else if selectedProjectID != nil {
+                selectedProjectID = nil
             }
         }
         .sheet(isPresented: $isPresentingProjectPicker) {
@@ -450,141 +447,142 @@ private struct HomeRegularSessionsTab: View {
         await viewModel.load(serverURLString: serverURLString, token: token)
     }
 
+    private var sidebarNavigation: some View {
+        NavigationStack {
+            sidebar
+                .navigationTitle("Projects")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar { sidebarToolbar }
+        }
+    }
+
+    @ViewBuilder
     private var sidebar: some View {
-        return VStack(spacing: 0) {
-            HStack {
-                Button {
-                    isPresentingRecentSessions = true
-                } label: {
-                    Image(systemName: "clock")
+        Group {
+            if viewModel.isLoading {
+                ProgressView("Loading sessions…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Unable to load sessions")
+                            .font(.headline)
+                        Text(error)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Recent Sessions")
-
-                Spacer()
-
-                Text("Projects")
-                    .font(.headline.weight(.semibold))
-
-                Spacer()
-
-                Button {
-                    isPresentingProjectPicker = true
-                } label: {
-                    Image(systemName: "plus.circle.fill")
+                .refreshable {
+                    await reloadSessions()
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add Project")
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
-
-            Group {
-                if viewModel.isLoading {
-                    ProgressView("Loading sessions…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Unable to load sessions")
-                                .font(.headline)
-                            Text(error)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+            } else if !showsSessionSidebarList {
+                ScrollView {
+                    VStack(spacing: 14) {
+                        Image(systemName: "sparkles.rectangle.stack")
+                            .font(.system(size: 26, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Text("No projects yet")
+                            .font(.headline)
+                        Text("Add a project to start syncing its sessions.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button {
+                            isPresentingProjectPicker = true
+                        } label: {
+                            Label("Add Project", systemImage: "plus.circle.fill")
+                                .font(.subheadline.weight(.semibold))
                         }
-                        .padding(24)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .buttonStyle(.borderedProminent)
+                        .padding(.top, 2)
                     }
-                    .refreshable {
-                        await reloadSessions()
-                    }
-                } else if !showsSessionSidebarList {
-                    ScrollView {
-                        VStack(spacing: 14) {
-                            Image(systemName: "sparkles.rectangle.stack")
-                                .font(.system(size: 26, weight: .semibold))
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .padding(.top, 24)
+                    .padding(.horizontal, 20)
+                }
+                .refreshable {
+                    await reloadSessions()
+                }
+            } else {
+                List {
+                    Section("Projects") {
+                        if viewModel.isLoadingProjects && projectGroups.isEmpty {
+                            ProgressView("Loading projects…")
+                        } else if let errorMessage = viewModel.projectsErrorMessage,
+                                  projectGroups.isEmpty {
+                            Text(errorMessage)
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
-                            Text("No projects yet")
-                                .font(.headline)
-                            Text("Add a project to start syncing its sessions.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                            Button {
-                                isPresentingProjectPicker = true
-                            } label: {
-                                Label("Add Project", systemImage: "plus.circle.fill")
-                                    .font(.subheadline.weight(.semibold))
+                        } else {
+                            ForEach(projectGroups) { group in
+                                Button {
+                                    selectedProjectID = group.id
+                                } label: {
+                                    HomeRegularProjectRow(
+                                        group: group,
+                                        isSelected: selectedProjectID == group.id
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.borderedProminent)
-                            .padding(.top, 2)
                         }
-                        .frame(maxWidth: .infinity, alignment: .top)
-                        .padding(.top, 24)
-                        .padding(.horizontal, 20)
                     }
-                    .refreshable {
-                        await reloadSessions()
-                    }
-                } else {
-                    List {
-                        Section("Projects") {
-                            if viewModel.isLoadingProjects && projectGroups.isEmpty {
-                                ProgressView("Loading projects…")
-                            } else if let errorMessage = viewModel.projectsErrorMessage,
-                                      projectGroups.isEmpty {
-                                Text(errorMessage)
+
+                    if viewModel.hasMoreSessions {
+                        HStack {
+                            Spacer()
+                            if viewModel.isLoadingMoreSessions {
+                                ProgressView("Loading more…")
                                     .font(.footnote)
-                                    .foregroundStyle(.secondary)
                             } else {
-                                ForEach(projectGroups) { group in
-                                    Button {
-                                        selection = .project(group.id)
-                                    } label: {
-                                        HomeRegularProjectRow(
-                                            group: group,
-                                            isSelected: selection == .project(group.id)
+                                Button("Load more") {
+                                    Task {
+                                        await viewModel.loadMoreSessions(
+                                            serverURLString: serverURLString,
+                                            token: token
                                         )
                                     }
-                                    .buttonStyle(.plain)
                                 }
+                                .font(.footnote.weight(.semibold))
                             }
+                            Spacer()
                         }
-
-                        if viewModel.hasMoreSessions {
-                            HStack {
-                                Spacer()
-                                if viewModel.isLoadingMoreSessions {
-                                    ProgressView("Loading more…")
-                                        .font(.footnote)
-                                } else {
-                                    Button("Load more") {
-                                        Task {
-                                            await viewModel.loadMoreSessions(
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
-                                        }
-                                    }
-                                    .font(.footnote.weight(.semibold))
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 6)
-                            .listRowSeparator(.hidden)
-                        }
+                        .padding(.vertical, 6)
+                        .listRowSeparator(.hidden)
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .refreshable {
-                        await reloadSessions()
-                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .refreshable {
+                    await reloadSessions()
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .systemBackground))
+    }
+
+    @ToolbarContentBuilder
+    private var sidebarToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                isPresentingRecentSessions = true
+            } label: {
+                Image(systemName: "clock")
+            }
+            .accessibilityLabel("Recent Sessions")
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                isPresentingProjectPicker = true
+            } label: {
+                Image(systemName: "plus.circle.fill")
+            }
+            .accessibilityLabel("Add Project")
+        }
     }
 
     private var detail: some View {
@@ -602,24 +600,21 @@ private struct HomeRegularSessionsTab: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationDestination(for: Selection.self) { destination in
-                switch destination {
-                case .project(let projectID):
-                    if let group = projectGroups.first(where: { $0.id == projectID }) {
-                        SessionProjectDetailView(
-                            group: group,
-                            viewModel: viewModel,
-                            serverURLString: serverURLString,
-                            token: token,
-                            defaultNewSessionAgent: defaultNewSessionAgent,
-                            makeNewSessionViewModel: makeNewSessionViewModel,
-                            makeSessionToolsViewModel: makeSessionToolsViewModel,
-                            onProjectRemoved: {
-                                selection = nil
-                                detailPath.removeAll()
-                            }
-                        )
-                    }
+            .navigationDestination(for: String.self) { projectID in
+                if let group = projectGroups.first(where: { $0.id == projectID }) {
+                    SessionProjectDetailView(
+                        group: group,
+                        viewModel: viewModel,
+                        serverURLString: serverURLString,
+                        token: token,
+                        defaultNewSessionAgent: defaultNewSessionAgent,
+                        makeNewSessionViewModel: makeNewSessionViewModel,
+                        makeSessionToolsViewModel: makeSessionToolsViewModel,
+                        onProjectRemoved: {
+                            selectedProjectID = nil
+                            detailPath.removeAll()
+                        }
+                    )
                 }
             }
         }
@@ -642,10 +637,6 @@ private struct HomeRegularSessionsTab: View {
             upstreamSessions: viewModel.upstreamSessions,
             projects: viewModel.projects
         )
-    }
-
-    private var firstAvailableSelection: Selection? {
-        projectGroups.first.map { .project($0.id) }
     }
 
     private var sessionsChangeTaskID: String {
@@ -789,7 +780,7 @@ private struct HomeRegularSettingsTab: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
+            sidebarNavigation
                 .frame(width: 340)
             Divider()
             detail
@@ -797,44 +788,40 @@ private struct HomeRegularSettingsTab: View {
         .background(Color(uiColor: .systemGroupedBackground))
     }
 
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                Text("Settings")
-                    .font(.headline.weight(.semibold))
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 12)
-
-            List {
-                Section("Connection") {
-                    settingsRow(.account)
-                    settingsRow(.restore)
-                    settingsRow(.server)
-                    settingsRow(.connectors)
-                    settingsRow(.terminal)
-                }
-
-                Section("Preferences") {
-                    settingsRow(.language)
-                    settingsRow(.appearance)
-                    settingsRow(.features)
-                    settingsRow(.profiles)
-                    settingsRow(.voice)
-                    settingsRow(.usage)
-                    settingsRow(.changelog)
-                }
-
-                Section("Machine") {
-                    settingsRow(.machines)
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+    private var sidebarNavigation: some View {
+        NavigationStack {
+            sidebar
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.large)
         }
+    }
+
+    private var sidebar: some View {
+        List {
+            Section("Connection") {
+                settingsRow(.account)
+                settingsRow(.restore)
+                settingsRow(.server)
+                settingsRow(.connectors)
+                settingsRow(.terminal)
+            }
+
+            Section("Preferences") {
+                settingsRow(.language)
+                settingsRow(.appearance)
+                settingsRow(.features)
+                settingsRow(.profiles)
+                settingsRow(.voice)
+                settingsRow(.usage)
+                settingsRow(.changelog)
+            }
+
+            Section("Machine") {
+                settingsRow(.machines)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(uiColor: .systemBackground))
     }

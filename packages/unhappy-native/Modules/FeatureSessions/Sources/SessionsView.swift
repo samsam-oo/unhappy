@@ -44,7 +44,7 @@ public struct SessionsView: View {
         NavigationStack(path: $navigationPath) {
             sidebarContent
                 .navigationTitle("Projects")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.large)
                 .toolbar { sessionsToolbarContent }
                 .refreshable {
                     await viewModel.load(serverURLString: serverURLString, token: token)
