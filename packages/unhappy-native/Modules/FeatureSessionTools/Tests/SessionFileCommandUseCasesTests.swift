@@ -16,10 +16,12 @@ struct SessionFileCommandUseCasesTests {
         )
 
         let loaded = try await useCase.listDirectory(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            path: "/repo"
+            SessionDirectoryListRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                path: "/repo"
+            )
         )
 
         #expect(loaded.map(\.name) == ["Sources", "Tests", "main.swift"])
@@ -31,12 +33,14 @@ struct SessionFileCommandUseCasesTests {
         let useCase = SessionFileWriteUseCase(service: service)
 
         _ = try await useCase.writeFile(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            path: "/repo/file.txt",
-            content: "hello",
-            expectedHash: "hash-1"
+            SessionFileWriteRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                path: "/repo/file.txt",
+                content: "hello",
+                expectedHash: "hash-1"
+            )
         )
 
         let recorded = await service.lastContent()
@@ -50,12 +54,14 @@ struct SessionFileCommandUseCasesTests {
 
         await #expect(throws: SessionFileCommandError.missingContent) {
             _ = try await useCase.writeFile(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                sessionID: "session-1",
-                path: "/repo/file.txt",
-                content: "",
-                expectedHash: nil
+                SessionFileWriteRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    sessionID: "session-1",
+                    path: "/repo/file.txt",
+                    content: "",
+                    expectedHash: nil
+                )
             )
         }
     }
@@ -68,12 +74,14 @@ struct SessionFileCommandUseCasesTests {
         let useCase = SessionFileDiffPreviewUseCase(basher: basher)
 
         _ = try await useCase.loadFileDiff(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            path: "/repo/Sources/App.swift",
-            workingDirectory: nil,
-            timeout: 12_000
+            SessionFileDiffPreviewRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                path: "/repo/Sources/App.swift",
+                workingDirectory: nil,
+                timeout: 12_000
+            )
         )
 
         let request = await basher.lastRequest()
@@ -92,12 +100,14 @@ struct SessionFileCommandUseCasesTests {
 
         await #expect(throws: SessionFileCommandError.missingPath) {
             _ = try await useCase.loadFileDiff(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                sessionID: "session-1",
-                path: " ",
-                workingDirectory: nil,
-                timeout: nil
+                SessionFileDiffPreviewRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    sessionID: "session-1",
+                    path: " ",
+                    workingDirectory: nil,
+                    timeout: nil
+                )
             )
         }
     }

@@ -2,34 +2,40 @@ import Foundation
 import CoreKit
 
 public protocol SessionDirectoryListAction: Sendable {
-    func listDirectory(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        path: String
-    ) async throws -> [APISessionDirectoryEntry]
+    func listDirectory(_ request: SessionDirectoryListRequest) async throws -> [APISessionDirectoryEntry]
 }
 
 public protocol SessionFileWriteAction: Sendable {
-    func writeFile(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        path: String,
-        content: String,
-        expectedHash: String?
-    ) async throws -> APISessionWriteFileResult
+    func writeFile(_ request: SessionFileWriteRequest) async throws -> APISessionWriteFileResult
 }
 
 public protocol SessionFileDiffPreviewAction: Sendable {
-    func loadFileDiff(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        path: String,
-        workingDirectory: String?,
-        timeout: Int?
-    ) async throws -> APISessionBashResult
+    func loadFileDiff(_ request: SessionFileDiffPreviewRequest) async throws -> APISessionBashResult
+}
+
+public struct SessionDirectoryListRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let path: String
+}
+
+public struct SessionFileWriteRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let path: String
+    public let content: String
+    public let expectedHash: String?
+}
+
+public struct SessionFileDiffPreviewRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let path: String
+    public let workingDirectory: String?
+    public let timeout: Int?
 }
 
 public enum SessionFileCommandError: LocalizedError, Equatable {
@@ -73,23 +79,18 @@ public actor SessionDirectoryListUseCase: SessionDirectoryListAction {
         self.service = service
     }
 
-    public func listDirectory(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        path: String
-    ) async throws -> [APISessionDirectoryEntry] {
-        let (serverURL, normalizedToken, normalizedSessionID, normalizedPath) = try normalizeInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID,
-            path: path
+    public func listDirectory(_ request: SessionDirectoryListRequest) async throws -> [APISessionDirectoryEntry] {
+        let normalized = try normalizeInputs(
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID,
+            path: request.path
         )
         let key = RequestKey(
-            serverURLString: serverURL.absoluteString,
-            token: normalizedToken,
-            sessionID: normalizedSessionID,
-            path: normalizedPath
+            serverURLString: normalized.serverURL.absoluteString,
+            token: normalized.token,
+            sessionID: normalized.sessionID,
+            path: normalized.path
         )
         if let inFlightTask = inFlightTasks[key] {
             return try await inFlightTask.value
@@ -98,10 +99,10 @@ public actor SessionDirectoryListUseCase: SessionDirectoryListAction {
         let service = self.service
         let task = Task<[APISessionDirectoryEntry], Error> {
             let result = try await service.listDirectory(
-                serverURL: serverURL,
-                token: normalizedToken,
-                sessionID: normalizedSessionID,
-                path: normalizedPath
+                serverURL: normalized.serverURL,
+                token: normalized.token,
+                sessionID: normalized.sessionID,
+                path: normalized.path
             )
 
             guard result.success else {
@@ -143,30 +144,23 @@ public actor SessionFileWriteUseCase: SessionFileWriteAction {
         self.service = service
     }
 
-    public func writeFile(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        path: String,
-        content: String,
-        expectedHash: String?
-    ) async throws -> APISessionWriteFileResult {
-        let (serverURL, normalizedToken, normalizedSessionID, normalizedPath) = try normalizeInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID,
-            path: path
+    public func writeFile(_ request: SessionFileWriteRequest) async throws -> APISessionWriteFileResult {
+        let normalized = try normalizeInputs(
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID,
+            path: request.path
         )
-        guard !content.isEmpty else {
+        guard !request.content.isEmpty else {
             throw SessionFileCommandError.missingContent
         }
-        let encoded = Data(content.utf8).base64EncodedString()
-        let normalizedExpectedHash = expectedHash?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let encoded = Data(request.content.utf8).base64EncodedString()
+        let normalizedExpectedHash = request.expectedHash?.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = RequestKey(
-            serverURLString: serverURL.absoluteString,
-            token: normalizedToken,
-            sessionID: normalizedSessionID,
-            path: normalizedPath,
+            serverURLString: normalized.serverURL.absoluteString,
+            token: normalized.token,
+            sessionID: normalized.sessionID,
+            path: normalized.path,
             contentHash: encoded,
             expectedHash: normalizedExpectedHash
         )
@@ -177,10 +171,10 @@ public actor SessionFileWriteUseCase: SessionFileWriteAction {
         let service = self.service
         let task = Task<APISessionWriteFileResult, Error> {
             let result = try await service.writeFile(
-                serverURL: serverURL,
-                token: normalizedToken,
-                sessionID: normalizedSessionID,
-                path: normalizedPath,
+                serverURL: normalized.serverURL,
+                token: normalized.token,
+                sessionID: normalized.sessionID,
+                path: normalized.path,
                 content: encoded,
                 expectedHash: normalizedExpectedHash
             )
@@ -216,28 +210,21 @@ public actor SessionFileDiffPreviewUseCase: SessionFileDiffPreviewAction {
         self.basher = basher
     }
 
-    public func loadFileDiff(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        path: String,
-        workingDirectory: String?,
-        timeout: Int? = 30_000
-    ) async throws -> APISessionBashResult {
-        let (_, normalizedToken, normalizedSessionID, normalizedPath) = try normalizeInputs(
-            serverURLString: serverURLString,
-            token: token,
-            sessionID: sessionID,
-            path: path
+    public func loadFileDiff(_ request: SessionFileDiffPreviewRequest) async throws -> APISessionBashResult {
+        let normalized = try normalizeInputs(
+            serverURLString: request.serverURLString,
+            token: request.token,
+            sessionID: request.sessionID,
+            path: request.path
         )
-        let normalizedWorkingDirectory = normalizedOptional(workingDirectory)
+        let normalizedWorkingDirectory = normalizedOptional(request.workingDirectory)
         let key = RequestKey(
-            serverURLString: serverURLString.trimmingCharacters(in: .whitespacesAndNewlines),
-            token: normalizedToken,
-            sessionID: normalizedSessionID,
-            path: normalizedPath,
+            serverURLString: request.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines),
+            token: normalized.token,
+            sessionID: normalized.sessionID,
+            path: normalized.path,
             workingDirectory: normalizedWorkingDirectory,
-            timeout: timeout
+            timeout: request.timeout
         )
         if let inFlightTask = inFlightTasks[key] {
             return try await inFlightTask.value
@@ -246,16 +233,16 @@ public actor SessionFileDiffPreviewUseCase: SessionFileDiffPreviewAction {
         let basher = self.basher
         let task = Task<APISessionBashResult, Error> {
             let command = SessionFileDiffCommandBuilder.diffCommand(
-                filePath: normalizedPath,
+                filePath: normalized.path,
                 workingDirectory: normalizedWorkingDirectory
             )
             return try await basher.runBash(
-                serverURLString: serverURLString,
-                token: normalizedToken,
-                sessionID: normalizedSessionID,
+                serverURLString: request.serverURLString,
+                token: normalized.token,
+                sessionID: normalized.sessionID,
                 command: command,
                 cwd: nil,
-                timeout: timeout
+                timeout: request.timeout
             )
         }
 
@@ -265,12 +252,19 @@ public actor SessionFileDiffPreviewUseCase: SessionFileDiffPreviewAction {
     }
 }
 
+private struct SessionFileNormalizedInput {
+    let serverURL: URL
+    let token: String
+    let sessionID: String
+    let path: String
+}
+
 private func normalizeInputs(
     serverURLString: String,
     token: String,
     sessionID: String,
     path: String
-) throws -> (URL, String, String, String) {
+) throws -> SessionFileNormalizedInput {
     let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !normalizedToken.isEmpty else {
         throw SessionFileCommandError.missingToken
@@ -296,7 +290,12 @@ private func normalizeInputs(
         throw SessionFileCommandError.missingPath
     }
 
-    return (serverURL, normalizedToken, normalizedSessionID, normalizedPath)
+    return SessionFileNormalizedInput(
+        serverURL: serverURL,
+        token: normalizedToken,
+        sessionID: normalizedSessionID,
+        path: normalizedPath
+    )
 }
 
 private func normalizedOptional(_ value: String?) -> String? {

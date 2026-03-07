@@ -143,10 +143,12 @@ public final class SessionToolsViewModel: ObservableObject {
         do {
             directoryPath = normalizedPath(directoryPath)
             directoryEntries = try await directoryLister.listDirectory(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                path: directoryPath
+                SessionDirectoryListRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    path: directoryPath
+                )
             )
             directoryErrorMessage = nil
         } catch {
@@ -191,12 +193,14 @@ public final class SessionToolsViewModel: ObservableObject {
 
         do {
             let result = try await fileWriter.writeFile(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                path: filePath,
-                content: fileContent,
-                expectedHash: nil
+                SessionFileWriteRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    path: filePath,
+                    content: fileContent,
+                    expectedHash: nil
+                )
             )
             if let hash = result.hash, !hash.isEmpty {
                 writeStatusMessage = "Saved (\(hash.prefix(10))…)"
@@ -224,12 +228,14 @@ public final class SessionToolsViewModel: ObservableObject {
 
         do {
             let result = try await fileDiffPreviewer.loadFileDiff(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sessionID,
-                path: filePath,
-                workingDirectory: normalizedOptional(directoryPath),
-                timeout: 30_000
+                SessionFileDiffPreviewRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID,
+                    path: filePath,
+                    workingDirectory: normalizedOptional(directoryPath),
+                    timeout: 30_000
+                )
             )
             fileDiffOutput = truncatedOutput(result.stdout)
             fileDiffStderr = truncatedOutput(result.stderr)
