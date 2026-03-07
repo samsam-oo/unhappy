@@ -1036,4 +1036,55 @@ struct SessionsViewModelTests {
         #expect(model.claudeResumeErrorMessage?.contains("MockSessionSpawnUseCaseError") == true)
         #expect(model.claudeResumeInProgressSessionID == nil)
     }
+
+    @Test
+    func refreshAndSelectSessionLoadsSpawnedSessionIntoDetailState() async throws {
+        let spawnedSession = APISession(
+            id: "spawned-session",
+            active: true,
+            activeAt: 10,
+            createdAt: 9,
+            updatedAt: 11,
+            metadataVersion: 1,
+            metadata: "enc",
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let spawnedMessage = APISessionMessage(
+            id: "message-1",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(t: "encrypted", c: "payload"),
+            createdAt: 10,
+            updatedAt: 10
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(
+                result: .success(
+                    .init(
+                        sessions: [spawnedSession],
+                        nextCursor: nil,
+                        hasNext: false
+                    )
+                )
+            ),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([spawnedMessage])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        let resolved = await model.refreshAndSelectSession(
+            sessionID: "spawned-session",
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            maxAttempts: 1
+        )
+
+        #expect(resolved?.id == "spawned-session")
+        #expect(model.selectedSessionID == "spawned-session")
+        #expect(model.selectedSessionMessages == [spawnedMessage])
+        #expect(model.selectedSessionErrorMessage == nil)
+    }
 }

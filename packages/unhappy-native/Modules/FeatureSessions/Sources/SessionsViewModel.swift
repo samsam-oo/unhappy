@@ -425,6 +425,35 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    public func refreshAndSelectSession(
+        sessionID: String,
+        serverURLString: String,
+        token: String,
+        maxAttempts: Int = 3
+    ) async -> APISession? {
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else { return nil }
+        let attempts = max(1, maxAttempts)
+
+        for attempt in 0..<attempts {
+            await load(serverURLString: serverURLString, token: token)
+            if let resolvedSession = sessions.first(where: { $0.id == normalizedSessionID }) {
+                await loadMessages(
+                    for: normalizedSessionID,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                return resolvedSession
+            }
+
+            if attempt + 1 < attempts {
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+
+        return nil
+    }
+
     public func loadUpstreamSessions(
         serverURLString: String,
         token: String

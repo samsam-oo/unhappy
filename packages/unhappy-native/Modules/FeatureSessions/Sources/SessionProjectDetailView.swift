@@ -39,6 +39,7 @@ public struct SessionProjectDetailView: View {
 
     @State private var isPresentingNewSession = false
     @State private var firstMessagePreviewBySessionID: [String: String] = [:]
+    @State private var spawnedSessionNavigationSessionID: String?
 
     public init(
         group: SessionProjectGroup,
@@ -94,6 +95,19 @@ public struct SessionProjectDetailView: View {
         .task(id: firstMessagePreviewTaskID) {
             await loadMissingFirstMessagePreviews()
         }
+        .navigationDestination(item: $spawnedSessionNavigationSessionID) { sessionID in
+            if let session = viewModel.sessions.first(where: { $0.id == sessionID }) {
+                SessionDetailView(
+                    session: session,
+                    viewModel: viewModel,
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                )
+            } else {
+                ProgressView("Opening session…")
+            }
+        }
         .sheet(isPresented: $isPresentingNewSession) {
             NewSessionView(
                 serverURLString: serverURLString,
@@ -101,7 +115,19 @@ public struct SessionProjectDetailView: View {
                 defaultAgent: defaultNewSessionAgent,
                 initialMachineID: group.machineID,
                 initialDirectoryPath: group.projectPath,
-                makeViewModel: makeNewSessionViewModel
+                makeViewModel: makeNewSessionViewModel,
+                onSessionSpawned: { sessionID in
+                    guard let sessionID else { return }
+                    Task {
+                        if let session = await viewModel.refreshAndSelectSession(
+                            sessionID: sessionID,
+                            serverURLString: serverURLString,
+                            token: token
+                        ) {
+                            spawnedSessionNavigationSessionID = session.id
+                        }
+                    }
+                }
             )
         }
     }
@@ -170,10 +196,6 @@ public struct SessionProjectDetailView: View {
             }
             .padding(16)
         }
-    }
-
-    private var isProjectActionInProgress: Bool {
-        viewModel.isRemoving(projectID: group.id)
     }
 
     private var sessionEntries: [SessionListEntry] {
