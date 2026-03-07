@@ -2,7 +2,20 @@ import Foundation
 import CoreKit
 
 public protocol SessionSpawningAction: Sendable {
-    func spawnSession(
+    func spawnSession(_ request: SessionSpawnRequest) async throws -> APISessionSpawnResult
+}
+
+public struct SessionSpawnRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let sessionID: String
+    public let directory: String
+    public let agent: APISessionSpawnAgent?
+    public let codexResumeThreadID: String?
+    public let claudeResumeSessionID: String?
+    public let approvedNewDirectoryCreation: Bool?
+
+    public init(
         serverURLString: String,
         token: String,
         sessionID: String,
@@ -11,7 +24,16 @@ public protocol SessionSpawningAction: Sendable {
         codexResumeThreadID: String?,
         claudeResumeSessionID: String?,
         approvedNewDirectoryCreation: Bool?
-    ) async throws -> APISessionSpawnResult
+    ) {
+        self.serverURLString = serverURLString
+        self.token = token
+        self.sessionID = sessionID
+        self.directory = directory
+        self.agent = agent
+        self.codexResumeThreadID = codexResumeThreadID
+        self.claudeResumeSessionID = claudeResumeSessionID
+        self.approvedNewDirectoryCreation = approvedNewDirectoryCreation
+    }
 }
 
 public enum SessionSpawnError: LocalizedError, Equatable {
@@ -62,22 +84,13 @@ public actor SessionSpawnUseCase: SessionSpawningAction {
         self.service = service
     }
 
-    public func spawnSession(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?
-    ) async throws -> APISessionSpawnResult {
-        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    public func spawnSession(_ request: SessionSpawnRequest) async throws -> APISessionSpawnResult {
+        let normalizedToken = request.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
             throw SessionSpawnError.missingToken
         }
 
-        let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedURL = request.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             !normalizedURL.isEmpty,
             let serverURL = URL(string: normalizedURL),
@@ -87,28 +100,28 @@ public actor SessionSpawnUseCase: SessionSpawningAction {
             throw SessionSpawnError.invalidServerURL
         }
 
-        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSessionID = request.sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else {
             throw SessionSpawnError.missingSessionID
         }
 
-        let normalizedDirectory = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedDirectory = request.directory.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedDirectory.isEmpty else {
             throw SessionSpawnError.missingDirectory
         }
 
-        let normalizedCodexResumeThreadID = codexResumeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedClaudeResumeSessionID = claudeResumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCodexResumeThreadID = request.codexResumeThreadID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedClaudeResumeSessionID = request.claudeResumeSessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let key = RequestKey(
             serverURLString: normalizedURL,
             token: normalizedToken,
             sessionID: normalizedSessionID,
             directory: normalizedDirectory,
-            agent: agent,
+            agent: request.agent,
             codexResumeThreadID: normalizedCodexResumeThreadID?.isEmpty == true ? nil : normalizedCodexResumeThreadID,
             claudeResumeSessionID: normalizedClaudeResumeSessionID?.isEmpty == true ? nil : normalizedClaudeResumeSessionID,
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation
+            approvedNewDirectoryCreation: request.approvedNewDirectoryCreation
         )
 
         if let inFlightTask = inFlightTasks[key] {
@@ -122,10 +135,10 @@ public actor SessionSpawnUseCase: SessionSpawningAction {
                 token: normalizedToken,
                 sessionID: normalizedSessionID,
                 directory: normalizedDirectory,
-                agent: agent,
+                agent: request.agent,
                 codexResumeThreadID: key.codexResumeThreadID,
                 claudeResumeSessionID: key.claudeResumeSessionID,
-                approvedNewDirectoryCreation: approvedNewDirectoryCreation
+                approvedNewDirectoryCreation: request.approvedNewDirectoryCreation
             )
 
             if response.success {

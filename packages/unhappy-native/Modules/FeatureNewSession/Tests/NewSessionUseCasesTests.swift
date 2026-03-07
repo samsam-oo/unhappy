@@ -206,18 +206,20 @@ struct NewSessionUseCasesTests {
 
         await #expect(throws: NewSessionError.requiresUserApproval(directory: "/tmp/new")) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                machineID: "machine-1",
-                directory: "/tmp/new",
-                agent: .claude,
-                approvedNewDirectoryCreation: false,
-                codexResumeThreadID: nil,
-                claudeResumeSessionID: nil,
-                sessionToken: nil,
-                environmentVariables: [:],
-                model: nil,
-                reasoningEffort: nil
+                NewSessionSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    machineID: "machine-1",
+                    directory: "/tmp/new",
+                    agent: .claude,
+                    approvedNewDirectoryCreation: false,
+                    codexResumeThreadID: nil,
+                    claudeResumeSessionID: nil,
+                    sessionToken: nil,
+                    environmentVariables: [:],
+                    model: nil,
+                    reasoningEffort: nil
+                )
             )
         }
     }
@@ -236,18 +238,20 @@ struct NewSessionUseCasesTests {
         )
         let useCase = NewSessionSpawnUseCase(service: service)
         _ = try await useCase.spawnSession(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            machineID: "machine-1",
-            directory: "/repo",
-            agent: .codex,
-            approvedNewDirectoryCreation: true,
-            codexResumeThreadID: "thread-123",
-            claudeResumeSessionID: "claude-456",
-            sessionToken: "session-token",
-            environmentVariables: ["OPENAI_API_KEY": "test-key"],
-            model: "gpt-5-codex",
-            reasoningEffort: .high
+            NewSessionSpawnRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                machineID: "machine-1",
+                directory: "/repo",
+                agent: .codex,
+                approvedNewDirectoryCreation: true,
+                codexResumeThreadID: "thread-123",
+                claudeResumeSessionID: "claude-456",
+                sessionToken: "session-token",
+                environmentVariables: ["OPENAI_API_KEY": "test-key"],
+                model: "gpt-5-codex",
+                reasoningEffort: .high
+            )
         )
 
         let request = await service.lastRequest

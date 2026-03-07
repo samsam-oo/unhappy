@@ -518,20 +518,7 @@ private actor SuspendingDirectoryLister: NewSessionDirectoryListingAction {
 }
 
 private struct ViewModelSpawner: NewSessionSpawningAction {
-    func spawnSession(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent,
-        approvedNewDirectoryCreation: Bool,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        sessionToken: String?,
-        environmentVariables: [String : String],
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult {
         APISessionSpawnResult(
             success: true,
             sessionID: "session-1",

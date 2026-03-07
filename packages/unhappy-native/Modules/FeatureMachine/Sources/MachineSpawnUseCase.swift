@@ -2,14 +2,32 @@ import Foundation
 import CoreKit
 
 public protocol MachineSpawnAction: Sendable {
-    func spawnSession(
+    func spawnSession(_ request: MachineSpawnRequest) async throws -> APISessionSpawnResult
+}
+
+public struct MachineSpawnRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let machineID: String
+    public let directory: String
+    public let agent: APISessionSpawnAgent?
+    public let approvedNewDirectoryCreation: Bool
+
+    public init(
         serverURLString: String,
         token: String,
         machineID: String,
         directory: String,
         agent: APISessionSpawnAgent?,
         approvedNewDirectoryCreation: Bool
-    ) async throws -> APISessionSpawnResult
+    ) {
+        self.serverURLString = serverURLString
+        self.token = token
+        self.machineID = machineID
+        self.directory = directory
+        self.agent = agent
+        self.approvedNewDirectoryCreation = approvedNewDirectoryCreation
+    }
 }
 
 public enum MachineSpawnError: LocalizedError, Equatable {
@@ -58,20 +76,13 @@ public actor MachineSpawnUseCase: MachineSpawnAction {
         self.service = service
     }
 
-    public func spawnSession(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        approvedNewDirectoryCreation: Bool
-    ) async throws -> APISessionSpawnResult {
-        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    public func spawnSession(_ request: MachineSpawnRequest) async throws -> APISessionSpawnResult {
+        let normalizedToken = request.token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
             throw MachineSpawnError.missingToken
         }
 
-        let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedURL = request.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
             !normalizedURL.isEmpty,
             let serverURL = URL(string: normalizedURL),
@@ -81,12 +92,12 @@ public actor MachineSpawnUseCase: MachineSpawnAction {
             throw MachineSpawnError.invalidServerURL
         }
 
-        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedMachineID = request.machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
             throw MachineSpawnError.missingMachineID
         }
 
-        let normalizedDirectory = directory.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedDirectory = request.directory.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedDirectory.isEmpty else {
             throw MachineSpawnError.missingDirectory
         }
@@ -96,8 +107,8 @@ public actor MachineSpawnUseCase: MachineSpawnAction {
             token: normalizedToken,
             machineID: normalizedMachineID,
             directory: normalizedDirectory,
-            agent: agent,
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation
+            agent: request.agent,
+            approvedNewDirectoryCreation: request.approvedNewDirectoryCreation
         )
         if let inFlightTask = inFlightTasks[key] {
             return try await inFlightTask.value
@@ -110,10 +121,10 @@ public actor MachineSpawnUseCase: MachineSpawnAction {
                 token: normalizedToken,
                 machineID: normalizedMachineID,
                 directory: normalizedDirectory,
-                agent: agent,
+                agent: request.agent,
                 codexResumeThreadID: nil,
                 claudeResumeSessionID: nil,
-                approvedNewDirectoryCreation: approvedNewDirectoryCreation,
+                approvedNewDirectoryCreation: request.approvedNewDirectoryCreation,
                 sessionToken: nil,
                 environmentVariables: nil,
                 model: nil,

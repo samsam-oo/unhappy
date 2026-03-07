@@ -227,14 +227,16 @@ extension SessionDetailView {
         let spawnUseCase = SessionSpawnUseCase(service: URLSessionSessionsService())
         do {
             let response = try await spawnUseCase.spawnSession(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: currentSession.id,
-                directory: directory,
-                agent: agent,
-                codexResumeThreadID: codexResumeThreadID,
-                claudeResumeSessionID: claudeResumeSessionID,
-                approvedNewDirectoryCreation: true
+                SessionSpawnRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: currentSession.id,
+                    directory: directory,
+                    agent: agent,
+                    codexResumeThreadID: codexResumeThreadID,
+                    claudeResumeSessionID: claudeResumeSessionID,
+                    approvedNewDirectoryCreation: true
+                )
             )
             await viewModel.load(
                 serverURLString: serverURLString,

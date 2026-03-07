@@ -607,27 +607,29 @@ public final class SessionsViewModel: ObservableObject {
 
         do {
             let response = try await upstreamSessionLinker.spawnSession(
-                serverURLString: serverURLString,
-                token: token,
-                machineID: row.machineID,
-                directory: directory,
-                agent: {
-                    switch row.summary.provider {
-                    case .codex:
-                        return .codex
-                    case .claude:
-                        return .claude
-                    case .gemini:
-                        return .gemini
-                    }
-                }(),
-                approvedNewDirectoryCreation: true,
-                codexResumeThreadID: row.summary.provider == .codex ? row.summary.id : nil,
-                claudeResumeSessionID: row.summary.provider == .claude ? row.summary.id : nil,
-                sessionToken: nil,
-                environmentVariables: [:],
-                model: nil,
-                reasoningEffort: nil
+                NewSessionSpawnRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    machineID: row.machineID,
+                    directory: directory,
+                    agent: {
+                        switch row.summary.provider {
+                        case .codex:
+                            return .codex
+                        case .claude:
+                            return .claude
+                        case .gemini:
+                            return .gemini
+                        }
+                    }(),
+                    approvedNewDirectoryCreation: true,
+                    codexResumeThreadID: row.summary.provider == .codex ? row.summary.id : nil,
+                    claudeResumeSessionID: row.summary.provider == .claude ? row.summary.id : nil,
+                    sessionToken: nil,
+                    environmentVariables: [:],
+                    model: nil,
+                    reasoningEffort: nil
+                )
             )
             if let sessionID = response.sessionID, !sessionID.isEmpty {
                 upstreamSessionStatusMessage = "Linked \(row.summary.provider.displayName) session \(sessionID)"
@@ -741,14 +743,16 @@ public final class SessionsViewModel: ObservableObject {
 
         do {
             let response = try await spawnUseCase.spawnSession(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sourceSessionID,
-                directory: directory,
-                agent: .codex,
-                codexResumeThreadID: codexResumeThreadID,
-                claudeResumeSessionID: nil,
-                approvedNewDirectoryCreation: true
+                SessionSpawnRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sourceSessionID,
+                    directory: directory,
+                    agent: .codex,
+                    codexResumeThreadID: codexResumeThreadID,
+                    claudeResumeSessionID: nil,
+                    approvedNewDirectoryCreation: true
+                )
             )
 
             if let sessionID = response.sessionID, !sessionID.isEmpty {
@@ -788,14 +792,16 @@ public final class SessionsViewModel: ObservableObject {
 
         do {
             let response = try await spawnUseCase.spawnSession(
-                serverURLString: serverURLString,
-                token: token,
-                sessionID: sourceSessionID,
-                directory: directory,
-                agent: .claude,
-                codexResumeThreadID: nil,
-                claudeResumeSessionID: claudeResumeSessionID,
-                approvedNewDirectoryCreation: true
+                SessionSpawnRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sourceSessionID,
+                    directory: directory,
+                    agent: .claude,
+                    codexResumeThreadID: nil,
+                    claudeResumeSessionID: claudeResumeSessionID,
+                    approvedNewDirectoryCreation: true
+                )
             )
 
             if let sessionID = response.sessionID, !sessionID.isEmpty {

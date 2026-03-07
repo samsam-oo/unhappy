@@ -10,12 +10,14 @@ struct MachineSpawnUseCaseTests {
 
         await #expect(throws: MachineSpawnError.missingDirectory) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                machineID: "machine-1",
-                directory: " ",
-                agent: .claude,
-                approvedNewDirectoryCreation: false
+                MachineSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    machineID: "machine-1",
+                    directory: " ",
+                    agent: .claude,
+                    approvedNewDirectoryCreation: false
+                )
             )
         }
     }
@@ -34,12 +36,14 @@ struct MachineSpawnUseCaseTests {
 
         await #expect(throws: MachineSpawnError.requiresUserApproval(directory: "/tmp/new")) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                machineID: "machine-1",
-                directory: "/tmp/new",
-                agent: .claude,
-                approvedNewDirectoryCreation: false
+                MachineSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    machineID: "machine-1",
+                    directory: "/tmp/new",
+                    agent: .claude,
+                    approvedNewDirectoryCreation: false
+                )
             )
         }
     }
@@ -57,7 +61,7 @@ struct MachineSpawnUseCaseTests {
         let service = SlowCountingMachineSpawnService(response: response)
         let useCase = MachineSpawnUseCase(service: service)
 
-        async let first = useCase.spawnSession(
+        let request = MachineSpawnRequest(
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
@@ -65,19 +69,13 @@ struct MachineSpawnUseCaseTests {
             agent: .codex,
             approvedNewDirectoryCreation: false
         )
-        async let second = useCase.spawnSession(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            machineID: "machine-1",
-            directory: "/tmp/work",
-            agent: .codex,
-            approvedNewDirectoryCreation: false
-        )
+        async let firstResponse = useCase.spawnSession(request)
+        async let secondResponse = useCase.spawnSession(request)
 
-        let a = try await first
-        let b = try await second
-        #expect(a.sessionID == "session-new")
-        #expect(b.sessionID == "session-new")
+        let firstValue = try await firstResponse
+        let secondValue = try await secondResponse
+        #expect(firstValue.sessionID == "session-new")
+        #expect(secondValue.sessionID == "session-new")
         #expect(await service.fetchCount() == 1)
     }
 }

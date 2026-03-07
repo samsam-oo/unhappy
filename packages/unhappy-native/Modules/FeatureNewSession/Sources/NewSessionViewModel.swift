@@ -686,18 +686,20 @@ public final class NewSessionViewModel: ObservableObject {
 
         do {
             let result = try await spawner.spawnSession(
-                serverURLString: serverURLString,
-                token: token,
-                machineID: machineID,
-                directory: directory,
-                agent: selectedAgent,
-                approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-                codexResumeThreadID: codexResumeThreadID,
-                claudeResumeSessionID: claudeResumeSessionID,
-                sessionToken: sessionToken,
-                environmentVariables: environmentVariables,
-                model: selectedModel,
-                reasoningEffort: selectedReasoningEffort.apiValue
+                NewSessionSpawnRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    machineID: machineID,
+                    directory: directory,
+                    agent: selectedAgent,
+                    approvedNewDirectoryCreation: approvedNewDirectoryCreation,
+                    codexResumeThreadID: codexResumeThreadID,
+                    claudeResumeSessionID: claudeResumeSessionID,
+                    sessionToken: sessionToken,
+                    environmentVariables: environmentVariables,
+                    model: selectedModel,
+                    reasoningEffort: selectedReasoningEffort.apiValue
+                )
             )
             let sessionID = result.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
             spawnedSessionID = (sessionID?.isEmpty == false) ? sessionID : nil

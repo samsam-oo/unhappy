@@ -273,16 +273,7 @@ enum MockSessionSpawnUseCaseError: Error, Sendable {
 struct MockSessionSpawnUseCase: SessionSpawningAction {
     let result: Result<APISessionSpawnResult, MockSessionSpawnUseCaseError>
 
-    func spawnSession(
-        serverURLString: String,
-        token: String,
-        sessionID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: SessionSpawnRequest) async throws -> APISessionSpawnResult {
         switch result {
         case .success(let response):
             return response
@@ -343,20 +334,7 @@ enum MockUpstreamSessionLinkerError: Error, Sendable {
 struct MockUpstreamSessionLinker: NewSessionSpawningAction {
     let result: Result<APISessionSpawnResult, MockUpstreamSessionLinkerError>
 
-    func spawnSession(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent,
-        approvedNewDirectoryCreation: Bool,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        sessionToken: String?,
-        environmentVariables: [String : String],
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult {
         switch result {
         case .success(let response):
             return response

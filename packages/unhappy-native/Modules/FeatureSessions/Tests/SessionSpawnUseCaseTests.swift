@@ -19,14 +19,16 @@ struct SessionSpawnUseCaseTests {
         )
 
         let response = try await useCase.spawnSession(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            sessionID: "session-1",
-            directory: "/tmp/work",
-            agent: .claude,
-            codexResumeThreadID: nil,
-            claudeResumeSessionID: "c7a2f5d1-1111-2222-3333-444444444444",
-            approvedNewDirectoryCreation: true
+            SessionSpawnRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                sessionID: "session-1",
+                directory: "/tmp/work",
+                agent: .claude,
+                codexResumeThreadID: nil,
+                claudeResumeSessionID: "c7a2f5d1-1111-2222-3333-444444444444",
+                approvedNewDirectoryCreation: true
+            )
         )
 
         #expect(response == expected)
@@ -51,14 +53,16 @@ struct SessionSpawnUseCaseTests {
 
         await #expect(throws: SessionSpawnError.missingToken) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "  ",
-                sessionID: "session-1",
-                directory: "/tmp/work",
-                agent: .claude,
-                codexResumeThreadID: nil,
-                claudeResumeSessionID: nil,
-                approvedNewDirectoryCreation: nil
+                SessionSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "  ",
+                    sessionID: "session-1",
+                    directory: "/tmp/work",
+                    agent: .claude,
+                    codexResumeThreadID: nil,
+                    claudeResumeSessionID: nil,
+                    approvedNewDirectoryCreation: nil
+                )
             )
         }
     }
@@ -79,14 +83,16 @@ struct SessionSpawnUseCaseTests {
 
         await #expect(throws: SessionSpawnError.requiresUserApproval(directory: "/tmp/new-dir")) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                sessionID: "session-1",
-                directory: "/tmp/new-dir",
-                agent: .claude,
-                codexResumeThreadID: nil,
-                claudeResumeSessionID: "resume-id",
-                approvedNewDirectoryCreation: false
+                SessionSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    sessionID: "session-1",
+                    directory: "/tmp/new-dir",
+                    agent: .claude,
+                    codexResumeThreadID: nil,
+                    claudeResumeSessionID: "resume-id",
+                    approvedNewDirectoryCreation: false
+                )
             )
         }
     }

@@ -15,7 +15,24 @@ public protocol NewSessionDirectoryListingAction: Sendable {
 }
 
 public protocol NewSessionSpawningAction: Sendable {
-    func spawnSession(
+    func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult
+}
+
+public struct NewSessionSpawnRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let machineID: String
+    public let directory: String
+    public let agent: APISessionSpawnAgent
+    public let approvedNewDirectoryCreation: Bool
+    public let codexResumeThreadID: String?
+    public let claudeResumeSessionID: String?
+    public let sessionToken: String?
+    public let environmentVariables: [String: String]
+    public let model: String?
+    public let reasoningEffort: APISessionReasoningEffort?
+
+    public init(
         serverURLString: String,
         token: String,
         machineID: String,
@@ -28,7 +45,20 @@ public protocol NewSessionSpawningAction: Sendable {
         environmentVariables: [String: String],
         model: String?,
         reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult
+    ) {
+        self.serverURLString = serverURLString
+        self.token = token
+        self.machineID = machineID
+        self.directory = directory
+        self.agent = agent
+        self.approvedNewDirectoryCreation = approvedNewDirectoryCreation
+        self.codexResumeThreadID = codexResumeThreadID
+        self.claudeResumeSessionID = claudeResumeSessionID
+        self.sessionToken = sessionToken
+        self.environmentVariables = environmentVariables
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+    }
 }
 
 public protocol NewSessionModelsLoadingAction: Sendable {
@@ -181,25 +211,12 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         self.service = service
     }
 
-    public func spawnSession(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent,
-        approvedNewDirectoryCreation: Bool,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        sessionToken: String?,
-        environmentVariables: [String: String],
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    public func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult {
         let (serverURL, normalizedToken, normalizedMachineID, normalizedDirectory) = try normalizeInputs(
-            serverURLString: serverURLString,
-            token: token,
-            machineID: machineID,
-            directory: directory
+            serverURLString: request.serverURLString,
+            token: request.token,
+            machineID: request.machineID,
+            directory: request.directory
         )
 
         let response = try await service.spawnSession(
@@ -207,14 +224,14 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
             token: normalizedToken,
             machineID: normalizedMachineID,
             directory: normalizedDirectory,
-            agent: agent,
-            codexResumeThreadID: normalizedOptional(codexResumeThreadID),
-            claudeResumeSessionID: normalizedOptional(claudeResumeSessionID),
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-            sessionToken: normalizedOptional(sessionToken),
-            environmentVariables: environmentVariables,
-            model: normalizedOptional(model),
-            reasoningEffort: reasoningEffort
+            agent: request.agent,
+            codexResumeThreadID: normalizedOptional(request.codexResumeThreadID),
+            claudeResumeSessionID: normalizedOptional(request.claudeResumeSessionID),
+            approvedNewDirectoryCreation: request.approvedNewDirectoryCreation,
+            sessionToken: normalizedOptional(request.sessionToken),
+            environmentVariables: request.environmentVariables,
+            model: normalizedOptional(request.model),
+            reasoningEffort: request.reasoningEffort
         )
         if response.success {
             return response

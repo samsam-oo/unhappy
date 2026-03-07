@@ -68,12 +68,14 @@ public final class MachinesViewModel: ObservableObject {
 
         do {
             let result = try await spawner.spawnSession(
-                serverURLString: serverURLString,
-                token: token,
-                machineID: machineID,
-                directory: directory,
-                agent: agent,
-                approvedNewDirectoryCreation: approvedNewDirectoryCreation
+                MachineSpawnRequest(
+                    serverURLString: serverURLString,
+                    token: token,
+                    machineID: machineID,
+                    directory: directory,
+                    agent: agent,
+                    approvedNewDirectoryCreation: approvedNewDirectoryCreation
+                )
             )
 
             if let sessionID = result.sessionID, !sessionID.isEmpty {
