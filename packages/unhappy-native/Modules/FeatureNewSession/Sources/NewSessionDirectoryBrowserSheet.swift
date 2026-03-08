@@ -8,6 +8,7 @@ struct NewSessionDirectoryBrowserSheet: View {
     @Binding var isPresented: Bool
     @Binding var directoryBrowserFilterText: String
     @Binding var directoryBrowserPathDraft: String
+    let confirmCurrentDirectorySelection: () -> Void
     let focusedField: FocusState<FocusedField?>.Binding
     let filteredDirectoryBrowserEntries: [APIMachineDirectoryEntry]
     let directoryEntryFullPath: (APIMachineDirectoryEntry) -> String
@@ -25,7 +26,10 @@ struct NewSessionDirectoryBrowserSheet: View {
                     Button("Close") { isPresented = false }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Use This Folder") { isPresented = false }
+                    Button("Use This Folder") {
+                        confirmCurrentDirectorySelection()
+                        isPresented = false
+                    }
                 }
             }
             .task { await loadInitialDirectory() }
@@ -49,7 +53,7 @@ struct NewSessionDirectoryBrowserSheet: View {
                 .submitLabel(.done)
                 .disabled(isDirectoryActionDisabled)
                 .focused(focusedField, equals: .directoryPath)
-                .onSubmit { Task { await loadFromDraftPath() } }
+                .onSubmit { Task { await loadFromDraftPath(confirmSelection: true) } }
 
             Button {
                 focusedField.wrappedValue = nil
@@ -84,7 +88,7 @@ struct NewSessionDirectoryBrowserSheet: View {
             Text(error)
                 .font(.footnote)
                 .foregroundStyle(.red)
-            Button("Retry") { Task { await loadFromDraftPath() } }
+            Button("Retry") { Task { await loadFromDraftPath(confirmSelection: false) } }
         } else if filteredDirectoryBrowserEntries.isEmpty {
             ContentUnavailableView(
                 "No folders found",
@@ -123,11 +127,14 @@ struct NewSessionDirectoryBrowserSheet: View {
         if directoryBrowserPathDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             directoryBrowserPathDraft = viewModel.directoryPath
         }
-        await loadFromDraftPath()
+        await loadFromDraftPath(confirmSelection: false)
     }
 
-    private func loadFromDraftPath() async {
+    private func loadFromDraftPath(confirmSelection: Bool) async {
         await loadDirectoryFromBrowserPath(directoryBrowserPathDraft)
+        if confirmSelection {
+            confirmCurrentDirectorySelection()
+        }
     }
 
     private func selectDirectoryEntry(_ entry: APIMachineDirectoryEntry) async {
@@ -137,6 +144,7 @@ struct NewSessionDirectoryBrowserSheet: View {
             token: token
         )
         directoryBrowserPathDraft = viewModel.directoryPath
+        confirmCurrentDirectorySelection()
     }
 }
 

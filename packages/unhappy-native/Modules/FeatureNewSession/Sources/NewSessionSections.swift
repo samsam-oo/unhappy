@@ -212,6 +212,7 @@ struct NewSessionActionSection: View {
 
 struct ProjectSelectionActionSection: View {
     @ObservedObject var viewModel: NewSessionViewModel
+    let isProjectSelectionEnabled: Bool
     let onOpenProject: () -> Void
 
     var body: some View {
@@ -219,10 +220,7 @@ struct ProjectSelectionActionSection: View {
             Button("Open Project") {
                 onOpenProject()
             }
-            .disabled(
-                viewModel.selectedMachineID == nil ||
-                viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            )
+            .disabled(!isProjectSelectionEnabled)
         }
     }
 }

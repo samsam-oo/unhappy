@@ -34,6 +34,7 @@ public struct NewSessionView: View {
     @State private var directoryBrowserFilterText = ""
     @State private var directoryBrowserPathDraft = ""
     @State private var didApplyInitialProjectContext = false
+    @State private var hasConfirmedProjectDirectorySelection = false
     @FocusState private var focusedField: FocusedField?
 
     public init(
@@ -107,6 +108,7 @@ public struct NewSessionView: View {
                 } else {
                     ProjectSelectionActionSection(
                         viewModel: viewModel,
+                        isProjectSelectionEnabled: canOpenProjectSelection,
                         onOpenProject: {
                             onProjectSelected(
                                 viewModel.selectedMachineID,
@@ -149,6 +151,9 @@ public struct NewSessionView: View {
                     isPresented: $showDirectoryBrowserSheet,
                     directoryBrowserFilterText: $directoryBrowserFilterText,
                     directoryBrowserPathDraft: $directoryBrowserPathDraft,
+                    confirmCurrentDirectorySelection: {
+                        confirmCurrentProjectDirectorySelection()
+                    },
                     focusedField: $focusedField,
                     filteredDirectoryBrowserEntries: filteredDirectoryBrowserEntries,
                     directoryEntryFullPath: directoryEntryFullPath,
@@ -172,6 +177,7 @@ public struct NewSessionView: View {
                    let initialDirectoryPath = initialDirectoryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !initialDirectoryPath.isEmpty {
                     didApplyInitialProjectContext = true
+                    hasConfirmedProjectDirectorySelection = true
                     await viewModel.applyProjectContext(
                         machineID: initialMachineID,
                         directoryPath: initialDirectoryPath,
@@ -392,6 +398,19 @@ public struct NewSessionView: View {
             mode: mode,
             initialDirectoryPath: initialDirectoryPath
         )
+    }
+
+    private var canOpenProjectSelection: Bool {
+        NewSessionViewPresentation.canOpenProject(
+            mode: mode,
+            selectedMachineID: viewModel.selectedMachineID,
+            directoryPath: viewModel.directoryPath,
+            hasConfirmedDirectorySelection: hasConfirmedProjectDirectorySelection
+        )
+    }
+
+    private func confirmCurrentProjectDirectorySelection() {
+        hasConfirmedProjectDirectorySelection = true
     }
 
     private var activeResumeSelectionID: String? {
