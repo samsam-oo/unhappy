@@ -2,7 +2,6 @@ import SwiftUI
 import CoreKit
 import FeatureNewSession
 import FeatureSessions
-import FeatureSessionTools
 
 @MainActor
 struct HomeRegularProjectsTab: View {
@@ -12,7 +11,6 @@ struct HomeRegularProjectsTab: View {
     let hideInactiveSessions: Bool
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let onSessionsChanged: @MainActor ([APISession]) async -> Void
 
@@ -294,7 +292,6 @@ struct HomeRegularProjectsTab: View {
                         hideInactiveSessions: hideInactiveSessions,
                         defaultNewSessionAgent: defaultNewSessionAgent,
                         makeNewSessionViewModel: makeNewSessionViewModel,
-                        makeSessionToolsViewModel: makeSessionToolsViewModel,
                         makeDirectSessionViewModel: makeDirectSessionViewModel,
                         onProjectRemoved: {
                             selectedProjectID = nil

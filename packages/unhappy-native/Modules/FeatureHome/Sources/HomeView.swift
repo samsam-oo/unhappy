@@ -4,7 +4,6 @@ import FeatureInbox
 import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
-import FeatureSessionTools
 import FeatureSettings
 
 @MainActor
@@ -29,7 +28,6 @@ public struct HomeView: View {
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
@@ -44,7 +42,6 @@ public struct HomeView: View {
         makeInboxViewModel: @escaping @MainActor () -> InboxViewModel,
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void = { _ in },
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
@@ -60,7 +57,6 @@ public struct HomeView: View {
         self.makeInboxViewModel = makeInboxViewModel
         self.makeSessionsViewModel = makeSessionsViewModel
         self.makeNewSessionViewModel = makeNewSessionViewModel
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.onSessionsChanged = onSessionsChanged
         self.makeMachinesViewModel = makeMachinesViewModel
@@ -108,7 +104,6 @@ public struct HomeView: View {
                 onSessionsChanged: onSessionsChanged,
                 makeViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
-                makeSessionToolsViewModel: makeSessionToolsViewModel,
                 makeDirectSessionViewModel: makeDirectSessionViewModel
             )
             .tabItem {
@@ -151,7 +146,6 @@ public struct HomeView: View {
             makeInboxViewModel: makeInboxViewModel,
             makeSessionsViewModel: makeSessionsViewModel,
             makeNewSessionViewModel: makeNewSessionViewModel,
-            makeSessionToolsViewModel: makeSessionToolsViewModel,
             makeDirectSessionViewModel: makeDirectSessionViewModel,
             onSessionsChanged: onSessionsChanged,
             makeMachinesViewModel: makeMachinesViewModel,

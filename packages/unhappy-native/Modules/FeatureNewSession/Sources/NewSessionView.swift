@@ -290,7 +290,6 @@ public struct NewSessionView: View {
             Picker("Agent", selection: agentSelectionBinding) {
                 Text("Claude").tag(APISessionSpawnAgent.claude)
                 Text("Codex").tag(APISessionSpawnAgent.codex)
-                Text("Gemini").tag(APISessionSpawnAgent.gemini)
             }
         }
     }

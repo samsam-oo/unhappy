@@ -77,19 +77,21 @@ public final class NewSessionViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async {
+        let supportedAgent = supportedNativeAgent(newAgent)
         rememberCurrentAgentSelections()
-        selectedAgent = newAgent
-        selectedModel = selectedModelByAgent[newAgent] ?? ""
-        selectedReasoningEffort = selectedReasoningEffortByAgent[newAgent] ?? .medium
-        lastSelectedAgent = newAgent
-        await loadModels(serverURLString: serverURLString, token: token, agent: newAgent)
+        selectedAgent = supportedAgent
+        selectedModel = selectedModelByAgent[supportedAgent] ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[supportedAgent] ?? .medium
+        lastSelectedAgent = supportedAgent
+        await loadModels(serverURLString: serverURLString, token: token, agent: supportedAgent)
     }
 
     public func setInitialSelectedAgent(_ agent: APISessionSpawnAgent) {
-        selectedAgent = agent
-        selectedModel = selectedModelByAgent[agent] ?? ""
-        selectedReasoningEffort = selectedReasoningEffortByAgent[agent] ?? .medium
-        lastSelectedAgent = agent
+        let supportedAgent = supportedNativeAgent(agent)
+        selectedAgent = supportedAgent
+        selectedModel = selectedModelByAgent[supportedAgent] ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[supportedAgent] ?? .medium
+        lastSelectedAgent = supportedAgent
     }
 
     public func loadMachines(serverURLString: String, token: String) async {
@@ -602,15 +604,16 @@ public final class NewSessionViewModel: ObservableObject {
             selectedMachineID = machineID
         }
         directoryPath = NewSessionDirectoryPathResolver.normalizedPath(profile.directoryPath)
-        selectedAgent = profile.agent
-        lastSelectedAgent = profile.agent
+        let supportedAgent = supportedNativeAgent(profile.agent)
+        selectedAgent = supportedAgent
+        lastSelectedAgent = supportedAgent
         codexResumeThreadID = profile.codexResumeThreadID ?? ""
         claudeResumeSessionID = profile.claudeResumeSessionID ?? ""
         sessionToken = profile.sessionToken ?? ""
         selectedModel = profile.model ?? ""
         selectedReasoningEffort = NewSessionReasoningEffort(threadEffort: profile.reasoningEffort)
-        selectedModelByAgent[profile.agent] = selectedModel
-        selectedReasoningEffortByAgent[profile.agent] = selectedReasoningEffort
+        selectedModelByAgent[supportedAgent] = selectedModel
+        selectedReasoningEffortByAgent[supportedAgent] = selectedReasoningEffort
         environmentVariablesText = profile.environmentVariablesText
         await loadDirectory(serverURLString: serverURLString, token: token)
         await loadModels(serverURLString: serverURLString, token: token, agent: selectedAgent)
@@ -794,6 +797,15 @@ public final class NewSessionViewModel: ObservableObject {
     private func rememberCurrentAgentSelections() {
         selectedModelByAgent[lastSelectedAgent] = selectedModel
         selectedReasoningEffortByAgent[lastSelectedAgent] = selectedReasoningEffort
+    }
+
+    private func supportedNativeAgent(_ agent: APISessionSpawnAgent) -> APISessionSpawnAgent {
+        switch agent {
+        case .claude, .codex:
+            return agent
+        case .gemini:
+            return .claude
+        }
     }
 }
 

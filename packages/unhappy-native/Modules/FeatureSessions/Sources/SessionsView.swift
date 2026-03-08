@@ -1,7 +1,6 @@
 import SwiftUI
 import CoreKit
 import FeatureNewSession
-import FeatureSessionTools
 
 @MainActor
 public struct SessionsView: View {
@@ -16,7 +15,6 @@ public struct SessionsView: View {
     private let defaultNewSessionAgent: APISessionSpawnAgent
     private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     @State private var isPresentingProjectPicker = false
     @State private var navigationPath: [Selection] = []
@@ -29,7 +27,6 @@ public struct SessionsView: View {
         onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void = { _ in },
         makeViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     ) {
         self.serverURLString = serverURLString
@@ -39,7 +36,6 @@ public struct SessionsView: View {
         self.onSessionsChanged = onSessionsChanged
         _viewModel = StateObject(wrappedValue: makeViewModel())
         self.makeNewSessionViewModel = makeNewSessionViewModel
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
     }
 
@@ -327,7 +323,6 @@ public struct SessionsView: View {
                     hideInactiveSessions: hideInactiveSessions,
                     defaultNewSessionAgent: defaultNewSessionAgent,
                     makeNewSessionViewModel: makeNewSessionViewModel,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel,
                     makeDirectSessionViewModel: makeDirectSessionViewModel,
                     onProjectRemoved: {
                         navigationPath.removeAll()

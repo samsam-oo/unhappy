@@ -4,7 +4,6 @@ import FeatureInbox
 import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
-import FeatureSessionTools
 import FeatureSettings
 
 @MainActor
@@ -21,7 +20,6 @@ struct HomeAuthenticatedRegularView: View {
     let hideInactiveSessions: Bool
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let onSessionsChanged: @MainActor ([APISession]) async -> Void
     let makeMachinesViewModel: @MainActor () -> MachinesViewModel
@@ -43,7 +41,6 @@ struct HomeAuthenticatedRegularView: View {
         makeInboxViewModel: @escaping @MainActor () -> InboxViewModel,
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
@@ -58,7 +55,6 @@ struct HomeAuthenticatedRegularView: View {
         self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.onSessionsChanged = onSessionsChanged
         self.makeMachinesViewModel = makeMachinesViewModel
@@ -79,7 +75,6 @@ struct HomeAuthenticatedRegularView: View {
                 hideInactiveSessions: hideInactiveSessions,
                 defaultNewSessionAgent: defaultNewSessionAgent,
                 makeNewSessionViewModel: makeNewSessionViewModel,
-                makeSessionToolsViewModel: makeSessionToolsViewModel,
                 makeDirectSessionViewModel: makeDirectSessionViewModel,
                 onSessionsChanged: onSessionsChanged
             )

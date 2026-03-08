@@ -1,7 +1,6 @@
 import SwiftUI
 import CoreKit
 import FeatureNewSession
-import FeatureSessionTools
 
 @MainActor
 public struct SessionProjectDetailView: View {
@@ -30,13 +29,11 @@ public struct SessionProjectDetailView: View {
     let hideInactiveSessions: Bool
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let onProjectRemoved: (() -> Void)?
 
     @State private var isPresentingNewSession = false
     @State private var isPresentingProjectActions = false
-    @State private var spawnedSessionNavigationSessionID: String?
     @State private var spawnedDirectSessionIdentity: DirectSessionIdentity?
 
     public init(
@@ -47,7 +44,6 @@ public struct SessionProjectDetailView: View {
         hideInactiveSessions: Bool,
         defaultNewSessionAgent: APISessionSpawnAgent,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         onProjectRemoved: (() -> Void)? = nil
     ) {
@@ -58,7 +54,6 @@ public struct SessionProjectDetailView: View {
         self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.onProjectRemoved = onProjectRemoved
     }
@@ -94,19 +89,6 @@ public struct SessionProjectDetailView: View {
         .navigationTitle(group.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { projectActionsToolbar }
-        .navigationDestination(item: $spawnedSessionNavigationSessionID) { sessionID in
-            if let session = viewModel.sessions.first(where: { $0.id == sessionID }) {
-                SessionDetailView(
-                    session: session,
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
-                )
-            } else {
-                ProgressView("Opening session…")
-            }
-        }
         .navigationDestination(item: $spawnedDirectSessionIdentity) { identity in
             DirectSessionDetailView(
                 serverURLString: serverURLString,
@@ -127,37 +109,29 @@ public struct SessionProjectDetailView: View {
                 onSessionSpawned: { context in
                     guard let sessionID = context.sessionID else { return }
                     Task {
-                        if context.agent == .codex || context.agent == .claude {
-                            await viewModel.load(serverURLString: serverURLString, token: token)
-                            if let directRow = viewModel.upstreamSessions.first(where: {
-                                $0.machineID == (context.machineID ?? "") &&
-                                $0.summary.provider == (context.agent == .codex ? .codex : .claude) &&
-                                $0.summary.id == sessionID
-                            }), let identity = DirectSessionIdentityResolver.resolve(from: directRow) {
-                                spawnedDirectSessionIdentity = identity
-                                return
-                            }
-                            let fallbackProvider: APIUpstreamSessionProvider = context.agent == .codex ? .codex : .claude
-                            spawnedDirectSessionIdentity = DirectSessionIdentity(
-                                machineID: context.machineID ?? group.machineID,
-                                machineDisplayName: group.machineDisplayName,
-                                provider: fallbackProvider,
-                                upstreamSessionID: sessionID,
-                                title: "Session",
-                                cwd: context.directoryPath,
-                                transcriptPath: nil,
-                                model: context.model
-                            )
+                        guard context.agent == .codex || context.agent == .claude else {
                             return
                         }
-
-                        if let session = await viewModel.refreshAndSelectSession(
-                            sessionID: sessionID,
-                            serverURLString: serverURLString,
-                            token: token
-                        ) {
-                            spawnedSessionNavigationSessionID = session.id
+                        await viewModel.load(serverURLString: serverURLString, token: token)
+                        if let directRow = viewModel.upstreamSessions.first(where: {
+                            $0.machineID == (context.machineID ?? "") &&
+                            $0.summary.provider == (context.agent == .codex ? .codex : .claude) &&
+                            $0.summary.id == sessionID
+                        }), let identity = DirectSessionIdentityResolver.resolve(from: directRow) {
+                            spawnedDirectSessionIdentity = identity
+                            return
                         }
+                        let fallbackProvider: APIUpstreamSessionProvider = context.agent == .codex ? .codex : .claude
+                        spawnedDirectSessionIdentity = DirectSessionIdentity(
+                            machineID: context.machineID ?? group.machineID,
+                            machineDisplayName: group.machineDisplayName,
+                            provider: fallbackProvider,
+                            upstreamSessionID: sessionID,
+                            title: "Session",
+                            cwd: context.directoryPath,
+                            transcriptPath: nil,
+                            model: context.model
+                        )
                     }
                 }
             )

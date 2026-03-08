@@ -5,7 +5,6 @@ import FeatureInbox
 import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
-import FeatureSessionTools
 import FeatureSettings
 
 @main
@@ -18,7 +17,6 @@ struct UnhappyNativeApp: App {
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
     private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     private let sessionPresenceCoordinator: any SessionPresenceCoordinating
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
@@ -36,17 +34,6 @@ struct UnhappyNativeApp: App {
         let feedService = URLSessionFeedService()
         let friendsService = URLSessionFriendsService()
         let usersService = URLSessionUsersService()
-        let sessionFileLoader = SessionFileLoadUseCase(service: sessionsService)
-        let sessionDirectoryLister = SessionDirectoryListUseCase(service: sessionsService)
-        let sessionFileWriter = SessionFileWriteUseCase(service: sessionsService)
-        let sessionKiller = SessionKillUseCase(service: sessionsService)
-        let sessionAborter = SessionTaskAbortUseCase(service: sessionsService)
-        let sessionPermissionResponder = SessionPermissionUseCase(service: sessionsService)
-        let sessionModeSwitcher = SessionModeSwitchUseCase(service: sessionsService)
-        let sessionBasher = SessionBashUseCase(service: sessionsService)
-        let sessionFileDiffPreviewer = SessionFileDiffPreviewUseCase(basher: sessionBasher)
-        let sessionRipgrepRunner = SessionRipgrepUseCase(service: sessionsService)
-        let sessionDifftasticRunner = SessionDifftasticUseCase(service: sessionsService)
         let machinesLoader = MachinesLoadUseCase(service: machinesService)
         let machineSpawner = MachineSpawnUseCase(service: machinesService)
         let machineUpdater = MachineDaemonUpdateUseCase(service: machinesService)
@@ -158,21 +145,6 @@ struct UnhappyNativeApp: App {
                 claudeSessionsLoader: newSessionClaudeSessionsLoader
             )
         }
-        self.makeSessionToolsViewModel = {
-            SessionToolsViewModel(
-                fileLoader: sessionFileLoader,
-                directoryLister: sessionDirectoryLister,
-                fileWriter: sessionFileWriter,
-                fileDiffPreviewer: sessionFileDiffPreviewer,
-                killer: sessionKiller,
-                aborter: sessionAborter,
-                permissionResponder: sessionPermissionResponder,
-                modeSwitcher: sessionModeSwitcher,
-                basher: sessionBasher,
-                ripgrepRunner: sessionRipgrepRunner,
-                difftasticRunner: sessionDifftasticRunner
-            )
-        }
         self.makeDirectSessionViewModel = { identity in
             DirectSessionViewModel(
                 identity: identity,
@@ -218,7 +190,6 @@ struct UnhappyNativeApp: App {
                 makeInboxViewModel: makeInboxViewModel,
                 makeSessionsViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
-                makeSessionToolsViewModel: makeSessionToolsViewModel,
                 makeDirectSessionViewModel: makeDirectSessionViewModel,
                 onSessionsChanged: { sessions in
                     await sessionPresenceCoordinator.handleSessionsChanged(sessions)
