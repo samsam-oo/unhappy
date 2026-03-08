@@ -1,5 +1,5 @@
 import { ApiClient } from '@/api/api';
-import type { ApiSessionClient } from '@/api/apiSession';
+import type { SessionRuntimeClient } from '@/api/apiSession';
 import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
@@ -544,7 +544,7 @@ export async function runCodex(opts: {
   });
 
   // Handle server unreachable case - create offline stub with hot reconnection
-  let session: ApiSessionClient;
+  let session: SessionRuntimeClient;
   let syncQueueState: (() => void) | null = null;
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later at line ~385 after client setup)

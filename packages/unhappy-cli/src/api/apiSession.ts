@@ -41,7 +41,37 @@ export type ACPMessageData =
 
 export type ACPProvider = 'gemini' | 'codex' | 'claude' | 'opencode';
 
-export class ApiSessionClient extends EventEmitter {
+export interface SessionRuntimeClient {
+    readonly sessionId: string;
+    readonly rpcHandlerManager: RpcHandlerManager;
+    sendCodexMessage(body: any, options?: { localId?: string }): void;
+    sendAgentMessage(
+        provider: ACPProvider,
+        body: ACPMessageData,
+        options?: { localId?: string },
+    ): void;
+    sendAgentOutputMessage(data: unknown, options?: { localId?: string }): void;
+    sendClaudeSessionMessage(body: RawJSONLines): void;
+    keepAlive(thinking: boolean, mode: 'local' | 'remote'): void;
+    sendSessionEvent(event: {
+        type: 'switch', mode: 'local' | 'remote'
+    } | {
+        type: 'message', message: string
+    } | {
+        type: 'permission-mode-changed', mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
+    } | {
+        type: 'ready'
+    }, id?: string): void;
+    sendSessionDeath(): void;
+    updateMetadata(handler: (metadata: Metadata) => Metadata): Promise<void>;
+    getMetadataSnapshot(): Metadata | null;
+    updateAgentState(handler: (metadata: AgentState) => AgentState): void;
+    onUserMessage(callback: (data: UserMessage) => void): void;
+    flush(): Promise<void>;
+    close(): Promise<void>;
+}
+
+export class ApiSessionClient extends EventEmitter implements SessionRuntimeClient {
     private readonly token: string;
     readonly sessionId: string;
     private metadata: Metadata | null;

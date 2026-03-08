@@ -10,7 +10,7 @@
  * @module offlineSessionStub
  */
 
-import type { ApiSessionClient } from '@/api/apiSession';
+import type { SessionRuntimeClient } from '@/api/apiSession';
 
 /**
  * Creates a no-op session stub for offline mode.
@@ -31,7 +31,7 @@ import type { ApiSessionClient } from '@/api/apiSession';
  * session = api.sessionSyncClient(response);
  * ```
  */
-export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
+export function createOfflineSessionStub(sessionTag: string): SessionRuntimeClient {
     return {
         sessionId: `offline-${sessionTag}`,
         sendCodexMessage: () => {},
@@ -50,5 +50,5 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
         rpcHandlerManager: {
             registerHandler: () => {}
         }
-    } as unknown as ApiSessionClient;
+    } as unknown as SessionRuntimeClient;
 }

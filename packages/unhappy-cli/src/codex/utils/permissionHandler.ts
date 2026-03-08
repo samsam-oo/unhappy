@@ -6,7 +6,7 @@
  */
 
 import { logger } from "@/ui/logger";
-import { ApiSessionClient } from "@/api/apiSession";
+import { SessionRuntimeClient } from "@/api/apiSession";
 import {
     BasePermissionHandler,
     PermissionResult,
@@ -20,7 +20,7 @@ export type { PermissionResult, PendingRequest };
  * Codex-specific permission handler.
  */
 export class CodexPermissionHandler extends BasePermissionHandler {
-    constructor(session: ApiSessionClient) {
+    constructor(session: SessionRuntimeClient) {
         super(session);
     }
 

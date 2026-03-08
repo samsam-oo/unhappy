@@ -13,7 +13,7 @@ import React from 'react';
 
 import { ApiClient } from '@/api/api';
 import { extractUserMessageText } from '@/api/types';
-import type { ACPMessageData, ApiSessionClient } from '@/api/apiSession';
+import type { ACPMessageData, SessionRuntimeClient } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { initialMachineMetadata } from '@/daemon/run';
@@ -144,7 +144,7 @@ export async function runGemini(opts: {
   });
 
   // Handle server unreachable case - create offline stub with hot reconnection
-  let session: ApiSessionClient;
+  let session: SessionRuntimeClient;
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later after Unhappy server setup)
   let permissionHandler: GeminiPermissionHandler;
@@ -152,7 +152,7 @@ export async function runGemini(opts: {
   // Session swap synchronization to prevent race conditions during message processing
   // When a swap is requested during processing, it's queued and applied after the current cycle
   let isProcessingMessage = false;
-  let pendingSessionSwap: ApiSessionClient | null = null;
+  let pendingSessionSwap: SessionRuntimeClient | null = null;
 
   /**
    * Apply a pending session swap. Called between message processing cycles.

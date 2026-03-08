@@ -8,7 +8,7 @@
  */
 
 import type { ApiClient } from '@/api/api';
-import type { ApiSessionClient } from '@/api/apiSession';
+import type { SessionRuntimeClient } from '@/api/apiSession';
 import type { AgentState, Metadata, Session } from '@/api/types';
 import { configuration } from '@/configuration';
 import { createOfflineSessionStub } from '@/utils/offlineSessionStub';
@@ -34,7 +34,7 @@ export interface SetupOfflineReconnectionOptions {
      * Callback invoked when session is swapped after reconnection.
      * Use this to update the session reference in the calling code.
      */
-    onSessionSwap: (newSession: ApiSessionClient) => void;
+    onSessionSwap: (newSession: SessionRuntimeClient) => void;
 }
 
 /**
@@ -42,9 +42,9 @@ export interface SetupOfflineReconnectionOptions {
  */
 export interface SetupOfflineReconnectionResult {
     /** The session client (stub if offline, real if connected) */
-    session: ApiSessionClient;
+    session: SessionRuntimeClient;
     /** Handle to the reconnection process, null if connected */
-    reconnectionHandle: ReturnType<typeof startOfflineReconnection<ApiSessionClient>> | null;
+    reconnectionHandle: ReturnType<typeof startOfflineReconnection<SessionRuntimeClient>> | null;
     /** Whether we're in offline mode */
     isOffline: boolean;
 }
@@ -61,7 +61,7 @@ export interface SetupOfflineReconnectionResult {
  *
  * @example
  * ```typescript
- * let session: ApiSessionClient;
+ * let session: SessionRuntimeClient;
  *
  * const result = setupOfflineReconnection({
  *     api,
@@ -79,8 +79,8 @@ export interface SetupOfflineReconnectionResult {
 export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions): SetupOfflineReconnectionResult {
     const { api, sessionTag, metadata, state, encryptionKey, response, onSessionSwap } = opts;
 
-    let session: ApiSessionClient;
-    let reconnectionHandle: ReturnType<typeof startOfflineReconnection<ApiSessionClient>> | null = null;
+    let session: SessionRuntimeClient;
+    let reconnectionHandle: ReturnType<typeof startOfflineReconnection<SessionRuntimeClient>> | null = null;
 
     // Note: connectionState.notifyOffline() was already called by api.ts with error details
     if (!response) {
@@ -88,7 +88,7 @@ export function setupOfflineReconnection(opts: SetupOfflineReconnectionOptions):
         session = createOfflineSessionStub(sessionTag);
 
         // Start background reconnection
-        reconnectionHandle = startOfflineReconnection<ApiSessionClient>({
+        reconnectionHandle = startOfflineReconnection<SessionRuntimeClient>({
             serverUrl: configuration.serverUrl,
             onReconnected: async () => {
                 const resp = await api.getOrCreateSession({

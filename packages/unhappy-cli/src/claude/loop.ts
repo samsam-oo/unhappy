@@ -1,4 +1,4 @@
-import { ApiSessionClient } from "@/api/apiSession"
+import { SessionRuntimeClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
@@ -30,7 +30,7 @@ interface LoopOptions {
     startingMode?: 'local' | 'remote'
     onModeChange: (mode: 'local' | 'remote') => void
     mcpServers: Record<string, any>
-    session: ApiSessionClient
+    session: SessionRuntimeClient
     api: ApiClient,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]

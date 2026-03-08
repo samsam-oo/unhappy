@@ -1,4 +1,5 @@
-import { ApiClient, ApiSessionClient } from "@/lib";
+import { ApiClient } from "@/lib";
+import { SessionRuntimeClient } from "@/api/apiSession";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
@@ -11,7 +12,7 @@ export class Session {
     readonly path: string;
     readonly logPath: string;
     readonly api: ApiClient;
-    readonly client: ApiSessionClient;
+    readonly client: SessionRuntimeClient;
     readonly queue: MessageQueue2<EnhancedMode>;
     readonly claudeEnvVars?: Record<string, string>;
     claudeArgs?: string[];  // Made mutable to allow filtering
@@ -35,7 +36,7 @@ export class Session {
 
     constructor(opts: {
         api: ApiClient,
-        client: ApiSessionClient,
+        client: SessionRuntimeClient,
         path: string,
         logPath: string,
         sessionId: string | null,

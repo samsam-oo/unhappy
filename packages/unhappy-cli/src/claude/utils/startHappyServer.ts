@@ -3,7 +3,7 @@
  * Provides Unhappy CLI specific tools including chat session title management
  */
 
-import { ApiSessionClient } from '@/api/apiSession';
+import { SessionRuntimeClient } from '@/api/apiSession';
 import { logger } from '@/ui/logger';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -32,7 +32,7 @@ type HappyServerOptions = {
 };
 
 export async function startHappyServer(
-  client: ApiSessionClient,
+  client: SessionRuntimeClient,
   options?: HappyServerOptions,
 ) {
   // Handler that sends title updates via the client
