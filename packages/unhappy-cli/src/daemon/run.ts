@@ -1166,6 +1166,7 @@ export async function startDaemon(): Promise<void> {
       stopSession,
       requestShutdown: () => requestShutdown('mobile-app'),
       requestUpdate,
+      listTrackedSessions: () => Array.from(pidToTrackedSession.values()),
     });
 
     // Connect to server

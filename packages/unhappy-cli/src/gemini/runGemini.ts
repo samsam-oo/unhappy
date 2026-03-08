@@ -13,9 +13,10 @@ import React from 'react';
 
 import { ApiClient } from '@/api/api';
 import { extractUserMessageText } from '@/api/types';
-import type { ACPMessageData, SessionRuntimeClient } from '@/api/apiSession';
+import type { ACPMessageData } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
@@ -28,7 +29,7 @@ import { hashObject } from '@/utils/deterministicJson';
 import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
-import { createLocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
+import { LocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
 
 import type { AgentBackend, AgentMessage } from '@/agent';
 import { createGeminiBackend } from '@/agent/factories/gemini';
@@ -49,6 +50,10 @@ import {
 } from '@/gemini/utils/optionsParser';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
+import {
+  GeminiDirectTranscriptStore,
+  startGeminiDirectSessionControlServer,
+} from '@/gemini/directSession';
 import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
 
 /**
@@ -129,11 +134,31 @@ export async function runGemini(opts: {
     machineId,
     startedBy: opts.startedBy,
   });
-  let session: SessionRuntimeClient = createLocalSessionRuntimeClient({
+  const session = new LocalSessionRuntimeClient({
     provider: 'gemini',
     metadata,
     agentState: state,
   });
+  const directTranscript = new GeminiDirectTranscriptStore();
+  const directSessionControl = await startGeminiDirectSessionControlServer({
+    listMessages: () => directTranscript.listMessages(),
+    sendMessage: async (text) => {
+      session.enqueueUserMessage({
+        role: 'user',
+        content: {
+          type: 'text',
+          text,
+        },
+        meta: {
+          sentFrom: 'gemini-direct',
+        },
+      });
+    },
+  });
+  await session.updateMetadata((currentMetadata) => ({
+    ...currentMetadata,
+    agentControlPort: directSessionControl.port,
+  }));
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later after Unhappy server setup)
   let permissionHandler: GeminiPermissionHandler;
@@ -165,6 +190,7 @@ export async function runGemini(opts: {
   // Track current overrides to apply per message
   let currentPermissionMode: PermissionMode | undefined = undefined;
   let currentModel: string | undefined = opts.model;
+  let lastReportedAcpSessionId: string | null = null;
   const syncAgentModeState = (model: string | undefined) => {
     session.updateAgentState((currentState) => ({
       ...currentState,
@@ -173,6 +199,43 @@ export async function runGemini(opts: {
         model,
       },
     }));
+  };
+  const reportGeminiProviderSessionIfNeeded = async (
+    acpSessionId: string,
+    model: string | undefined,
+    source: string,
+  ): Promise<void> => {
+    const normalizedSessionId = acpSessionId.trim();
+    if (!normalizedSessionId || lastReportedAcpSessionId === normalizedSessionId) {
+      return;
+    }
+    lastReportedAcpSessionId = normalizedSessionId;
+
+    const snapshot = session.getMetadataSnapshot() ?? metadata;
+    const nextMetadata = {
+      ...snapshot,
+      agentSessionId: normalizedSessionId,
+      agentControlPort: directSessionControl.port,
+      ...(model ? { model } : {}),
+    };
+
+    await session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      agentSessionId: normalizedSessionId,
+      agentControlPort: directSessionControl.port,
+      ...(model ? { model } : {}),
+    }));
+
+    void notifyDaemonProviderSessionStarted(
+      'gemini',
+      normalizedSessionId,
+      nextMetadata,
+    ).catch((error) => {
+      logger.debug(
+        `[Gemini] Failed to report provider session to daemon (${source})`,
+        error,
+      );
+    });
   };
 
   session.onUserMessage((message) => {
@@ -250,6 +313,7 @@ export async function runGemini(opts: {
     // Build the full prompt with appendSystemPrompt if provided
     // Only include system prompt for the first message to avoid forcing tool usage on every message
     const originalUserMessage = extractUserMessageText(message.content);
+    directTranscript.appendUserText(originalUserMessage, message.localKey ?? null);
     let fullPrompt = originalUserMessage;
     if (isFirstMessage && message.meta?.appendSystemPrompt) {
       // Prepend system prompt to user message only for first message
@@ -371,6 +435,7 @@ export async function runGemini(opts: {
       logger.debug('[Gemini] Suppressed sidechain transcript payload');
       return;
     }
+    directTranscript.appendAgentPayload(payload);
     session.sendAgentMessage('gemini', payload);
   };
 
@@ -434,6 +499,7 @@ export async function runGemini(opts: {
 
       stopCaffeinate();
       happyServer.stop();
+      directSessionControl.stop();
 
       if (geminiBackend) {
         await geminiBackend.dispose();
@@ -1042,8 +1108,48 @@ export async function runGemini(opts: {
     });
   }
 
-  // Note: Backend will be created dynamically in the main loop based on model from first message
-  // This allows us to support model changes by recreating the backend
+  const createAndStartGeminiBackend = async (
+    model: string | null | undefined,
+    source: string,
+  ): Promise<{
+    backend: AgentBackend;
+    sessionId: string;
+    model: string;
+    modelSource: string;
+  }> => {
+    const backendResult = createGeminiBackend({
+      cwd: process.cwd(),
+      mcpServers,
+      permissionHandler,
+      cloudToken,
+      currentUserEmail,
+      model,
+    });
+    const backend = backendResult.backend;
+    setupGeminiMessageHandler(backend);
+    updateDisplayedModel(backendResult.model, false);
+    conversationHistory.setCurrentModel(backendResult.model);
+    const { sessionId } = await backend.startSession();
+    await reportGeminiProviderSessionIfNeeded(
+      sessionId,
+      backendResult.model,
+      source,
+    );
+    return {
+      backend,
+      sessionId,
+      model: backendResult.model,
+      modelSource: backendResult.modelSource,
+    };
+  };
+
+  const initialBackend = await createAndStartGeminiBackend(
+    opts.model ?? undefined,
+    'startup',
+  );
+  geminiBackend = initialBackend.backend;
+  acpSessionId = initialBackend.sessionId;
+  wasSessionCreated = true;
 
   let first = true;
 
@@ -1162,6 +1268,11 @@ export async function runGemini(opts: {
         );
         const { sessionId } = await geminiBackend.startSession();
         acpSessionId = sessionId;
+        await reportGeminiProviderSessionIfNeeded(
+          sessionId,
+          actualModel,
+          'mode-change',
+        );
         logger.debug(`[gemini] New ACP session started: ${acpSessionId}`);
 
         // Update displayed model in UI (don't save to config - this is backend initialization)
@@ -1229,6 +1340,11 @@ export async function runGemini(opts: {
             updatePermissionMode(message.mode.permissionMode);
             const { sessionId } = await geminiBackend.startSession();
             acpSessionId = sessionId;
+            await reportGeminiProviderSessionIfNeeded(
+              sessionId,
+              displayedModel,
+              'lazy-start',
+            );
             logger.debug(`[gemini] ACP session started: ${acpSessionId}`);
             wasSessionCreated = true;
             currentModeHash = message.hash;
@@ -1564,6 +1680,7 @@ export async function runGemini(opts: {
     }
 
     happyServer.stop();
+    directSessionControl.stop();
 
     if (process.stdin.isTTY) {
       try {

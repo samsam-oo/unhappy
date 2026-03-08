@@ -231,6 +231,7 @@ export type Metadata = {
   host: string,
   version?: string,
   name?: string,
+  model?: string,
   os?: string,
   summary?: {
     text: string,
@@ -244,6 +245,7 @@ export type Metadata = {
   agentSessionId?: string,
   agentConversationId?: string,
   agentTranscriptPath?: string,
+  agentControlPort?: number,
   tools?: string[],
   slashCommands?: string[],
   homeDir: string,

@@ -148,7 +148,34 @@ vi.mock('@/utils/serverConnectionErrors', () => ({
 }));
 
 vi.mock('@/runtime/localSessionRuntimeClient', () => ({
-  createLocalSessionRuntimeClient: vi.fn(() => mockState.session),
+  LocalSessionRuntimeClient: class {
+    sessionId = mockState.session.sessionId;
+    onUserMessage = mockState.session.onUserMessage;
+    keepAlive = mockState.session.keepAlive;
+    sendSessionEvent = mockState.session.sendSessionEvent;
+    sendSessionDeath = mockState.session.sendSessionDeath;
+    flush = mockState.session.flush;
+    close = mockState.session.close;
+    sendAgentMessage = mockState.session.sendAgentMessage;
+    sendClaudeSessionMessage = mockState.session.sendClaudeSessionMessage;
+    updateMetadata = mockState.session.updateMetadata;
+    getMetadataSnapshot = mockState.session.getMetadataSnapshot;
+    updateAgentState = mockState.session.updateAgentState;
+    enqueueUserMessage = vi.fn();
+    rpcHandlerManager = mockState.session.rpcHandlerManager;
+  },
+}));
+
+vi.mock('@/gemini/directSession', () => ({
+  GeminiDirectTranscriptStore: class {
+    appendUserText = vi.fn();
+    appendAgentPayload = vi.fn();
+    listMessages = vi.fn(() => []);
+  },
+  startGeminiDirectSessionControlServer: vi.fn(async () => ({
+    port: 40123,
+    stop: vi.fn(),
+  })),
 }));
 
 vi.mock('@/agent/factories/gemini', () => ({
