@@ -84,7 +84,7 @@ export function startDaemonControlServer({
             provider: child.provider,
             providerSessionId: child.providerSessionId!,
             pid: child.pid,
-            metadata: child.happySessionMetadataFromLocalWebhook,
+            metadata: child.providerSessionMetadata,
           }))
       }
     });
@@ -114,7 +114,6 @@ export function startDaemonControlServer({
       schema: {
         body: z.object({
           directory: z.string(),
-          sessionId: z.string().optional(),
           codexResumeThreadId: z.string().optional(),
           claudeResumeSessionId: z.string().optional(),
           agent: z.enum(['claude', 'codex', 'gemini']),
@@ -140,16 +139,14 @@ export function startDaemonControlServer({
     }, async (request, reply) => {
       const {
         directory,
-        sessionId,
         codexResumeThreadId,
         claudeResumeSessionId,
         agent,
       } = request.body;
 
-      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`);
+      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}`);
       const result = await spawnSession({
         directory,
-        sessionId,
         codexResumeThreadId,
         claudeResumeSessionId,
         agent,

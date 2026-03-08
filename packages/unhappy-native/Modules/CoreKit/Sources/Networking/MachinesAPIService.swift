@@ -224,7 +224,7 @@ extension URLSessionMachinesService {
             serverURL: normalizedRequest.serverURL,
             token: normalizedRequest.token,
             machineID: normalizedMachineID,
-            command: "spawn-unhappy-session",
+            command: "spawn-provider-session",
             params: MachineSessionSpawnRPCParametersBuilder().build(from: normalizedRequest)
         )
         return try MachineSessionSpawnRPCResponseParser.parse(data)

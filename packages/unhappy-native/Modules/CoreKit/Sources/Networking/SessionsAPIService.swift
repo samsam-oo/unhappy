@@ -164,7 +164,7 @@ extension URLSessionSessionsService {
             serverURL: serverURL,
             token: token,
             sessionID: sessionID,
-            command: "spawn-unhappy-session",
+            command: "spawn-provider-session",
             params: params,
             allowMachineFallback: false
         )

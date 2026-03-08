@@ -15,7 +15,7 @@ const ALLOWED_MACHINE_COMMANDS = new Set<string>([
     "claude-list-sessions",
     "claude-list-messages",
     "claude-send-message",
-    "spawn-unhappy-session",
+    "spawn-provider-session",
     "stop-daemon",
     "update-daemon",
 ]);

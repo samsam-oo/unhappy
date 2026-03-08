@@ -331,7 +331,7 @@ export function machinesRoutes(app: Fastify) {
         const invoked = await invokeMachineCommand(
             userId,
             id,
-            'spawn-unhappy-session',
+            'spawn-provider-session',
             {
                 directory: normalizedDirectory,
                 machineId: id,

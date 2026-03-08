@@ -241,11 +241,10 @@ export class ApiMachineClient {
   }: MachineRpcHandlers) {
     // Register spawn session handler
     this.rpcHandlerManager.registerHandler(
-      'spawn-unhappy-session',
+      'spawn-provider-session',
       async (params: any) => {
         const {
           directory,
-          sessionId,
           codexResumeThreadId,
           claudeResumeSessionId,
           machineId,
@@ -287,7 +286,6 @@ export class ApiMachineClient {
 
         const result = await spawnSession({
           directory: normalizedDirectory,
-          sessionId,
           codexResumeThreadId,
           claudeResumeSessionId,
           machineId,
@@ -1178,7 +1176,7 @@ export class ApiMachineClient {
           return;
         }
         const supportedCommands = new Set([
-          'spawn-unhappy-session',
+          'spawn-provider-session',
           'open-project',
           'close-project',
           'list-projects',

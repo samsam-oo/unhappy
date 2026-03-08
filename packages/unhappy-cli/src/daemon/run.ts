@@ -345,7 +345,7 @@ export async function startDaemon(): Promise<void> {
       if (existingSession) {
         existingSession.provider = provider;
         existingSession.providerSessionId = providerSessionId;
-        existingSession.happySessionMetadataFromLocalWebhook = metadata;
+        existingSession.providerSessionMetadata = metadata;
         const awaiter = pidToAwaiter.get(pid);
         if (awaiter) {
           pidToAwaiter.delete(pid);
@@ -358,12 +358,12 @@ export async function startDaemon(): Promise<void> {
         startedBy: metadata.startedBy || 'provider directly',
         provider,
         providerSessionId,
-        happySessionMetadataFromLocalWebhook: metadata,
+        providerSessionMetadata: metadata,
         pid,
       });
     };
 
-    // Spawn a new session (sessionId reserved for future --resume functionality)
+    // Spawn or open a provider session directly.
     const spawnSession = async (
       options: SpawnSessionOptions,
     ): Promise<SpawnSessionResult> => {
@@ -386,7 +386,6 @@ export async function startDaemon(): Promise<void> {
 
       const {
         directory,
-        sessionId,
         codexResumeThreadId,
         claudeResumeSessionId,
         model,

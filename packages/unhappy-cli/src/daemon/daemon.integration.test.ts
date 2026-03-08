@@ -228,7 +228,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   });
 
   it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', async () => {
-    const response = await spawnDaemonSession('/tmp', 'spawned-test-456');
+    const response = await spawnDaemonSession('/tmp', 'spawned-test-456', {
+      agent: 'codex',
+    });
 
     expect(response).toHaveProperty('success', true);
     expect(response).toHaveProperty('sessionId');
@@ -251,7 +253,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     const promises = [];
     const sessionCount = 20;
     for (let i = 0; i < sessionCount; i++) {
-      promises.push(spawnDaemonSession('/tmp'));
+      promises.push(spawnDaemonSession('/tmp', undefined, { agent: 'codex' }));
     }
 
     // Wait for all sessions to be spawned
@@ -294,7 +296,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     await new Promise(resolve => setTimeout(resolve, 5_000));
 
     // Spawn a daemon session
-    const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
+    const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb', {
+      agent: 'codex',
+    });
 
     // List all sessions
     const sessions = await listDaemonSessions();
@@ -328,7 +332,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
   it('should update session metadata when webhook is called', async () => {
     // Spawn a session
-    const spawnResponse = await spawnDaemonSession('/tmp');
+    const spawnResponse = await spawnDaemonSession('/tmp', undefined, { agent: 'codex' });
 
     // Verify webhook was processed (session ID updated)
     const sessions = await listDaemonSessions();
@@ -462,7 +466,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     const promises = [];
     for (let i = 0; i < 3; i++) {
       promises.push(
-        spawnDaemonSession('/tmp')
+        spawnDaemonSession('/tmp', undefined, { agent: 'codex' })
       );
     }
 

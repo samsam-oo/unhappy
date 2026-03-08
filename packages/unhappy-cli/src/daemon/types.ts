@@ -12,7 +12,7 @@ export interface TrackedSession {
   startedBy: 'daemon' | string;
   provider?: 'codex' | 'claude' | 'gemini';
   providerSessionId?: string;
-  happySessionMetadataFromLocalWebhook?: Metadata;
+  providerSessionMetadata?: Metadata;
   pid: number;
   childProcess?: ChildProcess;
   error?: string;
