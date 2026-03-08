@@ -97,7 +97,6 @@ struct UnhappyNativeApp: App {
         let sessionProjectRemover = SessionProjectRemoveUseCase(service: machinesService)
         let directSessionMessagesLoader = DirectSessionMessagesLoadUseCase(codexService: machinesService, claudeService: machinesService)
         let directSessionMessageSender = DirectSessionMessageSendUseCase(codexService: machinesService, claudeService: machinesService)
-        let sessionPreDeleteKillUseCase = SessionPreDeleteKillUseCase(service: sessionsService)
         let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
         self.sessionPresenceCoordinator = sessionPresenceCoordinator
@@ -119,7 +118,6 @@ struct UnhappyNativeApp: App {
                 projectOpener: sessionProjectOpener,
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
-                preDeleteKiller: sessionPreDeleteKillUseCase,
                 deleteUseCase: sessionDeleteUseCase
             )
         }

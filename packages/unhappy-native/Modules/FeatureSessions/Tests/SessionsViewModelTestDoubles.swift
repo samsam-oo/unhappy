@@ -97,7 +97,15 @@ actor SequenceSessionsPageLoader: SessionsPageLoading {
     }
 }
 
-actor CallOrderRecorder {
+struct RecordingSessionDeleteUseCase: SessionDeletingAction {
+    let recorder: SessionDeleteRecorder
+
+    func deleteSession(serverURLString: String, token: String, sessionID: String) async throws {
+        await recorder.append("delete:\(sessionID)")
+    }
+}
+
+actor SessionDeleteRecorder {
     var calls: [String] = []
 
     func append(_ call: String) {
@@ -106,22 +114,6 @@ actor CallOrderRecorder {
 
     func snapshot() -> [String] {
         calls
-    }
-}
-
-struct RecordingSessionPreDeleteKillUseCase: SessionPreDeleteKillingAction {
-    let recorder: CallOrderRecorder
-
-    func killSession(serverURLString: String, token: String, sessionID: String) async throws {
-        await recorder.append("kill:\(sessionID)")
-    }
-}
-
-struct RecordingSessionDeleteUseCase: SessionDeletingAction {
-    let recorder: CallOrderRecorder
-
-    func deleteSession(serverURLString: String, token: String, sessionID: String) async throws {
-        await recorder.append("delete:\(sessionID)")
     }
 }
 

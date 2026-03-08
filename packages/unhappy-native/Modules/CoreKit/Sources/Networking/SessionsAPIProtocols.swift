@@ -16,11 +16,3 @@ public protocol SessionsPagingFetching: Sendable {
 public protocol SessionDeleting: Sendable {
     func deleteSession(serverURL: URL, token: String, sessionID: String) async throws
 }
-
-public protocol SessionKilling: Sendable {
-    func killSession(
-        serverURL: URL,
-        token: String,
-        sessionID: String
-    ) async throws -> APISessionKillResult
-}

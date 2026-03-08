@@ -171,7 +171,7 @@ struct SessionsViewModelTests {
             dataEncryptionKey: nil,
             lastMessage: nil
         )
-        let recorder = CallOrderRecorder()
+        let recorder = SessionDeleteRecorder()
         let model = SessionsViewModel(
             loader: MockSessionsLoader(result: .success([olderSession, newerSession])),
             pageLoader: MockSessionsPageLoader(

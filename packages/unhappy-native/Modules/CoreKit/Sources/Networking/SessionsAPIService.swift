@@ -54,25 +54,4 @@ extension URLSessionSessionsService {
         }
     }
 
-    public func killSession(
-        serverURL: URL,
-        token: String,
-        sessionID: String
-    ) async throws -> APISessionKillResult {
-        let request = try SessionsAPI.makeSessionKillRequest(
-            serverURL: serverURL,
-            token: token,
-            sessionID: sessionID
-        )
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let http = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-        guard (200..<300).contains(http.statusCode) else {
-            throw SessionsAPIError.invalidHTTPStatus(http.statusCode)
-        }
-
-        return try SessionsAPI.decodeSessionKillResponse(data)
-    }
 }

@@ -865,6 +865,6 @@ private struct SessionsClaudeListResponse: Decodable {
     let hasNext: Bool?
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionDeleting, SessionKilling {
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionDeleting {
     public init() {}
 }

@@ -29,7 +29,6 @@ public final class SessionsViewModel: ObservableObject {
     private let projectOpener: (any SessionProjectOpeningAction)?
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
-    private let preDeleteKiller: (any SessionPreDeleteKillingAction)?
     private let deleteUseCase: any SessionDeletingAction
     private var nextCursor: String?
     private var lastSupportingDataSyncAt: TimeInterval?
@@ -43,7 +42,6 @@ public final class SessionsViewModel: ObservableObject {
         projectOpener: (any SessionProjectOpeningAction)? = nil,
         projectRemover: (any SessionProjectRemovingAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
-        preDeleteKiller: (any SessionPreDeleteKillingAction)? = nil,
         deleteUseCase: any SessionDeletingAction
     ) {
         self.loader = loader
@@ -53,7 +51,6 @@ public final class SessionsViewModel: ObservableObject {
         self.projectOpener = projectOpener
         self.projectRemover = projectRemover
         self.upstreamSessionsLoader = upstreamSessionsLoader
-        self.preDeleteKiller = preDeleteKiller
         self.deleteUseCase = deleteUseCase
     }
 
@@ -61,17 +58,10 @@ public final class SessionsViewModel: ObservableObject {
         service: any SessionsFetching & SessionsPagingFetching & SessionDeleting
     ) {
         let loader = SessionsLoadUseCase(service: service)
-        let preDeleteKillUseCase: (any SessionPreDeleteKillingAction)?
-        if let killingService = service as? any SessionKilling {
-            preDeleteKillUseCase = SessionPreDeleteKillUseCase(service: killingService)
-        } else {
-            preDeleteKillUseCase = nil
-        }
         self.init(
             loader: loader,
             pageLoader: SessionsPageLoadUseCase(service: service),
             poller: SessionsPollingUseCase(loader: loader),
-            preDeleteKiller: preDeleteKillUseCase,
             deleteUseCase: SessionDeleteUseCase(service: service)
         )
     }
@@ -516,13 +506,6 @@ public final class SessionsViewModel: ObservableObject {
         token: String
     ) async {
         do {
-            if let preDeleteKiller {
-                try? await preDeleteKiller.killSession(
-                    serverURLString: serverURLString,
-                    token: token,
-                    sessionID: sessionID
-                )
-            }
             try await deleteUseCase.deleteSession(
                 serverURLString: serverURLString,
                 token: token,
