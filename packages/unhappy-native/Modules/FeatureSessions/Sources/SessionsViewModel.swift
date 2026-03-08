@@ -1,6 +1,5 @@
 import Foundation
 import CoreKit
-import FeatureNewSession
 
 @MainActor
 public final class SessionsViewModel: ObservableObject {
@@ -30,8 +29,6 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
     @Published public private(set) var isLoadingUpstreamSessions = false
     @Published public private(set) var upstreamSessionsErrorMessage: String?
-    @Published public private(set) var linkingUpstreamSessionID: String?
-    @Published public private(set) var upstreamSessionStatusMessage: String?
     @Published public private(set) var deletingSessionIDs: Set<String> = []
     @Published public private(set) var renamingSessionIDs: Set<String> = []
     @Published public private(set) var sendingMessageSessionID: String?
@@ -51,7 +48,6 @@ public final class SessionsViewModel: ObservableObject {
     private let projectOpener: (any SessionProjectOpeningAction)?
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
-    private let upstreamSessionLinker: (any NewSessionSpawningAction)?
     private let sessionModelsLoader: (any SessionModelsLoadingAction)?
     private let spawnUseCase: (any SessionSpawningAction)?
     private let messageSender: (any SessionMessageSendingAction)?
@@ -75,7 +71,6 @@ public final class SessionsViewModel: ObservableObject {
         projectOpener: (any SessionProjectOpeningAction)? = nil,
         projectRemover: (any SessionProjectRemovingAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
-        upstreamSessionLinker: (any NewSessionSpawningAction)? = nil,
         sessionModelsLoader: (any SessionModelsLoadingAction)? = nil,
         spawnUseCase: (any SessionSpawningAction)? = nil,
         messageSender: (any SessionMessageSendingAction)? = nil,
@@ -91,7 +86,6 @@ public final class SessionsViewModel: ObservableObject {
         self.projectOpener = projectOpener
         self.projectRemover = projectRemover
         self.upstreamSessionsLoader = upstreamSessionsLoader
-        self.upstreamSessionLinker = upstreamSessionLinker
         self.sessionModelsLoader = sessionModelsLoader
         self.spawnUseCase = spawnUseCase
         self.messageSender = messageSender
@@ -641,74 +635,6 @@ public final class SessionsViewModel: ObservableObject {
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
-        }
-    }
-
-    public func linkUpstreamSession(
-        _ row: SessionLinkedUpstreamSession,
-        serverURLString: String,
-        token: String
-    ) async -> String? {
-        if let existingSession = existingMirroredSession(for: row) {
-            upstreamSessionStatusMessage = "Opened existing \(row.summary.provider.displayName) session"
-            return existingSession.id
-        }
-
-        guard let upstreamSessionLinker else {
-            upstreamSessionStatusMessage = "Upstream linking is unavailable in this build"
-            return nil
-        }
-
-        linkingUpstreamSessionID = row.id
-        upstreamSessionStatusMessage = nil
-        defer {
-            if linkingUpstreamSessionID == row.id {
-                linkingUpstreamSessionID = nil
-            }
-        }
-
-        let directory = row.summary.cwd?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !directory.isEmpty else {
-            upstreamSessionStatusMessage = "Missing working directory for upstream session"
-            return nil
-        }
-
-        do {
-            let response = try await upstreamSessionLinker.spawnSession(
-                NewSessionSpawnRequest(
-                    serverURLString: serverURLString,
-                    token: token,
-                    machineID: row.machineID,
-                    directory: directory,
-                    agent: {
-                        switch row.summary.provider {
-                        case .codex:
-                            return .codex
-                        case .claude:
-                            return .claude
-                        case .gemini:
-                            return .gemini
-                        }
-                    }(),
-                    approvedNewDirectoryCreation: true,
-                    codexResumeThreadID: row.summary.provider == .codex ? row.summary.id : nil,
-                    claudeResumeSessionID: row.summary.provider == .claude ? row.summary.id : nil,
-                    sessionToken: nil,
-                    environmentVariables: [:],
-                    model: nil,
-                    reasoningEffort: nil
-                )
-            )
-            if let sessionID = response.sessionID, !sessionID.isEmpty {
-                upstreamSessionStatusMessage = "Opened \(row.summary.provider.displayName) session \(sessionID)"
-            } else {
-                upstreamSessionStatusMessage = "Opened \(row.summary.provider.displayName) session"
-            }
-            await load(serverURLString: serverURLString, token: token)
-            return response.sessionID
-        } catch {
-            upstreamSessionStatusMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            return nil
         }
     }
 

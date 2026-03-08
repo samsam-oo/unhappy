@@ -22,7 +22,7 @@ struct HomeAuthenticatedRegularView: View {
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
+    let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let onSessionsChanged: @MainActor ([APISession]) async -> Void
     let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
@@ -44,7 +44,7 @@ struct HomeAuthenticatedRegularView: View {
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
-        makeCodexDirectSessionViewModel: @escaping @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel,
+        makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
@@ -59,7 +59,7 @@ struct HomeAuthenticatedRegularView: View {
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
-        self.makeCodexDirectSessionViewModel = makeCodexDirectSessionViewModel
+        self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.onSessionsChanged = onSessionsChanged
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
@@ -80,7 +80,7 @@ struct HomeAuthenticatedRegularView: View {
                 defaultNewSessionAgent: defaultNewSessionAgent,
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel,
-                makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel,
+                makeDirectSessionViewModel: makeDirectSessionViewModel,
                 onSessionsChanged: onSessionsChanged
             )
             .tabItem {

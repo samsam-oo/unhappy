@@ -1,65 +1,47 @@
 import SwiftUI
 import CoreKit
-import FeatureSessionTools
 
 @MainActor
 public struct SessionUpstreamOpeningView: View {
     let row: SessionLinkedUpstreamSession
-    @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
-    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
-
-    @State private var didStartOpen = false
-    @State private var linkedSessionID: String?
+    let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
 
     public init(
         row: SessionLinkedUpstreamSession,
-        viewModel: SessionsViewModel,
         serverURLString: String,
         token: String,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
-        makeCodexDirectSessionViewModel: @escaping @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
+        makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     ) {
         self.row = row
-        self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
-        self.makeCodexDirectSessionViewModel = makeCodexDirectSessionViewModel
+        self.makeDirectSessionViewModel = makeDirectSessionViewModel
     }
 
     public var body: some View {
-        if let codexIdentity {
-            CodexDirectSessionDetailView(
+        if let directIdentity {
+            DirectSessionDetailView(
                 serverURLString: serverURLString,
                 token: token,
                 makeViewModel: {
-                    makeCodexDirectSessionViewModel(codexIdentity)
+                    makeDirectSessionViewModel(directIdentity)
                 }
             )
-        } else if let linkedSession {
-            SessionDetailView(
-                session: linkedSession,
-                viewModel: viewModel,
-                serverURLString: serverURLString,
-                token: token,
-                makeSessionToolsViewModel: makeSessionToolsViewModel
-            )
         } else {
-            openingStateView
+            unavailableStateView
         }
     }
 
-    private var openingStateView: some View {
+    private var unavailableStateView: some View {
         VStack(spacing: 18) {
-            Image(systemName: currentStatusIcon)
+            Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(currentStatusTint)
+                .foregroundStyle(.orange)
 
             VStack(spacing: 6) {
-                Text(currentStatusTitle)
+                Text("Couldn't Open Session")
                     .font(.headline)
                 Text(row.title)
                     .font(.subheadline.weight(.semibold))
@@ -77,92 +59,51 @@ public struct SessionUpstreamOpeningView: View {
                     .lineLimit(2)
             }
 
-            if isOpening {
-                ProgressView()
-                    .controlSize(.regular)
-            }
-
-            if let statusMessage {
-                Text(statusMessage)
-                    .font(.footnote)
-                    .foregroundStyle(isOpening ? Color.secondary : Color.red)
-                    .multilineTextAlignment(.center)
-            }
+            Text("Direct \(row.summary.provider.displayName) session support is unavailable for this session.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Open Session")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: row.id) {
-            guard !didStartOpen else { return }
-            didStartOpen = true
-            let linkedSessionID = await viewModel.linkUpstreamSession(
-                row,
-                serverURLString: serverURLString,
-                token: token
-            )
-            if let linkedSessionID, !linkedSessionID.isEmpty {
-                self.linkedSessionID = linkedSessionID
-            }
-        }
     }
 
-    private var linkedSession: APISession? {
-        guard let linkedSessionID else { return nil }
-        return viewModel.sessions.first(where: { $0.id == linkedSessionID })
-    }
-
-    private var codexIdentity: CodexDirectSessionIdentity? {
-        guard row.summary.provider == .codex else { return nil }
+    private var directIdentity: DirectSessionIdentity? {
+        guard row.summary.provider == .codex || row.summary.provider == .claude else { return nil }
         guard let cwd = row.summary.cwd?.trimmingCharacters(in: .whitespacesAndNewlines),
               !cwd.isEmpty else {
             return nil
         }
-        guard let transcriptPath = row.summary.path?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !transcriptPath.isEmpty else {
-            return nil
+
+        if row.summary.provider == .codex {
+            guard let transcriptPath = row.summary.path?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !transcriptPath.isEmpty else {
+                return nil
+            }
+            return DirectSessionIdentity(
+                machineID: row.machineID,
+                machineDisplayName: row.machineDisplayName,
+                provider: .codex,
+                upstreamSessionID: row.summary.id,
+                title: row.title,
+                cwd: cwd,
+                transcriptPath: transcriptPath,
+                model: row.summary.model
+            )
         }
-        return CodexDirectSessionIdentity(
+
+        return DirectSessionIdentity(
             machineID: row.machineID,
             machineDisplayName: row.machineDisplayName,
-            threadID: row.summary.id,
+            provider: .claude,
+            upstreamSessionID: row.summary.id,
             title: row.title,
             cwd: cwd,
-            transcriptPath: transcriptPath,
+            transcriptPath: nil,
             model: row.summary.model
         )
-    }
-
-    private var isOpening: Bool {
-        viewModel.linkingUpstreamSessionID == row.id || !didStartOpen
-    }
-
-    private var statusMessage: String? {
-        let normalized = viewModel.upstreamSessionStatusMessage?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let normalized, !normalized.isEmpty else { return nil }
-        return normalized
-    }
-
-    private var currentStatusTitle: String {
-        if isOpening {
-            return "Opening Session…"
-        }
-        return statusMessage == nil ? "Session Ready" : "Couldn't Open Session"
-    }
-
-    private var currentStatusIcon: String {
-        if isOpening {
-            return "arrow.triangle.2.circlepath"
-        }
-        return statusMessage == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-    }
-
-    private var currentStatusTint: Color {
-        if isOpening {
-            return .accentColor
-        }
-        return statusMessage == nil ? .green : .orange
     }
 }

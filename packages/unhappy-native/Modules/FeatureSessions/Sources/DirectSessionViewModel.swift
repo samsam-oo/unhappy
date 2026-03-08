@@ -2,23 +2,23 @@ import Foundation
 import CoreKit
 
 @MainActor
-public final class CodexDirectSessionViewModel: ObservableObject {
+public final class DirectSessionViewModel: ObservableObject {
     @Published public private(set) var messages: [APISessionMessage] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isSending = false
     @Published public private(set) var sendErrorMessage: String?
 
-    public let identity: CodexDirectSessionIdentity
+    public let identity: DirectSessionIdentity
 
-    private let loader: any CodexDirectSessionMessagesLoadingAction
-    private let sender: any CodexDirectSessionMessageSendingAction
+    private let loader: any DirectSessionMessagesLoadingAction
+    private let sender: any DirectSessionMessageSendingAction
     private var pollingTask: Task<Void, Never>?
 
     public init(
-        identity: CodexDirectSessionIdentity,
-        loader: any CodexDirectSessionMessagesLoadingAction,
-        sender: any CodexDirectSessionMessageSendingAction
+        identity: DirectSessionIdentity,
+        loader: any DirectSessionMessagesLoadingAction,
+        sender: any DirectSessionMessageSendingAction
     ) {
         self.identity = identity
         self.loader = loader

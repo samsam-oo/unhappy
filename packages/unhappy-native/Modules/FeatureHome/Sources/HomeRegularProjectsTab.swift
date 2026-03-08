@@ -13,7 +13,7 @@ struct HomeRegularProjectsTab: View {
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
+    let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let onSessionsChanged: @MainActor ([APISession]) async -> Void
 
     @State private var selectedProjectID: String?
@@ -295,7 +295,7 @@ struct HomeRegularProjectsTab: View {
                         defaultNewSessionAgent: defaultNewSessionAgent,
                         makeNewSessionViewModel: makeNewSessionViewModel,
                         makeSessionToolsViewModel: makeSessionToolsViewModel,
-                        makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel,
+                        makeDirectSessionViewModel: makeDirectSessionViewModel,
                         onProjectRemoved: {
                             selectedProjectID = nil
                             detailPath.removeAll()

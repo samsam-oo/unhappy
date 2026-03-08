@@ -36,7 +36,7 @@ public struct SessionProjectDetailView: View {
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
+    let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let onProjectRemoved: (() -> Void)?
 
     @State private var isPresentingNewSession = false
@@ -53,7 +53,7 @@ public struct SessionProjectDetailView: View {
         defaultNewSessionAgent: APISessionSpawnAgent,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
-        makeCodexDirectSessionViewModel: @escaping @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel,
+        makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         onProjectRemoved: (() -> Void)? = nil
     ) {
         self.initialGroup = group
@@ -64,7 +64,7 @@ public struct SessionProjectDetailView: View {
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
-        self.makeCodexDirectSessionViewModel = makeCodexDirectSessionViewModel
+        self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.onProjectRemoved = onProjectRemoved
     }
 
@@ -271,11 +271,9 @@ public struct SessionProjectDetailView: View {
             NavigationLink {
                 SessionUpstreamOpeningView(
                     row: row,
-                    viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel,
-                    makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel
+                    makeDirectSessionViewModel: makeDirectSessionViewModel
                 )
             } label: {
                 ProjectUpstreamSessionRow(row: row)

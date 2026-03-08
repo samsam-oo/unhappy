@@ -791,6 +791,27 @@ public protocol MachineClaudeSessionsFetching: Sendable {
     ) async throws -> [APIClaudeSessionSummary]
 }
 
+public protocol MachineClaudeSessionMessagesFetching: Sendable {
+    func fetchClaudeSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String
+    ) async throws -> [APISessionMessage]
+}
+
+public protocol MachineClaudeSessionMessaging: Sendable {
+    func sendClaudeSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult
+}
+
 public protocol MachineModelsListing: Sendable {
     func fetchAgentCapabilities(
         serverURL: URL,
@@ -910,6 +931,8 @@ public actor URLSessionMachinesService:
     MachineCodexThreadMessagesFetching,
     MachineCodexThreadMessaging,
     MachineClaudeSessionsFetching,
+    MachineClaudeSessionMessagesFetching,
+    MachineClaudeSessionMessaging,
     MachineModelsListing,
     MachineProjectsFetching,
     MachineProjectOpening,

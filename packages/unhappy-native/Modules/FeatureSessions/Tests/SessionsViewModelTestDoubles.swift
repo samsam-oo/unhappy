@@ -380,46 +380,6 @@ actor RecordingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
     }
 }
 
-enum MockUpstreamSessionLinkerError: Error, Sendable {
-    case failed
-}
-
-struct MockUpstreamSessionLinker: NewSessionSpawningAction {
-    let result: Result<APISessionSpawnResult, MockUpstreamSessionLinkerError>
-
-    func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult {
-        switch result {
-        case .success(let response):
-            return response
-        case .failure(let error):
-            throw error
-        }
-    }
-}
-
-actor RecordingUpstreamSessionLinker: NewSessionSpawningAction {
-    private(set) var recordedRequests: [NewSessionSpawnRequest] = []
-    let result: Result<APISessionSpawnResult, MockUpstreamSessionLinkerError>
-
-    init(result: Result<APISessionSpawnResult, MockUpstreamSessionLinkerError>) {
-        self.result = result
-    }
-
-    func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult {
-        recordedRequests.append(request)
-        switch result {
-        case .success(let response):
-            return response
-        case .failure(let error):
-            throw error
-        }
-    }
-
-    func requests() -> [NewSessionSpawnRequest] {
-        recordedRequests
-    }
-}
-
 enum MockProjectsLoaderError: Error, Sendable {
     case failed
 }

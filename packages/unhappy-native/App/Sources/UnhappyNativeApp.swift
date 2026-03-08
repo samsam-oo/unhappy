@@ -19,7 +19,7 @@ struct UnhappyNativeApp: App {
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    private let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
+    private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     private let sessionPresenceCoordinator: any SessionPresenceCoordinating
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
@@ -109,8 +109,8 @@ struct UnhappyNativeApp: App {
         let sessionProjectsLoader = SessionProjectsLoadUseCase(service: machinesService)
         let sessionProjectOpener = SessionProjectOpenUseCase(service: machinesService)
         let sessionProjectRemover = SessionProjectRemoveUseCase(service: machinesService)
-        let codexDirectSessionMessagesLoader = CodexDirectSessionMessagesLoadUseCase(service: machinesService)
-        let codexDirectSessionMessageSender = CodexDirectSessionMessageSendUseCase(service: machinesService)
+        let directSessionMessagesLoader = DirectSessionMessagesLoadUseCase(codexService: machinesService, claudeService: machinesService)
+        let directSessionMessageSender = DirectSessionMessageSendUseCase(codexService: machinesService, claudeService: machinesService)
         let sessionModelsLoader = SessionModelsLoadUseCase(service: sessionsService)
         let sessionSpawnUseCase = SessionSpawnUseCase(service: sessionsService)
         let sessionMessageSender = SessionMessageSendUseCase(service: sessionsService)
@@ -138,7 +138,6 @@ struct UnhappyNativeApp: App {
                 projectOpener: sessionProjectOpener,
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
-                upstreamSessionLinker: newSessionSpawner,
                 sessionModelsLoader: sessionModelsLoader,
                 spawnUseCase: sessionSpawnUseCase,
                 messageSender: sessionMessageSender,
@@ -174,11 +173,11 @@ struct UnhappyNativeApp: App {
                 difftasticRunner: sessionDifftasticRunner
             )
         }
-        self.makeCodexDirectSessionViewModel = { identity in
-            CodexDirectSessionViewModel(
+        self.makeDirectSessionViewModel = { identity in
+            DirectSessionViewModel(
                 identity: identity,
-                loader: codexDirectSessionMessagesLoader,
-                sender: codexDirectSessionMessageSender
+                loader: directSessionMessagesLoader,
+                sender: directSessionMessageSender
             )
         }
         self.makeMachinesViewModel = {
@@ -220,7 +219,7 @@ struct UnhappyNativeApp: App {
                 makeSessionsViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeSessionToolsViewModel: makeSessionToolsViewModel,
-                makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel,
+                makeDirectSessionViewModel: makeDirectSessionViewModel,
                 onSessionsChanged: { sessions in
                     await sessionPresenceCoordinator.handleSessionsChanged(sessions)
                 },

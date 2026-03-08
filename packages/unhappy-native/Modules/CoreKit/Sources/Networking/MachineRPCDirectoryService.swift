@@ -53,6 +53,23 @@ public protocol MachineRPCDirectoryListing: Sendable {
         transcriptPath: String?,
         text: String
     ) async throws -> APISessionSendMessageResult
+
+    func fetchClaudeSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String
+    ) async throws -> [APISessionMessage]
+
+    func sendClaudeSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult
 }
 
 public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
@@ -346,6 +363,87 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             machineID: normalizedMachineID,
             command: "codex-send-message",
             params: params
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionSendMessageResult.self, from: responseData)
+    }
+
+    public func fetchClaudeSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String
+    ) async throws -> [APISessionMessage] {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw MachinesAPIError.rpcCallFailed("Session ID is required")
+        }
+        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCWD.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "claude-list-messages",
+            params: [
+                "sessionId": normalizedSessionID,
+                "cwd": normalizedCWD,
+            ]
+        )
+        let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+        if raw?["success"] as? Bool == false {
+            let normalizedError = (raw?["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "RPC call failed"
+            )
+        }
+        let decoder = JSONDecoder()
+        return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
+    }
+
+    public func sendClaudeSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw MachinesAPIError.rpcCallFailed("Session ID is required")
+        }
+        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCWD.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+
+        let responseData = try await invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "claude-send-message",
+            params: [
+                "sessionId": normalizedSessionID,
+                "cwd": normalizedCWD,
+                "text": normalizedText,
+            ]
         )
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionSendMessageResult.self, from: responseData)

@@ -452,6 +452,40 @@ extension URLSessionMachinesService {
         )
     }
 
+    public func fetchClaudeSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String
+    ) async throws -> [APISessionMessage] {
+        try await rpcDirectoryService.fetchClaudeSessionMessages(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            sessionID: sessionID,
+            cwd: cwd
+        )
+    }
+
+    public func sendClaudeSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        cwd: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult {
+        try await rpcDirectoryService.sendClaudeSessionMessage(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            sessionID: sessionID,
+            cwd: cwd,
+            text: text
+        )
+    }
+
     public func fetchCodexThreadsPage(
         serverURL: URL,
         token: String,

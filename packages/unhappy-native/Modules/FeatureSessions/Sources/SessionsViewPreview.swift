@@ -38,12 +38,12 @@ import FeatureSessionTools
                 difftasticRunner: SessionDifftasticUseCase(service: service)
             )
         },
-        makeCodexDirectSessionViewModel: { identity in
+        makeDirectSessionViewModel: { identity in
             let service = URLSessionMachinesService()
-            return CodexDirectSessionViewModel(
+            return DirectSessionViewModel(
                 identity: identity,
-                loader: CodexDirectSessionMessagesLoadUseCase(service: service),
-                sender: CodexDirectSessionMessageSendUseCase(service: service)
+                loader: DirectSessionMessagesLoadUseCase(codexService: service, claudeService: service),
+                sender: DirectSessionMessageSendUseCase(codexService: service, claudeService: service)
             )
         }
     )

@@ -2,8 +2,8 @@ import SwiftUI
 import CoreKit
 
 @MainActor
-public struct CodexDirectSessionDetailView: View {
-    @StateObject private var viewModel: CodexDirectSessionViewModel
+public struct DirectSessionDetailView: View {
+    @StateObject private var viewModel: DirectSessionViewModel
     private let serverURLString: String
     private let token: String
 
@@ -12,7 +12,7 @@ public struct CodexDirectSessionDetailView: View {
     public init(
         serverURLString: String,
         token: String,
-        makeViewModel: @escaping @MainActor () -> CodexDirectSessionViewModel
+        makeViewModel: @escaping @MainActor () -> DirectSessionViewModel
     ) {
         self.serverURLString = serverURLString
         self.token = token
@@ -31,7 +31,7 @@ public struct CodexDirectSessionDetailView: View {
                     errorMessage: viewModel.errorMessage,
                     visibleTranscriptPresentations: transcriptPresentations,
                     liveStatusText: nil,
-                    transcriptBottomAnchorID: "__codex_direct_bottom__",
+                    transcriptBottomAnchorID: "__direct_session_bottom__",
                     onReferenceToggle: {},
                     onFileLinkTap: { _ in },
                     onRetry: {
@@ -63,11 +63,15 @@ public struct CodexDirectSessionDetailView: View {
         }
     }
 
+    private var providerLabel: String {
+        viewModel.identity.provider.displayName
+    }
+
     private var summaryCard: some View {
         SessionSurfaceCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text("Codex")
+                    Text(providerLabel)
                         .modifier(DockChipModifier(tone: .primary))
                     Text(viewModel.identity.machineDisplayName)
                         .modifier(DockChipModifier(tone: .neutral))
@@ -98,6 +102,10 @@ public struct CodexDirectSessionDetailView: View {
         }
     }
 
+    private var composerPlaceholder: String {
+        "Message \(providerLabel)…"
+    }
+
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let sendError = viewModel.sendErrorMessage, !sendError.isEmpty {
@@ -107,7 +115,7 @@ public struct CodexDirectSessionDetailView: View {
             }
 
             HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message Codex…", text: $draftMessage, axis: .vertical)
+                TextField(composerPlaceholder, text: $draftMessage, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1...6)
 
