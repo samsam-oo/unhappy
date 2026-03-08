@@ -31,7 +31,6 @@ import { TrackedSession } from './types';
 import { projectPath } from '@/projectPath';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { getTmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
-import { deriveUpstreamSessionBinding } from '@/utils/upstreamSessionBinding';
 import { existsSync, readFileSync } from 'fs';
 import { isAbsolute, join, normalize } from 'path';
 import { openCodexThread } from '@/codex/directSession';
@@ -440,22 +439,6 @@ export async function startDaemon(): Promise<void> {
           sessionId: normalizedClaudeResumeSessionId,
         };
       }
-      const upstreamSessionBinding =
-        resolvedAgent === 'codex' && normalizedCodexResumeThreadId
-          ? deriveUpstreamSessionBinding({
-              machineId: machine.id,
-              agent: 'codex',
-              upstreamSessionId: normalizedCodexResumeThreadId,
-              machineKey: credentials.encryption.machineKey,
-            })
-          : resolvedAgent === 'claude' && normalizedClaudeResumeSessionId
-            ? deriveUpstreamSessionBinding({
-                machineId: machine.id,
-                agent: 'claude',
-                upstreamSessionId: normalizedClaudeResumeSessionId,
-                machineKey: credentials.encryption.machineKey,
-              })
-            : null;
       const normalizedModel =
         typeof model === 'string' && model.trim().length > 0
           ? model.trim()
@@ -658,16 +641,6 @@ export async function startDaemon(): Promise<void> {
         logger.debug(
           `[DAEMON RUN] After variable expansion: ${Object.keys(extraEnv).join(', ')}`,
         );
-
-        if (upstreamSessionBinding) {
-          extraEnv.UNHAPPY_SESSION_TAG = upstreamSessionBinding.sessionTag;
-          extraEnv.UNHAPPY_SESSION_DATA_KEY =
-            upstreamSessionBinding.sessionDataKeyBase64;
-          logger.debug('[DAEMON RUN] Reusing deterministic upstream session binding', {
-            identity: upstreamSessionBinding.identity,
-            sessionTag: upstreamSessionBinding.sessionTag,
-          });
-        }
 
         // Fail-fast validation: Check that auth variables relevant to this agent are fully expanded.
         //
