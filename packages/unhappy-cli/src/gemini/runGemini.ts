@@ -608,7 +608,15 @@ export async function runGemini(opts: {
   // Start Unhappy MCP server and create Gemini backend
   //
 
-  const happyServer = await startHappyServer(session);
+  const happyServer = await startHappyServer({
+    onSummary: async (title) => {
+      session.sendClaudeSessionMessage({
+        type: 'summary',
+        summary: title,
+        leafUuid: randomUUID(),
+      });
+    },
+  });
   const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');
   const mcpServers = {
     unhappy: {

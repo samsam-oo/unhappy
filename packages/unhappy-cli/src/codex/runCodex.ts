@@ -2211,7 +2211,7 @@ export async function runCodex(opts: {
   });
 
   // Start Unhappy MCP server (HTTP) and prepare STDIO bridge config for Codex
-  const happyServer = await startHappyServer(session, {
+  const happyServer = await startHappyServer({
     skipSummaryMessage: true,
     onChangeTitle: async (title) => {
       const normalized = title.trim();

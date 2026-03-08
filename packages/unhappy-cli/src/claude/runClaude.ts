@@ -4,6 +4,7 @@ import { ApiClient } from '@/api/api';
 import { AgentState, Metadata, extractUserMessageText } from '@/api/types';
 import { loop } from '@/claude/loop';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
+import { appendClaudeSessionSummary } from '@/claude/directSession';
 import {
   cleanupHookSettingsFile,
   generateHookSettingsFile,
@@ -127,6 +128,10 @@ export async function runClaude(
   });
   logger.debug('Claude direct runtime session initialized');
 
+  // Variable to track current session instance (updated via onSessionReady callback)
+  // Used by hook server to notify Session when Claude changes session ID
+  let currentSession: Session | null = null;
+
   // Extract SDK metadata in background and update session when ready
   extractSDKMetadataAsync(async (sdkMetadata) => {
     logger.debug(
@@ -147,12 +152,23 @@ export async function runClaude(
   });
 
   // Start Unhappy MCP server
-  const happyServer = await startHappyServer(session);
+  const happyServer = await startHappyServer({
+    onSummary: async (title) => {
+      const sessionId =
+        typeof currentSession?.sessionId === 'string'
+          ? currentSession.sessionId.trim()
+          : '';
+      if (!sessionId) return;
+      await appendClaudeSessionSummary(
+        {
+          sessionId,
+          cwd: workingDirectory,
+        },
+        title,
+      );
+    },
+  });
   logger.debug(`[START] Unhappy MCP server started at ${happyServer.url}`);
-
-  // Variable to track current session instance (updated via onSessionReady callback)
-  // Used by hook server to notify Session when Claude changes session ID
-  let currentSession: Session | null = null;
 
   const deleteClaudeTranscriptFile = (sessionId: string | null): boolean => {
     const normalizedSessionId =

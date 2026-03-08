@@ -1,5 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { dirname, join } from 'node:path';
 
 import { getProfileEnvironmentVariables, readSettings, validateProfileForAgent } from '@/persistence';
 import { logger } from '@/ui/logger';
@@ -72,6 +73,29 @@ export function resolveClaudeSessionTranscriptPath(
   sessionId: string,
 ): string {
   return join(getProjectPath(cwd), `${sessionId}.jsonl`);
+}
+
+export async function appendClaudeSessionSummary(
+  descriptor: ClaudeDirectSessionDescriptor,
+  summary: string,
+): Promise<void> {
+  const normalizedSummary = summary.trim();
+  if (!normalizedSummary) {
+    return;
+  }
+
+  const transcriptPath = resolveClaudeSessionTranscriptPath(
+    descriptor.cwd,
+    descriptor.sessionId,
+  );
+  const line = JSON.stringify({
+    type: 'summary',
+    summary: normalizedSummary,
+    leafUuid: randomUUID(),
+  });
+
+  mkdirSync(dirname(transcriptPath), { recursive: true });
+  appendFileSync(transcriptPath, `${line}\n`, 'utf8');
 }
 
 export async function listClaudeSessionMessages(
