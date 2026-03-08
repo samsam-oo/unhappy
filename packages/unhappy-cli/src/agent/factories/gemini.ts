@@ -11,6 +11,7 @@
 import {
     GEMINI_API_KEY_ENV,
     GEMINI_MODEL_ENV,
+    GOOGLE_GENAI_USE_VERTEXAI_ENV,
     GOOGLE_API_KEY_ENV,
 } from '@/gemini/constants';
 import {
@@ -47,7 +48,7 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
 
   /** Model to use. If undefined, will use local config, env var, or default.
    *  If explicitly set to null, will use default (skip local config).
-   *  (defaults to GEMINI_MODEL env var or 'gemini-2.5-pro') */
+   *  (defaults to GEMINI_MODEL env var or 'auto') */
   model?: string | null;
 
   /** MCP servers to make available to the agent */
@@ -154,6 +155,7 @@ export function createGeminiBackend(
         ? {
             GOOGLE_CLOUD_PROJECT: googleCloudProject,
             GOOGLE_CLOUD_PROJECT_ID: googleCloudProject,
+            [GOOGLE_GENAI_USE_VERTEXAI_ENV]: 'true',
           }
         : {}),
       // Suppress debug output from gemini CLI to avoid stdout pollution

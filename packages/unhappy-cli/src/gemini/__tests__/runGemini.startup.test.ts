@@ -160,7 +160,7 @@ vi.mock('@/agent/factories/gemini', () => ({
       cancel: vi.fn(async () => {}),
       dispose: vi.fn(async () => {}),
     },
-    model: 'gemini-2.5-pro',
+    model: 'auto',
     modelSource: 'default',
   })),
 }));
@@ -168,12 +168,13 @@ vi.mock('@/agent/factories/gemini', () => ({
 vi.mock('@/gemini/constants', () => ({
   CHANGE_TITLE_INSTRUCTION: 'change title',
   GEMINI_MODEL_ENV: 'GEMINI_MODEL',
+  GOOGLE_GENAI_USE_VERTEXAI_ENV: 'GOOGLE_GENAI_USE_VERTEXAI',
 }));
 
 vi.mock('@/gemini/types', () => ({}));
 
 vi.mock('@/gemini/utils/config', () => ({
-  getInitialGeminiModel: vi.fn(() => 'gemini-2.5-pro'),
+  getInitialGeminiModel: vi.fn(() => 'auto'),
   readGeminiLocalConfig: vi.fn(() => ({})),
   saveGeminiModelToConfig: vi.fn(),
 }));

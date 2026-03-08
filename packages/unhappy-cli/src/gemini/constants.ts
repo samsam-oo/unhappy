@@ -16,8 +16,11 @@ export const GOOGLE_API_KEY_ENV = 'GOOGLE_API_KEY';
 /** Environment variable name for Gemini model selection */
 export const GEMINI_MODEL_ENV = 'GEMINI_MODEL';
 
+/** Environment variable to force Gemini CLI onto the Vertex AI backend */
+export const GOOGLE_GENAI_USE_VERTEXAI_ENV = 'GOOGLE_GENAI_USE_VERTEXAI';
+
 /** Default Gemini model */
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';
+export const DEFAULT_GEMINI_MODEL = 'auto';
 
 /**
  * Instruction for changing chat title
