@@ -357,6 +357,14 @@ export class CodexAppServerClient {
     });
   }
 
+  async openThread(
+    config: CodexSessionConfig,
+    options?: { signal?: AbortSignal },
+  ): Promise<CodexThreadBootstrapState> {
+    if (!this.connected) await this.connect();
+    return await this.ensureThread(config, options?.signal);
+  }
+
   async continueSession(
     prompt: string | Array<Record<string, unknown>>,
     options?: ContinueSessionOptions,

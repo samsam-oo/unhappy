@@ -25,6 +25,12 @@ import {
   listCodexModels,
   type CodexModelMetadata,
 } from '@/modules/common/listModels';
+import {
+  openCodexThread,
+  listCodexThreadMessages,
+  sendCodexThreadMessage,
+  setCodexThreadName,
+} from '@/codex/directSession';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import {
   defaultClaudeConfigDir,
@@ -739,6 +745,154 @@ export class ApiMachineClient {
         return { success: true, threads, hasNext, nextCursor };
       },
     );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-open-thread',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
+
+        if (!threadId) {
+          return { success: false, error: 'threadId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        const result = await openCodexThread({
+          threadId,
+          cwd,
+          transcriptPath: transcriptPath || null,
+          model,
+        });
+        return {
+          success: true as const,
+          threadId: result.threadId ?? threadId,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-list-messages',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        if (!threadId) {
+          return { success: false, error: 'threadId is required' };
+        }
+        if (!transcriptPath) {
+          return { success: false, error: 'path is required' };
+        }
+
+        const messages = await listCodexThreadMessages(transcriptPath);
+        return {
+          success: true as const,
+          messages,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-send-message',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        const text =
+          typeof params?.text === 'string' ? params.text.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
+        const effort =
+          params?.effort === 'none' ||
+          params?.effort === 'minimal' ||
+          params?.effort === 'low' ||
+          params?.effort === 'medium' ||
+          params?.effort === 'high' ||
+          params?.effort === 'xhigh'
+            ? params.effort
+            : null;
+
+        if (!threadId) {
+          return { success: false, error: 'threadId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+        if (!text) {
+          return { success: false, error: 'text is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        await sendCodexThreadMessage(
+          {
+            threadId,
+            cwd,
+            transcriptPath: transcriptPath || null,
+            model,
+            effort,
+          },
+          text,
+        );
+        return {
+          success: true as const,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-set-thread-name',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        const name =
+          typeof params?.name === 'string' ? params.name.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
+
+        if (!threadId) {
+          return { success: false, error: 'threadId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+        if (!name) {
+          return { success: false, error: 'name is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        await setCodexThreadName({
+          threadId,
+          cwd,
+          transcriptPath: transcriptPath || null,
+          model,
+        }, name);
+        return {
+          success: true as const,
+        };
+      },
+    );
   }
 
   /**
@@ -978,6 +1132,10 @@ export class ApiMachineClient {
           'getDirectoryTree',
           'ripgrep',
           'codex-list-threads',
+          'codex-open-thread',
+          'codex-list-messages',
+          'codex-send-message',
+          'codex-set-thread-name',
           'claude-list-sessions',
         ]);
         if (!supportedCommands.has(command)) {
