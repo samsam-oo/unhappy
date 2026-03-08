@@ -37,4 +37,45 @@ enum DirectSessionIdentityResolver {
             model: row.summary.model
         )
     }
+
+    static func resolve(from session: APISession) -> DirectSessionIdentity? {
+        let context = SessionRuntimeContext(session: session)
+        guard let upstreamIdentity = context.upstreamIdentity else { return nil }
+        guard let cwd = context.workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !cwd.isEmpty else {
+            return nil
+        }
+
+        if upstreamIdentity.provider == .codex {
+            guard let transcriptPath = upstreamIdentity.transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !transcriptPath.isEmpty else {
+                return nil
+            }
+            return DirectSessionIdentity(
+                machineID: upstreamIdentity.machineID,
+                machineDisplayName: upstreamIdentity.machineDisplayName ?? upstreamIdentity.machineID,
+                provider: .codex,
+                upstreamSessionID: upstreamIdentity.upstreamSessionID,
+                title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session),
+                cwd: cwd,
+                transcriptPath: transcriptPath,
+                model: context.currentModelLabel
+            )
+        }
+
+        if upstreamIdentity.provider == .claude {
+            return DirectSessionIdentity(
+                machineID: upstreamIdentity.machineID,
+                machineDisplayName: upstreamIdentity.machineDisplayName ?? upstreamIdentity.machineID,
+                provider: .claude,
+                upstreamSessionID: upstreamIdentity.upstreamSessionID,
+                title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session),
+                cwd: cwd,
+                transcriptPath: upstreamIdentity.transcriptPath,
+                model: context.currentModelLabel
+            )
+        }
+
+        return nil
+    }
 }

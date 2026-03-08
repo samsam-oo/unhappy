@@ -57,19 +57,17 @@ public struct SessionRecentView: View {
     @ViewBuilder
     private func recentNavigationLink(for entry: SessionRecentSection.Entry) -> some View {
         switch entry {
-        case .direct(let row):
+        case .direct(let identity, _):
             NavigationLink {
-                if let identity = DirectSessionIdentityResolver.resolve(from: row) {
-                    DirectSessionDetailView(
-                        serverURLString: serverURLString,
-                        token: token,
-                        makeViewModel: {
-                            makeDirectSessionViewModel(identity)
-                        }
-                    )
-                }
+                DirectSessionDetailView(
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeViewModel: {
+                        makeDirectSessionViewModel(identity)
+                    }
+                )
             } label: {
-                RecentDirectSessionRow(row: row)
+                RecentDirectSessionRow(identity: identity, updatedAt: entry.updatedAt)
             }
 
         case .mirrored(let session):
@@ -136,24 +134,25 @@ private struct RecentSessionRow: View {
 }
 
 private struct RecentDirectSessionRow: View {
-    let row: SessionLinkedUpstreamSession
+    let identity: DirectSessionIdentity
+    let updatedAt: TimeInterval
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(row.title)
+            Text(identity.title)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
 
             HStack(spacing: 8) {
-                Text(row.summary.provider.displayName)
+                Text(identity.provider.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(row.summary.id)
+                Text(identity.upstreamSessionID)
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Text(Date(timeIntervalSince1970: row.sortTimestamp), style: .time)
+                Text(Date(timeIntervalSince1970: updatedAt), style: .time)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

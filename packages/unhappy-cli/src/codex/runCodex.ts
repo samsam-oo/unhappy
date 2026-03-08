@@ -1369,14 +1369,17 @@ export async function runCodex(opts: {
     if (conversationId) lastReportedAgentConversationId = conversationId;
 
     try {
+      const transcriptPath = findCodexResumeFileWithFallbacks(sessionId);
       session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         agentSessionId: sessionId,
         ...(conversationId ? { agentConversationId: conversationId } : {}),
+        ...(transcriptPath ? { agentTranscriptPath: transcriptPath } : {}),
       }));
       logger.debug(`[Codex] Reported agent session id to metadata (${source}):`, {
         sessionId,
         conversationId: conversationId ?? null,
+        transcriptPath: transcriptPath ?? null,
       });
     } catch (e) {
       logger.debug('[Codex] Failed to report codex identifiers to metadata', e);

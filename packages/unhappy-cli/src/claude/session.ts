@@ -3,6 +3,8 @@ import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
+import { getProjectPath } from "./utils/path";
+import { join } from "node:path";
 
 export class Session {
     readonly path: string;
@@ -101,11 +103,13 @@ export class Session {
      */
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
+        const transcriptPath = join(getProjectPath(this.path), `${sessionId}.jsonl`);
         
         // Update metadata with upstream agent session ID (Claude Code)
         this.client.updateMetadata((metadata) => ({
             ...metadata,
-            agentSessionId: sessionId
+            agentSessionId: sessionId,
+            agentTranscriptPath: transcriptPath,
         }));
         logger.debug(`[Session] Agent session ID ${sessionId} added to metadata (Claude Code)`);
         

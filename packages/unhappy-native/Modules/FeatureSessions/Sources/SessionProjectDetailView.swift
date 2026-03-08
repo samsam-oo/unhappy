@@ -6,11 +6,14 @@ import FeatureSessionTools
 @MainActor
 public struct SessionProjectDetailView: View {
     private enum SessionListEntry: Identifiable {
+        case direct(DirectSessionIdentity, updatedAt: TimeInterval)
         case mirrored(APISession)
         case upstream(SessionLinkedUpstreamSession)
 
         var id: String {
             switch self {
+            case .direct(let identity, _):
+                return "direct:\(identity.machineID)|\(identity.provider.rawValue)|\(identity.upstreamSessionID)"
             case .mirrored(let session):
                 return "mirrored:\(session.id)"
             case .upstream(let row):
@@ -20,6 +23,8 @@ public struct SessionProjectDetailView: View {
 
         var sortTimestamp: TimeInterval {
             switch self {
+            case .direct(_, let updatedAt):
+                return updatedAt
             case .mirrored(let session):
                 return session.updatedAt
             case .upstream(let row):
@@ -232,8 +237,25 @@ public struct SessionProjectDetailView: View {
     }
 
     private var sessionEntries: [SessionListEntry] {
-        let combined = group.displayMirroredSessions.map(SessionListEntry.mirrored)
-            + group.displayUpstreamSessions.map(SessionListEntry.upstream)
+        let directPairs: [(String, SessionListEntry)] = group.displayUpstreamSessions.compactMap { row in
+            guard let identity = DirectSessionIdentityResolver.resolve(from: row) else {
+                return nil
+            }
+            return (row.id, SessionListEntry.direct(identity, updatedAt: row.sortTimestamp))
+        }
+        let directRowsByKey = Dictionary(uniqueKeysWithValues: directPairs)
+        var combined: [SessionListEntry] = Array(directRowsByKey.values)
+        for session in group.displayMirroredSessions {
+            if let key = SessionUpstreamIdentity(session: session)?.key,
+               directRowsByKey[key] != nil {
+                continue
+            }
+            if let identity = DirectSessionIdentityResolver.resolve(from: session) {
+                combined.append(.direct(identity, updatedAt: session.updatedAt))
+            } else {
+                combined.append(.mirrored(session))
+            }
+        }
         return combined.sorted { lhs, rhs in
             if lhs.sortTimestamp != rhs.sortTimestamp {
                 return lhs.sortTimestamp > rhs.sortTimestamp
@@ -245,6 +267,19 @@ public struct SessionProjectDetailView: View {
     @ViewBuilder
     private func sessionRow(for entry: SessionListEntry) -> some View {
         switch entry {
+        case .direct(let identity, let updatedAt):
+            NavigationLink {
+                DirectSessionDetailView(
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeViewModel: {
+                        makeDirectSessionViewModel(identity)
+                    }
+                )
+            } label: {
+                ProjectDirectSessionRow(identity: identity, updatedAt: updatedAt)
+            }
+
         case .mirrored(let session):
             NavigationLink {
                 SessionDetailView(
@@ -382,6 +417,41 @@ private struct ProjectMirroredSessionRow: View {
                 Text("Updated \(SessionTimestampPresentation.updatedLabel(for: sessionUpdatedAt))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct ProjectDirectSessionRow: View {
+    let identity: DirectSessionIdentity
+    let updatedAt: TimeInterval
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(identity.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text(identity.provider.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                Text("Updated \(SessionTimestampPresentation.updatedLabel(for: updatedAt))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let model = identity.model, !model.isEmpty {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(model)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.vertical, 4)

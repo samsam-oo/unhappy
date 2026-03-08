@@ -6,6 +6,7 @@ struct SessionUpstreamIdentity: Equatable, Sendable {
     let provider: APIUpstreamSessionProvider
     let upstreamSessionID: String
     let workingDirectory: String?
+    let transcriptPath: String?
     let machineDisplayName: String?
 
     var key: String {
@@ -66,6 +67,15 @@ struct SessionUpstreamIdentity: Equatable, Sendable {
                 ]
             ),
             homeDirectory: homeDirectory
+        )
+        self.transcriptPath = Self.resolveOptionalString(
+            in: [agentState, metadata],
+            keys: [
+                "agentTranscriptPath",
+                "agent_transcript_path",
+                "resumeFile",
+                "resume_file",
+            ]
         )
         self.machineDisplayName = SessionMachineDisplayNameResolver.resolve(in: [metadata, agentState])
     }
