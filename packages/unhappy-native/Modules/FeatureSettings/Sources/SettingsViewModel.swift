@@ -127,33 +127,23 @@ public final class SettingsViewModel: ObservableObject {
 
     private func schedulePersistence() {
         let manager = settingsManager
-        let serverURLString = self.serverURLString
-        let apiToken = self.apiToken
-        let selectedLanguage = self.selectedLanguage
-        let selectedAppearance = self.selectedAppearance
-        let experimentsEnabled = self.experimentsEnabled
-        let hideInactiveSessions = self.hideInactiveSessions
-        let useEnhancedSessionWizard = self.useEnhancedSessionWizard
-        let voiceEnabled = self.voiceEnabled
-        let voiceLanguage = self.voiceLanguage
-        let defaultNewSessionAgent = self.defaultNewSessionAgent
-        let lastViewedChangelogID = self.lastViewedChangelogID
+        let snapshot = AppSettingsSnapshot(
+            serverURLString: serverURLString,
+            apiToken: apiToken,
+            appLanguage: selectedLanguage,
+            appearance: selectedAppearance,
+            experimentsEnabled: experimentsEnabled,
+            hideInactiveSessions: hideInactiveSessions,
+            useEnhancedSessionWizard: useEnhancedSessionWizard,
+            voiceEnabled: voiceEnabled,
+            voiceLanguage: voiceLanguage,
+            defaultNewSessionAgent: defaultNewSessionAgent,
+            lastViewedChangelogID: lastViewedChangelogID
+        )
         persistenceTask?.cancel()
         persistenceTask = Task {
             guard !Task.isCancelled else { return }
-            await manager.persistSettings(
-                serverURLString: serverURLString,
-                apiToken: apiToken,
-                appLanguage: selectedLanguage,
-                appearance: selectedAppearance,
-                experimentsEnabled: experimentsEnabled,
-                hideInactiveSessions: hideInactiveSessions,
-                useEnhancedSessionWizard: useEnhancedSessionWizard,
-                voiceEnabled: voiceEnabled,
-                voiceLanguage: voiceLanguage,
-                defaultNewSessionAgent: defaultNewSessionAgent,
-                lastViewedChangelogID: lastViewedChangelogID
-            )
+            await manager.persistSettings(snapshot)
         }
     }
 

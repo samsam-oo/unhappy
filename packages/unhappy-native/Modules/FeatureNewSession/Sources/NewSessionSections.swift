@@ -5,12 +5,15 @@ struct NewSessionAdvancedSection: View {
     @ObservedObject var viewModel: NewSessionViewModel
     let serverURLString: String
     let token: String
-    @Binding var showCodexThreadsSheet: Bool
-    @Binding var showClaudeSessionsSheet: Bool
+    @Binding var showExistingSessionsSheet: Bool
     let focusedField: FocusState<FocusedField?>.Binding
     let selectedModelDisplayValue: String
-    let codexSelectionButtonTitle: String
-    let claudeSelectionButtonTitle: String
+    let existingSessionButtonTitle: String?
+    let existingSessionErrorMessage: String?
+    let existingSessionSelectionID: String?
+    let existingSessionSelectionLabel: String?
+    let existingSessionSelectionClearAction: () -> Void
+    let loadExistingSessionsAction: () async -> Void
 
     var body: some View {
         Section("Advanced") {
@@ -18,8 +21,7 @@ struct NewSessionAdvancedSection: View {
 
             reasoningEffortMenu
 
-            codexSessionSelection
-            claudeSessionSelection
+            existingSessionSelection
 
             TextField("Session token (optional)", text: $viewModel.sessionToken)
                 .textInputAutocapitalization(.never)
@@ -39,20 +41,27 @@ struct NewSessionAdvancedSection: View {
             }
         }
 
-        Menu {
-            Button("Default") {
-                viewModel.setSelectedModel("")
-            }
-            ForEach(viewModel.availableModels, id: \.self) { model in
-                Button(model) {
-                    viewModel.setSelectedModel(model)
+        if !viewModel.availableModelOptions.isEmpty {
+            Menu {
+                ForEach(viewModel.availableModelOptions) { option in
+                    Button(option.menuLabel) {
+                        viewModel.setSelectedModel(option.id)
+                    }
+                }
+            } label: {
+                HStack {
+                    Text("Model")
+                    Spacer()
+                    Text(selectedModelDisplayValue)
+                        .foregroundStyle(.secondary)
                 }
             }
-        } label: {
-            HStack {
-                Text("Model")
-                Spacer()
-                Text(selectedModelDisplayValue)
+
+            if let selectedOption = viewModel.selectedModelOption,
+               let description = selectedOption.description,
+               !description.isEmpty {
+                Text(description)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
@@ -73,98 +82,63 @@ struct NewSessionAdvancedSection: View {
         }
     }
 
+    @ViewBuilder
     private var reasoningEffortMenu: some View {
-        Menu {
-            ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
-                Button(value.displayName) {
-                    viewModel.setSelectedReasoningEffort(value)
-                }
-            }
-        } label: {
-            HStack {
-                Text("Reasoning Effort")
-                Spacer()
-                Text(viewModel.selectedReasoningEffort.displayName)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var codexSessionSelection: some View {
-        Group {
-            Button(viewModel.isLoadingCodexThreads ? "Loading Codex Sessions…" : codexSelectionButtonTitle) {
-                showCodexThreadsSheet = true
-                Task {
-                    await viewModel.loadCodexThreads(
-                        serverURLString: serverURLString,
-                        token: token
-                    )
-                }
-            }
-            .disabled(
-                viewModel.selectedMachineID == nil ||
-                    viewModel.isLoadingCodexThreads ||
-                    viewModel.isLoadingMoreCodexThreads
-            )
-
-            if let error = viewModel.codexThreadsErrorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-
-            if !viewModel.codexResumeThreadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Selected Codex Session")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.codexResumeThreadID)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                    Button("Clear Codex Selection") {
-                        viewModel.clearCodexSelection()
+        if !viewModel.availableReasoningEfforts.isEmpty {
+            Menu {
+                ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { value in
+                    Button(value.displayName) {
+                        viewModel.setSelectedReasoningEffort(value)
                     }
-                    .font(.footnote)
+                }
+            } label: {
+                HStack {
+                    Text("Reasoning Effort")
+                    Spacer()
+                    Text(viewModel.selectedReasoningEffort.displayName)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
     }
 
-    private var claudeSessionSelection: some View {
-        Group {
-            Button(viewModel.isLoadingClaudeSessions ? "Loading Claude Sessions…" : claudeSelectionButtonTitle) {
-                showClaudeSessionsSheet = true
-                Task {
-                    await viewModel.loadClaudeSessions(
-                        serverURLString: serverURLString,
-                        token: token
-                    )
-                }
-            }
-            .disabled(
-                viewModel.selectedMachineID == nil ||
-                    viewModel.isLoadingClaudeSessions ||
-                    viewModel.isLoadingMoreClaudeSessions
-            )
-
-            if let error = viewModel.claudeSessionsErrorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-
-            if !viewModel.claudeResumeSessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Selected Claude Session")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.claudeResumeSessionID)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                    Button("Clear Claude Selection") {
-                        viewModel.clearClaudeSelection()
+    @ViewBuilder
+    private var existingSessionSelection: some View {
+        if let existingSessionButtonTitle {
+            Group {
+                Button(existingSessionButtonTitle) {
+                    showExistingSessionsSheet = true
+                    Task {
+                        await loadExistingSessionsAction()
                     }
-                    .font(.footnote)
+                }
+                .disabled(
+                    viewModel.selectedMachineID == nil ||
+                        viewModel.isLoadingCodexThreads ||
+                        viewModel.isLoadingMoreCodexThreads ||
+                        viewModel.isLoadingClaudeSessions ||
+                        viewModel.isLoadingMoreClaudeSessions
+                )
+
+                if let error = existingSessionErrorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+
+                if let existingSessionSelectionID, let existingSessionSelectionLabel {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(existingSessionSelectionLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(existingSessionSelectionID)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                        Button("Clear Selection") {
+                            existingSessionSelectionClearAction()
+                        }
+                        .font(.footnote)
+                    }
                 }
             }
         }
@@ -191,7 +165,7 @@ struct NewSessionActionSection: View {
     let serverURLString: String
     let token: String
     let primaryActionTitle: String
-    let onSpawned: (String?) -> Void
+    let onSpawned: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -203,7 +177,7 @@ struct NewSessionActionSection: View {
                         token: token
                     )
                     if success {
-                        onSpawned(viewModel.spawnedSessionID)
+                        onSpawned()
                         onDismiss()
                     }
                 }
@@ -225,7 +199,7 @@ struct NewSessionActionSection: View {
                             token: token
                         )
                         if success {
-                            onSpawned(viewModel.spawnedSessionID)
+                            onSpawned()
                             onDismiss()
                         }
                     }

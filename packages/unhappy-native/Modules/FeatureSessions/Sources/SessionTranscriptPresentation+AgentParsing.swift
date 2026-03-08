@@ -695,6 +695,7 @@ extension SessionTranscriptPresentationBuilder {
 
         let itemType = (normalizedText(item["type"]) ?? "item").lowercased()
         let entryKind: SessionTranscriptEntryKind = eventType == "item_started" ? .toolCall : .toolResult
+        let toolUseID = extractToolUseID(from: item)
 
         switch itemType {
         case "commandexecution":
@@ -705,6 +706,7 @@ extension SessionTranscriptPresentationBuilder {
                     kind: entryKind,
                     title: eventType == "item_started" ? "Command Execution" : "Command Result",
                     body: stringify(item),
+                    toolUseID: toolUseID,
                     sourceType: eventType,
                     toolName: "codexbash",
                     isSidechain: isSidechain,
@@ -719,6 +721,7 @@ extension SessionTranscriptPresentationBuilder {
                     kind: entryKind,
                     title: eventType == "item_started" ? "File Changes" : "File Change Result",
                     body: stringify(item),
+                    toolUseID: toolUseID,
                     sourceType: eventType,
                     toolName: "codexpatch",
                     isSidechain: isSidechain,
@@ -734,6 +737,7 @@ extension SessionTranscriptPresentationBuilder {
                     kind: entryKind,
                     title: eventType == "item_started" ? toolDisplayName(toolName) : "\(toolDisplayName(toolName)) Result",
                     body: stringify(item),
+                    toolUseID: toolUseID,
                     sourceType: eventType,
                     toolName: toolName,
                     isSidechain: isSidechain,

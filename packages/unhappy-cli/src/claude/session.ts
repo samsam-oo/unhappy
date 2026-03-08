@@ -1,14 +1,25 @@
-import { ApiClient, ApiSessionClient } from "@/lib";
+import { SessionRuntimeClient } from "@/api/apiSession";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
+import { getProjectPath } from "./utils/path";
+import { join } from "node:path";
+import { notifyDaemonProviderSessionStarted } from "@/daemon/controlClient";
+
+export interface SessionPushNotifier {
+    sendToAllDevices(
+        title: string,
+        body: string,
+        data?: Record<string, unknown>
+    ): Promise<unknown> | unknown;
+}
 
 export class Session {
     readonly path: string;
     readonly logPath: string;
-    readonly api: ApiClient;
-    readonly client: ApiSessionClient;
+    readonly pushNotifier: SessionPushNotifier;
+    readonly client: SessionRuntimeClient;
     readonly queue: MessageQueue2<EnhancedMode>;
     readonly claudeEnvVars?: Record<string, string>;
     claudeArgs?: string[];  // Made mutable to allow filtering
@@ -31,8 +42,8 @@ export class Session {
     private keepAliveInterval: NodeJS.Timeout;
 
     constructor(opts: {
-        api: ApiClient,
-        client: ApiSessionClient,
+        pushNotifier: SessionPushNotifier,
+        client: SessionRuntimeClient,
         path: string,
         logPath: string,
         sessionId: string | null,
@@ -48,7 +59,7 @@ export class Session {
         jsRuntime?: JsRuntime,
     }) {
         this.path = opts.path;
-        this.api = opts.api;
+        this.pushNotifier = opts.pushNotifier;
         this.client = opts.client;
         this.logPath = opts.logPath;
         this.sessionId = opts.sessionId;
@@ -101,12 +112,24 @@ export class Session {
      */
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
+        const transcriptPath = join(getProjectPath(this.path), `${sessionId}.jsonl`);
         
         // Update metadata with upstream agent session ID (Claude Code)
         this.client.updateMetadata((metadata) => ({
             ...metadata,
-            agentSessionId: sessionId
+            agentSessionId: sessionId,
+            agentTranscriptPath: transcriptPath,
         }));
+        const metadataSnapshot = this.client.getMetadataSnapshot();
+        if (metadataSnapshot) {
+            void notifyDaemonProviderSessionStarted('claude', sessionId, {
+                ...metadataSnapshot,
+                agentSessionId: sessionId,
+                agentTranscriptPath: transcriptPath,
+            }).catch((error) => {
+                logger.debug('[Session] Failed to report provider session to daemon', error);
+            });
+        }
         logger.debug(`[Session] Agent session ID ${sessionId} added to metadata (Claude Code)`);
         
         // Notify all registered callbacks

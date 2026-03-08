@@ -1,20 +1,17 @@
-import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
 import { ApiClient } from '@/api/api';
 import { AgentState, Metadata, extractUserMessageText } from '@/api/types';
-import { claudeLocal } from '@/claude/claudeLocal';
 import { loop } from '@/claude/loop';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
+import { appendClaudeSessionSummary } from '@/claude/directSession';
 import {
   cleanupHookSettingsFile,
   generateHookSettingsFile,
 } from '@/claude/utils/generateHookSettings';
-import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { configuration } from '@/configuration';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { listClaudeModels } from '@/modules/common/listModels';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
@@ -28,8 +25,8 @@ import { resolveMachineHost } from '@/utils/machineHost';
 import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import {
   connectionState,
-  startOfflineReconnection,
 } from '@/utils/serverConnectionErrors';
+import { createLocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
 import fs from 'node:fs';
 import { join, resolve } from 'node:path';
 import packageJson from '../../package.json';
@@ -63,7 +60,6 @@ export async function runClaude(
   logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
 
   const workingDirectory = process.cwd();
-  const sessionTag = randomUUID();
 
   // Log environment info at startup
   logger.debugLargeJson(
@@ -125,82 +121,16 @@ export async function runClaude(
     lifecycleStateSince: Date.now(),
     flavor: 'claude',
   };
-  const response = await api.getOrCreateSession({
-    tag: sessionTag,
+  const session = createLocalSessionRuntimeClient({
+    provider: 'claude',
     metadata,
-    state,
+    agentState: state,
   });
+  logger.debug('Claude direct runtime session initialized');
 
-  // Handle server unreachable case - run Claude locally with hot reconnection
-  // Note: connectionState.notifyOffline() was already called by api.ts with error details
-  if (!response) {
-    let offlineSessionId: string | null = null;
-
-    const reconnection = startOfflineReconnection({
-      serverUrl: configuration.serverUrl,
-      onReconnected: async () => {
-        const resp = await api.getOrCreateSession({
-          tag: randomUUID(),
-          metadata,
-          state,
-        });
-        if (!resp) throw new Error('Server unavailable');
-        const session = api.sessionSyncClient(resp);
-        const scanner = await createSessionScanner({
-          sessionId: null,
-          workingDirectory,
-          onMessage: (msg) => session.sendClaudeSessionMessage(msg),
-        });
-        if (offlineSessionId) scanner.onNewSession(offlineSessionId);
-        return { session, scanner };
-      },
-      onNotify: console.log,
-      onCleanup: () => {
-        // Scanner cleanup handled automatically when process exits
-      },
-    });
-
-    try {
-      await claudeLocal({
-        path: workingDirectory,
-        sessionId: null,
-        onSessionFound: (id) => {
-          offlineSessionId = id;
-        },
-        onThinkingChange: () => {},
-        abort: new AbortController().signal,
-        claudeEnvVars: options.claudeEnvVars,
-        claudeArgs: options.claudeArgs,
-        mcpServers: {},
-        allowedTools: [],
-      });
-    } finally {
-      reconnection.cancel();
-      stopCaffeinate();
-    }
-    process.exit(0);
-  }
-
-  logger.debug(`Session created: ${response.id}`);
-
-  // Always report to daemon if it exists
-  try {
-    logger.debug(`[START] Reporting session ${response.id} to daemon`);
-    const result = await notifyDaemonSessionStarted(response.id, metadata);
-    if (result.error) {
-      logger.debug(
-        `[START] Failed to report to daemon (may not be running):`,
-        result.error,
-      );
-    } else {
-      logger.debug(`[START] Reported session ${response.id} to daemon`);
-    }
-  } catch (error) {
-    logger.debug(
-      '[START] Failed to report to daemon (may not be running):',
-      error,
-    );
-  }
+  // Variable to track current session instance (updated via onSessionReady callback)
+  // Used by hook server to notify Session when Claude changes session ID
+  let currentSession: Session | null = null;
 
   // Extract SDK metadata in background and update session when ready
   extractSDKMetadataAsync(async (sdkMetadata) => {
@@ -210,7 +140,7 @@ export async function runClaude(
     );
     try {
       // Update session metadata with tools and slash commands
-      api.sessionSyncClient(response).updateMetadata((currentMetadata) => ({
+      await session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         tools: sdkMetadata.tools,
         slashCommands: sdkMetadata.slashCommands,
@@ -221,16 +151,24 @@ export async function runClaude(
     }
   });
 
-  // Create realtime session
-  const session = api.sessionSyncClient(response);
-
   // Start Unhappy MCP server
-  const happyServer = await startHappyServer(session);
+  const happyServer = await startHappyServer({
+    onSummary: async (title) => {
+      const sessionId =
+        typeof currentSession?.sessionId === 'string'
+          ? currentSession.sessionId.trim()
+          : '';
+      if (!sessionId) return;
+      await appendClaudeSessionSummary(
+        {
+          sessionId,
+          cwd: workingDirectory,
+        },
+        title,
+      );
+    },
+  });
   logger.debug(`[START] Unhappy MCP server started at ${happyServer.url}`);
-
-  // Variable to track current session instance (updated via onSessionReady callback)
-  // Used by hook server to notify Session when Claude changes session ID
-  let currentSession: Session | null = null;
 
   const deleteClaudeTranscriptFile = (sessionId: string | null): boolean => {
     const normalizedSessionId =
@@ -286,7 +224,7 @@ export async function runClaude(
 
   // Print log file path
   const logPath = logger.logFilePath;
-  logger.infoDeveloper(`Session: ${response.id}`);
+  logger.infoDeveloper(`Session: ${session.sessionId}`);
   logger.infoDeveloper(`Logs: ${logPath}`);
 
   // Set initial agent state
@@ -640,7 +578,7 @@ export async function runClaude(
     permissionMode: options.permissionMode,
     startingMode: options.startingMode,
     messageQueue,
-    api,
+    pushNotifier: api.push(),
     allowedTools: happyServer.toolNames.map(
       (toolName) => `mcp__unhappy__${toolName}`,
     ),

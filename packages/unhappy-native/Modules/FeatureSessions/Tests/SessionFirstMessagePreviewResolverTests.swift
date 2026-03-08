@@ -10,7 +10,7 @@ struct SessionFirstMessagePreviewResolverTests {
                 id: "message-2",
                 seq: 2,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "text", c: "Second message"),
+                content: APIEncryptedMessageContent(type: "text", payload: "Second message"),
                 createdAt: 2,
                 updatedAt: 2
             ),
@@ -18,7 +18,7 @@ struct SessionFirstMessagePreviewResolverTests {
                 id: "message-1",
                 seq: 1,
                 localId: nil,
-                content: APIEncryptedMessageContent(t: "text", c: "First message"),
+                content: APIEncryptedMessageContent(type: "text", payload: "First message"),
                 createdAt: 1,
                 updatedAt: 1
             ),
@@ -40,8 +40,8 @@ struct SessionFirstMessagePreviewResolverTests {
                 seq: 1,
                 localId: nil,
                 content: APIEncryptedMessageContent(
-                    t: "json",
-                    c: #"{"text":"Open the Tuist workspace"}"#
+                    type: "json",
+                    payload: #"{"text":"Open the Tuist workspace"}"#
                 ),
                 createdAt: 1,
                 updatedAt: 1

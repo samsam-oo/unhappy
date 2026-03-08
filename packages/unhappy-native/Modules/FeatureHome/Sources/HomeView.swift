@@ -4,7 +4,6 @@ import FeatureInbox
 import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
-import FeatureSessionTools
 import FeatureSettings
 
 @MainActor
@@ -29,8 +28,7 @@ public struct HomeView: View {
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    private let onSessionsChanged: @MainActor ([APISession]) async -> Void
+    private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
@@ -43,8 +41,7 @@ public struct HomeView: View {
         makeInboxViewModel: @escaping @MainActor () -> InboxViewModel,
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
-        onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void = { _ in },
+        makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
         makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
@@ -58,8 +55,7 @@ public struct HomeView: View {
         self.makeInboxViewModel = makeInboxViewModel
         self.makeSessionsViewModel = makeSessionsViewModel
         self.makeNewSessionViewModel = makeNewSessionViewModel
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
-        self.onSessionsChanged = onSessionsChanged
+        self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
         self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
@@ -97,6 +93,20 @@ public struct HomeView: View {
 
     private var authenticatedCompactHome: some View {
         TabView(selection: $selectedAuthenticatedTab) {
+            SessionsView(
+                serverURLString: settingsViewModel.serverURLString,
+                token: settingsViewModel.apiToken,
+                hideInactiveSessions: settingsViewModel.hideInactiveSessions,
+                defaultNewSessionAgent: settingsViewModel.defaultNewSessionAgent,
+                makeViewModel: makeSessionsViewModel,
+                makeNewSessionViewModel: makeNewSessionViewModel,
+                makeDirectSessionViewModel: makeDirectSessionViewModel
+            )
+            .tabItem {
+                Label("Projects", systemImage: "folder")
+            }
+            .tag(AuthenticatedTab.projects)
+
             InboxView(
                 serverURLString: settingsViewModel.serverURLString,
                 token: settingsViewModel.apiToken,
@@ -106,21 +116,6 @@ public struct HomeView: View {
                 Label("Inbox", systemImage: "tray.full")
             }
             .tag(AuthenticatedTab.inbox)
-
-            SessionsView(
-                serverURLString: settingsViewModel.serverURLString,
-                token: settingsViewModel.apiToken,
-                hideInactiveSessions: settingsViewModel.hideInactiveSessions,
-                defaultNewSessionAgent: settingsViewModel.defaultNewSessionAgent,
-                onSessionsChanged: onSessionsChanged,
-                makeViewModel: makeSessionsViewModel,
-                makeNewSessionViewModel: makeNewSessionViewModel,
-                makeSessionToolsViewModel: makeSessionToolsViewModel
-            )
-            .tabItem {
-                Label("Projects", systemImage: "folder")
-            }
-            .tag(AuthenticatedTab.projects)
 
             SettingsView(
                 viewModel: settingsViewModel,
@@ -147,8 +142,7 @@ public struct HomeView: View {
             makeInboxViewModel: makeInboxViewModel,
             makeSessionsViewModel: makeSessionsViewModel,
             makeNewSessionViewModel: makeNewSessionViewModel,
-            makeSessionToolsViewModel: makeSessionToolsViewModel,
-            onSessionsChanged: onSessionsChanged,
+            makeDirectSessionViewModel: makeDirectSessionViewModel,
             makeMachinesViewModel: makeMachinesViewModel,
             makeUsageViewModel: makeUsageViewModel,
             makeDaemonStatusViewModel: makeDaemonStatusViewModel,

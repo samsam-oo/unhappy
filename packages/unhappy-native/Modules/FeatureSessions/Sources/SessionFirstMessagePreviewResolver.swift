@@ -17,7 +17,7 @@ enum SessionFirstMessagePreviewResolver {
             guard let content = message.content else { continue }
 
             let decodedPayload = SessionPayloadValueResolver.decodeJSONObject(
-                payload: content.c,
+                payload: content.payload,
                 dataEncryptionKey: dataEncryptionKey
             )
             if let text = SessionPayloadValueResolver.firstString(
@@ -27,10 +27,10 @@ enum SessionFirstMessagePreviewResolver {
                 return normalize(text)
             }
 
-            guard content.t.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "encrypted" else {
+            guard content.type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "encrypted" else {
                 continue
             }
-            if let normalizedRaw = normalize(content.c) {
+            if let normalizedRaw = normalize(content.payload) {
                 return normalizedRaw
             }
         }

@@ -1,32 +1,12 @@
 import {
     eventRouter,
-    MachineScopedConnection,
-    SessionScopedConnection
+    MachineScopedConnection
 } from "@/app/events/eventRouter";
 
 type PublicCommandPayload = {
     command: string;
     params?: unknown;
 };
-
-export function findConnectedSession(userId: string, sessionId: string): SessionScopedConnection | null {
-    const connections = eventRouter.getConnections(userId);
-    if (!connections) {
-        return null;
-    }
-
-    for (const connection of connections) {
-        if (
-            connection.connectionType === 'session-scoped' &&
-            connection.sessionId === sessionId &&
-            connection.socket.connected
-        ) {
-            return connection;
-        }
-    }
-
-    return null;
-}
 
 export function findConnectedMachine(userId: string, machineId: string): MachineScopedConnection | null {
     const connections = eventRouter.getConnections(userId);
@@ -48,7 +28,7 @@ export function findConnectedMachine(userId: string, machineId: string): Machine
 }
 
 export async function invokePublicCommand(
-    target: SessionScopedConnection | MachineScopedConnection,
+    target: MachineScopedConnection,
     payload: PublicCommandPayload,
     timeoutMs = 30_000
 ): Promise<any> {

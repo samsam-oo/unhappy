@@ -6,13 +6,6 @@ import { getPublicUrl } from "@/storage/files";
 
 // === CONNECTION TYPES ===
 
-export interface SessionScopedConnection {
-    connectionType: 'session-scoped';
-    socket: Socket;
-    userId: string;
-    sessionId: string;
-}
-
 export interface UserScopedConnection {
     connectionType: 'user-scoped';
     socket: Socket;
@@ -26,12 +19,11 @@ export interface MachineScopedConnection {
     machineId: string;
 }
 
-export type ClientConnection = SessionScopedConnection | UserScopedConnection | MachineScopedConnection;
+export type ClientConnection = UserScopedConnection | MachineScopedConnection;
 
 // === RECIPIENT FILTER TYPES ===
 
 export type RecipientFilter =
-    | { type: 'all-interested-in-session'; sessionId: string }
     | { type: 'user-scoped-only' }
     | { type: 'machine-scoped-only'; machineId: string }  // For update-machine: sends to user-scoped + only the specific machine
     | { type: 'all-user-authenticated-connections' };
@@ -278,18 +270,6 @@ class EventRouter {
         filter: RecipientFilter
     ): boolean {
         switch (filter.type) {
-            case 'all-interested-in-session':
-                // Send to session-scoped with matching session + all user-scoped
-                if (connection.connectionType === 'session-scoped') {
-                    if (connection.sessionId !== filter.sessionId) {
-                        return false;  // Wrong session
-                    }
-                } else if (connection.connectionType === 'machine-scoped') {
-                    return false;  // Machines don't need session updates
-                }
-                // user-scoped always gets it
-                return true;
-
             case 'user-scoped-only':
                 return connection.connectionType === 'user-scoped';
 
@@ -301,7 +281,7 @@ class EventRouter {
                 if (connection.connectionType === 'machine-scoped') {
                     return connection.machineId === filter.machineId;
                 }
-                return false;  // session-scoped doesn't need machine updates
+                return false;
 
             case 'all-user-authenticated-connections':
                 // Send to all connection types (default behavior)

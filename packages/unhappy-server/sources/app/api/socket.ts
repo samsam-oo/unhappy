@@ -8,12 +8,10 @@ import { decrementWebSocketConnection, incrementWebSocketConnection, websocketEv
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
 import { pingHandler } from "./socket/pingHandler";
-import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 import { machinePublicCommandHandler } from "./socket/machinePublicCommandHandler";
-import { sessionPublicCommandHandler } from "./socket/sessionPublicCommandHandler";
 import { db } from "@/storage/db";
 
 export function startSocket(app: Fastify) {
@@ -38,21 +36,12 @@ export function startSocket(app: Fastify) {
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
-        const clientType = socket.handshake.auth.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
-        const sessionId = socket.handshake.auth.sessionId as string | undefined;
+        const clientType = socket.handshake.auth.clientType as 'user-scoped' | 'machine-scoped' | undefined;
         const machineId = socket.handshake.auth.machineId as string | undefined;
 
         if (!token) {
             log({ module: 'websocket' }, `No token provided`);
             socket.emit('error', { message: 'Missing authentication token' });
-            socket.disconnect();
-            return;
-        }
-
-        // Validate session-scoped clients have sessionId
-        if (clientType === 'session-scoped' && !sessionId) {
-            log({ module: 'websocket' }, `Session-scoped client missing sessionId`);
-            socket.emit('error', { message: 'Session ID required for session-scoped clients' });
             socket.disconnect();
             return;
         }
@@ -74,19 +63,12 @@ export function startSocket(app: Fastify) {
         }
 
         const userId = verified.userId;
-        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
+        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
 
         // Store connection based on type
-        const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
+        const metadata = { clientType: clientType || 'user-scoped', machineId };
         let connection: ClientConnection;
-        if (metadata.clientType === 'session-scoped' && sessionId) {
-            connection = {
-                connectionType: 'session-scoped',
-                socket,
-                userId,
-                sessionId
-            };
-        } else if (metadata.clientType === 'machine-scoped' && machineId) {
+        if (metadata.clientType === 'machine-scoped' && machineId) {
             connection = {
                 connectionType: 'machine-scoped',
                 socket,
@@ -156,13 +138,11 @@ export function startSocket(app: Fastify) {
         }
         rpcHandler(userId, socket, userRpcListeners);
         usageHandler(userId, socket);
-        sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);
         machineUpdateHandler(userId, socket);
         artifactUpdateHandler(userId, socket);
         accessKeyHandler(userId, socket);
         machinePublicCommandHandler(userId, socket);
-        sessionPublicCommandHandler(userId, socket);
 
         // Ready
         log({ module: 'websocket' }, `User connected: ${userId}`);

@@ -1,11 +1,7 @@
 import type {
-  AgentState,
-  CreateSessionResponse,
   DaemonState,
   Machine,
   MachineMetadata,
-  Metadata,
-  Session,
 } from '@/api/types';
 import { configuration } from '@/configuration';
 import { Credentials } from '@/persistence';
@@ -17,13 +13,11 @@ import {
 import axios from 'axios';
 import chalk from 'chalk';
 import { ApiMachineClient } from './apiMachine';
-import { ApiSessionClient } from './apiSession';
 import {
   decodeBase64,
   decrypt,
   encodeBase64,
   encrypt,
-  getRandomBytes,
   libsodiumEncryptForPublicKey,
 } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
@@ -42,120 +36,6 @@ export class ApiClient {
       credential.token,
       configuration.serverUrl,
     );
-  }
-
-  /**
-   * Create a new session or load existing one with the given tag
-   */
-  async getOrCreateSession(opts: {
-    tag: string;
-    metadata: Metadata;
-    state: AgentState | null;
-  }): Promise<Session | null> {
-    const encryptionKey = getRandomBytes(32);
-    const dataEncryptionKey = libsodiumEncryptForPublicKey(
-      encryptionKey,
-      this.credential.encryption.publicKey,
-    );
-
-    // Create session
-    try {
-      const response = await axios.post<CreateSessionResponse>(
-        `${configuration.serverUrl}/v1/sessions`,
-        {
-          tag: opts.tag,
-          metadata: encodeBase64(
-            encrypt(encryptionKey, opts.metadata),
-          ),
-          agentState: opts.state
-            ? encodeBase64(
-                encrypt(encryptionKey, opts.state),
-              )
-            : null,
-          dataEncryptionKey: encodeBase64(dataEncryptionKey),
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${this.credential.token}`,
-            'Content-Type': 'application/json',
-          },
-          timeout: 60000, // 1 minute timeout for very bad network connections
-        },
-      );
-
-      logger.debug(
-        `Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`,
-      );
-      let raw = response.data.session;
-      let session: Session = {
-        id: raw.id,
-        seq: raw.seq,
-        metadata: decrypt(
-          encryptionKey,
-          decodeBase64(raw.metadata),
-        ),
-        metadataVersion: raw.metadataVersion,
-        agentState: raw.agentState
-          ? decrypt(
-              encryptionKey,
-              decodeBase64(raw.agentState),
-            )
-          : null,
-        agentStateVersion: raw.agentStateVersion,
-        encryptionKey: encryptionKey,
-      };
-      return session;
-    } catch (error) {
-      logger.debug('[API] [ERROR] Failed to get or create session:', error);
-
-      // Check if it's a connection error
-      if (error && typeof error === 'object' && 'code' in error) {
-        const errorCode = (error as any).code;
-        if (isNetworkError(errorCode)) {
-          connectionState.fail({
-            operation: 'Session creation',
-            caller: 'api.getOrCreateSession',
-            errorCode,
-            url: `${configuration.serverUrl}/v1/sessions`,
-          });
-          return null;
-        }
-      }
-
-      // Handle 404 gracefully - server endpoint may not be available yet
-      const is404Error =
-        (axios.isAxiosError(error) && error.response?.status === 404) ||
-        (error &&
-          typeof error === 'object' &&
-          'response' in error &&
-          (error as any).response?.status === 404);
-      if (is404Error) {
-        connectionState.fail({
-          operation: 'Session creation',
-          errorCode: '404',
-          url: `${configuration.serverUrl}/v1/sessions`,
-        });
-        return null;
-      }
-
-      // Handle 5xx server errors - use offline mode with auto-reconnect
-      if (axios.isAxiosError(error) && error.response?.status) {
-        const status = error.response.status;
-        if (status >= 500) {
-          connectionState.fail({
-            operation: 'Session creation',
-            errorCode: String(status),
-            url: `${configuration.serverUrl}/v1/sessions`,
-            details: ['Server encountered an error, will retry automatically'],
-          });
-          return null;
-        }
-      }
-
-      throw new Error(
-        `Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
-    }
   }
 
   /**
@@ -307,10 +187,6 @@ export class ApiClient {
       // For other errors, rethrow
       throw error;
     }
-  }
-
-  sessionSyncClient(session: Session): ApiSessionClient {
-    return new ApiSessionClient(this.credential.token, session);
   }
 
   machineSyncClient(machine: Machine): ApiMachineClient {

@@ -1,28 +1,30 @@
 import SwiftUI
 import CoreKit
-import FeatureSessionTools
 
 @MainActor
 public struct SessionRecentView: View {
     @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
-    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
 
     public init(
         viewModel: SessionsViewModel,
         serverURLString: String,
         token: String,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
+        makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     ) {
         self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.makeDirectSessionViewModel = makeDirectSessionViewModel
     }
 
     public var body: some View {
-        let sections = SessionRecentPresentationBuilder.make(sessions: viewModel.sessions)
+        let sections = SessionRecentPresentationBuilder.make(
+            sessions: viewModel.sessions,
+            upstreamSessions: viewModel.upstreamSessions
+        )
 
         List {
             if sections.isEmpty {
@@ -31,18 +33,8 @@ public struct SessionRecentView: View {
             } else {
                 ForEach(sections) { section in
                     Section(section.title) {
-                        ForEach(section.sessions) { session in
-                            NavigationLink {
-                                SessionDetailView(
-                                    session: session,
-                                    viewModel: viewModel,
-                                    serverURLString: serverURLString,
-                                    token: token,
-                                    makeSessionToolsViewModel: makeSessionToolsViewModel
-                                )
-                            } label: {
-                                RecentSessionRow(session: session)
-                            }
+                        ForEach(section.entries) { entry in
+                            recentNavigationLink(for: entry)
                         }
                     }
                 }
@@ -57,51 +49,51 @@ public struct SessionRecentView: View {
             )
         }
     }
+
+    @ViewBuilder
+    private func recentNavigationLink(for entry: SessionRecentSection.Entry) -> some View {
+        switch entry {
+        case .direct(let identity, _):
+            NavigationLink {
+                DirectSessionDetailView(
+                    serverURLString: serverURLString,
+                    token: token,
+                    makeViewModel: {
+                        makeDirectSessionViewModel(identity)
+                    }
+                )
+            } label: {
+                RecentDirectSessionRow(identity: identity, updatedAt: entry.updatedAt)
+            }
+        }
+    }
 }
 
-private struct RecentSessionRow: View {
-    let session: APISession
+private struct RecentDirectSessionRow: View {
+    let identity: DirectSessionIdentity
+    let updatedAt: TimeInterval
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(sessionDisplayTitle)
+            Text(identity.title)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(hasDisplayTitle ? .primary : .secondary)
                 .lineLimit(1)
 
             HStack(spacing: 8) {
-                Circle()
-                    .fill(session.active ? .green : .gray)
-                    .frame(width: 8, height: 8)
-                Text(session.active ? "Active" : "Inactive")
+                Text(identity.provider.displayName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(session.id)
+                Text(identity.upstreamSessionID)
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
-                Text(Date(timeIntervalSince1970: session.updatedAt), style: .time)
+                Text(Date(timeIntervalSince1970: updatedAt), style: .time)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-    }
-
-    private var normalizedDisplayTitle: String? {
-        SessionDisplayTitleResolver.resolvedDisplayTitle(for: session)
-    }
-
-    private var hasDisplayTitle: Bool {
-        normalizedDisplayTitle != nil
-    }
-
-    private var sessionDisplayTitle: String {
-        if let normalizedDisplayTitle {
-            return normalizedDisplayTitle
-        }
-        return SessionDisplayTitleResolver.fallbackTitle(for: session)
     }
 }

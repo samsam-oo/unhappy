@@ -6,6 +6,7 @@ struct SessionUpstreamIdentity: Equatable, Sendable {
     let provider: APIUpstreamSessionProvider
     let upstreamSessionID: String
     let workingDirectory: String?
+    let transcriptPath: String?
     let machineDisplayName: String?
 
     var key: String {
@@ -45,18 +46,35 @@ struct SessionUpstreamIdentity: Equatable, Sendable {
             return nil
         }
 
+        let homeDirectory = Self.resolveOptionalString(
+            in: [agentState, metadata],
+            keys: ["homeDir", "home_dir"]
+        )
+
         self.machineID = machineID
         self.provider = provider
         self.upstreamSessionID = upstreamSessionID
-        self.workingDirectory = Self.resolveOptionalString(
+        self.workingDirectory = SessionProjectPathCanonicalizer.canonicalPath(
+            Self.resolveOptionalString(
+                in: [agentState, metadata],
+                keys: [
+                    "cwd",
+                    "path",
+                    "directory",
+                    "workingDirectory",
+                    "workDir",
+                    "projectPath",
+                ]
+            ),
+            homeDirectory: homeDirectory
+        )
+        self.transcriptPath = Self.resolveOptionalString(
             in: [agentState, metadata],
             keys: [
-                "cwd",
-                "path",
-                "directory",
-                "workingDirectory",
-                "workDir",
-                "projectPath",
+                "agentTranscriptPath",
+                "agent_transcript_path",
+                "resumeFile",
+                "resume_file",
             ]
         )
         self.machineDisplayName = SessionMachineDisplayNameResolver.resolve(in: [metadata, agentState])

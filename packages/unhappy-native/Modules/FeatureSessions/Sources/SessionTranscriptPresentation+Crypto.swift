@@ -22,8 +22,8 @@ extension SessionTranscriptPresentationBuilder {
         dataEncryptionKey: String?
     ) -> String? {
         guard let content else { return nil }
-        let payload = content.c
-        if content.t.lowercased() != "encrypted" {
+        let payload = content.payload
+        if content.type.lowercased() != "encrypted" {
             return payload
         }
 

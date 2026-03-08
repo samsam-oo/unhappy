@@ -6,6 +6,17 @@ import CoreKit
 struct SessionUpstreamSessionsLoadUseCaseTests {
     @Test
     func loadUpstreamSessionsCombinesProvidersAndSortsNewestFirst() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/tmp/project",
+                latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                codexThreadCount: 0,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
         let service = MockUpstreamMachinesService(
             machines: [
                 APIMachine(
@@ -21,25 +32,37 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
                     dataEncryptionKey: nil
                 )
             ],
-            codexThreadsByMachineID: [
-                "machine-1": [
+            codexThreadsByMachineAndPath: [
+                "machine-1|/tmp/project": [
                     APICodexThreadSummary(
                         id: "thread-1",
                         name: "Older Codex",
-                        cwd: "/tmp/codex",
+                        cwd: "/tmp/project",
                         updatedAt: "2026-03-06T03:00:00.000Z",
                         createdAt: "2026-03-06T02:00:00.000Z",
                         archived: false
                     )
                 ]
             ],
-            claudeSessionsByMachineID: [
-                "machine-1": [
+            claudeSessionsByMachineAndPath: [
+                "machine-1|/tmp/project": [
                     APIClaudeSessionSummary(
                         id: "claude-1",
-                        cwd: "/tmp/claude",
+                        cwd: "/tmp/project",
                         updatedAt: "2026-03-06T04:00:00.000Z",
                         createdAt: "2026-03-06T03:00:00.000Z"
+                    )
+                ]
+            ],
+            geminiSessionsByMachineAndPath: [
+                "machine-1|/tmp/project": [
+                    APIGeminiSessionSummary(
+                        id: "gemini-1",
+                        title: "Newest Gemini",
+                        cwd: "/tmp/project",
+                        updatedAt: "2026-03-06T05:30:00.000Z",
+                        createdAt: "2026-03-06T05:15:00.000Z",
+                        model: "gemini-3-flash-preview"
                     )
                 ]
             ]
@@ -48,10 +71,12 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
 
         let rows = try await useCase.loadUpstreamSessions(
             serverURLString: "https://api.unhappy.im",
-            token: "token"
+            token: "token",
+            projects: [project]
         )
 
         #expect(rows.map(\.id) == [
+            "machine-1|gemini|gemini-1",
             "machine-1|claude|claude-1",
             "machine-1|codex|thread-1"
         ])
@@ -60,6 +85,17 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
 
     @Test
     func loadUpstreamSessionsIgnoresInactiveMachines() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-active",
+            machineDisplayName: "Active Mac",
+            summary: APIMachineProjectSummary(
+                path: "/tmp/active",
+                latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                codexThreadCount: 0,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
         let service = MockUpstreamMachinesService(
             machines: [
                 APIMachine(
@@ -87,8 +123,8 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
                     dataEncryptionKey: nil
                 )
             ],
-            codexThreadsByMachineID: [
-                "machine-active": [
+            codexThreadsByMachineAndPath: [
+                "machine-active|/tmp/active": [
                     APICodexThreadSummary(
                         id: "thread-active",
                         name: "Active Thread",
@@ -98,7 +134,7 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
                         archived: false
                     )
                 ],
-                "machine-inactive": [
+                "machine-inactive|/tmp/inactive": [
                     APICodexThreadSummary(
                         id: "thread-inactive",
                         name: "Inactive Thread",
@@ -109,13 +145,15 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
                     )
                 ]
             ],
-            claudeSessionsByMachineID: [:]
+            claudeSessionsByMachineAndPath: [:],
+            geminiSessionsByMachineAndPath: [:]
         )
         let useCase = SessionUpstreamSessionsLoadUseCase(service: service)
 
         let rows = try await useCase.loadUpstreamSessions(
             serverURLString: "https://api.unhappy.im",
-            token: "token"
+            token: "token",
+            projects: [project]
         )
 
         #expect(rows.count == 1)
@@ -124,19 +162,22 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
     }
 }
 
-private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreadsFetching, MachineClaudeSessionsFetching {
+private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineGeminiSessionsFetching {
     let machines: [APIMachine]
-    let codexThreadsByMachineID: [String: [APICodexThreadSummary]]
-    let claudeSessionsByMachineID: [String: [APIClaudeSessionSummary]]
+    let codexThreadsByMachineAndPath: [String: [APICodexThreadSummary]]
+    let claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]]
+    let geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]]
 
     init(
         machines: [APIMachine],
-        codexThreadsByMachineID: [String: [APICodexThreadSummary]],
-        claudeSessionsByMachineID: [String: [APIClaudeSessionSummary]]
+        codexThreadsByMachineAndPath: [String: [APICodexThreadSummary]],
+        claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]],
+        geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]]
     ) {
         self.machines = machines
-        self.codexThreadsByMachineID = codexThreadsByMachineID
-        self.claudeSessionsByMachineID = claudeSessionsByMachineID
+        self.codexThreadsByMachineAndPath = codexThreadsByMachineAndPath
+        self.claudeSessionsByMachineAndPath = claudeSessionsByMachineAndPath
+        self.geminiSessionsByMachineAndPath = geminiSessionsByMachineAndPath
     }
 
     func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -151,8 +192,9 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         cwd: String?,
         cursor: String?
     ) async throws -> APICodexThreadsPage {
-        APICodexThreadsPage(
-            threads: codexThreadsByMachineID[machineID] ?? [],
+        let key = "\(machineID)|\(cwd ?? "")"
+        return APICodexThreadsPage(
+            threads: codexThreadsByMachineAndPath[key] ?? [],
             nextCursor: nil,
             hasNext: false
         )
@@ -165,7 +207,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
-        codexThreadsByMachineID[machineID] ?? []
+        codexThreadsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
     }
 
     func fetchClaudeSessionsPage(
@@ -176,8 +218,9 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         cwd: String?,
         cursor: String?
     ) async throws -> APIClaudeSessionsPage {
-        APIClaudeSessionsPage(
-            sessions: claudeSessionsByMachineID[machineID] ?? [],
+        let key = "\(machineID)|\(cwd ?? "")"
+        return APIClaudeSessionsPage(
+            sessions: claudeSessionsByMachineAndPath[key] ?? [],
             nextCursor: nil,
             hasNext: false
         )
@@ -190,6 +233,32 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
-        claudeSessionsByMachineID[machineID] ?? []
+        claudeSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
+    }
+
+    func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage {
+        let key = "\(machineID)|\(cwd ?? "")"
+        return APIGeminiSessionsPage(
+            sessions: geminiSessionsByMachineAndPath[key] ?? [],
+            nextCursor: nil,
+            hasNext: false
+        )
+    }
+
+    func fetchGeminiSessions(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APIGeminiSessionSummary] {
+        geminiSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
     }
 }

@@ -206,18 +206,20 @@ struct NewSessionUseCasesTests {
 
         await #expect(throws: NewSessionError.requiresUserApproval(directory: "/tmp/new")) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                machineID: "machine-1",
-                directory: "/tmp/new",
-                agent: .claude,
-                approvedNewDirectoryCreation: false,
-                codexResumeThreadID: nil,
-                claudeResumeSessionID: nil,
-                sessionToken: nil,
-                environmentVariables: [:],
-                model: nil,
-                reasoningEffort: nil
+                NewSessionSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    machineID: "machine-1",
+                    directory: "/tmp/new",
+                    agent: .claude,
+                    approvedNewDirectoryCreation: false,
+                    codexResumeThreadID: nil,
+                    claudeResumeSessionID: nil,
+                    sessionToken: nil,
+                    environmentVariables: [:],
+                    model: nil,
+                    reasoningEffort: nil
+                )
             )
         }
     }
@@ -236,18 +238,20 @@ struct NewSessionUseCasesTests {
         )
         let useCase = NewSessionSpawnUseCase(service: service)
         _ = try await useCase.spawnSession(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            machineID: "machine-1",
-            directory: "/repo",
-            agent: .codex,
-            approvedNewDirectoryCreation: true,
-            codexResumeThreadID: "thread-123",
-            claudeResumeSessionID: "claude-456",
-            sessionToken: "session-token",
-            environmentVariables: ["OPENAI_API_KEY": "test-key"],
-            model: "gpt-5-codex",
-            reasoningEffort: .high
+            NewSessionSpawnRequest(
+                serverURLString: "https://api.unhappy.im",
+                token: "token",
+                machineID: "machine-1",
+                directory: "/repo",
+                agent: .codex,
+                approvedNewDirectoryCreation: true,
+                codexResumeThreadID: "thread-123",
+                claudeResumeSessionID: "claude-456",
+                sessionToken: "session-token",
+                environmentVariables: ["OPENAI_API_KEY": "test-key"],
+                model: "gpt-5-codex",
+                reasoningEffort: .high
+            )
         )
 
         let request = await service.lastRequest
@@ -558,31 +562,18 @@ private actor SpawnService: MachineSessionSpawning {
         self.lastRequest = nil
     }
 
-    func spawnSession(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?,
-        sessionToken: String?,
-        environmentVariables: [String : String]?,
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult {
         lastRequest = SpawnRequest(
-            machineID: machineID,
-            directory: directory,
-            agent: agent,
-            codexResumeThreadID: codexResumeThreadID,
-            claudeResumeSessionID: claudeResumeSessionID,
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-            sessionToken: sessionToken,
-            environmentVariables: environmentVariables,
-            model: model,
-            reasoningEffort: reasoningEffort
+            machineID: request.machineID,
+            directory: request.directory,
+            agent: request.agent,
+            codexResumeThreadID: request.codexResumeThreadID,
+            claudeResumeSessionID: request.claudeResumeSessionID,
+            approvedNewDirectoryCreation: request.approvedNewDirectoryCreation,
+            sessionToken: request.sessionToken,
+            environmentVariables: request.environmentVariables,
+            model: request.model,
+            reasoningEffort: request.reasoningEffort
         )
         return response
     }

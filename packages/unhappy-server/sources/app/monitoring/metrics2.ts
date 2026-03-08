@@ -71,16 +71,15 @@ export const databaseRecordCountGauge = new Gauge({
 // WebSocket connection tracking
 const connectionCounts = {
     'user-scoped': 0,
-    'session-scoped': 0,
     'machine-scoped': 0
 };
 
-export function incrementWebSocketConnection(type: 'user-scoped' | 'session-scoped' | 'machine-scoped'): void {
+export function incrementWebSocketConnection(type: 'user-scoped' | 'machine-scoped'): void {
     connectionCounts[type]++;
     websocketConnectionsGauge.set({ type }, connectionCounts[type]);
 }
 
-export function decrementWebSocketConnection(type: 'user-scoped' | 'session-scoped' | 'machine-scoped'): void {
+export function decrementWebSocketConnection(type: 'user-scoped' | 'machine-scoped'): void {
     connectionCounts[type] = Math.max(0, connectionCounts[type] - 1);
     websocketConnectionsGauge.set({ type }, connectionCounts[type]);
 }

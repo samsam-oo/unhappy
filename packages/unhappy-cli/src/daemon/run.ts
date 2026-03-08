@@ -33,6 +33,7 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { getTmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
 import { existsSync, readFileSync } from 'fs';
 import { isAbsolute, join, normalize } from 'path';
+import { openCodexThread } from '@/codex/directSession';
 import {
   checkIfDaemonRunningAndCleanupStaleState,
   cleanupDaemonState,
@@ -326,62 +327,42 @@ export async function startDaemon(): Promise<void> {
       return false;
     };
 
-    // Handle webhook from unhappy session reporting itself
-    const onUnhappySessionWebhook = (
-      sessionId: string,
-      sessionMetadata: Metadata,
+    const onProviderSessionWebhook = (
+      provider: 'codex' | 'claude' | 'gemini',
+      providerSessionId: string,
+      metadata: Metadata,
     ) => {
-      logger.debugLargeJson(`[DAEMON RUN] Session reported`, sessionMetadata);
-
-      const pid = sessionMetadata.hostPid;
+      const pid = metadata.hostPid;
       if (!pid) {
         logger.debug(
-          `[DAEMON RUN] Session webhook missing hostPid for sessionId: ${sessionId}`,
+          `[DAEMON RUN] Provider session webhook missing hostPid for ${provider}:${providerSessionId}`,
         );
         return;
       }
 
-      logger.debug(
-        `[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`,
-      );
-      logger.debug(
-        `[DAEMON RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`,
-      );
-
-      // Check if we already have this PID (daemon-spawned)
       const existingSession = pidToTrackedSession.get(pid);
-
-      if (existingSession && existingSession.startedBy === 'daemon') {
-        // Update daemon-spawned session with reported data
-        existingSession.happySessionId = sessionId;
-        existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
-        logger.debug(
-          `[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`,
-        );
-
-        // Resolve any awaiter for this PID
+      if (existingSession) {
+        existingSession.provider = provider;
+        existingSession.providerSessionId = providerSessionId;
+        existingSession.providerSessionMetadata = metadata;
         const awaiter = pidToAwaiter.get(pid);
         if (awaiter) {
           pidToAwaiter.delete(pid);
           awaiter(existingSession);
-          logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
         }
-      } else if (!existingSession) {
-        // New session started externally
-        const trackedSession: TrackedSession = {
-          startedBy: 'unhappy directly - likely by user from terminal',
-          happySessionId: sessionId,
-          happySessionMetadataFromLocalWebhook: sessionMetadata,
-          pid,
-        };
-        pidToTrackedSession.set(pid, trackedSession);
-        logger.debug(
-          `[DAEMON RUN] Registered externally-started session ${sessionId}`,
-        );
+        return;
       }
+
+      pidToTrackedSession.set(pid, {
+        startedBy: metadata.startedBy || 'provider directly',
+        provider,
+        providerSessionId,
+        providerSessionMetadata: metadata,
+        pid,
+      });
     };
 
-    // Spawn a new session (sessionId reserved for future --resume functionality)
+    // Spawn or open a provider session directly.
     const spawnSession = async (
       options: SpawnSessionOptions,
     ): Promise<SpawnSessionResult> => {
@@ -404,7 +385,6 @@ export async function startDaemon(): Promise<void> {
 
       const {
         directory,
-        sessionId,
         codexResumeThreadId,
         claudeResumeSessionId,
         model,
@@ -441,6 +421,24 @@ export async function startDaemon(): Promise<void> {
         claudeResumeSessionId.trim().length > 0
           ? claudeResumeSessionId.trim()
           : null;
+      if (resolvedAgent === 'codex' && normalizedCodexResumeThreadId) {
+        logger.debug(
+          `[DAEMON RUN] Returning direct Codex session id without spawning wrapper: ${normalizedCodexResumeThreadId}`,
+        );
+        return {
+          type: 'success',
+          sessionId: normalizedCodexResumeThreadId,
+        };
+      }
+      if (resolvedAgent === 'claude' && normalizedClaudeResumeSessionId) {
+        logger.debug(
+          `[DAEMON RUN] Returning direct Claude session id without spawning wrapper: ${normalizedClaudeResumeSessionId}`,
+        );
+        return {
+          type: 'success',
+          sessionId: normalizedClaudeResumeSessionId,
+        };
+      }
       const normalizedModel =
         typeof model === 'string' && model.trim().length > 0
           ? model.trim()
@@ -703,6 +701,35 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
+        if (resolvedAgent === 'codex') {
+          const codexEffort =
+            normalizedReasoningEffort === 'max'
+              ? 'xhigh'
+              : normalizedReasoningEffort;
+          const result = await openCodexThread({
+            threadId: normalizedCodexResumeThreadId,
+            cwd: normalizedDirectory,
+            transcriptPath: null,
+            model: normalizedModel,
+            effort: codexEffort,
+            envOverrides: extraEnv,
+          });
+          if (!result.threadId) {
+            return {
+              type: 'error',
+              errorMessage: 'Failed to open Codex thread',
+            };
+          }
+          logger.debug('[DAEMON RUN] Opened direct Codex thread without spawning wrapper', {
+            threadId: result.threadId,
+            resumed: normalizedCodexResumeThreadId != null,
+          });
+          return {
+            type: 'success',
+            sessionId: result.threadId,
+          };
+        }
+
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
         let useTmux = tmuxAvailable;
@@ -736,9 +763,6 @@ export async function startDaemon(): Promise<void> {
           // Determine agent command - support claude, codex, and gemini
           const agent = resolvedAgent;
           let fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --unhappy-starting-mode remote --started-by daemon`;
-          if (agent === 'codex' && normalizedCodexResumeThreadId) {
-            fullCommand += ` --resume-thread-id ${JSON.stringify(normalizedCodexResumeThreadId)}`;
-          }
           if (agent === 'claude' && normalizedClaudeResumeSessionId) {
             fullCommand += ` --resume ${JSON.stringify(normalizedClaudeResumeSessionId)}`;
           }
@@ -747,7 +771,7 @@ export async function startDaemon(): Promise<void> {
           }
           if (
             normalizedReasoningEffort &&
-            (agent === 'codex' || agent === 'claude')
+            agent === 'claude'
           ) {
             fullCommand += ` --reasoning-effort ${JSON.stringify(normalizedReasoningEffort)}`;
           }
@@ -804,7 +828,7 @@ export async function startDaemon(): Promise<void> {
             // Add to tracking map so webhook can find it later
             pidToTrackedSession.set(tmuxResult.pid, trackedSession);
 
-            // Wait for webhook to populate session with happySessionId (exact same as regular flow)
+            // Wait for provider-session webhook to populate the tracked provider session id.
             logger.debug(
               `[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`,
             );
@@ -826,11 +850,11 @@ export async function startDaemon(): Promise<void> {
               pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
                 clearTimeout(timeout);
                 logger.debug(
-                  `[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`,
+                  `[DAEMON RUN] Session ${completedSession.providerSessionId} fully spawned with provider webhook (tmux)`,
                 );
                 resolve({
                   type: 'success',
-                  sessionId: completedSession.happySessionId!,
+                  sessionId: completedSession.providerSessionId!,
                 });
               });
             });
@@ -846,14 +870,11 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
+          // Construct arguments for the CLI - support claude and gemini.
           let agentCommand: string;
           switch (resolvedAgent) {
             case 'claude':
               agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
               break;
             case 'gemini':
               agentCommand = 'gemini';
@@ -958,7 +979,7 @@ export async function startDaemon(): Promise<void> {
             }
           });
 
-          // Wait for webhook to populate session with happySessionId
+          // Wait for provider-session webhook to populate the tracked provider session id.
           logger.debug(
             `[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`,
           );
@@ -980,17 +1001,17 @@ export async function startDaemon(): Promise<void> {
             }, webhookTimeoutMs);
 
             // Register awaiter
-            pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
-              clearTimeout(timeout);
-              logger.debug(
-                `[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`,
-              );
-              resolve({
-                type: 'success',
-                sessionId: completedSession.happySessionId!,
-              });
+          pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
+            clearTimeout(timeout);
+            logger.debug(
+                `[DAEMON RUN] Session ${completedSession.providerSessionId} fully spawned with provider webhook`,
+            );
+            resolve({
+              type: 'success',
+              sessionId: completedSession.providerSessionId!,
             });
           });
+        });
         }
 
         // This should never be reached, but TypeScript requires a return statement
@@ -1016,10 +1037,9 @@ export async function startDaemon(): Promise<void> {
       }
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
 
-      // Try to find by sessionId first
       for (const [pid, session] of pidToTrackedSession.entries()) {
         if (
-          session.happySessionId === sessionId ||
+          session.providerSessionId === sessionId ||
           (sessionId.startsWith('PID-') &&
             pid === parseInt(sessionId.replace('PID-', '')))
         ) {
@@ -1077,7 +1097,7 @@ export async function startDaemon(): Promise<void> {
         stopSession,
         spawnSession,
         requestShutdown: () => requestShutdown('unhappy-cli'),
-        onUnhappySessionWebhook,
+        onProviderSessionWebhook,
       });
 
     // Write initial daemon state (no lock needed for state file)
@@ -1146,6 +1166,7 @@ export async function startDaemon(): Promise<void> {
       stopSession,
       requestShutdown: () => requestShutdown('mobile-app'),
       requestUpdate,
+      listTrackedSessions: () => Array.from(pidToTrackedSession.values()),
     });
 
     // Connect to server

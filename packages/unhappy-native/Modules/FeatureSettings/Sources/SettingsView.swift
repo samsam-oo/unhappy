@@ -32,7 +32,7 @@ public struct SettingsView: View {
             settingsSidebarContent
                 .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
                 .navigationTitle("Settings")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.large)
         } detail: {
             splitDetailPlaceholder
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -230,19 +230,7 @@ private actor PreviewSettingsManager: SettingsManaging {
         )
     }
 
-    func persistSettings(
-        serverURLString: String,
-        apiToken: String,
-        appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption,
-        experimentsEnabled: Bool,
-        hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool,
-        voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent,
-        lastViewedChangelogID: String
-    ) async {}
+    func persistSettings(_ snapshot: AppSettingsSnapshot) async {}
 }
 
 private struct ChangelogRow: View {

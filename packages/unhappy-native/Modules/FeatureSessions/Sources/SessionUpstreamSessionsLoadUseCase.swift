@@ -4,20 +4,22 @@ import CoreKit
 public protocol SessionUpstreamSessionsLoadingAction: Sendable {
     func loadUpstreamSessions(
         serverURLString: String,
-        token: String
+        token: String,
+        projects: [SessionMachineProject]
     ) async throws -> [SessionLinkedUpstreamSession]
 }
 
 public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingAction {
-    private let service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching
+    private let service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching
 
-    public init(service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching) {
+    public init(service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching) {
         self.service = service
     }
 
     public func loadUpstreamSessions(
         serverURLString: String,
-        token: String
+        token: String,
+        projects: [SessionMachineProject]
     ) async throws -> [SessionLinkedUpstreamSession] {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else { return [] }
@@ -35,23 +37,73 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
         var rows: [SessionLinkedUpstreamSession] = []
+        var seenRowIDs = Set<String>()
+        let service = self.service
 
-        for machine in activeMachines {
-            let machineDisplayName = machineName(for: machine)
-            async let codexRows = loadCodexRows(
-                machine: machine,
-                machineDisplayName: machineDisplayName,
-                serverURL: serverURL,
-                token: normalizedToken
-            )
-            async let claudeRows = loadClaudeRows(
-                machine: machine,
-                machineDisplayName: machineDisplayName,
-                serverURL: serverURL,
-                token: normalizedToken
-            )
-            rows.append(contentsOf: try await codexRows)
-            rows.append(contentsOf: try await claudeRows)
+        try await withThrowingTaskGroup(of: [SessionLinkedUpstreamSession].self) { group in
+            for machine in activeMachines {
+                let machineProjects = Array(
+                    Set(
+                        projects
+                            .filter { $0.machineID == machine.id }
+                            .compactMap { SessionProjectPathCanonicalizer.canonicalPath($0.summary.path) }
+                    )
+                ).sorted()
+                guard !machineProjects.isEmpty else { continue }
+
+                let machineDisplayName = machineName(for: machine)
+                for projectPath in machineProjects {
+                    group.addTask {
+                        async let codexThreads = service.fetchCodexThreads(
+                            serverURL: serverURL,
+                            token: normalizedToken,
+                            machineID: machine.id,
+                            limit: 50,
+                            cwd: projectPath
+                        )
+                        async let claudeSessions = service.fetchClaudeSessions(
+                            serverURL: serverURL,
+                            token: normalizedToken,
+                            machineID: machine.id,
+                            limit: 50,
+                            cwd: projectPath
+                        )
+                        async let geminiSessions = service.fetchGeminiSessions(
+                            serverURL: serverURL,
+                            token: normalizedToken,
+                            machineID: machine.id,
+                            limit: 50,
+                            cwd: projectPath
+                        )
+                        let (threads, sessions, geminiRows) = try await (codexThreads, claudeSessions, geminiSessions)
+                        return threads.map {
+                            SessionLinkedUpstreamSession(
+                                machineID: machine.id,
+                                machineDisplayName: machineDisplayName,
+                                summary: $0.upstreamSummary
+                            )
+                        } + sessions.map {
+                            SessionLinkedUpstreamSession(
+                                machineID: machine.id,
+                                machineDisplayName: machineDisplayName,
+                                summary: $0.upstreamSummary
+                            )
+                        } + geminiRows.map {
+                            SessionLinkedUpstreamSession(
+                                machineID: machine.id,
+                                machineDisplayName: machineDisplayName,
+                                summary: $0.upstreamSummary
+                            )
+                        }
+                    }
+                }
+            }
+
+            for try await batch in group {
+                for row in batch where seenRowIDs.insert(row.id).inserted {
+                    rows.append(row)
+                }
+            }
         }
 
         return rows.sorted { lhs, rhs in
@@ -64,50 +116,6 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                 return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
             }
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-        }
-    }
-
-    private func loadCodexRows(
-        machine: APIMachine,
-        machineDisplayName: String,
-        serverURL: URL,
-        token: String
-    ) async throws -> [SessionLinkedUpstreamSession] {
-        let threads = try await service.fetchCodexThreads(
-            serverURL: serverURL,
-            token: token,
-            machineID: machine.id,
-            limit: 50,
-            cwd: nil
-        )
-        return threads.map {
-            SessionLinkedUpstreamSession(
-                machineID: machine.id,
-                machineDisplayName: machineDisplayName,
-                summary: $0.upstreamSummary
-            )
-        }
-    }
-
-    private func loadClaudeRows(
-        machine: APIMachine,
-        machineDisplayName: String,
-        serverURL: URL,
-        token: String
-    ) async throws -> [SessionLinkedUpstreamSession] {
-        let sessions = try await service.fetchClaudeSessions(
-            serverURL: serverURL,
-            token: token,
-            machineID: machine.id,
-            limit: 50,
-            cwd: nil
-        )
-        return sessions.map {
-            SessionLinkedUpstreamSession(
-                machineID: machine.id,
-                machineDisplayName: machineDisplayName,
-                summary: $0.upstreamSummary
-            )
         }
     }
 

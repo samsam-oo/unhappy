@@ -84,6 +84,7 @@ public struct InboxFriendSearchView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Find Friends")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder

@@ -56,29 +56,47 @@ struct MachinesAPITests {
     }
 
     @Test
-    func stopDaemonRequestUsesExpectedPathAndMethod() throws {
-        let baseURL = URL(string: "https://api.unhappy.im")!
-        let request = try MachinesAPI.makeStopDaemonRequest(
-            serverURL: baseURL,
+    func spawnRPCParametersDropEmptyOptionalFields() {
+        let request = MachineSessionSpawnServiceRequest(
+            serverURL: URL(string: "https://api.unhappy.im")!,
             token: "abc123",
-            machineID: "machine-1"
+            machineID: "machine-1",
+            directory: "/tmp/work",
+            agent: .codex,
+            codexResumeThreadID: " thread-1 ",
+            claudeResumeSessionID: " ",
+            approvedNewDirectoryCreation: true,
+            sessionToken: " session-token ",
+            environmentVariables: ["FOO": "BAR"],
+            model: " gpt-5-codex ",
+            reasoningEffort: .high
         )
+        let payload = MachineSessionSpawnRPCParametersBuilder().build(from: request)
 
-        #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/machines/machine-1/daemon/stop")
+        #expect(payload["directory"] as? String == "/tmp/work")
+        #expect(payload["machineId"] as? String == "machine-1")
+        #expect(payload["agent"] as? String == "codex")
+        #expect(payload["codexResumeThreadId"] as? String == "thread-1")
+        #expect(payload["claudeResumeSessionId"] == nil)
+        #expect(payload["token"] as? String == "session-token")
+        #expect(payload["model"] as? String == "gpt-5-codex")
+        #expect(payload["reasoningEffort"] as? String == "high")
     }
 
     @Test
-    func updateDaemonRequestUsesExpectedPathAndMethod() throws {
-        let baseURL = URL(string: "https://api.unhappy.im")!
-        let request = try MachinesAPI.makeUpdateDaemonRequest(
-            serverURL: baseURL,
-            token: "abc123",
-            machineID: "machine-1"
-        )
+    func spawnRPCResponseParserHandlesDirectoryApprovalPayload() throws {
+        let json = Data("""
+        {
+          "type": "requestToApproveDirectoryCreation",
+          "directory": "/tmp/new"
+        }
+        """.utf8)
 
-        #expect(request.httpMethod == "POST")
-        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/machines/machine-1/daemon/update")
+        let result = try MachineSessionSpawnRPCResponseParser.parse(json)
+
+        #expect(result.success == false)
+        #expect(result.requiresUserApproval == true)
+        #expect(result.directory == "/tmp/new")
     }
 
     @Test

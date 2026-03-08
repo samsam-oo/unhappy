@@ -5,7 +5,7 @@
  * Extends BasePermissionHandler with Gemini-specific permission mode logic.
  */
 
-import { ApiSessionClient } from "@/api/apiSession";
+import { SessionRuntimeClient } from "@/api/apiSession";
 import type { PermissionMode } from '@/api/types';
 import { logger } from "@/ui/logger";
 import {
@@ -23,7 +23,7 @@ export type { PendingRequest, PermissionResult };
 export class GeminiPermissionHandler extends BasePermissionHandler {
     private currentPermissionMode: PermissionMode = 'default';
 
-    constructor(session: ApiSessionClient) {
+    constructor(session: SessionRuntimeClient) {
         super(session);
     }
 
@@ -34,7 +34,7 @@ export class GeminiPermissionHandler extends BasePermissionHandler {
     /**
      * Update session reference (override for type visibility)
      */
-    updateSession(newSession: ApiSessionClient): void {
+    updateSession(newSession: SessionRuntimeClient): void {
         super.updateSession(newSession);
     }
 

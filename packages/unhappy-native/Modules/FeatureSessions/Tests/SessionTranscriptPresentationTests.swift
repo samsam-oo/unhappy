@@ -300,6 +300,7 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries.count == 1)
         #expect(presentation.entries[0].kind == .toolCall)
         #expect(presentation.entries[0].toolName == "codexbash")
+        #expect(presentation.entries[0].toolUseID == "item_cmd_1")
         #expect(presentation.entries[0].sourceType == "item_started")
     }
 
@@ -527,7 +528,7 @@ struct SessionTranscriptPresentationTests {
             id: UUID().uuidString,
             seq: 1,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "json", c: text),
+            content: APIEncryptedMessageContent(type: "json", payload: text),
             createdAt: 0,
             updatedAt: 0
         )

@@ -1,54 +1,47 @@
 import SwiftUI
 import CoreKit
-import FeatureSessionTools
 
 @MainActor
 public struct SessionUpstreamOpeningView: View {
     let row: SessionLinkedUpstreamSession
-    @ObservedObject var viewModel: SessionsViewModel
     let serverURLString: String
     let token: String
-    let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-
-    @State private var didStartOpen = false
-    @State private var linkedSessionID: String?
+    let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
 
     public init(
         row: SessionLinkedUpstreamSession,
-        viewModel: SessionsViewModel,
         serverURLString: String,
         token: String,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
+        makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     ) {
         self.row = row
-        self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.makeDirectSessionViewModel = makeDirectSessionViewModel
     }
 
     public var body: some View {
-        if let linkedSession {
-            SessionDetailView(
-                session: linkedSession,
-                viewModel: viewModel,
+        if let directIdentity {
+            DirectSessionDetailView(
                 serverURLString: serverURLString,
                 token: token,
-                makeSessionToolsViewModel: makeSessionToolsViewModel
+                makeViewModel: {
+                    makeDirectSessionViewModel(directIdentity)
+                }
             )
         } else {
-            openingStateView
+            unavailableStateView
         }
     }
 
-    private var openingStateView: some View {
+    private var unavailableStateView: some View {
         VStack(spacing: 18) {
-            Image(systemName: currentStatusIcon)
+            Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(currentStatusTint)
+                .foregroundStyle(.orange)
 
             VStack(spacing: 6) {
-                Text(currentStatusTitle)
+                Text("Couldn't Open Session")
                     .font(.headline)
                 Text(row.title)
                     .font(.subheadline.weight(.semibold))
@@ -66,71 +59,19 @@ public struct SessionUpstreamOpeningView: View {
                     .lineLimit(2)
             }
 
-            if isOpening {
-                ProgressView()
-                    .controlSize(.regular)
-            }
-
-            if let statusMessage {
-                Text(statusMessage)
-                    .font(.footnote)
-                    .foregroundStyle(isOpening ? Color.secondary : Color.red)
-                    .multilineTextAlignment(.center)
-            }
+            Text("Direct \(row.summary.provider.displayName) session support is unavailable for this session.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Resume Session")
+        .navigationTitle("Open Session")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: row.id) {
-            guard !didStartOpen else { return }
-            didStartOpen = true
-            let linkedSessionID = await viewModel.linkUpstreamSession(
-                row,
-                serverURLString: serverURLString,
-                token: token
-            )
-            if let linkedSessionID, !linkedSessionID.isEmpty {
-                self.linkedSessionID = linkedSessionID
-            }
-        }
     }
 
-    private var linkedSession: APISession? {
-        guard let linkedSessionID else { return nil }
-        return viewModel.sessions.first(where: { $0.id == linkedSessionID })
-    }
-
-    private var isOpening: Bool {
-        viewModel.linkingUpstreamSessionID == row.id || !didStartOpen
-    }
-
-    private var statusMessage: String? {
-        let normalized = viewModel.upstreamSessionStatusMessage?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let normalized, !normalized.isEmpty else { return nil }
-        return normalized
-    }
-
-    private var currentStatusTitle: String {
-        if isOpening {
-            return "Resuming Session…"
-        }
-        return statusMessage == nil ? "Session Ready" : "Couldn't Resume Session"
-    }
-
-    private var currentStatusIcon: String {
-        if isOpening {
-            return "arrow.triangle.2.circlepath"
-        }
-        return statusMessage == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-    }
-
-    private var currentStatusTint: Color {
-        if isOpening {
-            return .accentColor
-        }
-        return statusMessage == nil ? .green : .orange
+    private var directIdentity: DirectSessionIdentity? {
+        DirectSessionIdentityResolver.resolve(from: row)
     }
 }

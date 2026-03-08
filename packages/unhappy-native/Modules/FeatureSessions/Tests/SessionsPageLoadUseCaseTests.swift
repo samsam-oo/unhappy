@@ -61,6 +61,52 @@ struct SessionsPageLoadUseCaseTests {
         #expect(result.nextCursor == "cursor_v1_new")
         #expect(result.hasNext == true)
     }
+
+    @Test
+    func loadPageFiltersArchivedRows() async throws {
+        let page = APISessionsPage(
+            sessions: [
+                APISession(
+                    id: "archived",
+                    active: false,
+                    activeAt: 1,
+                    createdAt: 1,
+                    updatedAt: 25,
+                    archived: true,
+                    metadataVersion: 1,
+                    metadata: "enc",
+                    dataEncryptionKey: nil,
+                    lastMessage: nil
+                ),
+                APISession(
+                    id: "visible",
+                    active: false,
+                    activeAt: 1,
+                    createdAt: 1,
+                    updatedAt: 20,
+                    archived: false,
+                    metadataVersion: 1,
+                    metadata: "enc",
+                    dataEncryptionKey: nil,
+                    lastMessage: nil
+                )
+            ],
+            nextCursor: "cursor_v1_visible",
+            hasNext: true
+        )
+        let useCase = SessionsPageLoadUseCase(service: ImmediatePagingService(page: page))
+
+        let result = try await useCase.loadPage(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            cursor: nil,
+            limit: 50
+        )
+
+        #expect(result.sessions.map { $0.id } == ["visible"])
+        #expect(result.nextCursor == "cursor_v1_visible")
+        #expect(result.hasNext == true)
+    }
 }
 
 private struct ImmediatePagingService: SessionsPagingFetching {

@@ -86,13 +86,15 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
   }
 }
 
-export async function notifyDaemonSessionStarted(
-  sessionId: string,
-  metadata: Metadata
+export async function notifyDaemonProviderSessionStarted(
+  provider: 'codex' | 'claude' | 'gemini',
+  providerSessionId: string,
+  metadata: Metadata,
 ): Promise<{ error?: string } | any> {
-  return await daemonPost('/session-started', {
-    sessionId,
-    metadata
+  return await daemonPost('/provider-session-started', {
+    provider,
+    providerSessionId,
+    metadata,
   });
 }
 
@@ -108,7 +110,6 @@ export async function stopDaemonSession(sessionId: string): Promise<boolean> {
 
 export async function spawnDaemonSession(
   directory: string,
-  sessionId?: string,
   codexResumeThreadId?: string,
   options?: {
     claudeResumeSessionId?: string;
@@ -120,7 +121,6 @@ export async function spawnDaemonSession(
   }
   const result = await daemonPost('/spawn-session', {
     directory,
-    sessionId,
     codexResumeThreadId,
     claudeResumeSessionId: options?.claudeResumeSessionId,
     agent: options.agent,

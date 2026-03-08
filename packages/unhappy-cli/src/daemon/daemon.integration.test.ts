@@ -27,7 +27,7 @@ import {
   stopDaemonSession, 
   spawnDaemonSession, 
   stopDaemonHttp, 
-  notifyDaemonSessionStarted, 
+  notifyDaemonProviderSessionStarted, 
   stopDaemon
 } from '@/daemon/controlClient';
 import { readCredentials, readDaemonState, clearDaemonState, readSettings } from '@/persistence';
@@ -201,7 +201,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     expect(sessions).toEqual([]);
   });
 
-  it('should track session-started webhook from terminal session', async () => {
+  it('should track provider-session-started webhook from terminal session', async () => {
     // Simulate a terminal-started session reporting to daemon
     const mockMetadata: Metadata = {
       path: '/test/path',
@@ -215,7 +215,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       machineId: 'test-machine-123'
     };
 
-    await notifyDaemonSessionStarted('test-session-123', mockMetadata);
+    await notifyDaemonProviderSessionStarted('codex', 'test-session-123', mockMetadata);
 
     // Verify session is tracked
     const sessions = await listDaemonSessions();
@@ -223,12 +223,14 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     
     const tracked = sessions[0];
     expect(tracked.startedBy).toBe('unhappy directly - likely by user from terminal');
-    expect(tracked.happySessionId).toBe('test-session-123');
+    expect(tracked.providerSessionId).toBe('test-session-123');
     expect(tracked.pid).toBe(99999);
   });
 
   it('should spawn & stop a session via HTTP (not testing RPC route, but similar enough)', async () => {
-    const response = await spawnDaemonSession('/tmp', 'spawned-test-456');
+    const response = await spawnDaemonSession('/tmp', 'spawned-test-456', {
+      agent: 'codex',
+    });
 
     expect(response).toHaveProperty('success', true);
     expect(response).toHaveProperty('sessionId');
@@ -236,22 +238,22 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     // Verify session is tracked
     const sessions = await listDaemonSessions();
     const spawnedSession = sessions.find(
-      (s: any) => s.happySessionId === response.sessionId
+      (s: any) => s.providerSessionId === response.sessionId
     );
     
     expect(spawnedSession).toBeDefined();
     expect(spawnedSession.startedBy).toBe('daemon');
     
     // Clean up - stop the spawned session
-    expect(spawnedSession.happySessionId).toBeDefined();
-    await stopDaemonSession(spawnedSession.happySessionId);
+    expect(spawnedSession.providerSessionId).toBeDefined();
+    await stopDaemonSession(spawnedSession.providerSessionId);
   });
 
   it('stress test: spawn / stop', { timeout: 60_000 }, async () => {
     const promises = [];
     const sessionCount = 20;
     for (let i = 0; i < sessionCount; i++) {
-      promises.push(spawnDaemonSession('/tmp'));
+      promises.push(spawnDaemonSession('/tmp', undefined, { agent: 'codex' }));
     }
 
     // Wait for all sessions to be spawned
@@ -294,7 +296,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     await new Promise(resolve => setTimeout(resolve, 5_000));
 
     // Spawn a daemon session
-    const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
+    const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb', {
+      agent: 'codex',
+    });
 
     // List all sessions
     const sessions = await listDaemonSessions();
@@ -305,7 +309,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       (s: any) => s.pid === terminalHappyProcess.pid
     );
     const daemonSession = sessions.find(
-      (s: any) => s.happySessionId === spawnResponse.sessionId
+      (s: any) => s.providerSessionId === spawnResponse.sessionId
     );
 
     expect(terminalSession).toBeDefined();
@@ -316,7 +320,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
     // Clean up both sessions
     await stopDaemonSession('terminal-session-aaa');
-    await stopDaemonSession(daemonSession.happySessionId);
+    await stopDaemonSession(daemonSession.providerSessionId);
     
     // Also kill the terminal process directly to be sure
     try {
@@ -328,11 +332,11 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
 
   it('should update session metadata when webhook is called', async () => {
     // Spawn a session
-    const spawnResponse = await spawnDaemonSession('/tmp');
+    const spawnResponse = await spawnDaemonSession('/tmp', undefined, { agent: 'codex' });
 
     // Verify webhook was processed (session ID updated)
     const sessions = await listDaemonSessions();
-    const session = sessions.find((s: any) => s.happySessionId === spawnResponse.sessionId);
+    const session = sessions.find((s: any) => s.providerSessionId === spawnResponse.sessionId);
     expect(session).toBeDefined();
 
     // Clean up
@@ -462,7 +466,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     const promises = [];
     for (let i = 0; i < 3; i++) {
       promises.push(
-        spawnDaemonSession('/tmp')
+        spawnDaemonSession('/tmp', undefined, { agent: 'codex' })
       );
     }
 
@@ -483,14 +487,14 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     // List should show all sessions
     const sessions = await listDaemonSessions();
     const daemonSessions = sessions.filter(
-      (s: any) => s.startedBy === 'daemon' && spawnedSessionIds.includes(s.happySessionId)
+      (s: any) => s.startedBy === 'daemon' && spawnedSessionIds.includes(s.providerSessionId)
     );
     expect(daemonSessions.length).toBeGreaterThanOrEqual(3);
 
     // Stop all spawned sessions
     for (const session of daemonSessions) {
-      expect(session.happySessionId).toBeDefined();
-      await stopDaemonSession(session.happySessionId);
+      expect(session.providerSessionId).toBeDefined();
+      await stopDaemonSession(session.providerSessionId);
     }
   });
 

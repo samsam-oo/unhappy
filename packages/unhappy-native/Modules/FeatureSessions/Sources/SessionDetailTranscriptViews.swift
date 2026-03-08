@@ -238,6 +238,10 @@ struct SessionTranscriptLogLine: View {
             )
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
+        } else if isCommandExecutionEntry {
+            SessionTranscriptToolRichContentView(entry: entry)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
         } else if isCollapsibleReferenceLogEntry {
             VStack(alignment: .leading, spacing: 4) {
                 Button {
@@ -324,7 +328,6 @@ struct SessionTranscriptLogLine: View {
                 Text(entry.body)
                     .font(bodyFont)
                     .foregroundStyle(AppPalette.secondaryText)
-                    .textSelection(.enabled)
                     .lineLimit(nil)
                     .lineSpacing(1.5)
             }
@@ -379,6 +382,10 @@ struct SessionTranscriptLogLine: View {
         default:
             return false
         }
+    }
+
+    private var isCommandExecutionEntry: Bool {
+        SessionTranscriptRichContentParser.commandPresentation(for: entry) != nil
     }
 
     private var collapsibleTitle: String {

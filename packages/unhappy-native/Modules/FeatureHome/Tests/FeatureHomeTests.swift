@@ -2,7 +2,6 @@ import Testing
 @testable import FeatureHome
 import FeatureInbox
 import FeatureSessions
-import FeatureSessionTools
 import FeatureMachine
 import FeatureNewSession
 import CoreKit
@@ -34,21 +33,20 @@ struct FeatureHomeTests {
                     modelsLoader: NewSessionModelsLoadUseCase(service: service)
                 )
             },
-            makeSessionToolsViewModel: {
-                let service = URLSessionSessionsService()
-                let basher = SessionBashUseCase(service: service)
-                return SessionToolsViewModel(
-                    fileLoader: SessionFileLoadUseCase(service: service),
-                    directoryLister: SessionDirectoryListUseCase(service: service),
-                    fileWriter: SessionFileWriteUseCase(service: service),
-                    fileDiffPreviewer: SessionFileDiffPreviewUseCase(basher: basher),
-                    killer: SessionKillUseCase(service: service),
-                    aborter: SessionTaskAbortUseCase(service: service),
-                    permissionResponder: SessionPermissionUseCase(service: service),
-                    modeSwitcher: SessionModeSwitchUseCase(service: service),
-                    basher: basher,
-                    ripgrepRunner: SessionRipgrepUseCase(service: service),
-                    difftasticRunner: SessionDifftasticUseCase(service: service)
+            makeDirectSessionViewModel: { identity in
+                let service = URLSessionMachinesService()
+                return DirectSessionViewModel(
+                    identity: identity,
+                    loader: DirectSessionMessagesLoadUseCase(
+                        codexService: service,
+                        claudeService: service,
+                        geminiService: service
+                    ),
+                    sender: DirectSessionMessageSendUseCase(
+                        codexService: service,
+                        claudeService: service,
+                        geminiService: service
+                    )
                 )
             },
             makeMachinesViewModel: {
@@ -101,6 +99,16 @@ struct FeatureHomeTests {
             }
         )
     }
+
+    @Test
+    func regularProjectsSelectionReducerDoesNotAutoSelectFirstProject() {
+        #expect(
+            HomeRegularProjectsSelectionState.retainedSelectionID(
+                currentSelectionID: nil,
+                availableProjectIDs: ["project-1", "project-2"]
+            ) == nil
+        )
+    }
 }
 
 private actor MockSettingsManager: SettingsManaging {
@@ -108,19 +116,7 @@ private actor MockSettingsManager: SettingsManaging {
         AppSettingsSnapshot(serverURLString: "https://api.unhappy.im", apiToken: "")
     }
 
-    func persistSettings(
-        serverURLString: String,
-        apiToken: String,
-        appLanguage: AppLanguageOption,
-        appearance: AppAppearanceOption,
-        experimentsEnabled: Bool,
-        hideInactiveSessions: Bool,
-        useEnhancedSessionWizard: Bool,
-        voiceEnabled: Bool,
-        voiceLanguage: AppVoiceLanguageOption,
-        defaultNewSessionAgent: APISessionSpawnAgent,
-        lastViewedChangelogID: String
-    ) async {}
+    func persistSettings(_ snapshot: AppSettingsSnapshot) async {}
 }
 
 private actor MockHomeAccountOnboarding: HomeAccountOnboardingAction {

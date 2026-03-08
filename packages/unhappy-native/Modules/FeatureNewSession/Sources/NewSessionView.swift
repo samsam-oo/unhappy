@@ -3,6 +3,14 @@ import CoreKit
 
 @MainActor
 public struct NewSessionView: View {
+    public struct SpawnedContext: Equatable {
+        public let sessionID: String?
+        public let agent: APISessionSpawnAgent
+        public let machineID: String?
+        public let directoryPath: String
+        public let model: String?
+    }
+
     public enum Mode {
         case startSession
         case selectProject
@@ -14,15 +22,14 @@ public struct NewSessionView: View {
     private let initialMachineID: String?
     private let initialDirectoryPath: String?
     private let mode: Mode
-    private let onSessionSpawned: @MainActor (String?) -> Void
+    private let onSessionSpawned: @MainActor (SpawnedContext) -> Void
     private let onProjectSelected: @MainActor (String?, String, String?) -> Void
 
     @StateObject private var viewModel: NewSessionViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showSaveProfilePrompt = false
     @State private var draftProfileName = ""
-    @State private var showCodexThreadsSheet = false
-    @State private var showClaudeSessionsSheet = false
+    @State private var showExistingSessionsSheet = false
     @State private var showDirectoryBrowserSheet = false
     @State private var directoryBrowserFilterText = ""
     @State private var directoryBrowserPathDraft = ""
@@ -37,7 +44,7 @@ public struct NewSessionView: View {
         initialDirectoryPath: String? = nil,
         mode: Mode = .startSession,
         makeViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        onSessionSpawned: @escaping @MainActor (String?) -> Void = { _ in },
+        onSessionSpawned: @escaping @MainActor (SpawnedContext) -> Void = { _ in },
         onProjectSelected: @escaping @MainActor (String?, String, String?) -> Void = { _, _, _ in }
     ) {
         self.serverURLString = serverURLString
@@ -55,27 +62,46 @@ public struct NewSessionView: View {
         NavigationStack {
             Form {
                 machineSection
-                directorySection
+                if !isProjectScopedStartSession {
+                    directorySection
+                }
                 if mode == .startSession {
-                    profilesSection
+                    if !isProjectScopedStartSession {
+                        profilesSection
+                    }
                     agentSection
                     NewSessionAdvancedSection(
                         viewModel: viewModel,
                         serverURLString: serverURLString,
                         token: token,
-                        showCodexThreadsSheet: $showCodexThreadsSheet,
-                        showClaudeSessionsSheet: $showClaudeSessionsSheet,
+                        showExistingSessionsSheet: $showExistingSessionsSheet,
                         focusedField: $focusedField,
                         selectedModelDisplayValue: selectedModelDisplayValue,
-                        codexSelectionButtonTitle: codexSelectionButtonTitle,
-                        claudeSelectionButtonTitle: claudeSelectionButtonTitle
+                        existingSessionButtonTitle: existingSessionButtonTitle,
+                        existingSessionErrorMessage: existingSessionErrorMessage,
+                        existingSessionSelectionID: activeResumeSelectionID,
+                        existingSessionSelectionLabel: existingSessionSelectionLabel,
+                        existingSessionSelectionClearAction: clearExistingSessionSelection,
+                        loadExistingSessionsAction: {
+                            await loadExistingSessions()
+                        }
                     )
                     NewSessionActionSection(
                         viewModel: viewModel,
                         serverURLString: serverURLString,
                         token: token,
                         primaryActionTitle: primaryActionTitle,
-                        onSpawned: onSessionSpawned,
+                        onSpawned: {
+                            onSessionSpawned(
+                                SpawnedContext(
+                                    sessionID: viewModel.spawnedSessionID,
+                                    agent: viewModel.selectedAgent,
+                                    machineID: viewModel.selectedMachineID,
+                                    directoryPath: viewModel.directoryPath,
+                                    model: viewModel.selectedModel
+                                )
+                            )
+                        },
                         onDismiss: { dismiss() }
                     )
                 } else {
@@ -115,15 +141,6 @@ public struct NewSessionView: View {
                     Button("Close") { dismiss() }
                 }
             }
-            .sheet(isPresented: $showCodexThreadsSheet) {
-                NewSessionCodexSessionsSheet(
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    onClose: { showCodexThreadsSheet = false }
-                )
-                .presentationDetents([.medium, .large])
-            }
             .sheet(isPresented: $showDirectoryBrowserSheet) {
                 NewSessionDirectoryBrowserSheet(
                     viewModel: viewModel,
@@ -144,13 +161,8 @@ public struct NewSessionView: View {
                 )
                 .presentationDetents([.large])
             }
-            .sheet(isPresented: $showClaudeSessionsSheet) {
-                NewSessionClaudeSessionsSheet(
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    onClose: { showClaudeSessionsSheet = false }
-                )
+            .sheet(isPresented: $showExistingSessionsSheet) {
+                existingSessionsSheet
                 .presentationDetents([.medium, .large])
             }
             .task(id: "\(serverURLString)|\(token)|\(initialMachineID ?? "")|\(initialDirectoryPath ?? "")") {
@@ -295,22 +307,16 @@ public struct NewSessionView: View {
     }
 
     private func directoryEntryFullPath(_ entry: APIMachineDirectoryEntry) -> String {
-        let current = viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let path = current.isEmpty ? "~" : current
-        let trimmedName = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !trimmedName.isEmpty else { return path }
-        if trimmedName == "." { return path }
-        if trimmedName == ".." { return parentDirectoryPath(from: path) }
-        if trimmedName.hasPrefix("/") { return trimmedName }
-        if path == "/" { return "/" + trimmedName }
-        if path.hasSuffix("/") { return path + trimmedName }
-        if path == "~" { return "~/" + trimmedName }
-        return path + "/" + trimmedName
+        NewSessionDirectoryPathResolver.resolvedPath(
+            current: viewModel.directoryPath,
+            entryName: entry.name
+        )
     }
 
     private func loadDirectoryFromBrowserPath(_ path: String) async {
-        viewModel.directoryPath = path
+        let normalizedPath = NewSessionDirectoryPathResolver.normalizedPath(path)
+        directoryBrowserPathDraft = normalizedPath
+        viewModel.directoryPath = normalizedPath
         await viewModel.loadDirectory(
             serverURLString: serverURLString,
             token: token
@@ -319,28 +325,10 @@ public struct NewSessionView: View {
     }
 
     private func goToParentDirectoryFromBrowser() async {
-        let current = viewModel.directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parent = parentDirectoryPath(from: current.isEmpty ? "~" : current)
+        let draftPath = directoryBrowserPathDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let basePath = draftPath.isEmpty ? viewModel.directoryPath : draftPath
+        let parent = NewSessionDirectoryPathResolver.parentDirectory(from: basePath)
         await loadDirectoryFromBrowserPath(parent)
-    }
-
-    private func parentDirectoryPath(from path: String) -> String {
-        if path == "~" || path == "/" {
-            return path
-        }
-        if path.hasPrefix("~/") {
-            let suffix = String(path.dropFirst(2))
-            let components = suffix.split(separator: "/").dropLast()
-            if components.isEmpty {
-                return "~"
-            }
-            return "~/" + components.joined(separator: "/")
-        }
-        let components = path.split(separator: "/").dropLast()
-        if components.isEmpty {
-            return "/"
-        }
-        return "/" + components.joined(separator: "/")
     }
 
     private var machineSelectionBinding: Binding<String> {
@@ -380,34 +368,119 @@ public struct NewSessionView: View {
     }
 
     private var hasResumeSelection: Bool {
-        selectedCodexResumeID != nil || selectedClaudeResumeID != nil
+        activeResumeSelectionID != nil
     }
 
     private var selectedModelDisplayValue: String {
+        if let selectedOption = viewModel.selectedModelOption {
+            return selectedOption.displayName
+        }
         let normalized = viewModel.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? "Default" : normalized
+        return normalized.isEmpty ? "Select Model" : normalized
     }
 
     private var selectedCodexResumeID: String? {
-        normalized(viewModel.codexResumeThreadID)
+        NewSessionDirectoryPathResolver.normalizedOptionalPath(viewModel.codexResumeThreadID)
     }
 
     private var selectedClaudeResumeID: String? {
-        normalized(viewModel.claudeResumeSessionID)
+        NewSessionDirectoryPathResolver.normalizedOptionalPath(viewModel.claudeResumeSessionID)
     }
 
-    private var codexSelectionButtonTitle: String {
-        if let id = selectedCodexResumeID {
-            return "Codex Session: \(abbreviatedIdentifier(id))"
-        }
-        return "Choose Existing Codex Session"
+    private var isProjectScopedStartSession: Bool {
+        NewSessionViewPresentation.isProjectScopedStartSession(
+            mode: mode,
+            initialDirectoryPath: initialDirectoryPath
+        )
     }
 
-    private var claudeSelectionButtonTitle: String {
-        if let id = selectedClaudeResumeID {
-            return "Claude Session: \(abbreviatedIdentifier(id))"
+    private var activeResumeSelectionID: String? {
+        NewSessionViewPresentation.activeResumeSelectionID(
+            selectedAgent: viewModel.selectedAgent,
+            codexResumeThreadID: viewModel.codexResumeThreadID,
+            claudeResumeSessionID: viewModel.claudeResumeSessionID
+        )
+    }
+
+    private var existingSessionButtonTitle: String? {
+        NewSessionViewPresentation.existingSessionButtonTitle(
+            selectedAgent: viewModel.selectedAgent,
+            codexResumeThreadID: viewModel.codexResumeThreadID,
+            claudeResumeSessionID: viewModel.claudeResumeSessionID
+        )
+    }
+
+    private var existingSessionErrorMessage: String? {
+        NewSessionViewPresentation.existingSessionErrorMessage(
+            selectedAgent: viewModel.selectedAgent,
+            codexErrorMessage: viewModel.codexThreadsErrorMessage,
+            claudeErrorMessage: viewModel.claudeSessionsErrorMessage
+        )
+    }
+
+    private var existingSessionSelectionLabel: String? {
+        switch viewModel.selectedAgent {
+        case .codex:
+            return activeResumeSelectionID == nil ? nil : "Selected Codex Session"
+        case .claude:
+            return activeResumeSelectionID == nil ? nil : "Selected Claude Session"
+        case .gemini:
+            return nil
         }
-        return "Choose Existing Claude Session"
+    }
+
+    @ViewBuilder
+    private var existingSessionsSheet: some View {
+        switch viewModel.selectedAgent {
+        case .codex:
+            NewSessionCodexSessionsSheet(
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                onClose: { showExistingSessionsSheet = false }
+            )
+        case .claude:
+            NewSessionClaudeSessionsSheet(
+                viewModel: viewModel,
+                serverURLString: serverURLString,
+                token: token,
+                onClose: { showExistingSessionsSheet = false }
+            )
+        case .gemini:
+            ContentUnavailableView(
+                "Existing sessions unavailable",
+                systemImage: "wand.and.stars",
+                description: Text("Gemini does not support session resume from this screen.")
+            )
+        }
+    }
+
+    private func loadExistingSessions() async {
+        switch viewModel.selectedAgent {
+        case .codex:
+            await viewModel.loadCodexThreads(
+                serverURLString: serverURLString,
+                token: token
+            )
+        case .claude:
+            await viewModel.loadClaudeSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+        case .gemini:
+            return
+        }
+    }
+
+    private func clearExistingSessionSelection() {
+        switch viewModel.selectedAgent {
+        case .codex:
+            viewModel.clearCodexSelection()
+        case .claude:
+            viewModel.clearClaudeSelection()
+        case .gemini:
+            break
+        }
     }
 }
 
@@ -416,12 +489,6 @@ enum FocusedField: Hashable {
     case environmentVariables
     case directoryPath
     case directoryFilter
-}
-
-private func normalized(_ value: String?) -> String? {
-    guard let value else { return nil }
-    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : trimmed
 }
 
 private func abbreviatedIdentifier(_ value: String) -> String {

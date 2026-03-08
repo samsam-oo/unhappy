@@ -1,11 +1,11 @@
-import { ApiSessionClient } from "@/api/apiSession"
+import { SessionRuntimeClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
 import { Session } from "./session"
 import { claudeLocalLauncher, LauncherResult } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
-import { ApiClient } from "@/lib"
 import type { JsRuntime } from "./runClaude"
+import type { SessionPushNotifier } from "./session"
 
 // Re-export permission mode type from api/types
 // Single unified type with 8 modes - Codex modes mapped at SDK boundary
@@ -30,8 +30,8 @@ interface LoopOptions {
     startingMode?: 'local' | 'remote'
     onModeChange: (mode: 'local' | 'remote') => void
     mcpServers: Record<string, any>
-    session: ApiSessionClient
-    api: ApiClient,
+    session: SessionRuntimeClient
+    pushNotifier: SessionPushNotifier,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     messageQueue: MessageQueue2<EnhancedMode>
@@ -48,7 +48,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
     // Get log path for debug display
     const logPath = logger.logFilePath;
     let session = new Session({
-        api: opts.api,
+        pushNotifier: opts.pushNotifier,
         client: opts.session,
         path: opts.path,
         sessionId: null,

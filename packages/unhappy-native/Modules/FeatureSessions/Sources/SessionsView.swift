@@ -1,7 +1,6 @@
 import SwiftUI
 import CoreKit
 import FeatureNewSession
-import FeatureSessionTools
 
 @MainActor
 public struct SessionsView: View {
@@ -14,9 +13,8 @@ public struct SessionsView: View {
     private let token: String
     private let hideInactiveSessions: Bool
     private let defaultNewSessionAgent: APISessionSpawnAgent
-    private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     @State private var isPresentingProjectPicker = false
     @State private var navigationPath: [Selection] = []
 
@@ -25,26 +23,24 @@ public struct SessionsView: View {
         token: String,
         hideInactiveSessions: Bool = false,
         defaultNewSessionAgent: APISessionSpawnAgent = .claude,
-        onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void = { _ in },
         makeViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
+        makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     ) {
         self.serverURLString = serverURLString
         self.token = token
         self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
-        self.onSessionsChanged = onSessionsChanged
         _viewModel = StateObject(wrappedValue: makeViewModel())
         self.makeNewSessionViewModel = makeNewSessionViewModel
-        self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.makeDirectSessionViewModel = makeDirectSessionViewModel
     }
 
     public var body: some View {
         NavigationStack(path: $navigationPath) {
             sidebarContent
                 .navigationTitle("Projects")
-                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarTitleDisplayMode(.large)
                 .toolbar { sessionsToolbarContent }
                 .refreshable {
                     await viewModel.load(serverURLString: serverURLString, token: token)
@@ -62,9 +58,6 @@ public struct SessionsView: View {
                 serverURLString: serverURLString,
                 token: token
             )
-        }
-        .task(id: sessionsChangeTaskID) {
-            await onSessionsChanged(viewModel.sessions)
         }
         .onChange(of: projectGroups.map(\.id)) { _, ids in
             guard let lastSelection = navigationPath.last else { return }
@@ -107,7 +100,7 @@ public struct SessionsView: View {
     @ViewBuilder
     private var sidebarContent: some View {
         VStack(spacing: 0) {
-            if viewModel.isLoading {
+            if shouldShowFullScreenLoading {
                 ProgressView("Loading sessions…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
@@ -167,6 +160,14 @@ public struct SessionsView: View {
 
     private var sessionsNavigationList: some View {
         return List {
+            if shouldShowProjectsStatusRow {
+                ProjectSyncStatusRow(
+                    multiAgentInProgressCount: viewModel.multiAgentInProgressCount,
+                    isRefreshing: isRefreshingProjectContent
+                )
+                .listRowSeparator(.hidden)
+            }
+
             Section("Projects") {
                 if viewModel.isLoadingProjects && projectGroups.isEmpty {
                     ProgressView("Loading projects…")
@@ -181,19 +182,24 @@ public struct SessionsView: View {
                             ProjectRow(group: group)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                Task {
-                                    await viewModel.removeProject(
-                                        machineID: group.machineID,
-                                        projectPath: group.projectPath,
-                                        serverURLString: serverURLString,
-                                        token: token
-                                    )
+                            if viewModel.isTrackedProject(
+                                machineID: group.machineID,
+                                projectPath: group.projectPath
+                            ) {
+                                Button(role: .destructive) {
+                                    Task {
+                                        await viewModel.removeProject(
+                                            machineID: group.machineID,
+                                            projectPath: group.projectPath,
+                                            serverURLString: serverURLString,
+                                            token: token
+                                        )
+                                    }
+                                } label: {
+                                    Label("Stop Syncing", systemImage: "xmark.bin")
                                 }
-                            } label: {
-                                Label("Stop Syncing", systemImage: "xmark.bin")
+                                .disabled(viewModel.isRemoving(projectID: group.id))
                             }
-                            .disabled(viewModel.isRemoving(projectID: group.id))
                         }
                     }
                 }
@@ -208,6 +214,24 @@ public struct SessionsView: View {
 
     private var hasSidebarRows: Bool {
         !projectGroups.isEmpty
+    }
+
+    private var isRefreshingProjectContent: Bool {
+        viewModel.isLoading || viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions
+    }
+
+    private var shouldShowProjectsStatusRow: Bool {
+        hasSidebarRows && (isRefreshingProjectContent || viewModel.multiAgentInProgressCount > 0)
+    }
+
+    private var shouldShowFullScreenLoading: Bool {
+        isRefreshingProjectContent
+            && !hasSidebarRows
+            && (
+                viewModel.sessions.isEmpty
+                    || viewModel.isLoadingProjects
+                    || viewModel.isLoadingUpstreamSessions
+            )
     }
 
     @ViewBuilder
@@ -244,7 +268,7 @@ public struct SessionsView: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                    makeDirectSessionViewModel: makeDirectSessionViewModel
                 )
             } label: {
                 Label("Recent", systemImage: "clock")
@@ -268,14 +292,6 @@ public struct SessionsView: View {
         return viewModel.sessions
     }
 
-    private var sessionsChangeTaskID: String {
-        viewModel.sessions
-            .map { session in
-                "\(session.id)|\(session.active ? 1 : 0)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
-            }
-            .joined(separator: ",")
-    }
-
     private var sidebarCanvasColor: Color {
         Color(uiColor: .systemBackground)
     }
@@ -290,9 +306,10 @@ public struct SessionsView: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
+                    hideInactiveSessions: hideInactiveSessions,
                     defaultNewSessionAgent: defaultNewSessionAgent,
                     makeNewSessionViewModel: makeNewSessionViewModel,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel,
+                    makeDirectSessionViewModel: makeDirectSessionViewModel,
                     onProjectRemoved: {
                         navigationPath.removeAll()
                     }
@@ -397,14 +414,6 @@ private struct ProjectRow: View {
                 Text(SessionTimestampPresentation.updatedLabel(for: group.latestUpdatedAt))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if group.activeSessionCount > 0 {
-                    Text("·")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text("\(group.activeSessionCount) active")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
             }
             Text(group.projectPath)
                 .font(.caption2.monospaced())

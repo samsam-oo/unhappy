@@ -10,7 +10,7 @@ struct SessionMessageDetailPresentationTests {
             id: "message-1",
             seq: 42,
             localId: "local-1",
-            content: APIEncryptedMessageContent(t: "text", c: "hello"),
+            content: APIEncryptedMessageContent(type: "text", payload: "hello"),
             createdAt: 100,
             updatedAt: 200
         )
@@ -38,7 +38,7 @@ struct SessionMessageDetailPresentationTests {
             id: "message-2",
             seq: 1,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "tool", c: payload),
+            content: APIEncryptedMessageContent(type: "tool", payload: payload),
             createdAt: 100,
             updatedAt: 100
         )
@@ -79,7 +79,7 @@ struct SessionMessageDetailPresentationTests {
             id: "message-4",
             seq: 4,
             localId: nil,
-            content: APIEncryptedMessageContent(t: "tool", c: payload),
+            content: APIEncryptedMessageContent(type: "tool", payload: payload),
             createdAt: 100,
             updatedAt: 100
         )

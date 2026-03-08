@@ -32,6 +32,9 @@ let project = Project(
                 "UILaunchStoryboardName": .string("LaunchScreen"),
                 "NSSupportsLiveActivities": .boolean(true),
             ]),
+            resources: [
+                "Unhappy.icon",
+            ],
             buildableFolders: [
                 "App/Sources",
                 "App/Resources",
@@ -43,6 +46,9 @@ let project = Project(
                 .target(name: "FeatureNewSession"),
                 .target(name: "UnhappyLiveActivitiesExtension"),
             ],
+            settings: .settings(base: [
+                "ASSETCATALOG_COMPILER_APPICON_NAME": "Unhappy",
+            ]),
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:native-bootstrap",
@@ -86,7 +92,6 @@ let project = Project(
                 .target(name: "FeatureMachine"),
                 .target(name: "FeatureNewSession"),
                 .target(name: "FeatureSessions"),
-                .target(name: "FeatureSessionTools"),
                 .target(name: "FeatureSettings"),
             ],
             metadata: .metadata(tags: [
@@ -106,28 +111,10 @@ let project = Project(
             dependencies: [
                 .target(name: "CoreKit"),
                 .target(name: "FeatureNewSession"),
-                .target(name: "FeatureSessionTools"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:sessions",
-                "tag:layer:feature",
-            ])
-        ),
-        .target(
-            name: "FeatureSessionTools",
-            destinations: .iOS,
-            product: .staticFramework,
-            bundleId: "im.unhappy.app.feature.session-tools",
-            buildableFolders: [
-                "Modules/FeatureSessionTools/Sources",
-            ],
-            dependencies: [
-                .target(name: "CoreKit"),
-            ],
-            metadata: .metadata(tags: [
-                "tag:team:mobile",
-                "tag:feature:session-tools",
                 "tag:layer:feature",
             ])
         ),
@@ -250,24 +237,6 @@ let project = Project(
             metadata: .metadata(tags: [
                 "tag:team:mobile",
                 "tag:feature:sessions",
-                "tag:layer:test",
-            ])
-        ),
-        .target(
-            name: "FeatureSessionToolsTests",
-            destinations: .iOS,
-            product: .unitTests,
-            bundleId: "im.unhappy.app.feature.session-tools.tests",
-            infoPlist: .default,
-            buildableFolders: [
-                "Modules/FeatureSessionTools/Tests",
-            ],
-            dependencies: [
-                .target(name: "FeatureSessionTools"),
-            ],
-            metadata: .metadata(tags: [
-                "tag:team:mobile",
-                "tag:feature:session-tools",
                 "tag:layer:test",
             ])
         ),

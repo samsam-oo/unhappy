@@ -55,24 +55,31 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
         var projects: [SessionMachineProject] = []
+        let service = self.service
 
-        for machine in activeMachines {
-            let machineDisplayName = machineName(for: machine)
-            let machineProjects = try await service.fetchProjects(
-                serverURL: serverURL,
-                token: normalizedToken,
-                machineID: machine.id,
-                explicitOnly: true
-            )
-            projects.append(
-                contentsOf: machineProjects.map {
-                    SessionMachineProject(
+        try await withThrowingTaskGroup(of: [SessionMachineProject].self) { group in
+            for machine in activeMachines {
+                let machineDisplayName = machineName(for: machine)
+                group.addTask {
+                    let machineProjects = try await service.fetchProjects(
+                        serverURL: serverURL,
+                        token: normalizedToken,
                         machineID: machine.id,
-                        machineDisplayName: machineDisplayName,
-                        summary: $0
+                        explicitOnly: true
                     )
+                    return machineProjects.map {
+                        SessionMachineProject(
+                            machineID: machine.id,
+                            machineDisplayName: machineDisplayName,
+                            summary: $0
+                        )
+                    }
                 }
-            )
+            }
+
+            for try await machineProjects in group {
+                projects.append(contentsOf: machineProjects)
+            }
         }
 
         return projects.sorted { lhs, rhs in

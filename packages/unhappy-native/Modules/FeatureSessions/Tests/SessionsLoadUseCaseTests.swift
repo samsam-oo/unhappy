@@ -65,6 +65,44 @@ struct SessionsLoadUseCaseTests {
     }
 
     @Test
+    func loadSessionsFiltersArchivedRows() async throws {
+        let rows = [
+            APISession(
+                id: "archived",
+                active: false,
+                activeAt: 1,
+                createdAt: 1,
+                updatedAt: 40,
+                archived: true,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            ),
+            APISession(
+                id: "visible",
+                active: true,
+                activeAt: 1,
+                createdAt: 1,
+                updatedAt: 30,
+                archived: false,
+                metadataVersion: 1,
+                metadata: "enc",
+                dataEncryptionKey: nil,
+                lastMessage: nil
+            )
+        ]
+        let useCase = SessionsLoadUseCase(service: ImmediateSessionsService(sessions: rows))
+
+        let loaded = try await useCase.loadSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(loaded.map { $0.id } == ["visible"])
+    }
+
+    @Test
     func concurrentLoadsShareSingleInFlightRequest() async throws {
         let rows = [
             APISession(

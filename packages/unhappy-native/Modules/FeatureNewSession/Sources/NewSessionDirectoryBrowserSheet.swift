@@ -18,11 +18,6 @@ struct NewSessionDirectoryBrowserSheet: View {
         NavigationStack {
             browserContent
             .scrollDismissesKeyboard(.interactively)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    focusedField.wrappedValue = nil
-                }
-            )
             .navigationTitle("Choose Folder")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -57,6 +52,7 @@ struct NewSessionDirectoryBrowserSheet: View {
                 .onSubmit { Task { await loadFromDraftPath() } }
 
             Button {
+                focusedField.wrappedValue = nil
                 Task { await goToParentDirectoryFromBrowser() }
             } label: {
                 Label("Up One Level", systemImage: "folder")

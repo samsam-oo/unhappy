@@ -6,6 +6,88 @@ import CoreKit
 @MainActor
 struct NewSessionViewModelTests {
     @Test
+    func loadMachinesSelectsFirstExplicitModelAndReasoningEffort() async throws {
+        let machine = makeMachine(id: "machine-1")
+        let model = NewSessionViewModel(
+            machinesLoader: ViewModelMachinesLoader(machines: [machine]),
+            directoryLister: ViewModelDirectoryLister(),
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            modelsLoader: ViewModelModelsLoader(
+                capabilities: APIMachineAgentCapabilities(
+                    models: ["gpt-5.3-codex", "gpt-5-codex"],
+                    reasoningEfforts: ["auto", "medium", "high"],
+                    modelCapabilities: [
+                        APIMachineModelCapability(
+                            id: "gpt-5-codex",
+                            model: "gpt-5-codex",
+                            displayName: "GPT-5 Codex",
+                            description: nil,
+                            defaultReasoningEffort: "medium",
+                            supportedReasoningEfforts: ["medium", "high"],
+                            isDefault: true,
+                            supportsPersonality: nil,
+                            hidden: false,
+                            upgrade: nil
+                        ),
+                        APIMachineModelCapability(
+                            id: "gpt-5.3-codex",
+                            model: "gpt-5.3-codex",
+                            displayName: "GPT-5.3 Codex",
+                            description: nil,
+                            defaultReasoningEffort: nil,
+                            supportedReasoningEfforts: ["high"],
+                            isDefault: false,
+                            supportsPersonality: nil,
+                            hidden: false,
+                            upgrade: nil
+                        )
+                    ]
+                )
+            ),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.selectedModel == "gpt-5-codex")
+        #expect(model.selectedModelOption?.displayName == "GPT-5 Codex")
+        #expect(model.availableReasoningEfforts == [.medium, .high])
+        #expect(model.selectedReasoningEffort == .medium)
+    }
+
+    @Test
+    func handleSelectedAgentChangeKeepsGeminiSelected() async throws {
+        let machine = makeMachine(id: "machine-1")
+        let model = NewSessionViewModel(
+            machinesLoader: ViewModelMachinesLoader(machines: [machine]),
+            directoryLister: ViewModelDirectoryLister(),
+            spawner: ViewModelSpawner(),
+            recentProjectsManager: NewSessionNoopRecentProjectsManager(),
+            profilesManager: NewSessionNoopProfilesManager(),
+            modelsLoader: ViewModelModelsLoader(
+                capabilities: APIMachineAgentCapabilities(
+                    models: ["auto", "gemini-3-flash-preview"],
+                    reasoningEfforts: ["auto"]
+                )
+            ),
+            codexThreadsLoader: SequenceCodexThreadsLoader(pages: []),
+            claudeSessionsLoader: SequenceClaudeSessionsLoader(pages: [])
+        )
+
+        await model.loadMachines(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.handleSelectedAgentChange(
+            .gemini,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.selectedAgent == .gemini)
+    }
+
+    @Test
     func loadCodexThreadsLoadsFirstPageMetadata() async throws {
         let machine = makeMachine(id: "machine-1")
         let firstPage = APICodexThreadsPage(
@@ -457,6 +539,19 @@ private struct ViewModelDirectoryLister: NewSessionDirectoryListingAction {
     }
 }
 
+private struct ViewModelModelsLoader: NewSessionModelsLoadingAction {
+    let capabilities: APIMachineAgentCapabilities
+
+    func loadModels(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        agent: APISessionSpawnAgent
+    ) async throws -> APIMachineAgentCapabilities {
+        capabilities
+    }
+}
+
 private actor SequenceDirectoryLister: NewSessionDirectoryListingAction {
     private var results: [Result<[APIMachineDirectoryEntry], Error>]
 
@@ -518,20 +613,7 @@ private actor SuspendingDirectoryLister: NewSessionDirectoryListingAction {
 }
 
 private struct ViewModelSpawner: NewSessionSpawningAction {
-    func spawnSession(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent,
-        approvedNewDirectoryCreation: Bool,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        sessionToken: String?,
-        environmentVariables: [String : String],
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult {
         APISessionSpawnResult(
             success: true,
             sessionID: "session-1",

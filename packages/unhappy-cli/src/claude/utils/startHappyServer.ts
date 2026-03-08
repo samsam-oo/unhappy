@@ -3,7 +3,6 @@
  * Provides Unhappy CLI specific tools including chat session title management
  */
 
-import { ApiSessionClient } from '@/api/apiSession';
 import { logger } from '@/ui/logger';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -28,25 +27,17 @@ function formatUnknownError(error: unknown): string {
 
 type HappyServerOptions = {
   onChangeTitle?: (title: string) => Promise<void> | void;
+  onSummary?: (title: string) => Promise<void> | void;
   skipSummaryMessage?: boolean;
 };
 
-export async function startHappyServer(
-  client: ApiSessionClient,
-  options?: HappyServerOptions,
-) {
-  // Handler that sends title updates via the client
+export async function startHappyServer(options?: HappyServerOptions) {
   const handler = async (title: string) => {
     logger.debug('[happyMCP] Changing title to:', title);
     const errors: string[] = [];
     try {
       if (!options?.skipSummaryMessage) {
-        // Send title as a summary message, similar to title generator
-        client.sendClaudeSessionMessage({
-          type: 'summary',
-          summary: title,
-          leafUuid: randomUUID(),
-        });
+        await options?.onSummary?.(title);
       }
     } catch (error) {
       errors.push(String(error));

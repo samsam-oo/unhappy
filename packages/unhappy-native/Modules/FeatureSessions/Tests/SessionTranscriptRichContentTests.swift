@@ -97,6 +97,54 @@ struct SessionTranscriptRichContentTests {
     }
 
     @Test
+    func commandSummaryUsesExploredForReadFileCounts() {
+        let singleReadBody = """
+        {
+          "commandActions": [
+            { "type": "read", "path": "README.md" }
+          ]
+        }
+        """
+        let multiReadBody = """
+        {
+          "commandActions": [
+            { "type": "read", "path": "README.md" },
+            { "type": "read", "path": "Package.swift" },
+            { "type": "search", "query": "TODO" }
+          ]
+        }
+        """
+
+        let singleReadEntry = SessionTranscriptEntry(
+            id: "tool-single-read",
+            role: .agent,
+            kind: .toolCall,
+            title: "Run Command",
+            body: singleReadBody,
+            toolUseID: "call_single",
+            sourceType: "tool-call",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+        let multiReadEntry = SessionTranscriptEntry(
+            id: "tool-multi-read",
+            role: .agent,
+            kind: .toolCall,
+            title: "Run Command",
+            body: multiReadBody,
+            toolUseID: "call_multi",
+            sourceType: "tool-call",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: singleReadEntry) == "Explored 1 file")
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Explored 2 files, 1 search")
+    }
+
+    @Test
     func richToolParserBuildsFileChangeCardsFromLatestItemPayload() {
         let body = """
         {
@@ -137,5 +185,47 @@ struct SessionTranscriptRichContentTests {
         #expect(changes.count == 1)
         #expect(changes[0].path == "Sources/ComposerView.swift")
         #expect(changes[0].kind == .modified)
+    }
+
+    @Test
+    func richToolParserBuildsCommandExecutionCard() {
+        let body = """
+        {
+          "type": "commandExecutionPresentation",
+          "command": "git status",
+          "cwd": "/tmp/project",
+          "summary": "Explored 2 files, 4 searches",
+          "logs": "line 1\\nline 2",
+          "success": true,
+          "exitCode": 0,
+          "durationMs": 11000
+        }
+        """
+        let entry = SessionTranscriptEntry(
+            id: "tool-command",
+            role: .agent,
+            kind: .toolResult,
+            title: "Ran command",
+            body: body,
+            toolUseID: "call_cmd",
+            sourceType: "item_completed",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected command execution rich content")
+            return
+        }
+
+        #expect(command.command == "git status")
+        #expect(command.cwd == "/tmp/project")
+        #expect(command.summary == "Explored 2 files, 4 searches")
+        #expect(command.logs == "line 1\nline 2")
+        #expect(command.status == .succeeded)
+        #expect(command.exitCode == 0)
+        #expect(command.durationText == "11s")
     }
 }

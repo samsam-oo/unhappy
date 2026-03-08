@@ -5,7 +5,6 @@ import FeatureInbox
 import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
-import FeatureSessionTools
 import FeatureSettings
 
 @main
@@ -18,8 +17,7 @@ struct UnhappyNativeApp: App {
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
-    private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
-    private let sessionPresenceCoordinator: any SessionPresenceCoordinating
+    private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
@@ -35,17 +33,6 @@ struct UnhappyNativeApp: App {
         let feedService = URLSessionFeedService()
         let friendsService = URLSessionFriendsService()
         let usersService = URLSessionUsersService()
-        let sessionFileLoader = SessionFileLoadUseCase(service: sessionsService)
-        let sessionDirectoryLister = SessionDirectoryListUseCase(service: sessionsService)
-        let sessionFileWriter = SessionFileWriteUseCase(service: sessionsService)
-        let sessionKiller = SessionKillUseCase(service: sessionsService)
-        let sessionAborter = SessionTaskAbortUseCase(service: sessionsService)
-        let sessionPermissionResponder = SessionPermissionUseCase(service: sessionsService)
-        let sessionModeSwitcher = SessionModeSwitchUseCase(service: sessionsService)
-        let sessionBasher = SessionBashUseCase(service: sessionsService)
-        let sessionFileDiffPreviewer = SessionFileDiffPreviewUseCase(basher: sessionBasher)
-        let sessionRipgrepRunner = SessionRipgrepUseCase(service: sessionsService)
-        let sessionDifftasticRunner = SessionDifftasticUseCase(service: sessionsService)
         let machinesLoader = MachinesLoadUseCase(service: machinesService)
         let machineSpawner = MachineSpawnUseCase(service: machinesService)
         let machineUpdater = MachineDaemonUpdateUseCase(service: machinesService)
@@ -95,29 +82,24 @@ struct UnhappyNativeApp: App {
             authTokenService: authTokenService,
             secretStore: accountSecretStore
         )
-        let sessionsNotifier = UserNotificationsSessionNotifier()
-        let sessionsLiveActivity = ActivityKitSessionsLiveActivityService()
-        let sessionPresenceCoordinator = SessionPresenceCoordinator(
-            notifications: sessionsNotifier,
-            liveActivity: sessionsLiveActivity
-        )
         let sessionsLoader = SessionsLoadUseCase(service: sessionsService)
         let sessionsPageLoader = SessionsPageLoadUseCase(service: sessionsService)
         let sessionsPoller = SessionsPollingUseCase(loader: sessionsLoader)
-        let sessionMessagesLoader = SessionMessagesLoadUseCase(service: sessionsService)
         let sessionProjectsLoader = SessionProjectsLoadUseCase(service: machinesService)
         let sessionProjectOpener = SessionProjectOpenUseCase(service: machinesService)
         let sessionProjectRemover = SessionProjectRemoveUseCase(service: machinesService)
-        let sessionModelsLoader = SessionModelsLoadUseCase(service: sessionsService)
-        let sessionSpawnUseCase = SessionSpawnUseCase(service: sessionsService)
-        let sessionMessageSender = SessionMessageSendUseCase(service: sessionsService)
-        let sessionPreDeleteKillUseCase = SessionPreDeleteKillUseCase(service: sessionsService)
+        let directSessionMessagesLoader = DirectSessionMessagesLoadUseCase(
+            codexService: machinesService,
+            claudeService: machinesService,
+            geminiService: machinesService
+        )
+        let directSessionMessageSender = DirectSessionMessageSendUseCase(
+            codexService: machinesService,
+            claudeService: machinesService,
+            geminiService: machinesService
+        )
         let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
-        let sessionTitleUpdateUseCase = SessionTitleUpdateUseCase(service: sessionsService)
-        let sessionCodexThreadsLoader = SessionCodexThreadsLoadUseCase(service: sessionsService)
-        let sessionClaudeSessionsLoader = SessionClaudeSessionsLoadUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
-        self.sessionPresenceCoordinator = sessionPresenceCoordinator
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
         self.makeInboxViewModel = {
             InboxViewModel(
@@ -132,20 +114,11 @@ struct UnhappyNativeApp: App {
                 loader: sessionsLoader,
                 pageLoader: sessionsPageLoader,
                 poller: sessionsPoller,
-                messageLoader: sessionMessagesLoader,
                 projectsLoader: sessionProjectsLoader,
                 projectOpener: sessionProjectOpener,
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
-                upstreamSessionLinker: newSessionSpawner,
-                codexThreadsLoader: sessionCodexThreadsLoader,
-                claudeSessionsLoader: sessionClaudeSessionsLoader,
-                sessionModelsLoader: sessionModelsLoader,
-                spawnUseCase: sessionSpawnUseCase,
-                messageSender: sessionMessageSender,
-                preDeleteKiller: sessionPreDeleteKillUseCase,
-                deleteUseCase: sessionDeleteUseCase,
-                titleUseCase: sessionTitleUpdateUseCase
+                deleteUseCase: sessionDeleteUseCase
             )
         }
         self.makeNewSessionViewModel = {
@@ -160,19 +133,11 @@ struct UnhappyNativeApp: App {
                 claudeSessionsLoader: newSessionClaudeSessionsLoader
             )
         }
-        self.makeSessionToolsViewModel = {
-            SessionToolsViewModel(
-                fileLoader: sessionFileLoader,
-                directoryLister: sessionDirectoryLister,
-                fileWriter: sessionFileWriter,
-                fileDiffPreviewer: sessionFileDiffPreviewer,
-                killer: sessionKiller,
-                aborter: sessionAborter,
-                permissionResponder: sessionPermissionResponder,
-                modeSwitcher: sessionModeSwitcher,
-                basher: sessionBasher,
-                ripgrepRunner: sessionRipgrepRunner,
-                difftasticRunner: sessionDifftasticRunner
+        self.makeDirectSessionViewModel = { identity in
+            DirectSessionViewModel(
+                identity: identity,
+                loader: directSessionMessagesLoader,
+                sender: directSessionMessageSender
             )
         }
         self.makeMachinesViewModel = {
@@ -213,10 +178,7 @@ struct UnhappyNativeApp: App {
                 makeInboxViewModel: makeInboxViewModel,
                 makeSessionsViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
-                makeSessionToolsViewModel: makeSessionToolsViewModel,
-                onSessionsChanged: { sessions in
-                    await sessionPresenceCoordinator.handleSessionsChanged(sessions)
-                },
+                makeDirectSessionViewModel: makeDirectSessionViewModel,
                 makeMachinesViewModel: makeMachinesViewModel,
                 makeUsageViewModel: makeUsageViewModel,
                 makeDaemonStatusViewModel: makeDaemonStatusViewModel,
@@ -225,9 +187,6 @@ struct UnhappyNativeApp: App {
                 makeServerStatusViewModel: makeServerStatusViewModel
             )
             .preferredColorScheme(preferredColorScheme)
-            .task {
-                await sessionPresenceCoordinator.start()
-            }
         }
     }
 

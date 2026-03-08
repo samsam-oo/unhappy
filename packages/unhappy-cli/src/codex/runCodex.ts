@@ -1,9 +1,9 @@
 import { ApiClient } from '@/api/api';
-import type { ApiSessionClient } from '@/api/apiSession';
+import type { SessionRuntimeClient } from '@/api/apiSession';
 import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
@@ -27,8 +27,8 @@ import {
 } from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
-import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import { listCodexModels } from '@/modules/common/listModels';
+import { createLocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
 import { render } from 'ink';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -452,7 +452,31 @@ export async function runCodex(opts: {
   // Define session
   //
 
-  const sessionTag = randomUUID();
+  const cwd = process.cwd();
+  const settings = await readSettings();
+  let machineId = settings?.machineId;
+  if (!machineId) {
+    console.error(
+      `[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/samsam-oo/unhappy-cli/issues`,
+    );
+    process.exit(1);
+  }
+
+  const explicitResumeThreadId =
+    typeof opts.resumeThreadId === 'string' && opts.resumeThreadId.trim()
+      ? opts.resumeThreadId.trim()
+      : null;
+  const resumeEnabled = explicitResumeThreadId ? true : opts.resume !== false;
+  const initialResumeEntry =
+    resumeEnabled && !opts.clearResume && !explicitResumeThreadId
+      ? await readCodexResumeEntry(cwd)
+      : null;
+  const initialResumeThreadId =
+    explicitResumeThreadId ??
+    (typeof initialResumeEntry?.codexSessionId === 'string' &&
+    initialResumeEntry.codexSessionId.trim()
+      ? initialResumeEntry.codexSessionId.trim()
+      : null);
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Codex');
@@ -468,14 +492,6 @@ export async function runCodex(opts: {
   // Machine
   //
 
-  const settings = await readSettings();
-  let machineId = settings?.machineId;
-  if (!machineId) {
-    console.error(
-      `[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/samsam-oo/unhappy-cli/issues`,
-    );
-    process.exit(1);
-  }
   logger.debug(`Using machineId: ${machineId}`);
   await api.getOrCreateMachine({
     machineId,
@@ -491,35 +507,13 @@ export async function runCodex(opts: {
     machineId,
     startedBy: opts.startedBy,
   });
-  const response = await api.getOrCreateSession({
-    tag: sessionTag,
+  let session: SessionRuntimeClient = createLocalSessionRuntimeClient({
+    provider: 'codex',
     metadata,
-    state,
+    agentState: state,
   });
-
-  // Handle server unreachable case - create offline stub with hot reconnection
-  let session: ApiSessionClient;
   let syncQueueState: (() => void) | null = null;
-  // Permission handler declared here so it can be updated in onSessionSwap callback
-  // (assigned later at line ~385 after client setup)
   let permissionHandler: CodexPermissionHandler;
-  const { session: initialSession, reconnectionHandle } =
-    setupOfflineReconnection({
-      api,
-      sessionTag,
-      metadata,
-      state,
-      response,
-      onSessionSwap: (newSession) => {
-        session = newSession;
-        // Update permission handler with new session to avoid stale reference
-        if (permissionHandler) {
-          permissionHandler.updateSession(newSession);
-        }
-        syncQueueState?.();
-      },
-    });
-  session = initialSession;
 
   // Mark the session as agent-ready as early as possible so mobile/web does not
   // block for the full readiness timeout on the first message.
@@ -534,27 +528,6 @@ export async function runCodex(opts: {
       permissionMode: opts.permissionMode ?? 'passthrough',
     },
   }));
-
-  // Always report to daemon if it exists (skip if offline)
-  if (response) {
-    try {
-      logger.debug(`[START] Reporting session ${response.id} to daemon`);
-      const result = await notifyDaemonSessionStarted(response.id, metadata);
-      if (result.error) {
-        logger.debug(
-          `[START] Failed to report to daemon (may not be running):`,
-          result.error,
-        );
-      } else {
-        logger.debug(`[START] Reported session ${response.id} to daemon`);
-      }
-    } catch (error) {
-      logger.debug(
-        '[START] Failed to report to daemon (may not be running):',
-        error,
-      );
-    }
-  }
 
   const messageQueue = new MessageQueue2<EnhancedMode>((mode) =>
     hashObject({
@@ -862,12 +835,6 @@ export async function runCodex(opts: {
   let storedSessionIdForResume: string | null = null;
   let storedCodexHomeDirForResume: string | null = null;
   let storedResumeFileForResume: string | null = null;
-  const explicitResumeThreadId =
-    typeof opts.resumeThreadId === 'string' && opts.resumeThreadId.trim()
-      ? opts.resumeThreadId.trim()
-      : null;
-  const cwd = process.cwd();
-  const resumeEnabled = explicitResumeThreadId ? true : opts.resume !== false;
   const getEffectiveCodexHomeDir = (): string => {
     const fromEnv =
       typeof process.env.CODEX_HOME === 'string' ? process.env.CODEX_HOME.trim() : '';
@@ -1189,13 +1156,13 @@ export async function runCodex(opts: {
 
   if (explicitResumeThreadId) {
     storedSessionIdForResume = explicitResumeThreadId;
-    client.setPreferredResumeThreadId(explicitResumeThreadId);
+    client.setPreferredResumeThreadId(explicitResumeThreadId, true);
     messageBuffer.addMessage('Resuming selected Codex session...', 'status');
   }
 
   if (resumeEnabled && !opts.clearResume && !explicitResumeThreadId) {
     try {
-      const entry = await readCodexResumeEntry(cwd);
+      const entry = initialResumeEntry ?? await readCodexResumeEntry(cwd);
       if (entry?.codexSessionId) {
         storedSessionIdForResume = entry.codexSessionId;
         storedCodexHomeDirForResume =
@@ -1328,14 +1295,26 @@ export async function runCodex(opts: {
     if (conversationId) lastReportedAgentConversationId = conversationId;
 
     try {
+      const transcriptPath = findCodexResumeFileWithFallbacks(sessionId);
+      const nextMetadata = {
+        ...session.getMetadataSnapshot(),
+        agentSessionId: sessionId,
+        ...(conversationId ? { agentConversationId: conversationId } : {}),
+        ...(transcriptPath ? { agentTranscriptPath: transcriptPath } : {}),
+      } as Record<string, unknown>;
       session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         agentSessionId: sessionId,
         ...(conversationId ? { agentConversationId: conversationId } : {}),
+        ...(transcriptPath ? { agentTranscriptPath: transcriptPath } : {}),
       }));
+      void notifyDaemonProviderSessionStarted('codex', sessionId, nextMetadata as any).catch((error) => {
+        logger.debug('[Codex] Failed to report provider session to daemon', error);
+      });
       logger.debug(`[Codex] Reported agent session id to metadata (${source}):`, {
         sessionId,
         conversationId: conversationId ?? null,
+        transcriptPath: transcriptPath ?? null,
       });
     } catch (e) {
       logger.debug('[Codex] Failed to report codex identifiers to metadata', e);
@@ -2232,7 +2211,7 @@ export async function runCodex(opts: {
   });
 
   // Start Unhappy MCP server (HTTP) and prepare STDIO bridge config for Codex
-  const happyServer = await startHappyServer(session, {
+  const happyServer = await startHappyServer({
     skipSummaryMessage: true,
     onChangeTitle: async (title) => {
       const normalized = title.trim();
@@ -2606,12 +2585,6 @@ export async function runCodex(opts: {
     // Clean up resources when main loop exits
     logger.debug('[codex]: Final cleanup start');
     logActiveHandles('cleanup-start');
-
-    // Cancel offline reconnection if still running
-    if (reconnectionHandle) {
-      logger.debug('[codex]: Cancelling offline reconnection');
-      reconnectionHandle.cancel();
-    }
 
     try {
       logger.debug('[codex]: sendSessionDeath');

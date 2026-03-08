@@ -16,13 +16,17 @@ export function startDaemonControlServer({
   stopSession,
   spawnSession,
   requestShutdown,
-  onUnhappySessionWebhook
+  onProviderSessionWebhook,
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
-  onUnhappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
+  onProviderSessionWebhook: (
+    provider: 'codex' | 'claude' | 'gemini',
+    providerSessionId: string,
+    metadata: Metadata,
+  ) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -34,25 +38,23 @@ export function startDaemonControlServer({
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
 
-    // Session reports itself after creation
-    typed.post('/session-started', {
+    typed.post('/provider-session-started', {
       schema: {
         body: z.object({
-          sessionId: z.string(),
-          metadata: z.any() // Metadata type from API
+          provider: z.enum(['codex', 'claude', 'gemini']),
+          providerSessionId: z.string(),
+          metadata: z.any(),
         }),
         response: {
           200: z.object({
-            status: z.literal('ok')
-          })
-        }
-      }
+            status: z.literal('ok'),
+          }),
+        },
+      },
     }, async (request) => {
-      const { sessionId, metadata } = request.body;
-
-      logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
-      onUnhappySessionWebhook(sessionId, metadata);
-
+      const { provider, providerSessionId, metadata } = request.body;
+      logger.debug(`[CONTROL SERVER] Provider session started: ${provider}:${providerSessionId}`);
+      onProviderSessionWebhook(provider, providerSessionId, metadata);
       return { status: 'ok' as const };
     });
 
@@ -63,7 +65,8 @@ export function startDaemonControlServer({
           200: z.object({
             children: z.array(z.object({
               startedBy: z.string(),
-              happySessionId: z.string(),
+              provider: z.string().optional(),
+              providerSessionId: z.string(),
               pid: z.number(),
               metadata: z.any().optional(),
             }))
@@ -75,12 +78,13 @@ export function startDaemonControlServer({
       logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
       return { 
         children: children
-          .filter(child => child.happySessionId !== undefined)
+          .filter(child => child.providerSessionId !== undefined)
           .map(child => ({
             startedBy: child.startedBy,
-            happySessionId: child.happySessionId!,
+            provider: child.provider,
+            providerSessionId: child.providerSessionId!,
             pid: child.pid,
-            metadata: child.happySessionMetadataFromLocalWebhook,
+            metadata: child.providerSessionMetadata,
           }))
       }
     });
@@ -110,7 +114,6 @@ export function startDaemonControlServer({
       schema: {
         body: z.object({
           directory: z.string(),
-          sessionId: z.string().optional(),
           codexResumeThreadId: z.string().optional(),
           claudeResumeSessionId: z.string().optional(),
           agent: z.enum(['claude', 'codex', 'gemini']),
@@ -136,16 +139,14 @@ export function startDaemonControlServer({
     }, async (request, reply) => {
       const {
         directory,
-        sessionId,
         codexResumeThreadId,
         claudeResumeSessionId,
         agent,
       } = request.body;
 
-      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`);
+      logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}`);
       const result = await spawnSession({
         directory,
-        sessionId,
         codexResumeThreadId,
         claudeResumeSessionId,
         agent,

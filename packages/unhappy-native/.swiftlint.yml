@@ -1,0 +1,10 @@
+included:
+  - App
+  - Modules
+
+excluded:
+  - Tuist
+  - .build
+  - Derived
+  - UnhappyNative.xcodeproj
+  - UnhappyNative.xcworkspace

@@ -43,12 +43,8 @@ Auth flows:
 - `GET /v2/sessions/active?limit=...`
 - `GET /v2/sessions?cursor=cursor_v1_<id>&limit=...&changedSince=...`
 - `POST /v1/sessions` (create or load by `tag`)
-- `GET /v1/sessions/:sessionId/messages`
 - `DELETE /v1/sessions/:sessionId`
 - `PATCH /v1/sessions/:sessionId/title`
-- `GET /v1/sessions/:sessionId/codex/threads?cwd=...&limit=...&cursor=...` (uses session-scoped daemon, falls back to linked machine daemon)
-- `GET /v1/sessions/:sessionId/claude/sessions?cwd=...&limit=...&cursor=...` (uses session-scoped daemon, falls back to linked machine daemon)
-- `PATCH /v1/sessions/:sessionId/codex/title` (rename active Codex thread + mirror display name)
 
 ### Machines
 - `POST /v1/machines` (create or load by id)

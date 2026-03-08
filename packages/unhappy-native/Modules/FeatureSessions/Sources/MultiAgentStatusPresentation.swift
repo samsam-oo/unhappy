@@ -3,7 +3,6 @@ import SwiftUI
 struct MultiAgentStatusPresentation: Equatable, Sendable {
     enum State: Equatable, Sendable {
         case inProgress
-        case completed
     }
 
     let summaryText: String
@@ -12,50 +11,31 @@ struct MultiAgentStatusPresentation: Equatable, Sendable {
     let state: State
 
     var badgeBackground: Color {
-        switch state {
-        case .inProgress:
-            return Color.green.opacity(0.16)
-        case .completed:
-            return Color.gray.opacity(0.14)
-        }
+        Color.green.opacity(0.16)
     }
 
     var badgeForeground: Color {
-        switch state {
-        case .inProgress:
-            return Color.green
-        case .completed:
-            return Color.secondary
-        }
+        Color.green
     }
 }
 
 enum MultiAgentStatusPresentationBuilder {
-    static func make(activeSessionsCount: Int, inProgress: Bool) -> MultiAgentStatusPresentation {
-        let safeCount = max(0, activeSessionsCount)
-        let summaryText: String
-        if safeCount == 0 {
-            summaryText = "No active sessions"
-        } else if safeCount == 1 {
-            summaryText = "1 active session"
-        } else {
-            summaryText = "\(safeCount) active sessions"
-        }
+    static func make(inProgressCount: Int) -> MultiAgentStatusPresentation? {
+        let safeCount = max(0, inProgressCount)
+        guard safeCount > 0 else { return nil }
 
-        if inProgress {
-            return MultiAgentStatusPresentation(
-                summaryText: summaryText,
-                statusText: "진행중",
-                symbolName: "bolt.fill",
-                state: .inProgress
-            )
+        let summaryText: String
+        if safeCount == 1 {
+            summaryText = "1 multi-agent task"
+        } else {
+            summaryText = "\(safeCount) multi-agent tasks"
         }
 
         return MultiAgentStatusPresentation(
             summaryText: summaryText,
-            statusText: "완료됨",
-            symbolName: "checkmark.circle",
-            state: .completed
+            statusText: "진행중",
+            symbolName: "bolt.fill",
+            state: .inProgress
         )
     }
 }

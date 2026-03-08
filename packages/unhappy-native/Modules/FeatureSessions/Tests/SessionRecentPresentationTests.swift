@@ -18,13 +18,12 @@ struct SessionRecentPresentationTests {
 
         let sections = SessionRecentPresentationBuilder.make(
             sessions: sessions,
+            upstreamSessions: [],
             now: now,
             calendar: calendar
         )
 
-        #expect(sections.count == 2)
-        #expect(sections.first?.sessions.map(\.id) == ["today-1", "today-2"])
-        #expect(sections.last?.sessions.map(\.id) == ["older-1"])
+        #expect(sections.isEmpty)
     }
 
     @Test
@@ -61,12 +60,51 @@ struct SessionRecentPresentationTests {
 
     @Test
     func makeReturnsEmptyForEmptyInput() {
-        let sections = SessionRecentPresentationBuilder.make(sessions: [])
+        let sections = SessionRecentPresentationBuilder.make(
+            sessions: [],
+            upstreamSessions: []
+        )
         #expect(sections.isEmpty)
+    }
+
+    @Test
+    func makePrefersDirectProviderRowsOverMirroredSessions() {
+        let mirrored = makeSession(
+            id: "session-1",
+            updatedAt: 1_700_000_000,
+            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","cwd":"/repo/app"}"#
+        )
+        let upstream = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Direct Codex",
+                cwd: "/repo/app",
+                path: "/Users/test/.codex/sessions/2026/03/thread-1.jsonl",
+                updatedAt: "2026-03-14T12:00:00.000Z",
+                createdAt: "2026-03-14T11:00:00.000Z",
+                archived: false
+            )
+        )
+
+        let sections = SessionRecentPresentationBuilder.make(
+            sessions: [mirrored],
+            upstreamSessions: [upstream],
+            now: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+
+        #expect(sections.count == 1)
+        #expect(sections.first?.entries.map(\.id) == ["direct:machine-1|codex|thread-1"])
     }
 }
 
-private func makeSession(id: String, updatedAt: TimeInterval) -> APISession {
+private func makeSession(
+    id: String,
+    updatedAt: TimeInterval,
+    metadata: String = "enc"
+) -> APISession {
     APISession(
         id: id,
         displayName: nil,
@@ -76,7 +114,7 @@ private func makeSession(id: String, updatedAt: TimeInterval) -> APISession {
         createdAt: updatedAt - 60,
         updatedAt: updatedAt,
         metadataVersion: 1,
-        metadata: "enc",
+        metadata: metadata,
         agentState: nil,
         agentStateVersion: nil,
         dataEncryptionKey: nil,

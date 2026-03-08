@@ -13,10 +13,10 @@ import React from 'react';
 
 import { ApiClient } from '@/api/api';
 import { extractUserMessageText } from '@/api/types';
-import type { ACPMessageData, ApiSessionClient } from '@/api/apiSession';
+import type { ACPMessageData } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
@@ -29,7 +29,7 @@ import { hashObject } from '@/utils/deterministicJson';
 import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
-import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
+import { LocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
 
 import type { AgentBackend, AgentMessage } from '@/agent';
 import { createGeminiBackend } from '@/agent/factories/gemini';
@@ -50,6 +50,10 @@ import {
 } from '@/gemini/utils/optionsParser';
 import { GeminiPermissionHandler } from '@/gemini/utils/permissionHandler';
 import { GeminiReasoningProcessor } from '@/gemini/utils/reasoningProcessor';
+import {
+  GeminiDirectTranscriptStore,
+  startGeminiDirectSessionControlServer,
+} from '@/gemini/directSession';
 import { GeminiDisplay } from '@/ui/ink/GeminiDisplay';
 
 /**
@@ -64,8 +68,6 @@ export async function runGemini(opts: {
   //
   // Define session
   //
-
-  const sessionTag = randomUUID();
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Gemini');
@@ -132,63 +134,34 @@ export async function runGemini(opts: {
     machineId,
     startedBy: opts.startedBy,
   });
-  const response = await api.getOrCreateSession({
-    tag: sessionTag,
+  const session = new LocalSessionRuntimeClient({
+    provider: 'gemini',
     metadata,
-    state,
+    agentState: state,
   });
-
-  // Handle server unreachable case - create offline stub with hot reconnection
-  let session: ApiSessionClient;
+  const directTranscript = new GeminiDirectTranscriptStore();
+  const directSessionControl = await startGeminiDirectSessionControlServer({
+    listMessages: () => directTranscript.listMessages(),
+    sendMessage: async (text) => {
+      session.enqueueUserMessage({
+        role: 'user',
+        content: {
+          type: 'text',
+          text,
+        },
+        meta: {
+          sentFrom: 'gemini-direct',
+        },
+      });
+    },
+  });
+  await session.updateMetadata((currentMetadata) => ({
+    ...currentMetadata,
+    agentControlPort: directSessionControl.port,
+  }));
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later after Unhappy server setup)
   let permissionHandler: GeminiPermissionHandler;
-
-  // Session swap synchronization to prevent race conditions during message processing
-  // When a swap is requested during processing, it's queued and applied after the current cycle
-  let isProcessingMessage = false;
-  let pendingSessionSwap: ApiSessionClient | null = null;
-
-  /**
-   * Apply a pending session swap. Called between message processing cycles.
-   * This ensures session swaps happen at safe points, not during message processing.
-   */
-  const applyPendingSessionSwap = () => {
-    if (pendingSessionSwap) {
-      logger.debug('[gemini] Applying pending session swap');
-      session = pendingSessionSwap;
-      if (permissionHandler) {
-        permissionHandler.updateSession(pendingSessionSwap);
-      }
-      pendingSessionSwap = null;
-    }
-  };
-
-  const { session: initialSession, reconnectionHandle } =
-    setupOfflineReconnection({
-      api,
-      sessionTag,
-      metadata,
-      state,
-      response,
-      onSessionSwap: (newSession) => {
-        // If we're processing a message, queue the swap for later
-        // This prevents race conditions where session changes mid-processing
-        if (isProcessingMessage) {
-          logger.debug(
-            '[gemini] Session swap requested during message processing - queueing',
-          );
-          pendingSessionSwap = newSession;
-        } else {
-          // Safe to swap immediately
-          session = newSession;
-          if (permissionHandler) {
-            permissionHandler.updateSession(newSession);
-          }
-        }
-      },
-    });
-  session = initialSession;
 
   // Mark the session as agent-ready as early as possible so mobile/web does not
   // block for the full readiness timeout on the first message.
@@ -200,27 +173,6 @@ export async function runGemini(opts: {
       model: opts.model,
     },
   }));
-
-  // Report to daemon (only if we have a real session)
-  if (response) {
-    try {
-      logger.debug(`[START] Reporting session ${response.id} to daemon`);
-      const result = await notifyDaemonSessionStarted(response.id, metadata);
-      if (result.error) {
-        logger.debug(
-          `[START] Failed to report to daemon (may not be running):`,
-          result.error,
-        );
-      } else {
-        logger.debug(`[START] Reported session ${response.id} to daemon`);
-      }
-    } catch (error) {
-      logger.debug(
-        '[START] Failed to report to daemon (may not be running):',
-        error,
-      );
-    }
-  }
 
   const messageQueue = new MessageQueue2<GeminiMode>((mode) =>
     hashObject({
@@ -238,6 +190,7 @@ export async function runGemini(opts: {
   // Track current overrides to apply per message
   let currentPermissionMode: PermissionMode | undefined = undefined;
   let currentModel: string | undefined = opts.model;
+  let lastReportedAcpSessionId: string | null = null;
   const syncAgentModeState = (model: string | undefined) => {
     session.updateAgentState((currentState) => ({
       ...currentState,
@@ -246,6 +199,43 @@ export async function runGemini(opts: {
         model,
       },
     }));
+  };
+  const reportGeminiProviderSessionIfNeeded = async (
+    acpSessionId: string,
+    model: string | undefined,
+    source: string,
+  ): Promise<void> => {
+    const normalizedSessionId = acpSessionId.trim();
+    if (!normalizedSessionId || lastReportedAcpSessionId === normalizedSessionId) {
+      return;
+    }
+    lastReportedAcpSessionId = normalizedSessionId;
+
+    const snapshot = session.getMetadataSnapshot() ?? metadata;
+    const nextMetadata = {
+      ...snapshot,
+      agentSessionId: normalizedSessionId,
+      agentControlPort: directSessionControl.port,
+      ...(model ? { model } : {}),
+    };
+
+    await session.updateMetadata((currentMetadata) => ({
+      ...currentMetadata,
+      agentSessionId: normalizedSessionId,
+      agentControlPort: directSessionControl.port,
+      ...(model ? { model } : {}),
+    }));
+
+    void notifyDaemonProviderSessionStarted(
+      'gemini',
+      normalizedSessionId,
+      nextMetadata,
+    ).catch((error) => {
+      logger.debug(
+        `[Gemini] Failed to report provider session to daemon (${source})`,
+        error,
+      );
+    });
   };
 
   session.onUserMessage((message) => {
@@ -323,6 +313,7 @@ export async function runGemini(opts: {
     // Build the full prompt with appendSystemPrompt if provided
     // Only include system prompt for the first message to avoid forcing tool usage on every message
     const originalUserMessage = extractUserMessageText(message.content);
+    directTranscript.appendUserText(originalUserMessage, message.localKey ?? null);
     let fullPrompt = originalUserMessage;
     if (isFirstMessage && message.meta?.appendSystemPrompt) {
       // Prepend system prompt to user message only for first message
@@ -444,6 +435,7 @@ export async function runGemini(opts: {
       logger.debug('[Gemini] Suppressed sidechain transcript payload');
       return;
     }
+    directTranscript.appendAgentPayload(payload);
     session.sendAgentMessage('gemini', payload);
   };
 
@@ -507,6 +499,7 @@ export async function runGemini(opts: {
 
       stopCaffeinate();
       happyServer.stop();
+      directSessionControl.stop();
 
       if (geminiBackend) {
         await geminiBackend.dispose();
@@ -569,7 +562,7 @@ export async function runGemini(opts: {
     // The message will be parsed by UI to extract model name
     if (hasTTY && oldModel !== model) {
       // Add a system message that includes model info - UI will parse it
-      // Format: [MODEL:gemini-2.5-pro] to make it easy to extract
+      // Format: [MODEL:auto] to make it easy to extract
       logger.debug(
         `[gemini] Adding model update message to buffer: [MODEL:${model}]`,
       );
@@ -586,7 +579,7 @@ export async function runGemini(opts: {
     // We use a function component that reads displayedModel on each render
     const DisplayComponent = () => {
       // Read displayedModel from closure - it will have latest value on each render
-      const currentModelValue = displayedModel || 'gemini-2.5-pro';
+      const currentModelValue = displayedModel || 'auto';
       // Don't log on every render to avoid spam - only log when model changes
       return React.createElement(GeminiDisplay, {
         messageBuffer,
@@ -606,7 +599,7 @@ export async function runGemini(opts: {
     });
 
     // Send initial model to UI so it displays correctly from start
-    const initialModelName = displayedModel || 'gemini-2.5-pro';
+    const initialModelName = displayedModel || 'auto';
     logger.debug(`[gemini] Sending initial model to UI: ${initialModelName}`);
     messageBuffer.addMessage(`[MODEL:${initialModelName}]`, 'system');
   }
@@ -623,7 +616,15 @@ export async function runGemini(opts: {
   // Start Unhappy MCP server and create Gemini backend
   //
 
-  const happyServer = await startHappyServer(session);
+  const happyServer = await startHappyServer({
+    onSummary: async (title) => {
+      session.sendClaudeSessionMessage({
+        type: 'summary',
+        summary: title,
+        leafUuid: randomUUID(),
+      });
+    },
+  });
   const bridgeCommand = join(projectPath(), 'bin', 'unhappy-mcp.mjs');
   const mcpServers = {
     unhappy: {
@@ -1107,8 +1108,48 @@ export async function runGemini(opts: {
     });
   }
 
-  // Note: Backend will be created dynamically in the main loop based on model from first message
-  // This allows us to support model changes by recreating the backend
+  const createAndStartGeminiBackend = async (
+    model: string | null | undefined,
+    source: string,
+  ): Promise<{
+    backend: AgentBackend;
+    sessionId: string;
+    model: string;
+    modelSource: string;
+  }> => {
+    const backendResult = createGeminiBackend({
+      cwd: process.cwd(),
+      mcpServers,
+      permissionHandler,
+      cloudToken,
+      currentUserEmail,
+      model,
+    });
+    const backend = backendResult.backend;
+    setupGeminiMessageHandler(backend);
+    updateDisplayedModel(backendResult.model, false);
+    conversationHistory.setCurrentModel(backendResult.model);
+    const { sessionId } = await backend.startSession();
+    await reportGeminiProviderSessionIfNeeded(
+      sessionId,
+      backendResult.model,
+      source,
+    );
+    return {
+      backend,
+      sessionId,
+      model: backendResult.model,
+      modelSource: backendResult.modelSource,
+    };
+  };
+
+  const initialBackend = await createAndStartGeminiBackend(
+    opts.model ?? undefined,
+    'startup',
+  );
+  geminiBackend = initialBackend.backend;
+  acpSessionId = initialBackend.sessionId;
+  wasSessionCreated = true;
 
   let first = true;
 
@@ -1227,6 +1268,11 @@ export async function runGemini(opts: {
         );
         const { sessionId } = await geminiBackend.startSession();
         acpSessionId = sessionId;
+        await reportGeminiProviderSessionIfNeeded(
+          sessionId,
+          actualModel,
+          'mode-change',
+        );
         logger.debug(`[gemini] New ACP session started: ${acpSessionId}`);
 
         // Update displayed model in UI (don't save to config - this is backend initialization)
@@ -1249,9 +1295,6 @@ export async function runGemini(opts: {
       const userMessageToShow =
         message.mode?.originalUserMessage || message.message;
       messageBuffer.addMessage(userMessageToShow, 'user');
-
-      // Mark that we're processing a message to synchronize session swaps
-      isProcessingMessage = true;
 
       try {
         if (first || !wasSessionCreated) {
@@ -1297,13 +1340,18 @@ export async function runGemini(opts: {
             updatePermissionMode(message.mode.permissionMode);
             const { sessionId } = await geminiBackend.startSession();
             acpSessionId = sessionId;
+            await reportGeminiProviderSessionIfNeeded(
+              sessionId,
+              displayedModel,
+              'lazy-start',
+            );
             logger.debug(`[gemini] ACP session started: ${acpSessionId}`);
             wasSessionCreated = true;
             currentModeHash = message.hash;
 
             // Model info is already shown in status bar via updateDisplayedModel
             logger.debug(
-              `[gemini] Displaying model in UI: ${displayedModel || 'gemini-2.5-pro'}, displayedModel: ${displayedModel}`,
+              `[gemini] Displaying model in UI: ${displayedModel || 'auto'}, displayedModel: ${displayedModel}`,
             );
           }
         }
@@ -1390,7 +1438,7 @@ export async function runGemini(opts: {
                 const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
                 resetTimeMsg = ` Quota resets in ${parts}.`;
               }
-              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
+              const quotaMsg = `Gemini quota exceeded.${resetTimeMsg} Try switching the CLI model to auto or a lighter Gemini model, then retry after quota resets.`;
               messageBuffer.addMessage(quotaMsg, 'status');
               sendGeminiAgentMessage({
                 type: 'message',
@@ -1467,8 +1515,8 @@ export async function runGemini(opts: {
               errorMessage.includes('not found') ||
               errorMessage.includes('404')
             ) {
-              const currentModel = displayedModel || 'gemini-2.5-pro';
-              errorMsg = `Model "${currentModel}" not found. Available models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite`;
+              const currentModel = displayedModel || 'auto';
+              errorMsg = `Model "${currentModel}" not found. Try the Gemini CLI default "auto" model or another currently supported Gemini model in your installed CLI.`;
             }
             // Check for empty response / internal error after retries exhausted
             else if (
@@ -1514,7 +1562,7 @@ export async function runGemini(opts: {
                 const parts = resetTimeMatch.slice(1).filter(Boolean).join('');
                 resetTimeMsg = ` Quota resets in ${parts}.`;
               }
-              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try using a different model (gemini-2.5-flash-lite) or wait for quota reset.`;
+              errorMsg = `Gemini quota exceeded.${resetTimeMsg} Try switching the CLI model to auto or a lighter Gemini model, then retry after quota reset.`;
             }
             // Check for authentication error (Google Workspace accounts need project ID)
             else if (
@@ -1610,10 +1658,6 @@ export async function runGemini(opts: {
         // Use same logic as Codex - emit ready if idle (no pending operations, no queue)
         emitReadyIfIdle();
 
-        // Message processing complete - safe to apply any pending session swap
-        isProcessingMessage = false;
-        applyPendingSessionSwap();
-
         logger.debug(
           `[gemini] Main loop: turn completed, continuing to next iteration (queue size: ${messageQueue.size()})`,
         );
@@ -1622,12 +1666,6 @@ export async function runGemini(opts: {
   } finally {
     // Clean up resources
     logger.debug('[gemini]: Final cleanup start');
-
-    // Cancel offline reconnection if still running
-    if (reconnectionHandle) {
-      logger.debug('[gemini]: Cancelling offline reconnection');
-      reconnectionHandle.cancel();
-    }
 
     try {
       session.sendSessionDeath();
@@ -1642,6 +1680,7 @@ export async function runGemini(opts: {
     }
 
     happyServer.stop();
+    directSessionControl.stop();
 
     if (process.stdin.isTTY) {
       try {

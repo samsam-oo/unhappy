@@ -451,6 +451,38 @@ describe('Codex turn/steer and collab forwarding', () => {
     );
   });
 
+  it('does not fall back to thread/start for strict preferred resume ids', async () => {
+    const client = new CodexAppServerClient();
+    const anyClient: any = client;
+    anyClient.connected = true;
+    client.setPreferredResumeThreadId('thread-strict', true);
+    anyClient.flushPendingThreadName = vi.fn().mockResolvedValue(undefined);
+
+    const callRpc = vi.fn(async (method: string, params: Record<string, unknown>) => {
+      if (method === 'thread/resume' && params.threadId === 'thread-strict') {
+        throw new Error('resume not found');
+      }
+      throw new Error(`unexpected method ${method}`);
+    });
+    anyClient.callRpc = callRpc;
+
+    await expect(
+      anyClient.ensureThread({
+        prompt: 'hello',
+        cwd: '/repo',
+        sandbox: 'workspace-write',
+        'approval-policy': 'on-request',
+      }),
+    ).rejects.toThrow('resume not found');
+
+    expect(callRpc).toHaveBeenCalledTimes(1);
+    expect(callRpc).toHaveBeenCalledWith(
+      'thread/resume',
+      expect.objectContaining({ threadId: 'thread-strict' }),
+      expect.any(Object),
+    );
+  });
+
   it('runs onThreadReady between thread/start and turn/start', async () => {
     const client = new CodexAppServerClient();
     const anyClient: any = client;

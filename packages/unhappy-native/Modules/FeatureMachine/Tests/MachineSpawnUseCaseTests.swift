@@ -6,16 +6,28 @@ import CoreKit
 struct MachineSpawnUseCaseTests {
     @Test
     func spawnThrowsMissingDirectory() async {
-        let useCase = MachineSpawnUseCase(service: ImmediateMachineSpawnService(response: .init(success: true, sessionID: nil, requiresUserApproval: nil, actionRequired: nil, directory: nil, error: nil)))
+        let response = APISessionSpawnResult(
+            success: true,
+            sessionID: nil,
+            requiresUserApproval: nil,
+            actionRequired: nil,
+            directory: nil,
+            error: nil
+        )
+        let useCase = MachineSpawnUseCase(
+            service: ImmediateMachineSpawnService(response: response)
+        )
 
         await #expect(throws: MachineSpawnError.missingDirectory) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                machineID: "machine-1",
-                directory: " ",
-                agent: .claude,
-                approvedNewDirectoryCreation: false
+                MachineSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    machineID: "machine-1",
+                    directory: " ",
+                    agent: .claude,
+                    approvedNewDirectoryCreation: false
+                )
             )
         }
     }
@@ -34,12 +46,14 @@ struct MachineSpawnUseCaseTests {
 
         await #expect(throws: MachineSpawnError.requiresUserApproval(directory: "/tmp/new")) {
             _ = try await useCase.spawnSession(
-                serverURLString: "https://api.unhappy.im",
-                token: "token",
-                machineID: "machine-1",
-                directory: "/tmp/new",
-                agent: .claude,
-                approvedNewDirectoryCreation: false
+                MachineSpawnRequest(
+                    serverURLString: "https://api.unhappy.im",
+                    token: "token",
+                    machineID: "machine-1",
+                    directory: "/tmp/new",
+                    agent: .claude,
+                    approvedNewDirectoryCreation: false
+                )
             )
         }
     }
@@ -57,7 +71,7 @@ struct MachineSpawnUseCaseTests {
         let service = SlowCountingMachineSpawnService(response: response)
         let useCase = MachineSpawnUseCase(service: service)
 
-        async let first = useCase.spawnSession(
+        let request = MachineSpawnRequest(
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
@@ -65,19 +79,13 @@ struct MachineSpawnUseCaseTests {
             agent: .codex,
             approvedNewDirectoryCreation: false
         )
-        async let second = useCase.spawnSession(
-            serverURLString: "https://api.unhappy.im",
-            token: "token",
-            machineID: "machine-1",
-            directory: "/tmp/work",
-            agent: .codex,
-            approvedNewDirectoryCreation: false
-        )
+        async let firstResponse = useCase.spawnSession(request)
+        async let secondResponse = useCase.spawnSession(request)
 
-        let a = try await first
-        let b = try await second
-        #expect(a.sessionID == "session-new")
-        #expect(b.sessionID == "session-new")
+        let firstValue = try await firstResponse
+        let secondValue = try await secondResponse
+        #expect(firstValue.sessionID == "session-new")
+        #expect(secondValue.sessionID == "session-new")
         #expect(await service.fetchCount() == 1)
     }
 }
@@ -85,20 +93,7 @@ struct MachineSpawnUseCaseTests {
 private struct ImmediateMachineSpawnService: MachineSessionSpawning {
     let response: APISessionSpawnResult
 
-    func spawnSession(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?,
-        sessionToken: String?,
-        environmentVariables: [String : String]?,
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult {
         response
     }
 }
@@ -111,20 +106,7 @@ private actor SlowCountingMachineSpawnService: MachineSessionSpawning {
         self.response = response
     }
 
-    func spawnSession(
-        serverURL: URL,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent?,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        approvedNewDirectoryCreation: Bool?,
-        sessionToken: String?,
-        environmentVariables: [String : String]?,
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
+    func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult {
         count += 1
         try await Task.sleep(nanoseconds: 80_000_000)
         return response

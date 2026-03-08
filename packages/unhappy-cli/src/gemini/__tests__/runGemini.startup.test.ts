@@ -21,6 +21,7 @@ const mockState = vi.hoisted(() => {
     flush: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     sendAgentMessage: vi.fn(),
+    sendClaudeSessionMessage: vi.fn(),
     updateMetadata: vi.fn(),
     getMetadataSnapshot: vi.fn(() => ({ path: '/tmp/workspace', name: 'Gemini Session' })),
     updateAgentState: vi.fn(
@@ -62,7 +63,7 @@ vi.mock('@/claude/utils/startHappyServer', () => ({
 }));
 
 vi.mock('@/daemon/controlClient', () => ({
-  notifyDaemonSessionStarted: vi.fn(async () => ({ error: null })),
+  notifyDaemonProviderSessionStarted: vi.fn(async () => ({ error: null })),
 }));
 
 vi.mock('@/daemon/run', () => ({
@@ -146,11 +147,34 @@ vi.mock('@/utils/serverConnectionErrors', () => ({
   },
 }));
 
-vi.mock('@/utils/setupOfflineReconnection', () => ({
-  setupOfflineReconnection: vi.fn(() => ({
-    session: mockState.session,
-    reconnectionHandle: null,
-    isOffline: false,
+vi.mock('@/runtime/localSessionRuntimeClient', () => ({
+  LocalSessionRuntimeClient: class {
+    sessionId = mockState.session.sessionId;
+    onUserMessage = mockState.session.onUserMessage;
+    keepAlive = mockState.session.keepAlive;
+    sendSessionEvent = mockState.session.sendSessionEvent;
+    sendSessionDeath = mockState.session.sendSessionDeath;
+    flush = mockState.session.flush;
+    close = mockState.session.close;
+    sendAgentMessage = mockState.session.sendAgentMessage;
+    sendClaudeSessionMessage = mockState.session.sendClaudeSessionMessage;
+    updateMetadata = mockState.session.updateMetadata;
+    getMetadataSnapshot = mockState.session.getMetadataSnapshot;
+    updateAgentState = mockState.session.updateAgentState;
+    enqueueUserMessage = vi.fn();
+    rpcHandlerManager = mockState.session.rpcHandlerManager;
+  },
+}));
+
+vi.mock('@/gemini/directSession', () => ({
+  GeminiDirectTranscriptStore: class {
+    appendUserText = vi.fn();
+    appendAgentPayload = vi.fn();
+    listMessages = vi.fn(() => []);
+  },
+  startGeminiDirectSessionControlServer: vi.fn(async () => ({
+    port: 40123,
+    stop: vi.fn(),
   })),
 }));
 
@@ -163,7 +187,7 @@ vi.mock('@/agent/factories/gemini', () => ({
       cancel: vi.fn(async () => {}),
       dispose: vi.fn(async () => {}),
     },
-    model: 'gemini-2.5-pro',
+    model: 'auto',
     modelSource: 'default',
   })),
 }));
@@ -171,12 +195,13 @@ vi.mock('@/agent/factories/gemini', () => ({
 vi.mock('@/gemini/constants', () => ({
   CHANGE_TITLE_INSTRUCTION: 'change title',
   GEMINI_MODEL_ENV: 'GEMINI_MODEL',
+  GOOGLE_GENAI_USE_VERTEXAI_ENV: 'GOOGLE_GENAI_USE_VERTEXAI',
 }));
 
 vi.mock('@/gemini/types', () => ({}));
 
 vi.mock('@/gemini/utils/config', () => ({
-  getInitialGeminiModel: vi.fn(() => 'gemini-2.5-pro'),
+  getInitialGeminiModel: vi.fn(() => 'auto'),
   readGeminiLocalConfig: vi.fn(() => ({})),
   saveGeminiModelToConfig: vi.fn(),
 }));
@@ -234,7 +259,8 @@ describe('runGemini startup', () => {
     });
 
     expect(mockState.session.updateAgentState).toHaveBeenCalledTimes(1);
-    expect(mockState.appliedAgentStates[0]).toEqual({
+    expect(mockState.api.getOrCreateSession).not.toHaveBeenCalled();
+    expect(mockState.appliedAgentStates[0]).toMatchObject({
       controlledByUser: true,
     });
   });
@@ -246,7 +272,7 @@ describe('runGemini startup', () => {
     });
 
     expect(mockState.session.updateAgentState).toHaveBeenCalledTimes(1);
-    expect(mockState.appliedAgentStates[0]).toEqual({
+    expect(mockState.appliedAgentStates[0]).toMatchObject({
       controlledByUser: false,
     });
   });

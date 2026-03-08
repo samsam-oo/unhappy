@@ -15,7 +15,24 @@ public protocol NewSessionDirectoryListingAction: Sendable {
 }
 
 public protocol NewSessionSpawningAction: Sendable {
-    func spawnSession(
+    func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult
+}
+
+public struct NewSessionSpawnRequest: Sendable, Equatable {
+    public let serverURLString: String
+    public let token: String
+    public let machineID: String
+    public let directory: String
+    public let agent: APISessionSpawnAgent
+    public let approvedNewDirectoryCreation: Bool
+    public let codexResumeThreadID: String?
+    public let claudeResumeSessionID: String?
+    public let sessionToken: String?
+    public let environmentVariables: [String: String]
+    public let model: String?
+    public let reasoningEffort: APISessionReasoningEffort?
+
+    public init(
         serverURLString: String,
         token: String,
         machineID: String,
@@ -28,7 +45,20 @@ public protocol NewSessionSpawningAction: Sendable {
         environmentVariables: [String: String],
         model: String?,
         reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult
+    ) {
+        self.serverURLString = serverURLString
+        self.token = token
+        self.machineID = machineID
+        self.directory = directory
+        self.agent = agent
+        self.approvedNewDirectoryCreation = approvedNewDirectoryCreation
+        self.codexResumeThreadID = codexResumeThreadID
+        self.claudeResumeSessionID = claudeResumeSessionID
+        self.sessionToken = sessionToken
+        self.environmentVariables = environmentVariables
+        self.model = model
+        self.reasoningEffort = reasoningEffort
+    }
 }
 
 public protocol NewSessionModelsLoadingAction: Sendable {
@@ -107,6 +137,13 @@ public enum NewSessionError: LocalizedError, Equatable {
     }
 }
 
+private struct NormalizedNewSessionInputs {
+    let serverURL: URL
+    let token: String
+    let machineID: String
+    let directory: String
+}
+
 public actor NewSessionMachinesLoadUseCase: NewSessionMachinesLoadingAction {
     private let service: any MachinesFetching
 
@@ -115,13 +152,16 @@ public actor NewSessionMachinesLoadUseCase: NewSessionMachinesLoadingAction {
     }
 
     public func loadMachines(serverURLString: String, token: String) async throws -> [APIMachine] {
-        let (serverURL, normalizedToken, _, _) = try normalizeInputs(
+        let normalizedInputs = try normalizeInputs(
             serverURLString: serverURLString,
             token: token,
             machineID: nil,
             directory: nil
         )
-        let rows = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
+        let rows = try await service.fetchMachines(
+            serverURL: normalizedInputs.serverURL,
+            token: normalizedInputs.token
+        )
         return rows
             .filter(\.active)
             .sorted { lhs, rhs in
@@ -146,17 +186,17 @@ public actor NewSessionDirectoryListUseCase: NewSessionDirectoryListingAction {
         machineID: String,
         path: String
     ) async throws -> [APIMachineDirectoryEntry] {
-        let (serverURL, normalizedToken, normalizedMachineID, normalizedPath) = try normalizeInputs(
+        let normalizedInputs = try normalizeInputs(
             serverURLString: serverURLString,
             token: token,
             machineID: machineID,
             directory: path
         )
         let result = try await service.listDirectory(
-            serverURL: serverURL,
-            token: normalizedToken,
-            machineID: normalizedMachineID,
-            path: normalizedPath
+            serverURL: normalizedInputs.serverURL,
+            token: normalizedInputs.token,
+            machineID: normalizedInputs.machineID,
+            path: normalizedInputs.directory
         )
         if !result.success {
             let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -181,40 +221,29 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         self.service = service
     }
 
-    public func spawnSession(
-        serverURLString: String,
-        token: String,
-        machineID: String,
-        directory: String,
-        agent: APISessionSpawnAgent,
-        approvedNewDirectoryCreation: Bool,
-        codexResumeThreadID: String?,
-        claudeResumeSessionID: String?,
-        sessionToken: String?,
-        environmentVariables: [String: String],
-        model: String?,
-        reasoningEffort: APISessionReasoningEffort?
-    ) async throws -> APISessionSpawnResult {
-        let (serverURL, normalizedToken, normalizedMachineID, normalizedDirectory) = try normalizeInputs(
-            serverURLString: serverURLString,
-            token: token,
-            machineID: machineID,
-            directory: directory
+    public func spawnSession(_ request: NewSessionSpawnRequest) async throws -> APISessionSpawnResult {
+        let normalizedInputs = try normalizeInputs(
+            serverURLString: request.serverURLString,
+            token: request.token,
+            machineID: request.machineID,
+            directory: request.directory
         )
 
         let response = try await service.spawnSession(
-            serverURL: serverURL,
-            token: normalizedToken,
-            machineID: normalizedMachineID,
-            directory: normalizedDirectory,
-            agent: agent,
-            codexResumeThreadID: normalizedOptional(codexResumeThreadID),
-            claudeResumeSessionID: normalizedOptional(claudeResumeSessionID),
-            approvedNewDirectoryCreation: approvedNewDirectoryCreation,
-            sessionToken: normalizedOptional(sessionToken),
-            environmentVariables: environmentVariables,
-            model: normalizedOptional(model),
-            reasoningEffort: reasoningEffort
+            MachineSessionSpawnServiceRequest(
+                serverURL: normalizedInputs.serverURL,
+                token: normalizedInputs.token,
+                machineID: normalizedInputs.machineID,
+                directory: normalizedInputs.directory,
+                agent: request.agent,
+                codexResumeThreadID: normalizedOptional(request.codexResumeThreadID),
+                claudeResumeSessionID: normalizedOptional(request.claudeResumeSessionID),
+                approvedNewDirectoryCreation: request.approvedNewDirectoryCreation,
+                sessionToken: normalizedOptional(request.sessionToken),
+                environmentVariables: request.environmentVariables,
+                model: normalizedOptional(request.model),
+                reasoningEffort: request.reasoningEffort
+            )
         )
         if response.success {
             return response
@@ -242,16 +271,16 @@ public actor NewSessionModelsLoadUseCase: NewSessionModelsLoadingAction {
         machineID: String,
         agent: APISessionSpawnAgent
     ) async throws -> APIMachineAgentCapabilities {
-        let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
+        let normalizedInputs = try normalizeInputs(
             serverURLString: serverURLString,
             token: token,
             machineID: machineID,
             directory: nil
         )
         return try await service.fetchAgentCapabilities(
-            serverURL: serverURL,
-            token: normalizedToken,
-            machineID: normalizedMachineID,
+            serverURL: normalizedInputs.serverURL,
+            token: normalizedInputs.token,
+            machineID: normalizedInputs.machineID,
             agent: agent
         )
     }
@@ -272,7 +301,7 @@ public actor NewSessionCodexThreadsLoadUseCase: NewSessionCodexThreadsLoadingAct
         cwd: String?,
         cursor: String?
     ) async throws -> APICodexThreadsPage {
-        let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
+        let normalizedInputs = try normalizeInputs(
             serverURLString: serverURLString,
             token: token,
             machineID: machineID,
@@ -280,9 +309,9 @@ public actor NewSessionCodexThreadsLoadUseCase: NewSessionCodexThreadsLoadingAct
         )
 
         return try await service.fetchCodexThreadsPage(
-            serverURL: serverURL,
-            token: normalizedToken,
-            machineID: normalizedMachineID,
+            serverURL: normalizedInputs.serverURL,
+            token: normalizedInputs.token,
+            machineID: normalizedInputs.machineID,
             limit: limit,
             cwd: normalizedOptional(cwd),
             cursor: normalizedOptional(cursor)
@@ -305,7 +334,7 @@ public actor NewSessionClaudeSessionsLoadUseCase: NewSessionClaudeSessionsLoadin
         cwd: String?,
         cursor: String?
     ) async throws -> APIClaudeSessionsPage {
-        let (serverURL, normalizedToken, normalizedMachineID, _) = try normalizeInputs(
+        let normalizedInputs = try normalizeInputs(
             serverURLString: serverURLString,
             token: token,
             machineID: machineID,
@@ -313,9 +342,9 @@ public actor NewSessionClaudeSessionsLoadUseCase: NewSessionClaudeSessionsLoadin
         )
 
         return try await service.fetchClaudeSessionsPage(
-            serverURL: serverURL,
-            token: normalizedToken,
-            machineID: normalizedMachineID,
+            serverURL: normalizedInputs.serverURL,
+            token: normalizedInputs.token,
+            machineID: normalizedInputs.machineID,
             limit: limit,
             cwd: normalizedOptional(cwd),
             cursor: normalizedOptional(cursor)
@@ -448,7 +477,7 @@ private func normalizeInputs(
     token: String,
     machineID: String?,
     directory: String?
-) throws -> (URL, String, String, String) {
+) throws -> NormalizedNewSessionInputs {
     let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !normalizedToken.isEmpty else {
         throw NewSessionError.missingToken
@@ -474,5 +503,10 @@ private func normalizeInputs(
         throw NewSessionError.missingDirectory
     }
 
-    return (serverURL, normalizedToken, normalizedMachineID, normalizedDirectory)
+    return NormalizedNewSessionInputs(
+        serverURL: serverURL,
+        token: normalizedToken,
+        machineID: normalizedMachineID,
+        directory: normalizedDirectory
+    )
 }

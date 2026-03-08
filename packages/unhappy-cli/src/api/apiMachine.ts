@@ -25,6 +25,21 @@ import {
   listCodexModels,
   type CodexModelMetadata,
 } from '@/modules/common/listModels';
+import {
+  listClaudeSessionMessages,
+  sendClaudeSessionMessage,
+} from '@/claude/directSession';
+import {
+  listGeminiSessionMessages,
+  sendGeminiSessionMessage,
+} from '@/gemini/directSession';
+import {
+  openCodexThread,
+  listCodexThreadMessages,
+  sendCodexThreadMessage,
+  setCodexThreadName,
+} from '@/codex/directSession';
+import type { Metadata } from './types';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import {
   defaultClaudeConfigDir,
@@ -195,6 +210,11 @@ type MachineRpcHandlers = {
   stopSession: (sessionId: string) => boolean;
   requestShutdown: () => void;
   requestUpdate: () => { message: string };
+  listTrackedSessions: () => Array<{
+    provider?: 'codex' | 'claude' | 'gemini';
+    providerSessionId?: string;
+    providerSessionMetadata?: Metadata;
+  }>;
 };
 
 const EmptyParamsSchema = z.object({}).strict();
@@ -228,14 +248,14 @@ export class ApiMachineClient {
     stopSession,
     requestShutdown,
     requestUpdate,
+    listTrackedSessions,
   }: MachineRpcHandlers) {
     // Register spawn session handler
     this.rpcHandlerManager.registerHandler(
-      'spawn-unhappy-session',
+      'spawn-provider-session',
       async (params: any) => {
         const {
           directory,
-          sessionId,
           codexResumeThreadId,
           claudeResumeSessionId,
           machineId,
@@ -277,7 +297,6 @@ export class ApiMachineClient {
 
         const result = await spawnSession({
           directory: normalizedDirectory,
-          sessionId,
           codexResumeThreadId,
           claudeResumeSessionId,
           machineId,
@@ -380,14 +399,33 @@ export class ApiMachineClient {
         };
       }
       if (agent === 'gemini') {
+        const geminiModelMetadata: CodexModelMetadata[] = [
+          {
+            id: 'auto',
+            model: 'auto',
+            displayName: 'Auto',
+            description: 'Let Gemini CLI choose the best current model.',
+            isDefault: true,
+          },
+          {
+            id: 'gemini-3-flash-preview',
+            model: 'gemini-3-flash-preview',
+            displayName: 'Gemini 3 Flash Preview',
+            description: 'Fast general-purpose Gemini 3 preview model.',
+          },
+          {
+            id: 'gemini-3-pro-preview',
+            model: 'gemini-3-pro-preview',
+            displayName: 'Gemini 3 Pro Preview',
+            description: 'Higher-capability Gemini 3 preview model.',
+            upgrade: 'preview',
+          },
+        ];
         return {
           success: true as const,
-          models: [
-            'gemini-2.5-pro',
-            'gemini-2.5-flash',
-            'gemini-2.5-flash-lite',
-          ],
+          models: geminiModelMetadata.map((model) => model.id),
           reasoningEfforts: ['auto'],
+          modelMetadata: geminiModelMetadata,
         };
       }
       if (agent === 'codex') {
@@ -502,6 +540,65 @@ export class ApiMachineClient {
 
     const currentHomeDir = () =>
       (this.machine?.metadata?.homeDir || os.homedir()).trim() || os.homedir();
+    const resolveAgentControlPort = (metadata: Metadata | undefined): number | null => {
+      const rawValue = metadata?.agentControlPort;
+      if (typeof rawValue === 'number' && Number.isFinite(rawValue) && rawValue > 0) {
+        return Math.floor(rawValue);
+      }
+      if (typeof rawValue === 'string') {
+        const parsed = Number.parseInt(rawValue, 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          return parsed;
+        }
+      }
+      return null;
+    };
+    const currentTrackedGeminiSessions = () => {
+      const homeDir = currentHomeDir();
+      return listTrackedSessions()
+        .filter((session) => session.provider === 'gemini')
+        .map((session) => {
+          const metadata = session.providerSessionMetadata;
+          const providerSessionId =
+            typeof session.providerSessionId === 'string'
+              ? session.providerSessionId.trim()
+              : '';
+          const cwd = normalizeMachinePath(metadata?.path ?? '', homeDir);
+          const controlPort = resolveAgentControlPort(metadata);
+          if (!providerSessionId || !cwd || !controlPort) {
+            return null;
+          }
+
+          const summaryTimestamp = metadata?.summary?.updatedAt;
+          const lifecycleTimestamp =
+            typeof metadata?.lifecycleStateSince === 'number'
+              ? metadata.lifecycleStateSince
+              : Date.now();
+          const updatedAtMs =
+            typeof summaryTimestamp === 'number' && Number.isFinite(summaryTimestamp)
+              ? summaryTimestamp
+              : lifecycleTimestamp;
+          const title =
+            typeof metadata?.name === 'string' && metadata.name.trim().length > 0
+              ? metadata.name.trim()
+              : 'Gemini Session';
+
+          return {
+            id: providerSessionId,
+            cwd,
+            title,
+            model:
+              typeof metadata?.model === 'string' && metadata.model.trim().length > 0
+                ? metadata.model.trim()
+                : undefined,
+            updatedAtMs,
+            createdAtMs: lifecycleTimestamp,
+            controlPort,
+          };
+        })
+        .filter((row): row is NonNullable<typeof row> => row !== null)
+        .sort((lhs, rhs) => rhs.updatedAtMs - lhs.updatedAtMs);
+    };
 
     const normalizedProjectEntries = (
       entries: Array<{ path?: string; openedAt?: number; archivedAt?: number }> | undefined,
@@ -739,6 +836,314 @@ export class ApiMachineClient {
         return { success: true, threads, hasNext, nextCursor };
       },
     );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-open-thread',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
+
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        const result = await openCodexThread({
+          threadId,
+          cwd,
+          transcriptPath: transcriptPath || null,
+          model,
+        });
+        return {
+          success: true as const,
+          threadId: result.threadId ?? threadId,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-list-messages',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        if (!threadId) {
+          return { success: false, error: 'threadId is required' };
+        }
+        if (!transcriptPath) {
+          return { success: false, error: 'path is required' };
+        }
+
+        const messages = await listCodexThreadMessages(transcriptPath);
+        return {
+          success: true as const,
+          messages,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-send-message',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        const text =
+          typeof params?.text === 'string' ? params.text.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
+        const effort =
+          params?.effort === 'none' ||
+          params?.effort === 'minimal' ||
+          params?.effort === 'low' ||
+          params?.effort === 'medium' ||
+          params?.effort === 'high' ||
+          params?.effort === 'xhigh'
+            ? params.effort
+            : null;
+
+        if (!threadId) {
+          return { success: false, error: 'threadId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+        if (!text) {
+          return { success: false, error: 'text is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        await sendCodexThreadMessage(
+          {
+            threadId,
+            cwd,
+            transcriptPath: transcriptPath || null,
+            model,
+            effort,
+          },
+          text,
+        );
+        return {
+          success: true as const,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'codex-set-thread-name',
+      async (params: any) => {
+        const threadId =
+          typeof params?.threadId === 'string' ? params.threadId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const transcriptPath =
+          typeof params?.path === 'string' ? params.path.trim() : '';
+        const name =
+          typeof params?.name === 'string' ? params.name.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
+
+        if (!threadId) {
+          return { success: false, error: 'threadId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+        if (!name) {
+          return { success: false, error: 'name is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        await setCodexThreadName({
+          threadId,
+          cwd,
+          transcriptPath: transcriptPath || null,
+          model,
+        }, name);
+        return {
+          success: true as const,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'claude-list-messages',
+      async (params: any) => {
+        const sessionId =
+          typeof params?.sessionId === 'string' ? params.sessionId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        if (!sessionId) {
+          return { success: false, error: 'sessionId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        const messages = await listClaudeSessionMessages({
+          sessionId,
+          cwd,
+        });
+        return {
+          success: true as const,
+          messages,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'claude-send-message',
+      async (params: any) => {
+        const sessionId =
+          typeof params?.sessionId === 'string' ? params.sessionId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const text =
+          typeof params?.text === 'string' ? params.text.trim() : '';
+        if (!sessionId) {
+          return { success: false, error: 'sessionId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+        if (!text) {
+          return { success: false, error: 'text is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        await sendClaudeSessionMessage(
+          {
+            sessionId,
+            cwd,
+          },
+          text,
+        );
+        return {
+          success: true as const,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'gemini-list-sessions',
+      async (params: any) => {
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const limitRaw =
+          typeof params?.limit === 'number' && Number.isFinite(params.limit)
+            ? Math.floor(params.limit)
+            : 20;
+        const limit = Math.max(1, Math.min(100, limitRaw));
+        const cursorRaw =
+          typeof params?.cursor === 'string' ? params.cursor.trim() : '';
+        const offset = (() => {
+          if (!cursorRaw) return 0;
+          const parsed = Number.parseInt(cursorRaw, 10);
+          if (!Number.isFinite(parsed) || parsed < 0) return 0;
+          return parsed;
+        })();
+
+        const cwd = cwdRaw ? normalizeMachinePath(cwdRaw, currentHomeDir()) : '';
+        const rows = currentTrackedGeminiSessions().filter((row) =>
+          !cwd || row.cwd === cwd,
+        );
+        const start = Math.min(offset, rows.length);
+        const end = Math.min(start + limit, rows.length);
+        const sessions = rows.slice(start, end).map((row) => ({
+          id: row.id,
+          cwd: row.cwd,
+          title: row.title,
+          updatedAt: new Date(row.updatedAtMs).toISOString(),
+          createdAt: new Date(row.createdAtMs).toISOString(),
+          model: row.model,
+        }));
+
+        return {
+          success: true as const,
+          sessions,
+          hasNext: end < rows.length,
+          nextCursor: end < rows.length ? String(end) : undefined,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'gemini-list-messages',
+      async (params: any) => {
+        const sessionId =
+          typeof params?.sessionId === 'string' ? params.sessionId.trim() : '';
+        if (!sessionId) {
+          return { success: false, error: 'sessionId is required' };
+        }
+
+        const tracked = currentTrackedGeminiSessions().find(
+          (row) => row.id === sessionId,
+        );
+        if (!tracked) {
+          return { success: false, error: 'Gemini session is not active on this machine' };
+        }
+
+        const messages = await listGeminiSessionMessages({
+          sessionId,
+          controlPort: tracked.controlPort,
+        });
+        return {
+          success: true as const,
+          messages,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'gemini-send-message',
+      async (params: any) => {
+        const sessionId =
+          typeof params?.sessionId === 'string' ? params.sessionId.trim() : '';
+        const text =
+          typeof params?.text === 'string' ? params.text.trim() : '';
+        if (!sessionId) {
+          return { success: false, error: 'sessionId is required' };
+        }
+        if (!text) {
+          return { success: false, error: 'text is required' };
+        }
+
+        const tracked = currentTrackedGeminiSessions().find(
+          (row) => row.id === sessionId,
+        );
+        if (!tracked) {
+          return { success: false, error: 'Gemini session is not active on this machine' };
+        }
+
+        await sendGeminiSessionMessage(
+          {
+            sessionId,
+            controlPort: tracked.controlPort,
+          },
+          text,
+        );
+        return {
+          success: true as const,
+        };
+      },
+    );
   }
 
   /**
@@ -964,8 +1369,9 @@ export class ApiMachineClient {
           return;
         }
         const supportedCommands = new Set([
-          'spawn-unhappy-session',
+          'spawn-provider-session',
           'open-project',
+          'close-project',
           'list-projects',
           'list-models',
           'stop-daemon',
@@ -977,7 +1383,16 @@ export class ApiMachineClient {
           'getDirectoryTree',
           'ripgrep',
           'codex-list-threads',
+          'codex-open-thread',
+          'codex-list-messages',
+          'codex-send-message',
+          'codex-set-thread-name',
           'claude-list-sessions',
+          'claude-list-messages',
+          'claude-send-message',
+          'gemini-list-sessions',
+          'gemini-list-messages',
+          'gemini-send-message',
         ]);
         if (!supportedCommands.has(command)) {
           callback({ success: false, error: `Unsupported command: ${command}` });

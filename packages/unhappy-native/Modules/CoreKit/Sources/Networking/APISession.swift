@@ -8,6 +8,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
     public let activeAt: TimeInterval
     public let createdAt: TimeInterval
     public let updatedAt: TimeInterval
+    public let archived: Bool?
     public let metadataVersion: Int
     public let metadata: String
     public let agentState: String?
@@ -23,6 +24,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         activeAt: TimeInterval,
         createdAt: TimeInterval,
         updatedAt: TimeInterval,
+        archived: Bool? = nil,
         metadataVersion: Int,
         metadata: String,
         agentState: String? = nil,
@@ -37,6 +39,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         self.activeAt = activeAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.archived = archived
         self.metadataVersion = metadataVersion
         self.metadata = metadata
         self.agentState = agentState
@@ -53,6 +56,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         case activeAt
         case createdAt
         case updatedAt
+        case archived
         case metadataVersion
         case metadata
         case agentState
@@ -73,6 +77,7 @@ public struct APISession: Decodable, Equatable, Identifiable, Sendable {
         activeAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .activeAt) ?? 0
         createdAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .createdAt) ?? 0
         updatedAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .updatedAt) ?? 0
+        archived = try? container.decodeIfPresent(Bool.self, forKey: .archived)
         metadataVersion = container.decodeFlexibleIntIfPresent(forKey: .metadataVersion) ?? 0
         metadata = (try? container.decode(String.self, forKey: .metadata)) ?? ""
         agentState = try? container.decodeIfPresent(String.self, forKey: .agentState)
@@ -168,25 +173,60 @@ public struct APISessionMessage: Decodable, Equatable, Identifiable, Sendable {
 }
 
 public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
-    public let t: String
-    public let c: String
+    public let type: String
+    public let payload: String
 
-    public init(t: String, c: String) {
-        self.t = t
-        self.c = c
+    public init(type: String, payload: String) {
+        self.type = type
+        self.payload = payload
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case t
-        case c
+    private enum CodingKeys: CodingKey {
+        case legacyType
+        case legacyPayload
         case type
         case text
         case payload
+
+        init?(stringValue: String) {
+            switch stringValue {
+            case "t":
+                self = .legacyType
+            case "c":
+                self = .legacyPayload
+            case "type":
+                self = .type
+            case "text":
+                self = .text
+            case "payload":
+                self = .payload
+            default:
+                return nil
+            }
+        }
+
+        var stringValue: String {
+            switch self {
+            case .legacyType:
+                return "t"
+            case .legacyPayload:
+                return "c"
+            case .type:
+                return "type"
+            case .text:
+                return "text"
+            case .payload:
+                return "payload"
+            }
+        }
+
+        init?(intValue: Int) { nil }
+        var intValue: Int? { nil }
     }
 
     public init(from decoder: Decoder) throws {
         if let encoded = Self.decodeSingleValueString(from: decoder) {
-            self = APIEncryptedMessageContent(t: "encrypted", c: encoded)
+            self = APIEncryptedMessageContent(type: "encrypted", payload: encoded)
             return
         }
 
@@ -194,7 +234,7 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
         let decodedType = Self.decodeType(from: container)
         let decodedPayload = Self.decodePayload(from: container)
 
-        self = APIEncryptedMessageContent(t: decodedType, c: decodedPayload)
+        self = APIEncryptedMessageContent(type: decodedType, payload: decodedPayload)
     }
 
     private static func decodeSingleValueString(from decoder: Decoder) -> String? {
@@ -205,7 +245,7 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     private static func decodeType(
         from container: KeyedDecodingContainer<CodingKeys>
     ) -> String {
-        if let value = try? container.decodeIfPresent(String.self, forKey: .t) {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .legacyType) {
             return value
         }
         if let value = try? container.decodeIfPresent(String.self, forKey: .type) {
@@ -217,7 +257,7 @@ public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     private static func decodePayload(
         from container: KeyedDecodingContainer<CodingKeys>
     ) -> String {
-        if let value = try? container.decodeIfPresent(String.self, forKey: .c) {
+        if let value = try? container.decodeIfPresent(String.self, forKey: .legacyPayload) {
             return value
         }
         if let value = try? container.decodeIfPresent(String.self, forKey: .payload) {
@@ -366,6 +406,31 @@ public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Senda
     }
 }
 
+public struct APIGeminiSessionSummary: Decodable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let title: String?
+    public let cwd: String?
+    public let updatedAt: String?
+    public let createdAt: String?
+    public let model: String?
+
+    public init(
+        id: String,
+        title: String?,
+        cwd: String?,
+        updatedAt: String?,
+        createdAt: String?,
+        model: String?
+    ) {
+        self.id = id
+        self.title = title
+        self.cwd = cwd
+        self.updatedAt = updatedAt
+        self.createdAt = createdAt
+        self.model = model
+    }
+}
+
 public struct APICodexThreadsPage: Decodable, Equatable, Sendable {
     public let threads: [APICodexThreadSummary]
     public let nextCursor: String?
@@ -384,6 +449,18 @@ public struct APIClaudeSessionsPage: Decodable, Equatable, Sendable {
     public let hasNext: Bool
 
     public init(sessions: [APIClaudeSessionSummary], nextCursor: String?, hasNext: Bool) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
+    }
+}
+
+public struct APIGeminiSessionsPage: Decodable, Equatable, Sendable {
+    public let sessions: [APIGeminiSessionSummary]
+    public let nextCursor: String?
+    public let hasNext: Bool
+
+    public init(sessions: [APIGeminiSessionSummary], nextCursor: String?, hasNext: Bool) {
         self.sessions = sessions
         self.nextCursor = nextCursor
         self.hasNext = hasNext
@@ -412,6 +489,7 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
     public let provider: APIUpstreamSessionProvider
     public let title: String
     public let cwd: String?
+    public let path: String?
     public let updatedAt: String?
     public let createdAt: String?
     public let archived: Bool?
@@ -425,6 +503,7 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
         provider: APIUpstreamSessionProvider,
         title: String,
         cwd: String?,
+        path: String? = nil,
         updatedAt: String?,
         createdAt: String?,
         archived: Bool?,
@@ -437,6 +516,7 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
         self.provider = provider
         self.title = title
         self.cwd = cwd
+        self.path = path
         self.updatedAt = updatedAt
         self.createdAt = createdAt
         self.archived = archived
@@ -454,6 +534,7 @@ public extension APICodexThreadSummary {
             provider: .codex,
             title: (name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? name! : "Untitled"),
             cwd: cwd,
+            path: path,
             updatedAt: updatedAt,
             createdAt: createdAt,
             archived: archived,
@@ -472,10 +553,30 @@ public extension APIClaudeSessionSummary {
             provider: .claude,
             title: id,
             cwd: cwd,
+            path: nil,
             updatedAt: updatedAt,
             createdAt: createdAt,
             archived: nil,
             model: nil,
+            effort: nil,
+            preview: nil,
+            statusType: nil
+        )
+    }
+}
+
+public extension APIGeminiSessionSummary {
+    var upstreamSummary: APIUpstreamSessionSummary {
+        APIUpstreamSessionSummary(
+            id: id,
+            provider: .gemini,
+            title: (title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? title! : "Gemini Session"),
+            cwd: cwd,
+            path: nil,
+            updatedAt: updatedAt,
+            createdAt: createdAt,
+            archived: nil,
+            model: model,
             effort: nil,
             preview: nil,
             statusType: nil

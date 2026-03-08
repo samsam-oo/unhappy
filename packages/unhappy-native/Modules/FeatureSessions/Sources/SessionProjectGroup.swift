@@ -10,7 +10,6 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
     public let hasConcreteProjectPath: Bool
     public let catalogSessionCount: Int
     public let catalogLatestUpdatedAt: TimeInterval
-    public let mirroredSessions: [APISession]
     public let upstreamSessions: [SessionLinkedUpstreamSession]
 
     public init(
@@ -20,7 +19,6 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
         hasConcreteProjectPath: Bool,
         catalogSessionCount: Int = 0,
         catalogLatestUpdatedAt: TimeInterval = 0,
-        mirroredSessions: [APISession],
         upstreamSessions: [SessionLinkedUpstreamSession]
     ) {
         self.machineID = machineID
@@ -29,7 +27,6 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
         self.hasConcreteProjectPath = hasConcreteProjectPath
         self.catalogSessionCount = max(0, catalogSessionCount)
         self.catalogLatestUpdatedAt = max(0, catalogLatestUpdatedAt)
-        self.mirroredSessions = mirroredSessions
         self.upstreamSessions = upstreamSessions
     }
 
@@ -45,21 +42,33 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
     }
 
     public var latestUpdatedAt: TimeInterval {
-        let mirroredTimestamp = mirroredSessions.map(\.updatedAt).max() ?? 0
-        let upstreamTimestamp = upstreamSessions.map(\.sortTimestamp).max() ?? 0
-        return max(mirroredTimestamp, upstreamTimestamp, catalogLatestUpdatedAt)
-    }
-
-    public var activeSessionCount: Int {
-        mirroredSessions.filter(\.active).count
+        let upstreamTimestamp = displayUpstreamSessions.map(\.sortTimestamp).max() ?? 0
+        return max(upstreamTimestamp, catalogLatestUpdatedAt)
     }
 
     public var allSessionCount: Int {
-        max(mirroredSessions.count + upstreamSessions.count, catalogSessionCount)
+        max(displayUpstreamSessions.count, catalogSessionCount)
+    }
+
+    public var displayUpstreamSessions: [SessionLinkedUpstreamSession] {
+        upstreamSessions
     }
 }
 
 public extension SessionListPresentationBuilder {
+    static func projectGroup(
+        id: String,
+        sessions: [APISession],
+        upstreamSessions: [SessionLinkedUpstreamSession],
+        projects: [SessionMachineProject] = []
+    ) -> SessionProjectGroup? {
+        projectGroups(
+            sessions: sessions,
+            upstreamSessions: upstreamSessions,
+            projects: projects
+        ).first(where: { $0.id == id })
+    }
+
     static func projectGroups(
         sessions: [APISession],
         upstreamSessions: [SessionLinkedUpstreamSession],
@@ -74,14 +83,15 @@ public extension SessionListPresentationBuilder {
             var hasConcreteProjectPath: Bool
             var catalogSessionCount: Int
             var catalogLatestUpdatedAt: TimeInterval
-            var mirroredSessions: [APISession] = []
             var upstreamSessions: [SessionLinkedUpstreamSession] = []
         }
 
         var groups: [String: Accumulator] = [:]
 
         for project in explicitProjects {
-            let projectPath = normalizedProjectPath(project.summary.path) ?? project.summary.path
+            let rawProjectPath = project.summary.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            let projectPath = normalizedProjectPath(rawProjectPath) ?? rawProjectPath
+            guard !projectPath.isEmpty else { continue }
             let key = "\(project.machineID)|\(projectPath)"
             if groups[key] == nil {
                 groups[key] = Accumulator(
@@ -110,23 +120,9 @@ public extension SessionListPresentationBuilder {
             }
         }
 
-        for session in sessions {
-            let context = SessionRuntimeContext(session: session)
-            let machineID = context.machineID ?? "local"
-            let projectPath = normalizedProjectPath(context.workingDirectory) ?? "No Project Context"
-            let key = "\(machineID)|\(projectPath)"
-            guard var accumulator = groups[key] else { continue }
-            accumulator.machineDisplayName = SessionMachineDisplayNameResolver.preferred(
-                existing: accumulator.machineDisplayName,
-                candidate: context.machineDisplayName,
-                machineID: machineID
-            )
-            accumulator.mirroredSessions.append(session)
-            groups[key] = accumulator
-        }
-
         for row in upstreamSessions {
-            let projectPath = normalizedProjectPath(row.summary.cwd) ?? "No Project Context"
+            let normalizedPath = normalizedProjectPath(row.summary.cwd)
+            let projectPath = normalizedPath ?? "No Project Context"
             let key = "\(row.machineID)|\(projectPath)"
             guard var accumulator = groups[key] else { continue }
             accumulator.machineDisplayName = SessionMachineDisplayNameResolver.preferred(
@@ -147,7 +143,6 @@ public extension SessionListPresentationBuilder {
                 hasConcreteProjectPath: value.hasConcreteProjectPath,
                 catalogSessionCount: value.catalogSessionCount,
                 catalogLatestUpdatedAt: value.catalogLatestUpdatedAt,
-                mirroredSessions: value.mirroredSessions.sorted(by: compareProjectSessions),
                 upstreamSessions: value.upstreamSessions.sorted(by: compareUpstreamSessions)
             )
         }
@@ -155,18 +150,7 @@ public extension SessionListPresentationBuilder {
     }
 
     private static func normalizedProjectPath(_ raw: String?) -> String? {
-        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty else {
-            return nil
-        }
-        if raw == "/" {
-            return raw
-        }
-        var normalized = raw
-        while normalized.count > 1 && normalized.hasSuffix("/") {
-            normalized.removeLast()
-        }
-        return normalized
+        SessionProjectPathCanonicalizer.canonicalPath(raw)
     }
 
     private static func compareProjectGroups(_ lhs: SessionProjectGroup, _ rhs: SessionProjectGroup) -> Bool {
@@ -178,14 +162,6 @@ public extension SessionListPresentationBuilder {
         }
         return lhs.projectPath.localizedCaseInsensitiveCompare(rhs.projectPath) == .orderedAscending
     }
-
-    private static func compareProjectSessions(_ lhs: APISession, _ rhs: APISession) -> Bool {
-        if lhs.updatedAt != rhs.updatedAt {
-            return lhs.updatedAt > rhs.updatedAt
-        }
-        return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
-    }
-
     private static func compareUpstreamSessions(
         _ lhs: SessionLinkedUpstreamSession,
         _ rhs: SessionLinkedUpstreamSession
@@ -200,6 +176,16 @@ public extension SessionListPresentationBuilder {
         ISO8601DateFormatter.withFractional.date(from: value)
             ?? ISO8601DateFormatter.withInternet.date(from: value)
     }
+}
+
+private func compareUpstreamSession(
+    _ lhs: SessionLinkedUpstreamSession,
+    _ rhs: SessionLinkedUpstreamSession
+) -> Bool {
+    if lhs.sortTimestamp != rhs.sortTimestamp {
+        return lhs.sortTimestamp > rhs.sortTimestamp
+    }
+    return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
 }
 
 private extension ISO8601DateFormatter {
