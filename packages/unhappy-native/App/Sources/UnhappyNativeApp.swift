@@ -92,18 +92,13 @@ struct UnhappyNativeApp: App {
         let sessionsLoader = SessionsLoadUseCase(service: sessionsService)
         let sessionsPageLoader = SessionsPageLoadUseCase(service: sessionsService)
         let sessionsPoller = SessionsPollingUseCase(loader: sessionsLoader)
-        let sessionMessagesLoader = SessionMessagesLoadUseCase(service: sessionsService)
         let sessionProjectsLoader = SessionProjectsLoadUseCase(service: machinesService)
         let sessionProjectOpener = SessionProjectOpenUseCase(service: machinesService)
         let sessionProjectRemover = SessionProjectRemoveUseCase(service: machinesService)
         let directSessionMessagesLoader = DirectSessionMessagesLoadUseCase(codexService: machinesService, claudeService: machinesService)
         let directSessionMessageSender = DirectSessionMessageSendUseCase(codexService: machinesService, claudeService: machinesService)
-        let sessionModelsLoader = SessionModelsLoadUseCase(service: sessionsService)
-        let sessionSpawnUseCase = SessionSpawnUseCase(service: sessionsService)
-        let sessionMessageSender = SessionMessageSendUseCase(service: sessionsService)
         let sessionPreDeleteKillUseCase = SessionPreDeleteKillUseCase(service: sessionsService)
         let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
-        let sessionTitleUpdateUseCase = SessionTitleUpdateUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
         self.sessionPresenceCoordinator = sessionPresenceCoordinator
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
@@ -120,17 +115,12 @@ struct UnhappyNativeApp: App {
                 loader: sessionsLoader,
                 pageLoader: sessionsPageLoader,
                 poller: sessionsPoller,
-                messageLoader: sessionMessagesLoader,
                 projectsLoader: sessionProjectsLoader,
                 projectOpener: sessionProjectOpener,
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
-                sessionModelsLoader: sessionModelsLoader,
-                spawnUseCase: sessionSpawnUseCase,
-                messageSender: sessionMessageSender,
                 preDeleteKiller: sessionPreDeleteKillUseCase,
-                deleteUseCase: sessionDeleteUseCase,
-                titleUseCase: sessionTitleUpdateUseCase
+                deleteUseCase: sessionDeleteUseCase
             )
         }
         self.makeNewSessionViewModel = {
