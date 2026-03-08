@@ -1,4 +1,3 @@
-import { ApiClient } from "@/lib";
 import { SessionRuntimeClient } from "@/api/apiSession";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
@@ -8,10 +7,18 @@ import { getProjectPath } from "./utils/path";
 import { join } from "node:path";
 import { notifyDaemonProviderSessionStarted } from "@/daemon/controlClient";
 
+export interface SessionPushNotifier {
+    sendToAllDevices(
+        title: string,
+        body: string,
+        data?: Record<string, unknown>
+    ): Promise<unknown> | unknown;
+}
+
 export class Session {
     readonly path: string;
     readonly logPath: string;
-    readonly api: ApiClient;
+    readonly pushNotifier: SessionPushNotifier;
     readonly client: SessionRuntimeClient;
     readonly queue: MessageQueue2<EnhancedMode>;
     readonly claudeEnvVars?: Record<string, string>;
@@ -35,7 +42,7 @@ export class Session {
     private keepAliveInterval: NodeJS.Timeout;
 
     constructor(opts: {
-        api: ApiClient,
+        pushNotifier: SessionPushNotifier,
         client: SessionRuntimeClient,
         path: string,
         logPath: string,
@@ -52,7 +59,7 @@ export class Session {
         jsRuntime?: JsRuntime,
     }) {
         this.path = opts.path;
-        this.api = opts.api;
+        this.pushNotifier = opts.pushNotifier;
         this.client = opts.client;
         this.logPath = opts.logPath;
         this.sessionId = opts.sessionId;

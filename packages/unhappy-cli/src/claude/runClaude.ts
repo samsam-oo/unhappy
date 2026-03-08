@@ -578,7 +578,7 @@ export async function runClaude(
     permissionMode: options.permissionMode,
     startingMode: options.startingMode,
     messageQueue,
-    api,
+    pushNotifier: api.push(),
     allowedTools: happyServer.toolNames.map(
       (toolName) => `mcp__unhappy__${toolName}`,
     ),

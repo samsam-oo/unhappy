@@ -497,7 +497,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 cwd: metadataSnapshot?.path || session.path,
                                 sessionName: metadataSnapshot?.name,
                             });
-                            session.api.push().sendToAllDevices(
+                            session.pushNotifier.sendToAllDevices(
                                 ready.title,
                                 ready.body,
                                 { sessionId: session.client.sessionId, ...ready.data }

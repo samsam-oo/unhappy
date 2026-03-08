@@ -260,7 +260,7 @@ export class PermissionHandler {
                 : '';
             const sessionPath = metadataSnapshot?.path || this.session.path;
             const sessionTitleOrPath = sessionName.length > 0 ? sessionName : sessionPath;
-            this.session.api.push().sendToAllDevices(
+            this.session.pushNotifier.sendToAllDevices(
                 `[Approve] ${sessionTitleOrPath}`,
                 body,
                 {
