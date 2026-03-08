@@ -3,7 +3,6 @@ import type { ApiSessionClient } from '@/api/apiSession';
 import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
@@ -582,27 +581,6 @@ export async function runCodex(opts: {
       permissionMode: opts.permissionMode ?? 'passthrough',
     },
   }));
-
-  // Always report to daemon if it exists (skip if offline)
-  if (response) {
-    try {
-      logger.debug(`[START] Reporting session ${response.id} to daemon`);
-      const result = await notifyDaemonSessionStarted(response.id, metadata);
-      if (result.error) {
-        logger.debug(
-          `[START] Failed to report to daemon (may not be running):`,
-          result.error,
-        );
-      } else {
-        logger.debug(`[START] Reported session ${response.id} to daemon`);
-      }
-    } catch (error) {
-      logger.debug(
-        '[START] Failed to report to daemon (may not be running):',
-        error,
-      );
-    }
-  }
 
   const messageQueue = new MessageQueue2<EnhancedMode>((mode) =>
     hashObject({

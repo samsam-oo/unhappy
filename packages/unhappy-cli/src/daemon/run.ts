@@ -327,85 +327,6 @@ export async function startDaemon(): Promise<void> {
       return false;
     };
 
-    // Handle webhook from unhappy session reporting itself
-    const onUnhappySessionWebhook = (
-      sessionId: string,
-      sessionMetadata: Metadata,
-    ) => {
-      logger.debugLargeJson(`[DAEMON RUN] Session reported`, sessionMetadata);
-
-      const pid = sessionMetadata.hostPid;
-      if (!pid) {
-        logger.debug(
-          `[DAEMON RUN] Session webhook missing hostPid for sessionId: ${sessionId}`,
-        );
-        return;
-      }
-
-      logger.debug(
-        `[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`,
-      );
-      logger.debug(
-        `[DAEMON RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`,
-      );
-
-      // Check if we already have this PID (daemon-spawned)
-      const existingSession = pidToTrackedSession.get(pid);
-
-      if (existingSession && existingSession.startedBy === 'daemon') {
-        // Update daemon-spawned session with reported data
-        existingSession.happySessionId = sessionId;
-        existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
-        const provider =
-          sessionMetadata.flavor === 'codex' ||
-          sessionMetadata.flavor === 'claude' ||
-          sessionMetadata.flavor === 'gemini'
-            ? sessionMetadata.flavor
-            : undefined;
-        const providerSessionId =
-          typeof sessionMetadata.agentSessionId === 'string' &&
-          sessionMetadata.agentSessionId.trim().length > 0
-            ? sessionMetadata.agentSessionId.trim()
-            : undefined;
-        if (provider) existingSession.provider = provider;
-        if (providerSessionId) existingSession.providerSessionId = providerSessionId;
-        logger.debug(
-          `[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`,
-        );
-
-        // Resolve any awaiter for this PID
-        const awaiter = pidToAwaiter.get(pid);
-        if (awaiter && existingSession.providerSessionId) {
-          pidToAwaiter.delete(pid);
-          awaiter(existingSession);
-          logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
-        }
-      } else if (!existingSession) {
-        // New session started externally
-        const trackedSession: TrackedSession = {
-          startedBy: 'unhappy directly - likely by user from terminal',
-          happySessionId: sessionId,
-          happySessionMetadataFromLocalWebhook: sessionMetadata,
-          provider:
-            sessionMetadata.flavor === 'codex' ||
-            sessionMetadata.flavor === 'claude' ||
-            sessionMetadata.flavor === 'gemini'
-              ? sessionMetadata.flavor
-              : undefined,
-          providerSessionId:
-            typeof sessionMetadata.agentSessionId === 'string' &&
-            sessionMetadata.agentSessionId.trim().length > 0
-              ? sessionMetadata.agentSessionId.trim()
-              : undefined,
-          pid,
-        };
-        pidToTrackedSession.set(pid, trackedSession);
-        logger.debug(
-          `[DAEMON RUN] Registered externally-started session ${sessionId}`,
-        );
-      }
-    };
-
     const onProviderSessionWebhook = (
       provider: 'codex' | 'claude' | 'gemini',
       providerSessionId: string,
@@ -1120,11 +1041,9 @@ export async function startDaemon(): Promise<void> {
       }
       logger.debug(`[DAEMON RUN] Attempting to stop session ${sessionId}`);
 
-      // Try to find by sessionId first
       for (const [pid, session] of pidToTrackedSession.entries()) {
         if (
           session.providerSessionId === sessionId ||
-          session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') &&
             pid === parseInt(sessionId.replace('PID-', '')))
         ) {
@@ -1182,7 +1101,6 @@ export async function startDaemon(): Promise<void> {
         stopSession,
         spawnSession,
         requestShutdown: () => requestShutdown('unhappy-cli'),
-        onUnhappySessionWebhook,
         onProviderSessionWebhook,
       });
 

@@ -114,7 +114,7 @@ vi.mock('@/claude/utils/startHappyServer', () => ({
 }));
 
 vi.mock('@/daemon/controlClient', () => ({
-  notifyDaemonSessionStarted: vi.fn(async () => ({ error: null })),
+  notifyDaemonProviderSessionStarted: vi.fn(async () => ({ error: null })),
 }));
 
 vi.mock('@/daemon/run', () => ({

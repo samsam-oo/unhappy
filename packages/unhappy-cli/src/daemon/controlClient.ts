@@ -86,16 +86,6 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
   }
 }
 
-export async function notifyDaemonSessionStarted(
-  sessionId: string,
-  metadata: Metadata
-): Promise<{ error?: string } | any> {
-  return await daemonPost('/session-started', {
-    sessionId,
-    metadata
-  });
-}
-
 export async function notifyDaemonProviderSessionStarted(
   provider: 'codex' | 'claude' | 'gemini',
   providerSessionId: string,

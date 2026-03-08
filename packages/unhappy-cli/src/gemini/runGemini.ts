@@ -16,7 +16,6 @@ import { extractUserMessageText } from '@/api/types';
 import type { ACPMessageData, ApiSessionClient } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
@@ -207,27 +206,6 @@ export async function runGemini(opts: {
       model: opts.model,
     },
   }));
-
-  // Report to daemon (only if we have a real session)
-  if (response) {
-    try {
-      logger.debug(`[START] Reporting session ${response.id} to daemon`);
-      const result = await notifyDaemonSessionStarted(response.id, metadata);
-      if (result.error) {
-        logger.debug(
-          `[START] Failed to report to daemon (may not be running):`,
-          result.error,
-        );
-      } else {
-        logger.debug(`[START] Reported session ${response.id} to daemon`);
-      }
-    } catch (error) {
-      logger.debug(
-        '[START] Failed to report to daemon (may not be running):',
-        error,
-      );
-    }
-  }
 
   const messageQueue = new MessageQueue2<GeminiMode>((mode) =>
     hashObject({

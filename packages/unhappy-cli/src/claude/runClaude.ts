@@ -14,7 +14,6 @@ import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { configuration } from '@/configuration';
-import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { listClaudeModels } from '@/modules/common/listModels';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
@@ -213,25 +212,6 @@ export async function runClaude(
   }
 
   logger.debug(`Session created: ${response.id}`);
-
-  // Always report to daemon if it exists
-  try {
-    logger.debug(`[START] Reporting session ${response.id} to daemon`);
-    const result = await notifyDaemonSessionStarted(response.id, metadata);
-    if (result.error) {
-      logger.debug(
-        `[START] Failed to report to daemon (may not be running):`,
-        result.error,
-      );
-    } else {
-      logger.debug(`[START] Reported session ${response.id} to daemon`);
-    }
-  } catch (error) {
-    logger.debug(
-      '[START] Failed to report to daemon (may not be running):',
-      error,
-    );
-  }
 
   // Extract SDK metadata in background and update session when ready
   extractSDKMetadataAsync(async (sdkMetadata) => {

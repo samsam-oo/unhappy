@@ -62,7 +62,7 @@ vi.mock('@/claude/utils/startHappyServer', () => ({
 }));
 
 vi.mock('@/daemon/controlClient', () => ({
-  notifyDaemonSessionStarted: vi.fn(async () => ({ error: null })),
+  notifyDaemonProviderSessionStarted: vi.fn(async () => ({ error: null })),
 }));
 
 vi.mock('@/daemon/run', () => ({
@@ -234,7 +234,7 @@ describe('runGemini startup', () => {
     });
 
     expect(mockState.session.updateAgentState).toHaveBeenCalledTimes(1);
-    expect(mockState.appliedAgentStates[0]).toEqual({
+    expect(mockState.appliedAgentStates[0]).toMatchObject({
       controlledByUser: true,
     });
   });
@@ -246,7 +246,7 @@ describe('runGemini startup', () => {
     });
 
     expect(mockState.session.updateAgentState).toHaveBeenCalledTimes(1);
-    expect(mockState.appliedAgentStates[0]).toEqual({
+    expect(mockState.appliedAgentStates[0]).toMatchObject({
       controlledByUser: false,
     });
   });

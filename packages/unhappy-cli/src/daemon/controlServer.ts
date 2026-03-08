@@ -16,14 +16,12 @@ export function startDaemonControlServer({
   stopSession,
   spawnSession,
   requestShutdown,
-  onUnhappySessionWebhook,
   onProviderSessionWebhook,
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
-  onUnhappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
   onProviderSessionWebhook: (
     provider: 'codex' | 'claude' | 'gemini',
     providerSessionId: string,
@@ -39,28 +37,6 @@ export function startDaemonControlServer({
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
-
-    // Session reports itself after creation
-    typed.post('/session-started', {
-      schema: {
-        body: z.object({
-          sessionId: z.string(),
-          metadata: z.any() // Metadata type from API
-        }),
-        response: {
-          200: z.object({
-            status: z.literal('ok')
-          })
-        }
-      }
-    }, async (request) => {
-      const { sessionId, metadata } = request.body;
-
-      logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
-      onUnhappySessionWebhook(sessionId, metadata);
-
-      return { status: 'ok' as const };
-    });
 
     typed.post('/provider-session-started', {
       schema: {

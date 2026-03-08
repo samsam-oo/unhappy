@@ -27,7 +27,7 @@ import {
   stopDaemonSession, 
   spawnDaemonSession, 
   stopDaemonHttp, 
-  notifyDaemonSessionStarted, 
+  notifyDaemonProviderSessionStarted, 
   stopDaemon
 } from '@/daemon/controlClient';
 import { readCredentials, readDaemonState, clearDaemonState, readSettings } from '@/persistence';
@@ -201,7 +201,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     expect(sessions).toEqual([]);
   });
 
-  it('should track session-started webhook from terminal session', async () => {
+  it('should track provider-session-started webhook from terminal session', async () => {
     // Simulate a terminal-started session reporting to daemon
     const mockMetadata: Metadata = {
       path: '/test/path',
@@ -215,7 +215,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       machineId: 'test-machine-123'
     };
 
-    await notifyDaemonSessionStarted('test-session-123', mockMetadata);
+    await notifyDaemonProviderSessionStarted('codex', 'test-session-123', mockMetadata);
 
     // Verify session is tracked
     const sessions = await listDaemonSessions();
