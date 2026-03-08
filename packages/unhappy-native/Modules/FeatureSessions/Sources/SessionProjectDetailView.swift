@@ -86,6 +86,16 @@ public struct SessionProjectDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
+        .task(id: group.id) {
+            if sessionEntries.isEmpty {
+                await viewModel.refreshProject(
+                    machineID: group.machineID,
+                    projectPath: group.projectPath,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+            }
+        }
         .refreshable {
             await viewModel.refreshProject(
                 machineID: group.machineID,
