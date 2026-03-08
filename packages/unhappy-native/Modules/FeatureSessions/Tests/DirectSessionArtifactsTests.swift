@@ -55,4 +55,70 @@ struct DirectSessionArtifactsTests {
 
         #expect(entries.map(\.id) == ["tool-1"])
     }
+
+    @Test
+    func richEntriesCanFilterAcrossAbsoluteAndRelativePaths() {
+        let matchingEntry = SessionTranscriptEntry(
+            id: "match",
+            role: .agent,
+            kind: .toolCall,
+            title: "Updated files",
+            body: """
+            {
+              "changes": {
+                "Sources/file.swift": {
+                  "type": "update",
+                  "move_path": null,
+                  "unified_diff": "@@ -1 +1 @@\\n-old\\n+new"
+                }
+              },
+              "auto_approved": false
+            }
+            """,
+            toolUseID: "tool-1",
+            sourceType: "tool-call",
+            toolName: "codexpatch",
+            isSidechain: false,
+            threadID: nil
+        )
+        let otherEntry = SessionTranscriptEntry(
+            id: "other",
+            role: .agent,
+            kind: .toolCall,
+            title: "Updated files",
+            body: """
+            {
+              "changes": {
+                "Sources/other.swift": {
+                  "type": "update",
+                  "move_path": null,
+                  "unified_diff": "@@ -1 +1 @@\\n-old\\n+new"
+                }
+              },
+              "auto_approved": false
+            }
+            """,
+            toolUseID: "tool-2",
+            sourceType: "tool-call",
+            toolName: "codexpatch",
+            isSidechain: false,
+            threadID: nil
+        )
+        let presentations = [
+            SessionTranscriptMessagePresentation(
+                messageID: "message-1",
+                sequenceText: "1",
+                createdAt: 1,
+                createdAtText: "now",
+                entries: [matchingEntry, otherEntry]
+            )
+        ]
+
+        let entries = DirectSessionArtifacts.richEntries(
+            from: presentations,
+            matchingFilePath: "/tmp/project/Sources/file.swift"
+        )
+
+        #expect(entries.map(\.id) == ["match"])
+    }
 }

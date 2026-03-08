@@ -3,11 +3,21 @@ import CoreKit
 
 @MainActor
 public struct DirectSessionDetailView: View {
-    private enum QuickSurface: String, Identifiable {
-        case info
-        case artifacts
+    private struct QuickSurface: Identifiable, Equatable {
+        enum Kind: String {
+            case info
+            case artifacts
+        }
 
-        var id: String { rawValue }
+        let kind: Kind
+        let filterPath: String?
+
+        var id: String {
+            if let filterPath, !filterPath.isEmpty {
+                return "\(kind.rawValue)|\(filterPath)"
+            }
+            return kind.rawValue
+        }
     }
 
     @StateObject private var viewModel: DirectSessionViewModel
@@ -42,7 +52,9 @@ public struct DirectSessionDetailView: View {
                     liveStatusText: nil,
                     transcriptBottomAnchorID: "__direct_session_bottom__",
                     onReferenceToggle: {},
-                    onFileLinkTap: { _ in },
+                    onFileLinkTap: { path in
+                        presentedQuickSurface = QuickSurface(kind: .artifacts, filterPath: path)
+                    },
                     onMessageInspect: { messageID in
                         inspectedMessage = viewModel.messages.first(where: { $0.id == messageID })
                     },
@@ -64,10 +76,10 @@ public struct DirectSessionDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Session Info") {
-                        presentedQuickSurface = .info
+                        presentedQuickSurface = QuickSurface(kind: .info, filterPath: nil)
                     }
                     Button("Tool Artifacts") {
-                        presentedQuickSurface = .artifacts
+                        presentedQuickSurface = QuickSurface(kind: .artifacts, filterPath: nil)
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -89,7 +101,7 @@ public struct DirectSessionDetailView: View {
         }
         .sheet(item: $presentedQuickSurface) { surface in
             NavigationStack {
-                switch surface {
+                switch surface.kind {
                 case .info:
                     DirectSessionInfoView(
                         identity: viewModel.identity,
@@ -98,7 +110,13 @@ public struct DirectSessionDetailView: View {
                     )
                 case .artifacts:
                     DirectSessionArtifactsView(
-                        entries: DirectSessionArtifacts.richEntries(from: transcriptPresentations)
+                        entries: surface.filterPath.map {
+                            DirectSessionArtifacts.richEntries(
+                                from: transcriptPresentations,
+                                matchingFilePath: $0
+                            )
+                        } ?? DirectSessionArtifacts.richEntries(from: transcriptPresentations),
+                        filterPath: surface.filterPath
                     )
                 }
             }
@@ -321,6 +339,7 @@ private struct DirectSessionInfoView: View {
 
 private struct DirectSessionArtifactsView: View {
     let entries: [SessionTranscriptEntry]
+    let filterPath: String?
 
     var body: some View {
         List {
@@ -339,7 +358,7 @@ private struct DirectSessionArtifactsView: View {
             }
         }
         .listStyle(.plain)
-        .navigationTitle("Artifacts")
+        .navigationTitle(filterPath == nil ? "Artifacts" : "File Artifacts")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
