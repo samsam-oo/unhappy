@@ -60,7 +60,7 @@ export interface SessionMetadataResult {
  *     startedBy: opts.startedBy
  * });
  *
- * const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+ * const runtime = createLocalSessionRuntimeClient({ provider: 'codex', metadata, agentState: state });
  * ```
  */
 export function createSessionMetadata(opts: CreateSessionMetadataOptions): SessionMetadataResult {
