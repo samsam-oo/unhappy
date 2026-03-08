@@ -7,43 +7,11 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { sessionArchive } from "@/app/session/sessionArchive";
-import {
-    findConnectedMachine,
-    findConnectedSession,
-    invokePublicCommand
-} from "./codexPublicCommands";
-
-async function findConnectedMachineForSession(userId: string, sessionId: string): Promise<string | null> {
-    const accessKeys = await db.accessKey.findMany({
-        where: {
-            accountId: userId,
-            sessionId
-        },
-        orderBy: {
-            updatedAt: 'desc'
-        },
-        take: 10,
-        select: {
-            machineId: true
-        }
-    });
-
-    for (const key of accessKeys) {
-        const target = findConnectedMachine(userId, key.machineId);
-        if (target) {
-            return key.machineId;
-        }
-    }
-
-    return null;
-}
 
 function resolveSessionApiUpdatedAt(
     createdAt: Date,
     latestMessage?: { createdAt: Date; updatedAt: Date }
 ): number {
-    // Keep API ordering stable by anchoring to message activity instead of Session.updatedAt,
-    // which is bumped by metadata/state/presence writes due Prisma @updatedAt.
     if (!latestMessage) {
         return createdAt.getTime();
     }
@@ -55,40 +23,6 @@ function resolveSessionApiUpdatedAt(
 }
 
 export function sessionRoutes(app: Fastify) {
-    async function ensureSessionBelongsToUser(userId: string, sessionId: string): Promise<boolean> {
-        const session = await db.session.findFirst({
-            where: {
-                id: sessionId,
-                accountId: userId,
-                archivedAt: null,
-            },
-            select: { id: true }
-        });
-        return Boolean(session);
-    }
-
-    async function invokeSessionCommand(
-        userId: string,
-        sessionId: string,
-        command: string,
-        params: unknown
-    ): Promise<
-        | { ok: true; result: any }
-        | { ok: false; statusCode: number; error: string }
-    > {
-        const sessionTarget = findConnectedSession(userId, sessionId);
-        if (sessionTarget) {
-            const result = await invokePublicCommand(sessionTarget, { command, params });
-            return { ok: true, result };
-        }
-
-        return {
-            ok: false,
-            statusCode: 409,
-            error: 'Session RPC is not connected'
-        };
-    }
-
     // Sessions API
     app.get('/v1/sessions', {
         preHandler: app.authenticate,
@@ -173,7 +107,7 @@ export function sessionRoutes(app: Fastify) {
                 accountId: userId,
                 archivedAt: null,
                 active: true,
-                lastActiveAt: { gt: new Date(Date.now() - 1000 * 60 * 15) /* 15 minutes */ }
+                lastActiveAt: { gt: new Date(Date.now() - 1000 * 60 * 15) }
             },
             orderBy: { lastActiveAt: 'desc' },
             take: limit,
@@ -234,7 +168,6 @@ export function sessionRoutes(app: Fastify) {
         const userId = request.userId;
         const { cursor, limit = 50, changedSince } = request.query || {};
 
-        // Decode cursor - simple ID-based cursor
         let cursorSessionId: string | undefined;
         if (cursor) {
             if (cursor.startsWith('cursor_v1_')) {
@@ -244,34 +177,29 @@ export function sessionRoutes(app: Fastify) {
             }
         }
 
-        // Build where clause
         const where: Prisma.SessionWhereInput = {
             accountId: userId,
             archivedAt: null,
         };
 
-        // Add changedSince filter (just a filter, doesn't affect pagination)
-        // Keep this bound to Session.updatedAt for sync invalidation semantics.
         if (changedSince) {
             where.updatedAt = {
                 gt: new Date(changedSince)
             };
         }
 
-        // Add cursor pagination - always by ID descending (most recent first)
         if (cursorSessionId) {
             where.id = {
-                lt: cursorSessionId  // Get sessions with ID less than cursor (for desc order)
+                lt: cursorSessionId
             };
         }
 
-        // Always sort by ID descending for consistent pagination
         const orderBy = { id: 'desc' as const };
 
         const sessions = await db.session.findMany({
             where,
             orderBy,
-            take: limit + 1, // Fetch one extra to determine if there are more
+            take: limit + 1,
             select: {
                 id: true,
                 seq: true,
@@ -296,11 +224,9 @@ export function sessionRoutes(app: Fastify) {
             }
         });
 
-        // Check if there are more results
         const hasNext = sessions.length > limit;
         const resultSessions = hasNext ? sessions.slice(0, limit) : sessions;
 
-        // Generate next cursor - simple ID-based cursor
         let nextCursor: string | null = null;
         if (hasNext && resultSessions.length > 0) {
             const lastSession = resultSessions[resultSessions.length - 1];
@@ -397,107 +323,44 @@ export function sessionRoutes(app: Fastify) {
                     lastMessage: null
                 }
             });
-        } else {
-
-            // Resolve seq
-            const updSeq = await allocateUserSeq(userId);
-
-            // Create session
-            log({ module: 'session-create', userId, tag }, `Creating new session for user ${userId} with tag ${tag}`);
-            const session = await db.session.create({
-                data: {
-                    accountId: userId,
-                    seq: updSeq,
-                    tag: tag,
-                    metadata: metadata,
-                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
-                }
-            });
-            log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
-
-            // Emit new session update
-            const updatePayload = buildNewSessionUpdate(session, updSeq, randomKeyNaked(12));
-            log({
-                module: 'session-create',
-                userId,
-                sessionId: session.id,
-                updateType: 'new-session',
-                updatePayload: JSON.stringify(updatePayload)
-            }, `Emitting new-session update to user-scoped connections`);
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'user-scoped-only' }
-            });
-
-            return reply.send({
-                session: {
-                    id: session.id,
-                    seq: session.seq,
-                    displayName: session.displayName,
-                    archived: false,
-                    metadata: session.metadata,
-                    metadataVersion: session.metadataVersion,
-                    agentState: session.agentState,
-                    agentStateVersion: session.agentStateVersion,
-                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
-                    active: session.active,
-                    activeAt: session.lastActiveAt.getTime(),
-                    createdAt: session.createdAt.getTime(),
-                    updatedAt: resolveSessionApiUpdatedAt(session.createdAt),
-                    lastMessage: null
-                }
-            });
         }
-    });
 
-    app.get('/v1/sessions/:sessionId/messages', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
+        const updSeq = await allocateUserSeq(userId);
 
-        // Verify session belongs to user
-        const session = await db.session.findFirst({
-            where: {
-                id: sessionId,
+        const created = await db.session.create({
+            data: {
                 accountId: userId,
-                archivedAt: null,
+                seq: updSeq,
+                tag: tag,
+                metadata: metadata,
+                dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
             }
         });
 
-        if (!session) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const messages = await db.sessionMessage.findMany({
-            where: { sessionId },
-            orderBy: { createdAt: 'desc' },
-            take: 150,
-            select: {
-                id: true,
-                seq: true,
-                localId: true,
-                content: true,
-                createdAt: true,
-                updatedAt: true
-            }
+        const updatePayload = buildNewSessionUpdate(created, updSeq, randomKeyNaked(12));
+        eventRouter.emitUpdate({
+            userId,
+            payload: updatePayload,
+            recipientFilter: { type: 'user-scoped-only' }
         });
 
         return reply.send({
-            messages: messages.map((v) => ({
-                id: v.id,
-                seq: v.seq,
-                content: v.content,
-                localId: v.localId,
-                createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime()
-            }))
+            session: {
+                id: created.id,
+                seq: created.seq,
+                displayName: created.displayName,
+                archived: false,
+                metadata: created.metadata,
+                metadataVersion: created.metadataVersion,
+                agentState: created.agentState,
+                agentStateVersion: created.agentStateVersion,
+                dataEncryptionKey: created.dataEncryptionKey ? Buffer.from(created.dataEncryptionKey).toString('base64') : null,
+                active: created.active,
+                activeAt: created.lastActiveAt.getTime(),
+                createdAt: created.createdAt.getTime(),
+                updatedAt: resolveSessionApiUpdatedAt(created.createdAt),
+                lastMessage: null
+            }
         });
     });
 
@@ -570,580 +433,6 @@ export function sessionRoutes(app: Fastify) {
             return reply.code(500).send({
                 success: false,
                 error: 'Failed to update session title'
-            });
-        }
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/abort', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                reason: z.string().optional()
-            }).optional()
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'abort',
-            {
-                reason: request.body?.reason
-            }
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        const result = invoked.result;
-        if (result?.success === false) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to abort session task'
-            });
-        }
-
-        return reply.send({ success: true });
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/permission', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                id: z.string(),
-                approved: z.boolean(),
-                mode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).optional(),
-                allowTools: z.array(z.string()).optional(),
-                decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'permission',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        const result = invoked.result;
-        if (result?.success === false) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to respond to permission request'
-            });
-        }
-
-        return reply.send({ success: true });
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/switch', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                to: z.enum(['remote', 'local'])
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'switch',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        const result = invoked.result;
-        if (result?.success === false) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to switch session mode'
-            });
-        }
-
-        return reply.send({
-            success: true,
-            switched: typeof result === 'boolean' ? result : undefined
-        });
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/message', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                text: z.string(),
-                steerMode: z.enum(['queue', 'immediate']).optional(),
-                permissionMode: z.enum([
-                    'default',
-                    'acceptEdits',
-                    'bypassPermissions',
-                    'plan',
-                    'passthrough',
-                    'read-only',
-                    'safe-yolo',
-                    'yolo',
-                ]).optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-        const normalizedText = request.body.text.trim();
-
-        if (!normalizedText) {
-            return reply.code(400).send({ success: false, error: 'Message text is required' });
-        }
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'sendMessage',
-            {
-                text: normalizedText,
-                steerMode: request.body.steerMode,
-                permissionMode: request.body.permissionMode,
-            }
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        const result = invoked.result;
-        if (result?.success === false) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to send message'
-            });
-        }
-
-        return reply.send({
-            success: true,
-        });
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/bash', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                command: z.string(),
-                cwd: z.string().optional(),
-                timeout: z.number().int().positive().max(300_000).optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'bash',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/read-file', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                path: z.string()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'readFile',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/write-file', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                path: z.string(),
-                content: z.string(),
-                expectedHash: z.string().nullable().optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'writeFile',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/list-directory', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                path: z.string(),
-                includeStats: z.boolean().optional(),
-                types: z.array(z.enum(['file', 'directory', 'other'])).optional(),
-                sort: z.boolean().optional(),
-                maxEntries: z.number().int().positive().max(10_000).optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'listDirectory',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/get-directory-tree', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                path: z.string(),
-                maxDepth: z.number().int().min(0).max(16)
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'getDirectoryTree',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/ripgrep', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                args: z.array(z.string()),
-                cwd: z.string().optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'ripgrep',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
-    });
-
-    app.post('/v1/sessions/:sessionId/commands/difftastic', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                args: z.array(z.string()),
-                cwd: z.string().optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'difftastic',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
-    });
-
-    app.post('/v1/sessions/:sessionId/kill', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-
-        const sessionExists = await ensureSessionBelongsToUser(userId, sessionId);
-        if (!sessionExists) {
-            return reply.code(404).send({ error: 'Session not found' });
-        }
-
-        const invoked = await invokeSessionCommand(
-            userId,
-            sessionId,
-            'killSession',
-            {}
-        );
-        if (!invoked.ok) {
-            if (invoked.error === 'Session RPC is not connected') {
-                const machineId = await findConnectedMachineForSession(userId, sessionId);
-                if (machineId) {
-                    const machineTarget = findConnectedMachine(userId, machineId);
-                    if (machineTarget) {
-                        const fallbackResult = await invokePublicCommand(machineTarget, {
-                            command: 'stop-session',
-                            params: { sessionId },
-                        });
-                        if (fallbackResult?.success !== false) {
-                            const fallbackMessage =
-                                typeof fallbackResult?.message === 'string' && fallbackResult.message.trim().length > 0
-                                    ? fallbackResult.message.trim()
-                                    : 'Session killed';
-                            return reply.send({ success: true, message: fallbackMessage });
-                        }
-                    }
-                }
-                return reply.send({ success: true, message: 'Session is already unavailable' });
-            }
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        const result = invoked.result;
-        if (result?.success === false) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to kill session process'
-            });
-        }
-        const message =
-            typeof result?.message === 'string' && result.message.trim().length > 0
-                ? result.message.trim()
-                : 'Session killed';
-        return reply.send({ success: true, message });
-    });
-
-    app.patch('/v1/sessions/:sessionId/codex/title', {
-        schema: {
-            params: z.object({
-                sessionId: z.string()
-            }),
-            body: z.object({
-                name: z.string().max(120).optional(),
-                title: z.string().max(120).optional()
-            })
-        },
-        preHandler: app.authenticate
-    }, async (request, reply) => {
-        const userId = request.userId;
-        const { sessionId } = request.params;
-        const normalizedName = (request.body.name ?? request.body.title ?? "").trim();
-
-        if (!normalizedName) {
-            return reply.code(400).send({ error: 'Session title cannot be empty' });
-        }
-
-        try {
-            const session = await db.session.findFirst({
-                where: {
-                    id: sessionId,
-                    accountId: userId,
-                    archivedAt: null,
-                },
-                select: { id: true }
-            });
-
-            if (!session) {
-                return reply.code(404).send({ error: 'Session not found' });
-            }
-
-            const target = findConnectedSession(userId, sessionId);
-            if (!target) {
-                return reply.code(409).send({ success: false, error: 'Session RPC is not connected' });
-            }
-
-            const result = await invokePublicCommand(target, {
-                command: 'codex-set-thread-name',
-                params: { name: normalizedName }
-            });
-
-            if (!result?.success) {
-                return reply.code(502).send({
-                    success: false,
-                    error: typeof result?.error === 'string' ? result.error : 'Failed to rename Codex thread'
-                });
-            }
-
-            const updated = await db.session.updateMany({
-                where: {
-                    id: sessionId,
-                    accountId: userId,
-                    archivedAt: null,
-                },
-                data: {
-                    displayName: normalizedName
-                }
-            });
-
-            if (updated.count === 0) {
-                return reply.code(404).send({ error: 'Session not found' });
-            }
-
-            return reply.send({
-                success: true,
-                title: normalizedName
-            });
-        } catch (error) {
-            log(
-                {
-                    module: 'codex-title',
-                    level: 'error',
-                    userId,
-                    sessionId,
-                    error: error instanceof Error ? error.message : String(error)
-                },
-                'Failed to update codex session title'
-            );
-            return reply.code(500).send({
-                success: false,
-                error: 'Failed to rename Codex session title'
             });
         }
     });
