@@ -80,6 +80,12 @@ public final class SessionsViewModel: ObservableObject {
         )?.summary.openedExplicitly == true
     }
 
+    public var multiAgentInProgressCount: Int {
+        sessions.reduce(0) { partialResult, session in
+            partialResult + SessionRuntimeContext(session: session).collabInProgressCount
+        }
+    }
+
     public func load(serverURLString: String, token: String) async {
         guard !isLoading else { return }
         isLoading = true

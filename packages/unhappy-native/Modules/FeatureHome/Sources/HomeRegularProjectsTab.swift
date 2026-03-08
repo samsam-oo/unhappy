@@ -158,6 +158,7 @@ struct HomeRegularProjectsTab: View {
                 List {
                     if shouldShowProjectsStatusRow {
                         ProjectSyncStatusRow(
+                            multiAgentInProgressCount: viewModel.multiAgentInProgressCount,
                             isRefreshing: isRefreshingProjectContent
                         )
                         .listRowSeparator(.hidden)
@@ -314,7 +315,7 @@ struct HomeRegularProjectsTab: View {
     }
 
     private var shouldShowProjectsStatusRow: Bool {
-        showsSessionSidebarList && isRefreshingProjectContent
+        showsSessionSidebarList && (isRefreshingProjectContent || viewModel.multiAgentInProgressCount > 0)
     }
 
     private var shouldShowFullScreenLoading: Bool {
