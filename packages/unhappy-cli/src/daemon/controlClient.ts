@@ -96,6 +96,18 @@ export async function notifyDaemonSessionStarted(
   });
 }
 
+export async function notifyDaemonProviderSessionStarted(
+  provider: 'codex' | 'claude' | 'gemini',
+  providerSessionId: string,
+  metadata: Metadata,
+): Promise<{ error?: string } | any> {
+  return await daemonPost('/provider-session-started', {
+    provider,
+    providerSessionId,
+    metadata,
+  });
+}
+
 export async function listDaemonSessions(): Promise<any[]> {
   const result = await daemonPost('/list');
   return result.children || [];

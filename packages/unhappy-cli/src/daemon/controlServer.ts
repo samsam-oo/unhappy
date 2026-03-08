@@ -16,13 +16,19 @@ export function startDaemonControlServer({
   stopSession,
   spawnSession,
   requestShutdown,
-  onUnhappySessionWebhook
+  onUnhappySessionWebhook,
+  onProviderSessionWebhook,
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onUnhappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
+  onProviderSessionWebhook: (
+    provider: 'codex' | 'claude' | 'gemini',
+    providerSessionId: string,
+    metadata: Metadata,
+  ) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
   return new Promise((resolve) => {
     const app = fastify({
@@ -56,6 +62,26 @@ export function startDaemonControlServer({
       return { status: 'ok' as const };
     });
 
+    typed.post('/provider-session-started', {
+      schema: {
+        body: z.object({
+          provider: z.enum(['codex', 'claude', 'gemini']),
+          providerSessionId: z.string(),
+          metadata: z.any(),
+        }),
+        response: {
+          200: z.object({
+            status: z.literal('ok'),
+          }),
+        },
+      },
+    }, async (request) => {
+      const { provider, providerSessionId, metadata } = request.body;
+      logger.debug(`[CONTROL SERVER] Provider session started: ${provider}:${providerSessionId}`);
+      onProviderSessionWebhook(provider, providerSessionId, metadata);
+      return { status: 'ok' as const };
+    });
+
     // List all tracked sessions
     typed.post('/list', {
       schema: {
@@ -63,7 +89,8 @@ export function startDaemonControlServer({
           200: z.object({
             children: z.array(z.object({
               startedBy: z.string(),
-              happySessionId: z.string(),
+              provider: z.string().optional(),
+              providerSessionId: z.string(),
               pid: z.number(),
               metadata: z.any().optional(),
             }))
@@ -75,10 +102,11 @@ export function startDaemonControlServer({
       logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
       return { 
         children: children
-          .filter(child => child.happySessionId !== undefined)
+          .filter(child => child.providerSessionId !== undefined)
           .map(child => ({
             startedBy: child.startedBy,
-            happySessionId: child.happySessionId!,
+            provider: child.provider,
+            providerSessionId: child.providerSessionId!,
             pid: child.pid,
             metadata: child.happySessionMetadataFromLocalWebhook,
           }))

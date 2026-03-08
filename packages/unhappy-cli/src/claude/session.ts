@@ -5,6 +5,7 @@ import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import { getProjectPath } from "./utils/path";
 import { join } from "node:path";
+import { notifyDaemonProviderSessionStarted } from "@/daemon/controlClient";
 
 export class Session {
     readonly path: string;
@@ -111,6 +112,16 @@ export class Session {
             agentSessionId: sessionId,
             agentTranscriptPath: transcriptPath,
         }));
+        const metadataSnapshot = this.client.getMetadataSnapshot();
+        if (metadataSnapshot) {
+            void notifyDaemonProviderSessionStarted('claude', sessionId, {
+                ...metadataSnapshot,
+                agentSessionId: sessionId,
+                agentTranscriptPath: transcriptPath,
+            }).catch((error) => {
+                logger.debug('[Session] Failed to report provider session to daemon', error);
+            });
+        }
         logger.debug(`[Session] Agent session ID ${sessionId} added to metadata (Claude Code)`);
         
         // Notify all registered callbacks

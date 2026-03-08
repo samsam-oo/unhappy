@@ -404,6 +404,7 @@ export type Metadata = {
    */
   agentSessionId?: string,
   agentConversationId?: string,
+  agentTranscriptPath?: string,
   tools?: string[],
   slashCommands?: string[],
   homeDir: string,

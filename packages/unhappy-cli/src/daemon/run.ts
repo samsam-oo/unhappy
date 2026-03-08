@@ -356,13 +356,26 @@ export async function startDaemon(): Promise<void> {
         // Update daemon-spawned session with reported data
         existingSession.happySessionId = sessionId;
         existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
+        const provider =
+          sessionMetadata.flavor === 'codex' ||
+          sessionMetadata.flavor === 'claude' ||
+          sessionMetadata.flavor === 'gemini'
+            ? sessionMetadata.flavor
+            : undefined;
+        const providerSessionId =
+          typeof sessionMetadata.agentSessionId === 'string' &&
+          sessionMetadata.agentSessionId.trim().length > 0
+            ? sessionMetadata.agentSessionId.trim()
+            : undefined;
+        if (provider) existingSession.provider = provider;
+        if (providerSessionId) existingSession.providerSessionId = providerSessionId;
         logger.debug(
           `[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`,
         );
 
         // Resolve any awaiter for this PID
         const awaiter = pidToAwaiter.get(pid);
-        if (awaiter) {
+        if (awaiter && existingSession.providerSessionId) {
           pidToAwaiter.delete(pid);
           awaiter(existingSession);
           logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
@@ -373,6 +386,17 @@ export async function startDaemon(): Promise<void> {
           startedBy: 'unhappy directly - likely by user from terminal',
           happySessionId: sessionId,
           happySessionMetadataFromLocalWebhook: sessionMetadata,
+          provider:
+            sessionMetadata.flavor === 'codex' ||
+            sessionMetadata.flavor === 'claude' ||
+            sessionMetadata.flavor === 'gemini'
+              ? sessionMetadata.flavor
+              : undefined,
+          providerSessionId:
+            typeof sessionMetadata.agentSessionId === 'string' &&
+            sessionMetadata.agentSessionId.trim().length > 0
+              ? sessionMetadata.agentSessionId.trim()
+              : undefined,
           pid,
         };
         pidToTrackedSession.set(pid, trackedSession);
@@ -380,6 +404,41 @@ export async function startDaemon(): Promise<void> {
           `[DAEMON RUN] Registered externally-started session ${sessionId}`,
         );
       }
+    };
+
+    const onProviderSessionWebhook = (
+      provider: 'codex' | 'claude' | 'gemini',
+      providerSessionId: string,
+      metadata: Metadata,
+    ) => {
+      const pid = metadata.hostPid;
+      if (!pid) {
+        logger.debug(
+          `[DAEMON RUN] Provider session webhook missing hostPid for ${provider}:${providerSessionId}`,
+        );
+        return;
+      }
+
+      const existingSession = pidToTrackedSession.get(pid);
+      if (existingSession) {
+        existingSession.provider = provider;
+        existingSession.providerSessionId = providerSessionId;
+        existingSession.happySessionMetadataFromLocalWebhook = metadata;
+        const awaiter = pidToAwaiter.get(pid);
+        if (awaiter) {
+          pidToAwaiter.delete(pid);
+          awaiter(existingSession);
+        }
+        return;
+      }
+
+      pidToTrackedSession.set(pid, {
+        startedBy: metadata.startedBy || 'provider directly',
+        provider,
+        providerSessionId,
+        happySessionMetadataFromLocalWebhook: metadata,
+        pid,
+      });
     };
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
@@ -831,7 +890,7 @@ export async function startDaemon(): Promise<void> {
             // Add to tracking map so webhook can find it later
             pidToTrackedSession.set(tmuxResult.pid, trackedSession);
 
-            // Wait for webhook to populate session with happySessionId (exact same as regular flow)
+            // Wait for provider-session webhook to populate the tracked provider session id.
             logger.debug(
               `[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`,
             );
@@ -853,11 +912,11 @@ export async function startDaemon(): Promise<void> {
               pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
                 clearTimeout(timeout);
                 logger.debug(
-                  `[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`,
+                  `[DAEMON RUN] Session ${completedSession.providerSessionId} fully spawned with provider webhook (tmux)`,
                 );
                 resolve({
                   type: 'success',
-                  sessionId: completedSession.happySessionId!,
+                  sessionId: completedSession.providerSessionId!,
                 });
               });
             });
@@ -985,7 +1044,7 @@ export async function startDaemon(): Promise<void> {
             }
           });
 
-          // Wait for webhook to populate session with happySessionId
+          // Wait for provider-session webhook to populate the tracked provider session id.
           logger.debug(
             `[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`,
           );
@@ -1007,17 +1066,17 @@ export async function startDaemon(): Promise<void> {
             }, webhookTimeoutMs);
 
             // Register awaiter
-            pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
-              clearTimeout(timeout);
-              logger.debug(
-                `[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`,
-              );
-              resolve({
-                type: 'success',
-                sessionId: completedSession.happySessionId!,
-              });
+          pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
+            clearTimeout(timeout);
+            logger.debug(
+                `[DAEMON RUN] Session ${completedSession.providerSessionId} fully spawned with provider webhook`,
+            );
+            resolve({
+              type: 'success',
+              sessionId: completedSession.providerSessionId!,
             });
           });
+        });
         }
 
         // This should never be reached, but TypeScript requires a return statement
@@ -1046,6 +1105,7 @@ export async function startDaemon(): Promise<void> {
       // Try to find by sessionId first
       for (const [pid, session] of pidToTrackedSession.entries()) {
         if (
+          session.providerSessionId === sessionId ||
           session.happySessionId === sessionId ||
           (sessionId.startsWith('PID-') &&
             pid === parseInt(sessionId.replace('PID-', '')))
@@ -1105,6 +1165,7 @@ export async function startDaemon(): Promise<void> {
         spawnSession,
         requestShutdown: () => requestShutdown('unhappy-cli'),
         onUnhappySessionWebhook,
+        onProviderSessionWebhook,
       });
 
     // Write initial daemon state (no lock needed for state file)

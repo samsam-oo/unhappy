@@ -4,6 +4,7 @@ import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
@@ -1370,12 +1371,21 @@ export async function runCodex(opts: {
 
     try {
       const transcriptPath = findCodexResumeFileWithFallbacks(sessionId);
+      const nextMetadata = {
+        ...session.getMetadataSnapshot(),
+        agentSessionId: sessionId,
+        ...(conversationId ? { agentConversationId: conversationId } : {}),
+        ...(transcriptPath ? { agentTranscriptPath: transcriptPath } : {}),
+      } as Record<string, unknown>;
       session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         agentSessionId: sessionId,
         ...(conversationId ? { agentConversationId: conversationId } : {}),
         ...(transcriptPath ? { agentTranscriptPath: transcriptPath } : {}),
       }));
+      void notifyDaemonProviderSessionStarted('codex', sessionId, nextMetadata as any).catch((error) => {
+        logger.debug('[Codex] Failed to report provider session to daemon', error);
+      });
       logger.debug(`[Codex] Reported agent session id to metadata (${source}):`, {
         sessionId,
         conversationId: conversationId ?? null,
