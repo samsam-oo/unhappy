@@ -140,9 +140,6 @@ export class ApiSessionClient extends EventEmitter {
                     'ripgrep',
                     'difftastic',
                     'killSession',
-                    'codex-list-threads',
-                    'codex-set-thread-name',
-                    'claude-list-sessions'
                 ]);
                 if (!supportedCommands.has(command)) {
                     callback({ success: false, error: 'Unsupported command' });

@@ -25,26 +25,6 @@ public protocol SessionTitleUpdating: Sendable {
     func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws
 }
 
-public protocol SessionCodexThreadsFetching: Sendable {
-    func fetchCodexThreads(
-        serverURL: URL,
-        token: String,
-        sessionID: String,
-        limit: Int,
-        cwd: String?
-    ) async throws -> [APICodexThreadSummary]
-}
-
-public protocol SessionClaudeSessionsFetching: Sendable {
-    func fetchClaudeSessions(
-        serverURL: URL,
-        token: String,
-        sessionID: String,
-        limit: Int,
-        cwd: String?
-    ) async throws -> [APIClaudeSessionSummary]
-}
-
 public protocol SessionSpawning: Sendable {
     func spawnSession(
         serverURL: URL,

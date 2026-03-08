@@ -15,7 +15,6 @@ type InvokeResult =
     | { ok: false; statusCode: number; error: string };
 
 const ALLOWED_SESSION_COMMANDS = new Set<string>([
-    "spawn-unhappy-session",
     "abort",
     "permission",
     "switch",
@@ -29,13 +28,9 @@ const ALLOWED_SESSION_COMMANDS = new Set<string>([
     "ripgrep",
     "difftastic",
     "killSession",
-    "codex-list-threads",
-    "claude-list-sessions",
 ]);
 
 const MACHINE_FALLBACK_COMMANDS = new Set<string>([
-    "codex-list-threads",
-    "claude-list-sessions",
     "killSession",
 ]);
 
@@ -167,61 +162,6 @@ export function sessionPublicCommandHandler(userId: string, socket: Socket) {
                     return;
                 }
 
-                if (command === "spawn-unhappy-session") {
-                    const fallbackMachineId = await findConnectedMachineForSession(userId, sessionId);
-                    if (!fallbackMachineId) {
-                        callback(failure(409, "Machine daemon is not connected"));
-                        return;
-                    }
-                    const machineTarget = findConnectedMachine(userId, fallbackMachineId);
-                    if (!machineTarget) {
-                        callback(failure(409, "Machine daemon is not connected"));
-                        return;
-                    }
-
-                    const rawParams =
-                        data?.params && typeof data.params === "object" && !Array.isArray(data.params)
-                            ? (data.params as Record<string, unknown>)
-                            : {};
-                    const result = await invokePublicCommand(machineTarget, {
-                        command: "spawn-unhappy-session",
-                        params: {
-                            ...rawParams,
-                            sessionId,
-                            machineId: undefined,
-                        },
-                    });
-
-                    if (result?.type === "requestToApproveDirectoryCreation") {
-                        callback(success({
-                            success: false,
-                            requiresUserApproval: true,
-                            actionRequired: "CREATE_DIRECTORY",
-                            directory: result.directory,
-                        }));
-                        return;
-                    }
-                    if (result?.type === "success" && typeof result?.sessionId === "string") {
-                        callback(success({
-                            success: true,
-                            sessionId: result.sessionId,
-                        }));
-                        return;
-                    }
-
-                    callback(
-                        failure(
-                            502,
-                            typeof result?.error === "string"
-                                ? result.error
-                                : typeof result?.errorMessage === "string"
-                                    ? result.errorMessage
-                                    : "Failed to spawn session"
-                        )
-                    );
-                    return;
-                }
-
                 let invoked = await invokeSessionCommand(
                     userId,
                     sessionId,
@@ -313,31 +253,6 @@ export function sessionPublicCommandHandler(userId: string, socket: Socket) {
                             ? result.message.trim()
                             : "Session killed";
                     callback(success({ success: true, message }));
-                    return;
-                }
-
-                if (command === "codex-list-threads") {
-                    if (!result?.success) {
-                        callback(failure(502, typeof result?.error === "string" ? result.error : "Failed to list Codex threads"));
-                        return;
-                    }
-                    callback(success(result));
-                    return;
-                }
-
-                if (command === "claude-list-sessions") {
-                    if (!result?.success) {
-                        callback(
-                            failure(
-                                502,
-                                typeof result?.error === "string"
-                                    ? result.error
-                                    : "Failed to list Claude sessions"
-                            )
-                        );
-                        return;
-                    }
-                    callback(success(result));
                     return;
                 }
 

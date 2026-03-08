@@ -865,7 +865,7 @@ private struct SessionsClaudeListResponse: Decodable {
     let hasNext: Bool?
 }
 
-public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionRipgrepRunning, SessionDifftasticRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling, SessionModelsListing {
+public actor URLSessionSessionsService: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionSpawning, SessionAborting, SessionPermissionResponding, SessionModeSwitching, SessionMessaging, SessionBashRunning, SessionRipgrepRunning, SessionDifftasticRunning, SessionFileReading, SessionFileWriting, SessionDirectoryListing, SessionKilling, SessionModelsListing {
     let rpcCommandService: any SessionRPCCommandDispatching
 
     public init(

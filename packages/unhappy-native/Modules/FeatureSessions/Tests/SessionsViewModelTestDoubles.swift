@@ -21,7 +21,7 @@ struct MockSessionsLoader: SessionsLoading {
     }
 }
 
-struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionCodexThreadsFetching, SessionClaudeSessionsFetching, SessionSpawning {
+struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionMessagesFetching, SessionDeleting, SessionTitleUpdating, SessionSpawning {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         []
     }
@@ -37,14 +37,6 @@ struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetchin
     func deleteSession(serverURL: URL, token: String, sessionID: String) async throws {}
 
     func setSessionTitle(serverURL: URL, token: String, sessionID: String, title: String?) async throws {}
-
-    func fetchCodexThreads(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APICodexThreadSummary] {
-        []
-    }
-
-    func fetchClaudeSessions(serverURL: URL, token: String, sessionID: String, limit: Int, cwd: String?) async throws -> [APIClaudeSessionSummary] {
-        []
-    }
 
     func spawnSession(
         serverURL: URL,
