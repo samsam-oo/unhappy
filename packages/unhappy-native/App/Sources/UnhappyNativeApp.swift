@@ -18,7 +18,6 @@ struct UnhappyNativeApp: App {
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
-    private let sessionPresenceCoordinator: any SessionPresenceCoordinating
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
@@ -83,12 +82,6 @@ struct UnhappyNativeApp: App {
             authTokenService: authTokenService,
             secretStore: accountSecretStore
         )
-        let sessionsNotifier = UserNotificationsSessionNotifier()
-        let sessionsLiveActivity = ActivityKitSessionsLiveActivityService()
-        let sessionPresenceCoordinator = SessionPresenceCoordinator(
-            notifications: sessionsNotifier,
-            liveActivity: sessionsLiveActivity
-        )
         let sessionsLoader = SessionsLoadUseCase(service: sessionsService)
         let sessionsPageLoader = SessionsPageLoadUseCase(service: sessionsService)
         let sessionsPoller = SessionsPollingUseCase(loader: sessionsLoader)
@@ -99,7 +92,6 @@ struct UnhappyNativeApp: App {
         let directSessionMessageSender = DirectSessionMessageSendUseCase(codexService: machinesService, claudeService: machinesService)
         let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
-        self.sessionPresenceCoordinator = sessionPresenceCoordinator
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
         self.makeInboxViewModel = {
             InboxViewModel(
@@ -179,9 +171,6 @@ struct UnhappyNativeApp: App {
                 makeSessionsViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeDirectSessionViewModel: makeDirectSessionViewModel,
-                onSessionsChanged: { sessions in
-                    await sessionPresenceCoordinator.handleSessionsChanged(sessions)
-                },
                 makeMachinesViewModel: makeMachinesViewModel,
                 makeUsageViewModel: makeUsageViewModel,
                 makeDaemonStatusViewModel: makeDaemonStatusViewModel,
@@ -190,9 +179,6 @@ struct UnhappyNativeApp: App {
                 makeServerStatusViewModel: makeServerStatusViewModel
             )
             .preferredColorScheme(preferredColorScheme)
-            .task {
-                await sessionPresenceCoordinator.start()
-            }
         }
     }
 

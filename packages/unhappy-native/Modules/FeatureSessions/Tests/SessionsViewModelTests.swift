@@ -35,7 +35,6 @@ struct SessionsViewModelTests {
 
         #expect(model.sessions.count == 1)
         #expect(model.errorMessage == nil)
-        #expect(model.multiAgentInProgress == true)
     }
 
     @Test
@@ -48,7 +47,6 @@ struct SessionsViewModelTests {
 
         #expect(model.sessions.isEmpty)
         #expect(model.errorMessage == "API token is required")
-        #expect(model.multiAgentInProgress == false)
     }
 
     @Test
@@ -80,7 +78,6 @@ struct SessionsViewModelTests {
         )
 
         #expect(model.errorMessage == nil)
-        #expect(model.multiAgentInProgress == false)
     }
 
     @Test

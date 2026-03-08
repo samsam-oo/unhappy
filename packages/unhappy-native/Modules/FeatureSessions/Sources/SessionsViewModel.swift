@@ -66,17 +66,6 @@ public final class SessionsViewModel: ObservableObject {
         )
     }
 
-    public var multiAgentInProgress: Bool {
-        if isLoading {
-            return true
-        }
-        return sessions.contains(where: { $0.active })
-    }
-
-    public var activeSessionsCount: Int {
-        sessions.filter(\.active).count
-    }
-
     public func isRemoving(projectID: String) -> Bool {
         removingProjectID == projectID
     }

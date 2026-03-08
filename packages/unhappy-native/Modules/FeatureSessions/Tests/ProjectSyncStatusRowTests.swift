@@ -5,28 +5,22 @@ struct ProjectSyncStatusRowTests {
     @Test
     func refreshOnlyStateUsesCenteredLayoutWithSpinner() {
         let presentation = ProjectSyncStatusPresentation(
-            activeSessionsCount: 0,
             isRefreshing: true,
             refreshLabel: "Refreshing projects…"
         )
 
-        #expect(presentation.layout == .centered)
         #expect(presentation.showsSpinner == true)
         #expect(presentation.primaryText == "Refreshing projects…")
-        #expect(presentation.secondaryText == nil)
     }
 
     @Test
-    func activeSessionsStateUsesLeadingLayout() {
+    func idleStateShowsUpToDateMessageWithoutSpinner() {
         let presentation = ProjectSyncStatusPresentation(
-            activeSessionsCount: 2,
-            isRefreshing: true,
+            isRefreshing: false,
             refreshLabel: "Refreshing projects…"
         )
 
-        #expect(presentation.layout == .leading)
-        #expect(presentation.showsSpinner == true)
-        #expect(presentation.primaryText == "2 active sessions")
-        #expect(presentation.secondaryText == "Refreshing projects…")
+        #expect(presentation.showsSpinner == false)
+        #expect(presentation.primaryText == "Projects are up to date")
     }
 }

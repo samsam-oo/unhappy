@@ -12,7 +12,6 @@ struct HomeRegularProjectsTab: View {
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
-    let onSessionsChanged: @MainActor ([APISession]) async -> Void
 
     @State private var selectedProjectID: String?
     @State private var isPresentingProjectPicker = false
@@ -30,9 +29,6 @@ struct HomeRegularProjectsTab: View {
         .task(id: "\(serverURLString)|\(token)") {
             await viewModel.load(serverURLString: serverURLString, token: token)
             await viewModel.startPolling(serverURLString: serverURLString, token: token)
-        }
-        .task(id: sessionsChangeTaskID) {
-            await onSessionsChanged(viewModel.sessions)
         }
         .onChange(of: projectGroups.map(\.id)) { _, ids in
             let retainedSelection = HomeRegularProjectsSelectionState.retainedSelectionID(
@@ -162,7 +158,6 @@ struct HomeRegularProjectsTab: View {
                 List {
                     if shouldShowProjectsStatusRow {
                         ProjectSyncStatusRow(
-                            activeSessionsCount: viewModel.activeSessionsCount,
                             isRefreshing: isRefreshingProjectContent
                         )
                         .listRowSeparator(.hidden)
@@ -319,7 +314,7 @@ struct HomeRegularProjectsTab: View {
     }
 
     private var shouldShowProjectsStatusRow: Bool {
-        showsSessionSidebarList && (isRefreshingProjectContent || viewModel.activeSessionsCount > 0)
+        showsSessionSidebarList && isRefreshingProjectContent
     }
 
     private var shouldShowFullScreenLoading: Bool {
@@ -340,19 +335,6 @@ struct HomeRegularProjectsTab: View {
         )
     }
 
-    private var sessionsChangeTaskID: String {
-        viewModel.sessions
-            .map { session in
-                [
-                    session.id,
-                    session.active ? "1" : "0",
-                    "\(session.updatedAt)",
-                    "\(session.metadataVersion)",
-                    "\(session.agentStateVersion ?? -1)"
-                ].joined(separator: "|")
-            }
-            .joined(separator: ",")
-    }
 }
 
 struct HomeRegularProjectRow: View {

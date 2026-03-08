@@ -21,7 +21,6 @@ struct HomeAuthenticatedRegularView: View {
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
-    let onSessionsChanged: @MainActor ([APISession]) async -> Void
     let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
@@ -42,7 +41,6 @@ struct HomeAuthenticatedRegularView: View {
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
-        onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
         makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
@@ -56,7 +54,6 @@ struct HomeAuthenticatedRegularView: View {
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
-        self.onSessionsChanged = onSessionsChanged
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
         self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
@@ -76,7 +73,6 @@ struct HomeAuthenticatedRegularView: View {
                 defaultNewSessionAgent: defaultNewSessionAgent,
                 makeNewSessionViewModel: makeNewSessionViewModel,
                 makeDirectSessionViewModel: makeDirectSessionViewModel,
-                onSessionsChanged: onSessionsChanged
             )
             .tabItem {
                 Label("Projects", systemImage: "folder")
