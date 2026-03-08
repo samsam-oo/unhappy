@@ -8,6 +8,7 @@ public struct DirectSessionDetailView: View {
     private let token: String
 
     @State private var draftMessage = ""
+    @State private var inspectedMessage: APISessionMessage?
 
     public init(
         serverURLString: String,
@@ -34,6 +35,9 @@ public struct DirectSessionDetailView: View {
                     transcriptBottomAnchorID: "__direct_session_bottom__",
                     onReferenceToggle: {},
                     onFileLinkTap: { _ in },
+                    onMessageInspect: { messageID in
+                        inspectedMessage = viewModel.messages.first(where: { $0.id == messageID })
+                    },
                     onRetry: {
                         Task {
                             await viewModel.load(
@@ -53,6 +57,13 @@ public struct DirectSessionDetailView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
                 .background(Color.clear)
+        }
+        .sheet(item: $inspectedMessage) { message in
+            NavigationStack {
+                SessionMessageDetailView(
+                    presentation: SessionMessageDetailPresentationBuilder.make(from: message)
+                )
+            }
         }
         .task {
             async let messageLoad: Void = viewModel.load(serverURLString: serverURLString, token: token)

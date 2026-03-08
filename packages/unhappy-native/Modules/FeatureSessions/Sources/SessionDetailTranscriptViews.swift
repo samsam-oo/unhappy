@@ -9,6 +9,7 @@ struct MessagesSectionRows: View {
     let transcriptBottomAnchorID: String
     let onReferenceToggle: () -> Void
     let onFileLinkTap: (String) -> Void
+    let onMessageInspect: (String) -> Void
     let onRetry: () -> Void
 
     var body: some View {
@@ -39,7 +40,10 @@ struct MessagesSectionRows: View {
                 SessionTranscriptMessageRow(
                     presentation: presentation,
                     onReferenceToggle: onReferenceToggle,
-                    onFileLinkTap: onFileLinkTap
+                    onFileLinkTap: onFileLinkTap,
+                    onMessageInspect: {
+                        onMessageInspect(presentation.messageID)
+                    }
                 )
                 .sessionListRow(insets: SessionListRowInsets.messageEntry)
             }
@@ -108,6 +112,7 @@ struct SessionTranscriptMessageRow: View {
     let presentation: SessionTranscriptMessagePresentation
     let onReferenceToggle: (() -> Void)?
     let onFileLinkTap: (String) -> Void
+    let onMessageInspect: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: showsTimestamp ? 8 : 3) {
@@ -131,6 +136,13 @@ struct SessionTranscriptMessageRow: View {
             }
         }
         .padding(.vertical, 1)
+        .contextMenu {
+            if let onMessageInspect {
+                Button("Inspect Message") {
+                    onMessageInspect()
+                }
+            }
+        }
     }
 
     private var showsTimestamp: Bool {
