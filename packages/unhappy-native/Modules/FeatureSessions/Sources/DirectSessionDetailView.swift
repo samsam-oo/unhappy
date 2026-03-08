@@ -3,12 +3,20 @@ import CoreKit
 
 @MainActor
 public struct DirectSessionDetailView: View {
+    private enum QuickSurface: String, Identifiable {
+        case info
+        case artifacts
+
+        var id: String { rawValue }
+    }
+
     @StateObject private var viewModel: DirectSessionViewModel
     private let serverURLString: String
     private let token: String
 
     @State private var draftMessage = ""
     @State private var inspectedMessage: APISessionMessage?
+    @State private var presentedQuickSurface: QuickSurface?
 
     public init(
         serverURLString: String,
@@ -52,6 +60,20 @@ public struct DirectSessionDetailView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(viewModel.identity.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Session Info") {
+                        presentedQuickSurface = .info
+                    }
+                    Button("Tool Artifacts") {
+                        presentedQuickSurface = .artifacts
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             composerBar
                 .padding(.horizontal, 12)
@@ -63,6 +85,22 @@ public struct DirectSessionDetailView: View {
                 SessionMessageDetailView(
                     presentation: SessionMessageDetailPresentationBuilder.make(from: message)
                 )
+            }
+        }
+        .sheet(item: $presentedQuickSurface) { surface in
+            NavigationStack {
+                switch surface {
+                case .info:
+                    DirectSessionInfoView(
+                        identity: viewModel.identity,
+                        selectedModelLabel: selectedModelLabel,
+                        selectedReasoningLabel: selectedReasoningLabel
+                    )
+                case .artifacts:
+                    DirectSessionArtifactsView(
+                        entries: DirectSessionArtifacts.richEntries(from: transcriptPresentations)
+                    )
+                }
             }
         }
         .task {
@@ -234,5 +272,74 @@ public struct DirectSessionDetailView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(AppPalette.chromeSurfaceStroke.opacity(0.45), lineWidth: 1)
         )
+    }
+}
+
+private struct DirectSessionInfoView: View {
+    let identity: DirectSessionIdentity
+    let selectedModelLabel: String
+    let selectedReasoningLabel: String
+
+    var body: some View {
+        List {
+            Section("Session") {
+                LabeledContent("Provider") {
+                    Text(identity.provider.displayName)
+                }
+                LabeledContent("Machine") {
+                    Text(identity.machineDisplayName)
+                }
+                LabeledContent("Session ID") {
+                    Text(identity.upstreamSessionID)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                }
+                LabeledContent("Model") {
+                    Text(selectedModelLabel)
+                }
+                LabeledContent("Reasoning") {
+                    Text(selectedReasoningLabel)
+                }
+            }
+
+            Section("Path") {
+                Text(identity.cwd)
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                if let transcriptPath = identity.transcriptPath, !transcriptPath.isEmpty {
+                    Text(transcriptPath)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .navigationTitle("Session Info")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct DirectSessionArtifactsView: View {
+    let entries: [SessionTranscriptEntry]
+
+    var body: some View {
+        List {
+            if entries.isEmpty {
+                ContentUnavailableView(
+                    "No tool artifacts yet",
+                    systemImage: "wrench.and.screwdriver",
+                    description: Text("Run a tool that produces command output or file changes to inspect it here.")
+                )
+            } else {
+                ForEach(entries) { entry in
+                    SessionTranscriptToolRichContentView(entry: entry)
+                        .padding(.vertical, 4)
+                        .listRowSeparator(.hidden)
+                }
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Artifacts")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
