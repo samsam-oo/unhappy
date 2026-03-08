@@ -21,6 +21,7 @@ const mockState = vi.hoisted(() => {
     flush: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     sendAgentMessage: vi.fn(),
+    sendClaudeSessionMessage: vi.fn(),
     updateMetadata: vi.fn(),
     getMetadataSnapshot: vi.fn(() => ({ path: '/tmp/workspace', name: 'Gemini Session' })),
     updateAgentState: vi.fn(
@@ -146,12 +147,8 @@ vi.mock('@/utils/serverConnectionErrors', () => ({
   },
 }));
 
-vi.mock('@/utils/setupOfflineReconnection', () => ({
-  setupOfflineReconnection: vi.fn(() => ({
-    session: mockState.session,
-    reconnectionHandle: null,
-    isOffline: false,
-  })),
+vi.mock('@/runtime/localSessionRuntimeClient', () => ({
+  createLocalSessionRuntimeClient: vi.fn(() => mockState.session),
 }));
 
 vi.mock('@/agent/factories/gemini', () => ({
@@ -234,6 +231,7 @@ describe('runGemini startup', () => {
     });
 
     expect(mockState.session.updateAgentState).toHaveBeenCalledTimes(1);
+    expect(mockState.api.getOrCreateSession).not.toHaveBeenCalled();
     expect(mockState.appliedAgentStates[0]).toMatchObject({
       controlledByUser: true,
     });

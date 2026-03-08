@@ -28,11 +28,7 @@ import { hashObject } from '@/utils/deterministicJson';
 import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
-import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
-import {
-  resolveProvidedSessionDataKey,
-  resolveProvidedSessionTag,
-} from '@/utils/upstreamSessionBinding';
+import { createLocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
 
 import type { AgentBackend, AgentMessage } from '@/agent';
 import { createGeminiBackend } from '@/agent/factories/gemini';
@@ -67,9 +63,6 @@ export async function runGemini(opts: {
   //
   // Define session
   //
-
-  const sessionTag = resolveProvidedSessionTag() ?? randomUUID();
-  const sessionDataKey = resolveProvidedSessionDataKey();
 
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Gemini');
@@ -136,65 +129,14 @@ export async function runGemini(opts: {
     machineId,
     startedBy: opts.startedBy,
   });
-  const response = await api.getOrCreateSession({
-    tag: sessionTag,
+  let session: SessionRuntimeClient = createLocalSessionRuntimeClient({
+    provider: 'gemini',
     metadata,
-    state,
-    encryptionKey: sessionDataKey ?? undefined,
+    agentState: state,
   });
-
-  // Handle server unreachable case - create offline stub with hot reconnection
-  let session: SessionRuntimeClient;
   // Permission handler declared here so it can be updated in onSessionSwap callback
   // (assigned later after Unhappy server setup)
   let permissionHandler: GeminiPermissionHandler;
-
-  // Session swap synchronization to prevent race conditions during message processing
-  // When a swap is requested during processing, it's queued and applied after the current cycle
-  let isProcessingMessage = false;
-  let pendingSessionSwap: SessionRuntimeClient | null = null;
-
-  /**
-   * Apply a pending session swap. Called between message processing cycles.
-   * This ensures session swaps happen at safe points, not during message processing.
-   */
-  const applyPendingSessionSwap = () => {
-    if (pendingSessionSwap) {
-      logger.debug('[gemini] Applying pending session swap');
-      session = pendingSessionSwap;
-      if (permissionHandler) {
-        permissionHandler.updateSession(pendingSessionSwap);
-      }
-      pendingSessionSwap = null;
-    }
-  };
-
-  const { session: initialSession, reconnectionHandle } =
-    setupOfflineReconnection({
-      api,
-      sessionTag,
-      metadata,
-      state,
-      encryptionKey: sessionDataKey ?? undefined,
-      response,
-      onSessionSwap: (newSession) => {
-        // If we're processing a message, queue the swap for later
-        // This prevents race conditions where session changes mid-processing
-        if (isProcessingMessage) {
-          logger.debug(
-            '[gemini] Session swap requested during message processing - queueing',
-          );
-          pendingSessionSwap = newSession;
-        } else {
-          // Safe to swap immediately
-          session = newSession;
-          if (permissionHandler) {
-            permissionHandler.updateSession(newSession);
-          }
-        }
-      },
-    });
-  session = initialSession;
 
   // Mark the session as agent-ready as early as possible so mobile/web does not
   // block for the full readiness timeout on the first message.
@@ -1243,9 +1185,6 @@ export async function runGemini(opts: {
         message.mode?.originalUserMessage || message.message;
       messageBuffer.addMessage(userMessageToShow, 'user');
 
-      // Mark that we're processing a message to synchronize session swaps
-      isProcessingMessage = true;
-
       try {
         if (first || !wasSessionCreated) {
           // First message or session not created yet - create backend and start session
@@ -1603,10 +1542,6 @@ export async function runGemini(opts: {
         // Use same logic as Codex - emit ready if idle (no pending operations, no queue)
         emitReadyIfIdle();
 
-        // Message processing complete - safe to apply any pending session swap
-        isProcessingMessage = false;
-        applyPendingSessionSwap();
-
         logger.debug(
           `[gemini] Main loop: turn completed, continuing to next iteration (queue size: ${messageQueue.size()})`,
         );
@@ -1615,12 +1550,6 @@ export async function runGemini(opts: {
   } finally {
     // Clean up resources
     logger.debug('[gemini]: Final cleanup start');
-
-    // Cancel offline reconnection if still running
-    if (reconnectionHandle) {
-      logger.debug('[gemini]: Cancelling offline reconnection');
-      reconnectionHandle.cancel();
-    }
 
     try {
       session.sendSessionDeath();
