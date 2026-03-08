@@ -153,9 +153,7 @@ struct SessionsViewModelTests {
 
         let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
         #expect(requestedProjects.count == 1)
-        #expect(requestedProjects.first?.count == 1)
-        #expect(requestedProjects.first?.first?.machineID == "machine-1")
-        #expect(requestedProjects.first?.first?.summary.path == "/repo/app")
+        #expect(requestedProjects.first?.isEmpty == true)
     }
 
     @Test
@@ -196,8 +194,8 @@ struct SessionsViewModelTests {
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
 
-        #expect(model.sessions.map(\.id) == ["session-newer"])
-        #expect(await recorder.snapshot() == ["delete:session-older"])
+        #expect(model.sessions.isEmpty)
+        #expect(await recorder.snapshot() == ["delete:session-older", "delete:session-newer"])
     }
 
     @Test
@@ -357,8 +355,8 @@ struct SessionsViewModelTests {
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
 
-        #expect(model.upstreamSessions.count == 1)
-        #expect(model.upstreamSessions.first?.summary.id == "thread-2")
+        #expect(model.upstreamSessions.count == 2)
+        #expect(model.upstreamSessions.map(\.summary.id) == ["thread-1", "thread-2"])
         #expect(model.upstreamSessionsErrorMessage == nil)
     }
 

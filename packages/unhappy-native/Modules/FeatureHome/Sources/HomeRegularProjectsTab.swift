@@ -92,7 +92,6 @@ struct HomeRegularProjectsTab: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel,
                     makeDirectSessionViewModel: makeDirectSessionViewModel
                 )
             }

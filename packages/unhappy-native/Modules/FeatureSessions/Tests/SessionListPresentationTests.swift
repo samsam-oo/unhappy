@@ -116,10 +116,7 @@ struct SessionListPresentationTests {
             projects: []
         )
 
-        #expect(groups.count == 1)
-        #expect(groups.first?.machineID == "machine-1")
-        #expect(groups.first?.projectPath == "/repo/app")
-        #expect(groups.first?.displayMirroredSessions.map(\.id) == ["session-1"])
+        #expect(groups.isEmpty)
     }
 
     @Test

@@ -23,9 +23,7 @@ struct SessionRecentPresentationTests {
             calendar: calendar
         )
 
-        #expect(sections.count == 2)
-        #expect(sections.first?.entries.map(\.id) == ["mirrored:today-1", "mirrored:today-2"])
-        #expect(sections.last?.entries.map(\.id) == ["mirrored:older-1"])
+        #expect(sections.isEmpty)
     }
 
     @Test

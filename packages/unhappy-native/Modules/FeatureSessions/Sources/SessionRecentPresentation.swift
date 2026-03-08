@@ -4,14 +4,11 @@ import CoreKit
 struct SessionRecentSection: Equatable, Identifiable, Sendable {
     enum Entry: Identifiable, Equatable, Sendable {
         case direct(DirectSessionIdentity, updatedAt: TimeInterval)
-        case mirrored(APISession)
 
         var id: String {
             switch self {
             case .direct(let identity, _):
                 return "direct:\(identity.machineID)|\(identity.provider.rawValue)|\(identity.upstreamSessionID)"
-            case .mirrored(let session):
-                return "mirrored:\(session.id)"
             }
         }
 
@@ -19,8 +16,6 @@ struct SessionRecentSection: Equatable, Identifiable, Sendable {
             switch self {
             case .direct(_, let updatedAt):
                 return updatedAt
-            case .mirrored(let session):
-                return session.updatedAt
             }
         }
     }
@@ -56,9 +51,7 @@ enum SessionRecentPresentationBuilder {
             }
             if let identity = DirectSessionIdentityResolver.resolve(from: session) {
                 entries.append(.direct(identity, updatedAt: session.updatedAt))
-                continue
             }
-            entries.append(.mirrored(session))
         }
 
         guard !entries.isEmpty else { return [] }

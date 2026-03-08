@@ -98,6 +98,9 @@ public extension SessionListPresentationBuilder {
         upstreamSessions: [SessionLinkedUpstreamSession],
         projects: [SessionMachineProject] = []
     ) -> [SessionProjectGroup] {
+        let explicitProjects = projects.filter(\.summary.openedExplicitly)
+        guard !explicitProjects.isEmpty else { return [] }
+
         struct Accumulator {
             var machineDisplayName: String
             var projectPath: String
@@ -110,7 +113,7 @@ public extension SessionListPresentationBuilder {
 
         var groups: [String: Accumulator] = [:]
 
-        for project in projects.filter(\.summary.openedExplicitly) {
+        for project in explicitProjects {
             let rawProjectPath = project.summary.path.trimmingCharacters(in: .whitespacesAndNewlines)
             let projectPath = normalizedProjectPath(rawProjectPath) ?? rawProjectPath
             guard !projectPath.isEmpty else { continue }
@@ -148,18 +151,7 @@ public extension SessionListPresentationBuilder {
             let normalizedPath = normalizedProjectPath(context.workingDirectory)
             let projectPath = normalizedPath ?? "No Project Context"
             let key = "\(machineID)|\(projectPath)"
-            guard var accumulator = groups[key] else {
-                groups[key] = Accumulator(
-                    machineDisplayName: context.machineDisplayName ?? machineID,
-                    projectPath: projectPath,
-                    hasConcreteProjectPath: normalizedPath != nil,
-                    catalogSessionCount: 0,
-                    catalogLatestUpdatedAt: 0,
-                    mirroredSessions: [session],
-                    upstreamSessions: []
-                )
-                continue
-            }
+            guard var accumulator = groups[key] else { continue }
             accumulator.machineDisplayName = SessionMachineDisplayNameResolver.preferred(
                 existing: accumulator.machineDisplayName,
                 candidate: context.machineDisplayName,
@@ -173,18 +165,7 @@ public extension SessionListPresentationBuilder {
             let normalizedPath = normalizedProjectPath(row.summary.cwd)
             let projectPath = normalizedPath ?? "No Project Context"
             let key = "\(row.machineID)|\(projectPath)"
-            guard var accumulator = groups[key] else {
-                groups[key] = Accumulator(
-                    machineDisplayName: row.machineDisplayName,
-                    projectPath: projectPath,
-                    hasConcreteProjectPath: normalizedPath != nil,
-                    catalogSessionCount: 0,
-                    catalogLatestUpdatedAt: 0,
-                    mirroredSessions: [],
-                    upstreamSessions: [row]
-                )
-                continue
-            }
+            guard var accumulator = groups[key] else { continue }
             accumulator.machineDisplayName = SessionMachineDisplayNameResolver.preferred(
                 existing: accumulator.machineDisplayName,
                 candidate: row.machineDisplayName,

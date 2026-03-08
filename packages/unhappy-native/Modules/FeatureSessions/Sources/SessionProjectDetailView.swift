@@ -7,15 +7,12 @@ import FeatureSessionTools
 public struct SessionProjectDetailView: View {
     private enum SessionListEntry: Identifiable {
         case direct(DirectSessionIdentity, updatedAt: TimeInterval)
-        case mirrored(APISession)
         case upstream(SessionLinkedUpstreamSession)
 
         var id: String {
             switch self {
             case .direct(let identity, _):
                 return "direct:\(identity.machineID)|\(identity.provider.rawValue)|\(identity.upstreamSessionID)"
-            case .mirrored(let session):
-                return "mirrored:\(session.id)"
             case .upstream(let row):
                 return "upstream:\(row.id)"
             }
@@ -25,8 +22,6 @@ public struct SessionProjectDetailView: View {
             switch self {
             case .direct(_, let updatedAt):
                 return updatedAt
-            case .mirrored(let session):
-                return session.updatedAt
             case .upstream(let row):
                 return row.sortTimestamp
             }
@@ -46,7 +41,6 @@ public struct SessionProjectDetailView: View {
 
     @State private var isPresentingNewSession = false
     @State private var isPresentingProjectActions = false
-    @State private var firstMessagePreviewBySessionID: [String: String] = [:]
     @State private var spawnedSessionNavigationSessionID: String?
 
     public init(
@@ -104,9 +98,6 @@ public struct SessionProjectDetailView: View {
         .navigationTitle(group.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { projectActionsToolbar }
-        .task(id: firstMessagePreviewTaskID) {
-            await loadMissingFirstMessagePreviews()
-        }
         .navigationDestination(item: $spawnedSessionNavigationSessionID) { sessionID in
             if let session = viewModel.sessions.first(where: { $0.id == sessionID }) {
                 SessionDetailView(
@@ -252,8 +243,6 @@ public struct SessionProjectDetailView: View {
             }
             if let identity = DirectSessionIdentityResolver.resolve(from: session) {
                 combined.append(.direct(identity, updatedAt: session.updatedAt))
-            } else {
-                combined.append(.mirrored(session))
             }
         }
         return combined.sorted { lhs, rhs in
@@ -280,28 +269,6 @@ public struct SessionProjectDetailView: View {
                 ProjectDirectSessionRow(identity: identity, updatedAt: updatedAt)
             }
 
-        case .mirrored(let session):
-            NavigationLink {
-                SessionDetailView(
-                    session: session,
-                    viewModel: viewModel,
-                    serverURLString: serverURLString,
-                    token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
-                )
-            } label: {
-                ProjectMirroredSessionRow(
-                    sessionDisplayTitle: mirroredSessionDisplayTitle(for: session),
-                    sessionPreview: mirroredSessionSecondaryPreview(for: session),
-                    providerLabel: mirroredSessionProviderLabel(for: session),
-                    isDisplayTitlePrimary: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) != nil,
-                    sessionIsActive: session.active,
-                    sessionUpdatedAt: session.updatedAt,
-                    isDeleting: viewModel.isDeleting(sessionID: session.id)
-                )
-            }
-            .disabled(viewModel.isDeleting(sessionID: session.id))
-
         case .upstream(let row):
             NavigationLink {
                 SessionUpstreamOpeningView(
@@ -314,113 +281,6 @@ public struct SessionProjectDetailView: View {
                 ProjectUpstreamSessionRow(row: row)
             }
         }
-    }
-
-    private var firstMessagePreviewTaskID: String {
-        group.displayMirroredSessions
-            .map { session in
-                "\(session.id)|\(session.updatedAt)|\(session.metadataVersion)|\(session.agentStateVersion ?? -1)"
-            }
-            .joined(separator: ",")
-    }
-
-    private func mirroredSessionDisplayTitle(for session: APISession) -> String {
-        if let resolvedTitle = SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) {
-            return resolvedTitle
-        }
-        if let firstMessagePreview = firstMessagePreviewBySessionID[session.id] {
-            return firstMessagePreview
-        }
-        return SessionDisplayTitleResolver.fallbackTitle(for: session)
-    }
-
-    private func mirroredSessionSecondaryPreview(for session: APISession) -> String? {
-        guard SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) != nil else {
-            return nil
-        }
-        guard let firstMessagePreview = firstMessagePreviewBySessionID[session.id] else {
-            return nil
-        }
-        guard firstMessagePreview != mirroredSessionDisplayTitle(for: session) else {
-            return nil
-        }
-        return firstMessagePreview
-    }
-
-    private func mirroredSessionProviderLabel(for session: APISession) -> String? {
-        SessionRuntimeContext(session: session).provider?.displayName
-    }
-
-    private func loadMissingFirstMessagePreviews() async {
-        let pendingSessions = group.displayMirroredSessions.filter { session in
-            SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) == nil
-                && firstMessagePreviewBySessionID[session.id] == nil
-        }
-        guard !pendingSessions.isEmpty else { return }
-
-        for session in pendingSessions {
-            let preview = await viewModel.loadFirstMessagePreview(
-                for: session.id,
-                dataEncryptionKey: session.dataEncryptionKey,
-                serverURLString: serverURLString,
-                token: token
-            )
-            if let preview, !preview.isEmpty {
-                firstMessagePreviewBySessionID[session.id] = preview
-            }
-        }
-    }
-
-}
-
-private struct ProjectMirroredSessionRow: View {
-    let sessionDisplayTitle: String
-    let sessionPreview: String?
-    let providerLabel: String?
-    let isDisplayTitlePrimary: Bool
-    let sessionIsActive: Bool
-    let sessionUpdatedAt: TimeInterval
-    let isDeleting: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(sessionDisplayTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isDisplayTitlePrimary ? .primary : .secondary)
-                    .lineLimit(1)
-                if let providerLabel {
-                    Text(providerLabel)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                if isDeleting {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-
-            if let sessionPreview {
-                Text(sessionPreview)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(sessionIsActive ? .green : .gray)
-                    .frame(width: 8, height: 8)
-                Text(sessionIsActive ? "Active" : "Inactive")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Updated \(SessionTimestampPresentation.updatedLabel(for: sessionUpdatedAt))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
     }
 }
 

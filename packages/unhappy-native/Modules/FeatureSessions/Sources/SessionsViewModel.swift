@@ -216,6 +216,10 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = firstPage.sessions
+            await cleanupProviderBackedSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
             await cleanupMirroredDuplicateSessions(
                 serverURLString: serverURLString,
                 token: token
@@ -253,6 +257,10 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 sessions = mergeLatestRows(rows, into: sessions)
+                await cleanupProviderBackedSessions(
+                    serverURLString: serverURLString,
+                    token: token
+                )
                 await cleanupMirroredDuplicateSessions(
                     serverURLString: serverURLString,
                     token: token
@@ -296,6 +304,10 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = mergeLatestRows(page.sessions, into: sessions)
+            await cleanupProviderBackedSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
             await cleanupMirroredDuplicateSessions(
                 serverURLString: serverURLString,
                 token: token
@@ -493,7 +505,7 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 projects: projectsToSync
             )
-            upstreamSessions = filterMirroredUpstreamSessions(rows)
+            upstreamSessions = rows
             upstreamSessionsErrorMessage = nil
         } catch {
             upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -1119,64 +1131,8 @@ public final class SessionsViewModel: ObservableObject {
         sessionsMergeLatestRows(latestRows, into: existingRows)
     }
 
-    private func filterMirroredUpstreamSessions(
-        _ rows: [SessionLinkedUpstreamSession]
-    ) -> [SessionLinkedUpstreamSession] {
-        let mirroredKeys: Set<String> = Set(
-            sessions.compactMap { session in
-                SessionUpstreamIdentity(session: session)?.key
-            }
-        )
-
-        return rows.filter { !mirroredKeys.contains($0.id) }
-    }
-
-    private func existingMirroredSession(for row: SessionLinkedUpstreamSession) -> APISession? {
-        sessions
-            .filter { session in
-                SessionUpstreamIdentity(session: session)?.key == row.id
-            }
-            .sorted { lhs, rhs in
-                if lhs.active != rhs.active {
-                    return lhs.active && !rhs.active
-                }
-                if lhs.updatedAt != rhs.updatedAt {
-                    return lhs.updatedAt > rhs.updatedAt
-                }
-                return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
-            }
-            .first
-    }
-
     private func projectsForUpstreamSync() -> [SessionMachineProject] {
-        SessionListPresentationBuilder.projectGroups(
-            sessions: sessions,
-            upstreamSessions: [],
-            projects: projects
-        ).compactMap { group in
-            guard group.hasConcreteProjectPath else { return nil }
-
-            if let trackedProject = matchingTrackedProject(
-                machineID: group.machineID,
-                projectPath: group.projectPath
-            ) {
-                return trackedProject
-            }
-
-            return SessionMachineProject(
-                machineID: group.machineID,
-                machineDisplayName: group.machineDisplayName,
-                summary: APIMachineProjectSummary(
-                    path: group.projectPath,
-                    latestUpdatedAt: Date(
-                        timeIntervalSince1970: max(0, group.latestUpdatedAt)
-                    ).ISO8601Format(),
-                    codexThreadCount: group.displayMirroredSessions.count,
-                    claudeSessionCount: 0,
-                    openedExplicitly: false
-                )
-            )
-        }
+        projects.filter(\.summary.openedExplicitly)
     }
 
     private func supportingDataFingerprint() -> String {
@@ -1187,15 +1143,7 @@ public final class SessionsViewModel: ObservableObject {
             )
         }
         .sorted()
-        let runtimeProjectIDs = SessionListPresentationBuilder.projectGroups(
-            sessions: sessions,
-            upstreamSessions: [],
-            projects: projects
-        )
-        .filter(\.hasConcreteProjectPath)
-        .map(\.id)
-        .sorted()
-        return (trackedProjectIDs + ["--"] + runtimeProjectIDs).joined(separator: ",")
+        return trackedProjectIDs.joined(separator: ",")
     }
 
     private func matchingTrackedProject(
@@ -1233,6 +1181,27 @@ public final class SessionsViewModel: ObservableObject {
         guard !duplicateSessionIDs.isEmpty else { return }
 
         for sessionID in duplicateSessionIDs {
+            attemptedDuplicateCleanupSessionIDs.insert(sessionID)
+            await silentlyDeleteDuplicateSession(
+                sessionID: sessionID,
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
+    }
+
+    private func cleanupProviderBackedSessions(
+        serverURLString: String,
+        token: String
+    ) async {
+        let sessionIDs = sessions.compactMap { session -> String? in
+            guard SessionUpstreamIdentity(session: session) != nil else { return nil }
+            guard !attemptedDuplicateCleanupSessionIDs.contains(session.id) else { return nil }
+            return session.id
+        }
+        guard !sessionIDs.isEmpty else { return }
+
+        for sessionID in sessionIDs {
             attemptedDuplicateCleanupSessionIDs.insert(sessionID)
             await silentlyDeleteDuplicateSession(
                 sessionID: sessionID,

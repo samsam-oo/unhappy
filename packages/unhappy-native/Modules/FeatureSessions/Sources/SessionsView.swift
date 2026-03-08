@@ -278,7 +278,6 @@ public struct SessionsView: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel,
                     makeDirectSessionViewModel: makeDirectSessionViewModel
                 )
             } label: {
