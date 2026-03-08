@@ -620,6 +620,102 @@ extension URLSessionMachinesService {
         )
     }
 
+    public func fetchGeminiSessions(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APIGeminiSessionSummary] {
+        let boundedLimit = min(max(limit, 1), 100)
+        var cursor: String?
+        var seenCursors: Set<String> = []
+        var seenIDs: Set<String> = []
+        var merged: [APIGeminiSessionSummary] = []
+
+        for _ in 0..<50 {
+            let page = try await fetchGeminiSessionsPage(
+                serverURL: serverURL,
+                token: token,
+                machineID: machineID,
+                limit: boundedLimit,
+                cwd: cwd,
+                cursor: cursor
+            )
+            for row in page.sessions where seenIDs.insert(row.id).inserted {
+                merged.append(row)
+            }
+
+            guard page.hasNext, let nextCursor = page.nextCursor else {
+                break
+            }
+            guard seenCursors.insert(nextCursor).inserted else {
+                break
+            }
+            cursor = nextCursor
+        }
+
+        return merged
+    }
+
+    public func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage {
+        let boundedLimit = min(max(limit, 1), 100)
+        let request = try MachinesAPI.makeGeminiSessionsRequest(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            limit: boundedLimit,
+            cwd: cwd,
+            cursor: cursor
+        )
+        let (data, http) = try await httpClient.data(for: request)
+        guard (200..<300).contains(http.statusCode) else {
+            let errorMessage = parseServerErrorMessage(from: data)
+            if let errorMessage {
+                throw MachinesAPIError.rpcCallFailed(errorMessage)
+            }
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+        return try MachinesAPI.decodeGeminiSessionsPageResponse(data)
+    }
+
+    public func fetchGeminiSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String
+    ) async throws -> [APISessionMessage] {
+        try await rpcDirectoryService.fetchGeminiSessionMessages(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            sessionID: sessionID
+        )
+    }
+
+    public func sendGeminiSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult {
+        try await rpcDirectoryService.sendGeminiSessionMessage(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            sessionID: sessionID,
+            text: text
+        )
+    }
+
     private func shouldFallbackToRPC(statusCode: Int) -> Bool {
         statusCode == 404 || statusCode == 405 || statusCode == 501
     }

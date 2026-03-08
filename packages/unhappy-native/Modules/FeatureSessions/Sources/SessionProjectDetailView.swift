@@ -121,7 +121,15 @@ public struct SessionProjectDetailView: View {
                             spawnedDirectSessionIdentity = identity
                             return
                         }
-                        let fallbackProvider: APIUpstreamSessionProvider = context.agent == .codex ? .codex : .claude
+                        let fallbackProvider: APIUpstreamSessionProvider
+                        switch context.agent {
+                        case .codex:
+                            fallbackProvider = .codex
+                        case .gemini:
+                            fallbackProvider = .gemini
+                        case .claude:
+                            fallbackProvider = .claude
+                        }
                         spawnedDirectSessionIdentity = DirectSessionIdentity(
                             machineID: context.machineID ?? group.machineID,
                             machineDisplayName: group.machineDisplayName,

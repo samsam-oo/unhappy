@@ -88,8 +88,16 @@ struct UnhappyNativeApp: App {
         let sessionProjectsLoader = SessionProjectsLoadUseCase(service: machinesService)
         let sessionProjectOpener = SessionProjectOpenUseCase(service: machinesService)
         let sessionProjectRemover = SessionProjectRemoveUseCase(service: machinesService)
-        let directSessionMessagesLoader = DirectSessionMessagesLoadUseCase(codexService: machinesService, claudeService: machinesService)
-        let directSessionMessageSender = DirectSessionMessageSendUseCase(codexService: machinesService, claudeService: machinesService)
+        let directSessionMessagesLoader = DirectSessionMessagesLoadUseCase(
+            codexService: machinesService,
+            claudeService: machinesService,
+            geminiService: machinesService
+        )
+        let directSessionMessageSender = DirectSessionMessageSendUseCase(
+            codexService: machinesService,
+            claudeService: machinesService,
+            geminiService: machinesService
+        )
         let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }

@@ -85,13 +85,16 @@ public enum DirectSessionUseCaseError: LocalizedError, Equatable {
 public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingAction {
     private let codexService: any MachineCodexThreadMessagesFetching
     private let claudeService: any MachineClaudeSessionMessagesFetching
+    private let geminiService: any MachineGeminiSessionMessagesFetching
 
     public init(
         codexService: any MachineCodexThreadMessagesFetching,
-        claudeService: any MachineClaudeSessionMessagesFetching
+        claudeService: any MachineClaudeSessionMessagesFetching,
+        geminiService: any MachineGeminiSessionMessagesFetching
     ) {
         self.codexService = codexService
         self.claudeService = claudeService
+        self.geminiService = geminiService
     }
 
     public func loadMessages(
@@ -153,7 +156,12 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
             )
 
         case .gemini:
-            throw MachinesAPIError.rpcCallFailed("Gemini direct sessions are not supported yet")
+            return try await geminiService.fetchGeminiSessionMessages(
+                serverURL: serverURL,
+                token: normalizedToken,
+                machineID: normalizedMachineID,
+                sessionID: normalizedUpstreamSessionID
+            )
         }
     }
 }
@@ -161,13 +169,16 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
 public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction {
     private let codexService: any MachineCodexThreadMessaging
     private let claudeService: any MachineClaudeSessionMessaging
+    private let geminiService: any MachineGeminiSessionMessaging
 
     public init(
         codexService: any MachineCodexThreadMessaging,
-        claudeService: any MachineClaudeSessionMessaging
+        claudeService: any MachineClaudeSessionMessaging,
+        geminiService: any MachineGeminiSessionMessaging
     ) {
         self.codexService = codexService
         self.claudeService = claudeService
+        self.geminiService = geminiService
     }
 
     public func sendMessage(
@@ -236,7 +247,13 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
             )
 
         case .gemini:
-            throw MachinesAPIError.rpcCallFailed("Gemini direct sessions are not supported yet")
+            result = try await geminiService.sendGeminiSessionMessage(
+                serverURL: serverURL,
+                token: normalizedToken,
+                machineID: normalizedMachineID,
+                sessionID: normalizedUpstreamSessionID,
+                text: normalizedText
+            )
         }
 
         if result.success {

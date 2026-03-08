@@ -290,6 +290,7 @@ public struct NewSessionView: View {
             Picker("Agent", selection: agentSelectionBinding) {
                 Text("Claude").tag(APISessionSpawnAgent.claude)
                 Text("Codex").tag(APISessionSpawnAgent.codex)
+                Text("Gemini").tag(APISessionSpawnAgent.gemini)
             }
         }
     }
@@ -371,6 +372,9 @@ public struct NewSessionView: View {
     }
 
     private var selectedModelDisplayValue: String {
+        if let selectedOption = viewModel.selectedModelOption {
+            return selectedOption.displayName
+        }
         let normalized = viewModel.selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
         return normalized.isEmpty ? "Select Model" : normalized
     }

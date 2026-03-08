@@ -41,11 +41,11 @@ struct NewSessionAdvancedSection: View {
             }
         }
 
-        if !viewModel.availableModels.isEmpty {
+        if !viewModel.availableModelOptions.isEmpty {
             Menu {
-                ForEach(viewModel.availableModels, id: \.self) { model in
-                    Button(model) {
-                        viewModel.setSelectedModel(model)
+                ForEach(viewModel.availableModelOptions) { option in
+                    Button(option.menuLabel) {
+                        viewModel.setSelectedModel(option.id)
                     }
                 }
             } label: {
@@ -55,6 +55,14 @@ struct NewSessionAdvancedSection: View {
                     Text(selectedModelDisplayValue)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            if let selectedOption = viewModel.selectedModelOption,
+               let description = selectedOption.description,
+               !description.isEmpty {
+                Text(description)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
 

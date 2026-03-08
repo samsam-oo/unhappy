@@ -20,6 +20,7 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public var selectedReasoningEffort: NewSessionReasoningEffort = .medium
     @Published public var environmentVariablesText: String = ""
     @Published public private(set) var codexThreads: [APICodexThreadSummary] = []
+    @Published public private(set) var availableModelOptions: [NewSessionModelOption] = []
     @Published public private(set) var availableModels: [String] = []
     @Published public private(set) var availableReasoningEfforts: [NewSessionReasoningEffort] = []
     @Published public private(set) var isLoadingModels = false
@@ -130,6 +131,7 @@ public final class NewSessionViewModel: ObservableObject {
                 _ = await (directoryLoad, modelsLoad)
             } else {
                 directoryEntries = []
+                availableModelOptions = []
                 availableModels = []
                 availableReasoningEfforts = []
                 modelsErrorMessage = nil
@@ -137,6 +139,7 @@ public final class NewSessionViewModel: ObservableObject {
         } catch {
             machines = []
             directoryEntries = []
+            availableModelOptions = []
             availableModels = []
             availableReasoningEfforts = []
             modelsErrorMessage = nil
@@ -160,6 +163,7 @@ public final class NewSessionViewModel: ObservableObject {
         claudeSessionsHasNext = false
         isLoadingMoreClaudeSessions = false
         claudeSessionsErrorMessage = nil
+        availableModelOptions = []
         availableModels = []
         availableReasoningEfforts = []
         modelsErrorMessage = nil
@@ -185,6 +189,7 @@ public final class NewSessionViewModel: ObservableObject {
     ) async {
         guard !isLoadingModels else { return }
         guard let machineID = selectedMachineID else {
+            availableModelOptions = []
             availableModels = []
             availableReasoningEfforts = []
             modelsErrorMessage = NewSessionError.missingMachineID.errorDescription
@@ -193,6 +198,7 @@ public final class NewSessionViewModel: ObservableObject {
 
         let targetAgent = agent ?? selectedAgent
         guard let modelsLoader else {
+            availableModelOptions = []
             availableModels = []
             availableReasoningEfforts = []
             modelsErrorMessage = nil
@@ -214,14 +220,20 @@ public final class NewSessionViewModel: ObservableObject {
                 machineID: machineID,
                 agent: targetAgent
             )
-            let models = capabilities.models
+            let modelOptions = NewSessionModelOption.fromCapabilities(capabilities)
+            let models = modelOptions.map(\.id)
             let reasoningEfforts = normalizeReasoningEfforts(capabilities.reasoningEfforts)
+            availableModelOptions = modelOptions
             availableModels = models
             availableReasoningEfforts = reasoningEfforts
             modelsErrorMessage = nil
 
             let selected = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let nextModel = resolvedSelectedModel(current: selected, available: models) {
+            if let nextModel = resolvedSelectedModel(
+                current: selected,
+                available: models,
+                preferredDefault: modelOptions.first(where: \.isDefault)?.id
+            ) {
                 selectedModel = nextModel
             } else {
                 selectedModel = ""
@@ -237,6 +249,7 @@ public final class NewSessionViewModel: ObservableObject {
             selectedModelByAgent[targetAgent] = selectedModel
             selectedReasoningEffortByAgent[targetAgent] = selectedReasoningEffort
         } catch {
+            availableModelOptions = []
             availableModels = []
             availableReasoningEfforts = []
             modelsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -527,6 +540,12 @@ public final class NewSessionViewModel: ObservableObject {
         lastSelectedAgent = selectedAgent
     }
 
+    public var selectedModelOption: NewSessionModelOption? {
+        let normalized = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        return availableModelOptions.first(where: { $0.id == normalized })
+    }
+
     public func setSelectedReasoningEffort(_ effort: NewSessionReasoningEffort) {
         selectedReasoningEffort = effort
         selectedReasoningEffortByAgent[selectedAgent] = selectedReasoningEffort
@@ -800,12 +819,7 @@ public final class NewSessionViewModel: ObservableObject {
     }
 
     private func supportedNativeAgent(_ agent: APISessionSpawnAgent) -> APISessionSpawnAgent {
-        switch agent {
-        case .claude, .codex:
-            return agent
-        case .gemini:
-            return .claude
-        }
+        agent
     }
 }
 
@@ -850,9 +864,16 @@ private func normalizeReasoningEfforts(_ rawValues: [String]) -> [NewSessionReas
     return normalized
 }
 
-private func resolvedSelectedModel(current: String, available: [String]) -> String? {
+private func resolvedSelectedModel(
+    current: String,
+    available: [String],
+    preferredDefault: String? = nil
+) -> String? {
     if available.contains(current) {
         return current
+    }
+    if let preferredDefault, available.contains(preferredDefault) {
+        return preferredDefault
     }
     return available.first
 }

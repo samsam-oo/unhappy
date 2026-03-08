@@ -406,6 +406,31 @@ public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Senda
     }
 }
 
+public struct APIGeminiSessionSummary: Decodable, Equatable, Identifiable, Sendable {
+    public let id: String
+    public let title: String?
+    public let cwd: String?
+    public let updatedAt: String?
+    public let createdAt: String?
+    public let model: String?
+
+    public init(
+        id: String,
+        title: String?,
+        cwd: String?,
+        updatedAt: String?,
+        createdAt: String?,
+        model: String?
+    ) {
+        self.id = id
+        self.title = title
+        self.cwd = cwd
+        self.updatedAt = updatedAt
+        self.createdAt = createdAt
+        self.model = model
+    }
+}
+
 public struct APICodexThreadsPage: Decodable, Equatable, Sendable {
     public let threads: [APICodexThreadSummary]
     public let nextCursor: String?
@@ -424,6 +449,18 @@ public struct APIClaudeSessionsPage: Decodable, Equatable, Sendable {
     public let hasNext: Bool
 
     public init(sessions: [APIClaudeSessionSummary], nextCursor: String?, hasNext: Bool) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
+    }
+}
+
+public struct APIGeminiSessionsPage: Decodable, Equatable, Sendable {
+    public let sessions: [APIGeminiSessionSummary]
+    public let nextCursor: String?
+    public let hasNext: Bool
+
+    public init(sessions: [APIGeminiSessionSummary], nextCursor: String?, hasNext: Bool) {
         self.sessions = sessions
         self.nextCursor = nextCursor
         self.hasNext = hasNext
@@ -521,6 +558,25 @@ public extension APIClaudeSessionSummary {
             createdAt: createdAt,
             archived: nil,
             model: nil,
+            effort: nil,
+            preview: nil,
+            statusType: nil
+        )
+    }
+}
+
+public extension APIGeminiSessionSummary {
+    var upstreamSummary: APIUpstreamSessionSummary {
+        APIUpstreamSessionSummary(
+            id: id,
+            provider: .gemini,
+            title: (title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? title! : "Gemini Session"),
+            cwd: cwd,
+            path: nil,
+            updatedAt: updatedAt,
+            createdAt: createdAt,
+            archived: nil,
+            model: model,
             effort: nil,
             preview: nil,
             statusType: nil

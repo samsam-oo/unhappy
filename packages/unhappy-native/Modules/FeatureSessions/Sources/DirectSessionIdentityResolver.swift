@@ -3,7 +3,7 @@ import CoreKit
 
 enum DirectSessionIdentityResolver {
     static func resolve(from row: SessionLinkedUpstreamSession) -> DirectSessionIdentity? {
-        guard row.summary.provider == .codex || row.summary.provider == .claude else { return nil }
+        guard row.summary.provider == .codex || row.summary.provider == .claude || row.summary.provider == .gemini else { return nil }
         guard let cwd = row.summary.cwd?.trimmingCharacters(in: .whitespacesAndNewlines),
               !cwd.isEmpty else {
             return nil
@@ -29,7 +29,7 @@ enum DirectSessionIdentityResolver {
         return DirectSessionIdentity(
             machineID: row.machineID,
             machineDisplayName: row.machineDisplayName,
-            provider: .claude,
+            provider: row.summary.provider,
             upstreamSessionID: row.summary.id,
             title: row.title,
             cwd: cwd,
@@ -63,11 +63,11 @@ enum DirectSessionIdentityResolver {
             )
         }
 
-        if upstreamIdentity.provider == .claude {
+        if upstreamIdentity.provider == .claude || upstreamIdentity.provider == .gemini {
             return DirectSessionIdentity(
                 machineID: upstreamIdentity.machineID,
                 machineDisplayName: upstreamIdentity.machineDisplayName ?? upstreamIdentity.machineID,
-                provider: .claude,
+                provider: upstreamIdentity.provider,
                 upstreamSessionID: upstreamIdentity.upstreamSessionID,
                 title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session),
                 cwd: cwd,

@@ -70,6 +70,21 @@ public protocol MachineRPCDirectoryListing: Sendable {
         cwd: String,
         text: String
     ) async throws -> APISessionSendMessageResult
+
+    func fetchGeminiSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String
+    ) async throws -> [APISessionMessage]
+
+    func sendGeminiSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult
 }
 
 public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
@@ -442,6 +457,75 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             params: [
                 "sessionId": normalizedSessionID,
                 "cwd": normalizedCWD,
+                "text": normalizedText,
+            ]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionSendMessageResult.self, from: responseData)
+    }
+
+    public func fetchGeminiSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String
+    ) async throws -> [APISessionMessage] {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw MachinesAPIError.rpcCallFailed("Session ID is required")
+        }
+
+        let responseData = try await invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "gemini-list-messages",
+            params: [
+                "sessionId": normalizedSessionID,
+            ]
+        )
+        let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+        if raw?["success"] as? Bool == false {
+            let normalizedError = (raw?["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "RPC call failed"
+            )
+        }
+        let decoder = JSONDecoder()
+        return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
+    }
+
+    public func sendGeminiSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSessionID.isEmpty else {
+            throw MachinesAPIError.rpcCallFailed("Session ID is required")
+        }
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+
+        let responseData = try await invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "gemini-send-message",
+            params: [
+                "sessionId": normalizedSessionID,
                 "text": normalizedText,
             ]
         )

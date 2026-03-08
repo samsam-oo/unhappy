@@ -37,8 +37,16 @@ struct FeatureHomeTests {
                 let service = URLSessionMachinesService()
                 return DirectSessionViewModel(
                     identity: identity,
-                    loader: DirectSessionMessagesLoadUseCase(codexService: service, claudeService: service),
-                    sender: DirectSessionMessageSendUseCase(codexService: service, claudeService: service)
+                    loader: DirectSessionMessagesLoadUseCase(
+                        codexService: service,
+                        claudeService: service,
+                        geminiService: service
+                    ),
+                    sender: DirectSessionMessageSendUseCase(
+                        codexService: service,
+                        claudeService: service,
+                        geminiService: service
+                    )
                 )
             },
             makeMachinesViewModel: {

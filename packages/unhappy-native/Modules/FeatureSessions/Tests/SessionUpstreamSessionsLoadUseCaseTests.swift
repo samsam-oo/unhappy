@@ -53,6 +53,18 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
                         createdAt: "2026-03-06T03:00:00.000Z"
                     )
                 ]
+            ],
+            geminiSessionsByMachineAndPath: [
+                "machine-1|/tmp/project": [
+                    APIGeminiSessionSummary(
+                        id: "gemini-1",
+                        title: "Newest Gemini",
+                        cwd: "/tmp/project",
+                        updatedAt: "2026-03-06T05:30:00.000Z",
+                        createdAt: "2026-03-06T05:15:00.000Z",
+                        model: "gemini-3-flash-preview"
+                    )
+                ]
             ]
         )
         let useCase = SessionUpstreamSessionsLoadUseCase(service: service)
@@ -64,6 +76,7 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
         )
 
         #expect(rows.map(\.id) == [
+            "machine-1|gemini|gemini-1",
             "machine-1|claude|claude-1",
             "machine-1|codex|thread-1"
         ])
@@ -132,7 +145,8 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
                     )
                 ]
             ],
-            claudeSessionsByMachineAndPath: [:]
+            claudeSessionsByMachineAndPath: [:],
+            geminiSessionsByMachineAndPath: [:]
         )
         let useCase = SessionUpstreamSessionsLoadUseCase(service: service)
 
@@ -148,19 +162,22 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
     }
 }
 
-private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreadsFetching, MachineClaudeSessionsFetching {
+private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineGeminiSessionsFetching {
     let machines: [APIMachine]
     let codexThreadsByMachineAndPath: [String: [APICodexThreadSummary]]
     let claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]]
+    let geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]]
 
     init(
         machines: [APIMachine],
         codexThreadsByMachineAndPath: [String: [APICodexThreadSummary]],
-        claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]]
+        claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]],
+        geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]]
     ) {
         self.machines = machines
         self.codexThreadsByMachineAndPath = codexThreadsByMachineAndPath
         self.claudeSessionsByMachineAndPath = claudeSessionsByMachineAndPath
+        self.geminiSessionsByMachineAndPath = geminiSessionsByMachineAndPath
     }
 
     func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -217,5 +234,31 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
         claudeSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
+    }
+
+    func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage {
+        let key = "\(machineID)|\(cwd ?? "")"
+        return APIGeminiSessionsPage(
+            sessions: geminiSessionsByMachineAndPath[key] ?? [],
+            nextCursor: nil,
+            hasNext: false
+        )
+    }
+
+    func fetchGeminiSessions(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APIGeminiSessionSummary] {
+        geminiSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
     }
 }

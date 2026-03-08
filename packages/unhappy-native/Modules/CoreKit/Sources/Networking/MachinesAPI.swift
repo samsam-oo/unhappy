@@ -204,6 +204,39 @@ public enum MachinesAPI {
         return try makeRequest(url: url, method: "GET", token: token)
     }
 
+    public static func makeGeminiSessionsRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int = 20,
+        cwd: String? = nil,
+        cursor: String? = nil
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let sessionsURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/gemini/sessions")
+        guard var components = URLComponents(url: sessionsURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        var queryItems: [URLQueryItem] = [URLQueryItem(name: "limit", value: "\(limit)")]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            queryItems.append(URLQueryItem(name: "cwd", value: normalizedCWD))
+        }
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: normalizedCursor))
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(url: url, method: "GET", token: token)
+    }
+
     public static func makeListDirectoryRequest(
         serverURL: URL,
         token: String,
@@ -288,6 +321,23 @@ public enum MachinesAPI {
         let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
         let hasNext = response.hasNext ?? (normalizedCursor != nil)
         return APIClaudeSessionsPage(
+            sessions: response.sessions ?? [],
+            nextCursor: normalizedCursor,
+            hasNext: hasNext
+        )
+    }
+
+    public static func decodeGeminiSessionsResponse(_ data: Data) throws -> [APIGeminiSessionSummary] {
+        try decodeGeminiSessionsPageResponse(data).sessions
+    }
+
+    public static func decodeGeminiSessionsPageResponse(_ data: Data) throws -> APIGeminiSessionsPage {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(MachinesGeminiSessionsResponse.self, from: data)
+        let nextCursor = response.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+        let hasNext = response.hasNext ?? (normalizedCursor != nil)
+        return APIGeminiSessionsPage(
             sessions: response.sessions ?? [],
             nextCursor: normalizedCursor,
             hasNext: hasNext
@@ -451,6 +501,13 @@ private struct MachinesCodexThreadsResponse: Decodable {
 private struct MachinesClaudeSessionsResponse: Decodable {
     let success: Bool
     let sessions: [APIClaudeSessionSummary]?
+    let nextCursor: String?
+    let hasNext: Bool?
+}
+
+private struct MachinesGeminiSessionsResponse: Decodable {
+    let success: Bool
+    let sessions: [APIGeminiSessionSummary]?
     let nextCursor: String?
     let hasNext: Bool?
 }
@@ -812,6 +869,44 @@ public protocol MachineClaudeSessionMessaging: Sendable {
     ) async throws -> APISessionSendMessageResult
 }
 
+public protocol MachineGeminiSessionsFetching: Sendable {
+    func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage
+
+    func fetchGeminiSessions(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        limit: Int,
+        cwd: String?
+    ) async throws -> [APIGeminiSessionSummary]
+}
+
+public protocol MachineGeminiSessionMessagesFetching: Sendable {
+    func fetchGeminiSessionMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String
+    ) async throws -> [APISessionMessage]
+}
+
+public protocol MachineGeminiSessionMessaging: Sendable {
+    func sendGeminiSessionMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        sessionID: String,
+        text: String
+    ) async throws -> APISessionSendMessageResult
+}
+
 public protocol MachineModelsListing: Sendable {
     func fetchAgentCapabilities(
         serverURL: URL,
@@ -933,6 +1028,9 @@ public actor URLSessionMachinesService:
     MachineClaudeSessionsFetching,
     MachineClaudeSessionMessagesFetching,
     MachineClaudeSessionMessaging,
+    MachineGeminiSessionsFetching,
+    MachineGeminiSessionMessagesFetching,
+    MachineGeminiSessionMessaging,
     MachineModelsListing,
     MachineProjectsFetching,
     MachineProjectOpening,

@@ -10,9 +10,9 @@ public protocol SessionUpstreamSessionsLoadingAction: Sendable {
 }
 
 public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingAction {
-    private let service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching
+    private let service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching
 
-    public init(service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching) {
+    public init(service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching) {
         self.service = service
     }
 
@@ -68,7 +68,14 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             limit: 50,
                             cwd: projectPath
                         )
-                        let (threads, sessions) = try await (codexThreads, claudeSessions)
+                        async let geminiSessions = service.fetchGeminiSessions(
+                            serverURL: serverURL,
+                            token: normalizedToken,
+                            machineID: machine.id,
+                            limit: 50,
+                            cwd: projectPath
+                        )
+                        let (threads, sessions, geminiRows) = try await (codexThreads, claudeSessions, geminiSessions)
                         return threads.map {
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
@@ -76,6 +83,12 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                                 summary: $0.upstreamSummary
                             )
                         } + sessions.map {
+                            SessionLinkedUpstreamSession(
+                                machineID: machine.id,
+                                machineDisplayName: machineDisplayName,
+                                summary: $0.upstreamSummary
+                            )
+                        } + geminiRows.map {
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
                                 machineDisplayName: machineDisplayName,
