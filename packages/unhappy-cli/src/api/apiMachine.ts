@@ -764,9 +764,6 @@ export class ApiMachineClient {
             ? params.model.trim()
             : null;
 
-        if (!threadId) {
-          return { success: false, error: 'threadId is required' };
-        }
         if (!cwdRaw) {
           return { success: false, error: 'cwd is required' };
         }

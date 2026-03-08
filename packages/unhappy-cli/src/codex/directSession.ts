@@ -31,11 +31,12 @@ export type CodexDirectSessionMessage = {
 };
 
 export type CodexDirectSessionDescriptor = {
-  threadId: string;
+  threadId?: string | null;
   cwd: string;
   transcriptPath?: string | null;
   model?: string | null;
   effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null;
+  envOverrides?: Record<string, string>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -286,7 +287,7 @@ export function resolveCodexHomeFromTranscriptPath(
 function makeDirectCodexClient(
   descriptor: CodexDirectSessionDescriptor,
 ): CodexAppServerClient {
-  const envOverrides: Record<string, string> = {};
+  const envOverrides: Record<string, string> = { ...(descriptor.envOverrides ?? {}) };
   const codexHomeDir = resolveCodexHomeFromTranscriptPath(descriptor.transcriptPath);
   if (codexHomeDir) {
     envOverrides.CODEX_HOME = codexHomeDir;
@@ -306,7 +307,9 @@ export async function sendCodexThreadMessage(
   const client = makeDirectCodexClient(descriptor);
   try {
     await client.connect();
-    client.setPreferredResumeThreadId(descriptor.threadId, true);
+    if (descriptor.threadId && descriptor.threadId.trim()) {
+      client.setPreferredResumeThreadId(descriptor.threadId, true);
+    }
     const config: CodexSessionConfig = {
       prompt: normalizedText,
       cwd: descriptor.cwd,
@@ -333,16 +336,21 @@ export async function openCodexThread(
   const client = makeDirectCodexClient(descriptor);
   try {
     await client.connect();
-    client.setPreferredResumeThreadId(descriptor.threadId, true);
+    if (descriptor.threadId && descriptor.threadId.trim()) {
+      client.setPreferredResumeThreadId(descriptor.threadId, true);
+    }
     await client.openThread({
       prompt: '',
       cwd: descriptor.cwd,
       sandbox: 'workspace-write',
       'approval-policy': 'on-request',
       ...(descriptor.model ? { model: descriptor.model } : {}),
+      ...(descriptor.effort
+        ? { config: { model_reasoning_effort: descriptor.effort } }
+        : {}),
     });
     return {
-      threadId: client.getSessionId() ?? descriptor.threadId,
+      threadId: client.getSessionId() ?? descriptor.threadId ?? null,
     };
   } finally {
     try {
@@ -365,7 +373,9 @@ export async function setCodexThreadName(
   const client = makeDirectCodexClient(descriptor);
   try {
     await client.connect();
-    client.setPreferredResumeThreadId(descriptor.threadId, true);
+    if (descriptor.threadId && descriptor.threadId.trim()) {
+      client.setPreferredResumeThreadId(descriptor.threadId, true);
+    }
     await client.openThread({
       prompt: '',
       cwd: descriptor.cwd,

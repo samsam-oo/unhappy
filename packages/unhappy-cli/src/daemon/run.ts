@@ -34,6 +34,7 @@ import { getTmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
 import { deriveUpstreamSessionBinding } from '@/utils/upstreamSessionBinding';
 import { existsSync, readFileSync } from 'fs';
 import { isAbsolute, join, normalize } from 'path';
+import { openCodexThread } from '@/codex/directSession';
 import {
   checkIfDaemonRunningAndCleanupStaleState,
   cleanupDaemonState,
@@ -728,6 +729,35 @@ export async function startDaemon(): Promise<void> {
           };
         }
 
+        if (resolvedAgent === 'codex') {
+          const codexEffort =
+            normalizedReasoningEffort === 'max'
+              ? 'xhigh'
+              : normalizedReasoningEffort;
+          const result = await openCodexThread({
+            threadId: normalizedCodexResumeThreadId,
+            cwd: normalizedDirectory,
+            transcriptPath: null,
+            model: normalizedModel,
+            effort: codexEffort,
+            envOverrides: extraEnv,
+          });
+          if (!result.threadId) {
+            return {
+              type: 'error',
+              errorMessage: 'Failed to open Codex thread',
+            };
+          }
+          logger.debug('[DAEMON RUN] Opened direct Codex thread without spawning wrapper', {
+            threadId: result.threadId,
+            resumed: normalizedCodexResumeThreadId != null,
+          });
+          return {
+            type: 'success',
+            sessionId: result.threadId,
+          };
+        }
+
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
         let useTmux = tmuxAvailable;
@@ -761,9 +791,6 @@ export async function startDaemon(): Promise<void> {
           // Determine agent command - support claude, codex, and gemini
           const agent = resolvedAgent;
           let fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --unhappy-starting-mode remote --started-by daemon`;
-          if (agent === 'codex' && normalizedCodexResumeThreadId) {
-            fullCommand += ` --resume-thread-id ${JSON.stringify(normalizedCodexResumeThreadId)}`;
-          }
           if (agent === 'claude' && normalizedClaudeResumeSessionId) {
             fullCommand += ` --resume ${JSON.stringify(normalizedClaudeResumeSessionId)}`;
           }
@@ -772,7 +799,7 @@ export async function startDaemon(): Promise<void> {
           }
           if (
             normalizedReasoningEffort &&
-            (agent === 'codex' || agent === 'claude')
+            agent === 'claude'
           ) {
             fullCommand += ` --reasoning-effort ${JSON.stringify(normalizedReasoningEffort)}`;
           }
@@ -871,14 +898,11 @@ export async function startDaemon(): Promise<void> {
         if (!useTmux) {
           logger.debug(`[DAEMON RUN] Using regular process spawning`);
 
-          // Construct arguments for the CLI - support claude, codex, and gemini
+          // Construct arguments for the CLI - support claude and gemini.
           let agentCommand: string;
           switch (resolvedAgent) {
             case 'claude':
               agentCommand = 'claude';
-              break;
-            case 'codex':
-              agentCommand = 'codex';
               break;
             case 'gemini':
               agentCommand = 'gemini';
