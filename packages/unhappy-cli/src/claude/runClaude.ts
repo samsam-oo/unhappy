@@ -1,16 +1,13 @@
-import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 
 import { ApiClient } from '@/api/api';
 import { AgentState, Metadata, extractUserMessageText } from '@/api/types';
-import { claudeLocal } from '@/claude/claudeLocal';
 import { loop } from '@/claude/loop';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import {
   cleanupHookSettingsFile,
   generateHookSettingsFile,
 } from '@/claude/utils/generateHookSettings';
-import { createSessionScanner } from '@/claude/utils/sessionScanner';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { configuration } from '@/configuration';
@@ -27,14 +24,8 @@ import { resolveMachineHost } from '@/utils/machineHost';
 import { resolvePermissionModeWithAdapter } from '@/utils/permissionModeAdapter';
 import {
   connectionState,
-  startOfflineReconnection,
 } from '@/utils/serverConnectionErrors';
-import {
-  resolveProvidedSessionDataKey,
-  resolveClaudeResumeSessionIdFromArgs,
-  resolveProvidedSessionTag,
-} from '@/utils/upstreamSessionBinding';
-import { deriveUpstreamSessionBinding } from '@/utils/upstreamSessionBinding';
+import { createLocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
 import fs from 'node:fs';
 import { join, resolve } from 'node:path';
 import packageJson from '../../package.json';
@@ -42,7 +33,6 @@ import { projectPath } from '../projectPath';
 import { EnhancedMode, PermissionMode } from './loop';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { Session } from './session';
-import { claudeFindLastSession } from './utils/claudeFindLastSession';
 import { getProjectPath } from './utils/path';
 
 /** JavaScript runtime to use for spawning Claude Code */
@@ -69,8 +59,6 @@ export async function runClaude(
   logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
 
   const workingDirectory = process.cwd();
-  let sessionTag = resolveProvidedSessionTag() ?? randomUUID();
-  let sessionDataKey = resolveProvidedSessionDataKey();
 
   // Log environment info at startup
   logger.debugLargeJson(
@@ -114,27 +102,6 @@ export async function runClaude(
     metadata: initialMachineMetadata,
   });
 
-  const initialClaudeResumeSessionId = resolveClaudeResumeSessionIdFromArgs(
-    options.claudeArgs,
-    () => claudeFindLastSession(workingDirectory)
-  );
-  const machineKey = credentials.encryption?.machineKey;
-  if (
-    !resolveProvidedSessionTag() &&
-    !resolveProvidedSessionDataKey() &&
-    initialClaudeResumeSessionId &&
-    machineKey
-  ) {
-    const upstreamBinding = deriveUpstreamSessionBinding({
-      machineId,
-      agent: 'claude',
-      upstreamSessionId: initialClaudeResumeSessionId,
-      machineKey,
-    });
-    sessionTag = upstreamBinding.sessionTag;
-    sessionDataKey = upstreamBinding.sessionDataKey;
-  }
-
   let metadata: Metadata = {
     path: workingDirectory,
     host: resolveMachineHost(),
@@ -153,65 +120,12 @@ export async function runClaude(
     lifecycleStateSince: Date.now(),
     flavor: 'claude',
   };
-  const response = await api.getOrCreateSession({
-    tag: sessionTag,
+  const session = createLocalSessionRuntimeClient({
+    provider: 'claude',
     metadata,
-    state,
-    encryptionKey: sessionDataKey ?? undefined,
+    agentState: state,
   });
-
-  // Handle server unreachable case - run Claude locally with hot reconnection
-  // Note: connectionState.notifyOffline() was already called by api.ts with error details
-  if (!response) {
-    let offlineSessionId: string | null = null;
-
-    const reconnection = startOfflineReconnection({
-      serverUrl: configuration.serverUrl,
-      onReconnected: async () => {
-        const resp = await api.getOrCreateSession({
-          tag: sessionTag,
-          metadata,
-          state,
-          encryptionKey: sessionDataKey ?? undefined,
-        });
-        if (!resp) throw new Error('Server unavailable');
-        const session = api.sessionSyncClient(resp);
-        const scanner = await createSessionScanner({
-          sessionId: null,
-          workingDirectory,
-          onMessage: (msg) => session.sendClaudeSessionMessage(msg),
-        });
-        if (offlineSessionId) scanner.onNewSession(offlineSessionId);
-        return { session, scanner };
-      },
-      onNotify: console.log,
-      onCleanup: () => {
-        // Scanner cleanup handled automatically when process exits
-      },
-    });
-
-    try {
-      await claudeLocal({
-        path: workingDirectory,
-        sessionId: null,
-        onSessionFound: (id) => {
-          offlineSessionId = id;
-        },
-        onThinkingChange: () => {},
-        abort: new AbortController().signal,
-        claudeEnvVars: options.claudeEnvVars,
-        claudeArgs: options.claudeArgs,
-        mcpServers: {},
-        allowedTools: [],
-      });
-    } finally {
-      reconnection.cancel();
-      stopCaffeinate();
-    }
-    process.exit(0);
-  }
-
-  logger.debug(`Session created: ${response.id}`);
+  logger.debug('Claude direct runtime session initialized');
 
   // Extract SDK metadata in background and update session when ready
   extractSDKMetadataAsync(async (sdkMetadata) => {
@@ -221,7 +135,7 @@ export async function runClaude(
     );
     try {
       // Update session metadata with tools and slash commands
-      api.sessionSyncClient(response).updateMetadata((currentMetadata) => ({
+      await session.updateMetadata((currentMetadata) => ({
         ...currentMetadata,
         tools: sdkMetadata.tools,
         slashCommands: sdkMetadata.slashCommands,
@@ -231,9 +145,6 @@ export async function runClaude(
       logger.debug('[start] Failed to update session metadata:', error);
     }
   });
-
-  // Create realtime session
-  const session = api.sessionSyncClient(response);
 
   // Start Unhappy MCP server
   const happyServer = await startHappyServer(session);
@@ -297,7 +208,7 @@ export async function runClaude(
 
   // Print log file path
   const logPath = logger.logFilePath;
-  logger.infoDeveloper(`Session: ${response.id}`);
+  logger.infoDeveloper(`Session: ${session.sessionId}`);
   logger.infoDeveloper(`Logs: ${logPath}`);
 
   // Set initial agent state

@@ -212,12 +212,8 @@ vi.mock('@/utils/serverConnectionErrors', () => ({
   },
 }));
 
-vi.mock('@/utils/setupOfflineReconnection', () => ({
-  setupOfflineReconnection: vi.fn(() => ({
-    session: mockState.session,
-    reconnectionHandle: null,
-    isOffline: false,
-  })),
+vi.mock('@/runtime/localSessionRuntimeClient', () => ({
+  createLocalSessionRuntimeClient: vi.fn(() => mockState.session),
 }));
 
 vi.mock('@/modules/common/listModels', () => ({
@@ -304,6 +300,7 @@ describe('runCodex auto-compaction recovery', () => {
     expect(mockState.client.startSession).toHaveBeenCalledTimes(2);
     expect(mockState.client.continueSession).toHaveBeenCalledTimes(1);
     expect(mockState.client.clearSession).toHaveBeenCalledTimes(1);
+    expect(mockState.api.getOrCreateSession).not.toHaveBeenCalled();
 
     expect(mockState.session.sendSessionEvent).toHaveBeenCalledWith({
       type: 'message',

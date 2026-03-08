@@ -27,13 +27,8 @@ import {
 } from '@/utils/permissionModeAdapter';
 import { buildReadyPushNotification } from '@/utils/readyPushNotification';
 import { connectionState } from '@/utils/serverConnectionErrors';
-import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
-import {
-  deriveUpstreamSessionBinding,
-  resolveProvidedSessionDataKey,
-  resolveProvidedSessionTag,
-} from '@/utils/upstreamSessionBinding';
 import { listCodexModels } from '@/modules/common/listModels';
+import { createLocalSessionRuntimeClient } from '@/runtime/localSessionRuntimeClient';
 import { render } from 'ink';
 import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -483,30 +478,6 @@ export async function runCodex(opts: {
       ? initialResumeEntry.codexSessionId.trim()
       : null);
 
-  const providedSessionTag = resolveProvidedSessionTag();
-  const providedSessionDataKey = resolveProvidedSessionDataKey();
-  const machineKey = opts.credentials.encryption?.machineKey;
-  const derivedUpstreamBinding =
-    !providedSessionTag &&
-    !providedSessionDataKey &&
-    initialResumeThreadId &&
-    machineKey
-      ? deriveUpstreamSessionBinding({
-          machineId,
-          agent: 'codex',
-          upstreamSessionId: initialResumeThreadId,
-          machineKey,
-        })
-      : null;
-  const sessionTag =
-    providedSessionTag ??
-    derivedUpstreamBinding?.sessionTag ??
-    randomUUID();
-  const sessionDataKey =
-    providedSessionDataKey ??
-    derivedUpstreamBinding?.sessionDataKey ??
-    null;
-
   // Set backend for offline warnings (before any API calls)
   connectionState.setBackend('Codex');
 
@@ -536,37 +507,13 @@ export async function runCodex(opts: {
     machineId,
     startedBy: opts.startedBy,
   });
-  const response = await api.getOrCreateSession({
-    tag: sessionTag,
+  let session: SessionRuntimeClient = createLocalSessionRuntimeClient({
+    provider: 'codex',
     metadata,
-    state,
-    encryptionKey: sessionDataKey ?? undefined,
+    agentState: state,
   });
-
-  // Handle server unreachable case - create offline stub with hot reconnection
-  let session: SessionRuntimeClient;
   let syncQueueState: (() => void) | null = null;
-  // Permission handler declared here so it can be updated in onSessionSwap callback
-  // (assigned later at line ~385 after client setup)
   let permissionHandler: CodexPermissionHandler;
-  const { session: initialSession, reconnectionHandle } =
-    setupOfflineReconnection({
-      api,
-      sessionTag,
-      metadata,
-      state,
-      encryptionKey: sessionDataKey ?? undefined,
-      response,
-      onSessionSwap: (newSession) => {
-        session = newSession;
-        // Update permission handler with new session to avoid stale reference
-        if (permissionHandler) {
-          permissionHandler.updateSession(newSession);
-        }
-        syncQueueState?.();
-      },
-    });
-  session = initialSession;
 
   // Mark the session as agent-ready as early as possible so mobile/web does not
   // block for the full readiness timeout on the first message.
@@ -2638,12 +2585,6 @@ export async function runCodex(opts: {
     // Clean up resources when main loop exits
     logger.debug('[codex]: Final cleanup start');
     logActiveHandles('cleanup-start');
-
-    // Cancel offline reconnection if still running
-    if (reconnectionHandle) {
-      logger.debug('[codex]: Cancelling offline reconnection');
-      reconnectionHandle.cancel();
-    }
 
     try {
       logger.debug('[codex]: sendSessionDeath');
