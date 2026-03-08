@@ -29,7 +29,7 @@ struct SessionRecentSection: Equatable, Identifiable, Sendable {
 
 enum SessionRecentPresentationBuilder {
     static func make(
-        sessions: [APISession],
+        sessions _: [APISession],
         upstreamSessions: [SessionLinkedUpstreamSession],
         now: Date = .now,
         calendar: Calendar = .current
@@ -42,17 +42,7 @@ enum SessionRecentPresentationBuilder {
         }
         let directRowsByKey = Dictionary(uniqueKeysWithValues: directPairs)
 
-        var entries: [SessionRecentSection.Entry] = Array(directRowsByKey.values)
-
-        for session in sessions {
-            if let key = SessionUpstreamIdentity(session: session)?.key,
-               directRowsByKey[key] != nil {
-                continue
-            }
-            if let identity = DirectSessionIdentityResolver.resolve(from: session) {
-                entries.append(.direct(identity, updatedAt: session.updatedAt))
-            }
-        }
+        let entries: [SessionRecentSection.Entry] = Array(directRowsByKey.values)
 
         guard !entries.isEmpty else { return [] }
 

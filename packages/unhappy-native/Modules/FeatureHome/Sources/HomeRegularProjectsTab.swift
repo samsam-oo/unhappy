@@ -384,14 +384,6 @@ struct HomeRegularProjectRow: View {
                 Text(updatedLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if group.activeSessionCount > 0 {
-                    Text("·")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text("\(group.activeSessionCount) active")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                }
             }
             Text(group.projectPath)
                 .font(.caption2.monospaced())

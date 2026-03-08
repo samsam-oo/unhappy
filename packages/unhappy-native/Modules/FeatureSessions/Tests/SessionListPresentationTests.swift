@@ -64,9 +64,7 @@ struct SessionListPresentationTests {
         #expect(groups.first?.projectPath == "/repo/app")
         #expect(groups.first?.hasConcreteProjectPath == true)
         #expect(groups.first?.title == "app")
-        #expect(groups.first?.mirroredSessions.map(\.id) == ["session-1", "session-2"])
         #expect(groups.first?.upstreamSessions.map(\.summary.id) == ["thread-2"])
-        #expect(groups.first?.activeSessionCount == 1)
         #expect(groups.first?.allSessionCount == 3)
     }
 
@@ -153,7 +151,8 @@ struct SessionListPresentationTests {
 
         #expect(groups.count == 1)
         #expect(groups.first?.projectPath == "/Users/skyline23/Downloads/unhappy")
-        #expect(groups.first?.mirroredSessions.map(\.id) == ["session-1"])
+        #expect(groups.first?.upstreamSessions.isEmpty == true)
+        #expect(groups.first?.allSessionCount == 1)
     }
 
     @Test
@@ -256,9 +255,7 @@ struct SessionListPresentationTests {
         )
 
         #expect(groups.count == 1)
-        #expect(groups.first?.displayMirroredSessions.isEmpty == true)
         #expect(groups.first?.displayUpstreamSessions.map(\.summary.id) == ["thread-1"])
-        #expect(groups.first?.activeSessionCount == 0)
         #expect(groups.first?.allSessionCount == 1)
     }
 }

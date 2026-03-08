@@ -7,14 +7,11 @@ import FeatureSessionTools
 public struct SessionProjectDetailView: View {
     private enum SessionListEntry: Identifiable {
         case direct(DirectSessionIdentity, updatedAt: TimeInterval)
-        case upstream(SessionLinkedUpstreamSession)
 
         var id: String {
             switch self {
             case .direct(let identity, _):
                 return "direct:\(identity.machineID)|\(identity.provider.rawValue)|\(identity.upstreamSessionID)"
-            case .upstream(let row):
-                return "upstream:\(row.id)"
             }
         }
 
@@ -22,8 +19,6 @@ public struct SessionProjectDetailView: View {
             switch self {
             case .direct(_, let updatedAt):
                 return updatedAt
-            case .upstream(let row):
-                return row.sortTimestamp
             }
         }
     }
@@ -262,24 +257,13 @@ public struct SessionProjectDetailView: View {
     }
 
     private var sessionEntries: [SessionListEntry] {
-        let directPairs: [(String, SessionListEntry)] = group.displayUpstreamSessions.compactMap { row in
+        let directEntries: [SessionListEntry] = group.displayUpstreamSessions.compactMap { row in
             guard let identity = DirectSessionIdentityResolver.resolve(from: row) else {
                 return nil
             }
-            return (row.id, SessionListEntry.direct(identity, updatedAt: row.sortTimestamp))
+            return SessionListEntry.direct(identity, updatedAt: row.sortTimestamp)
         }
-        let directRowsByKey = Dictionary(uniqueKeysWithValues: directPairs)
-        var combined: [SessionListEntry] = Array(directRowsByKey.values)
-        for session in group.displayMirroredSessions {
-            if let key = SessionUpstreamIdentity(session: session)?.key,
-               directRowsByKey[key] != nil {
-                continue
-            }
-            if let identity = DirectSessionIdentityResolver.resolve(from: session) {
-                combined.append(.direct(identity, updatedAt: session.updatedAt))
-            }
-        }
-        return combined.sorted { lhs, rhs in
+        return directEntries.sorted { lhs, rhs in
             if lhs.sortTimestamp != rhs.sortTimestamp {
                 return lhs.sortTimestamp > rhs.sortTimestamp
             }
@@ -301,18 +285,6 @@ public struct SessionProjectDetailView: View {
                 )
             } label: {
                 ProjectDirectSessionRow(identity: identity, updatedAt: updatedAt)
-            }
-
-        case .upstream(let row):
-            NavigationLink {
-                SessionUpstreamOpeningView(
-                    row: row,
-                    serverURLString: serverURLString,
-                    token: token,
-                    makeDirectSessionViewModel: makeDirectSessionViewModel
-                )
-            } label: {
-                ProjectUpstreamSessionRow(row: row)
             }
         }
     }
@@ -350,86 +322,5 @@ private struct ProjectDirectSessionRow: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-    }
-}
-
-private struct ProjectUpstreamSessionRow: View {
-    let row: SessionLinkedUpstreamSession
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(rowDisplayTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(hasExplicitTitle ? .primary : .secondary)
-                    .lineLimit(1)
-
-                Text(row.summary.provider.displayName)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-
-            if let normalizedPreview, normalizedPreview != rowDisplayTitle {
-                Text(normalizedPreview)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            HStack(spacing: 8) {
-                Text("Updated \(updatedLabel)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if let model = normalizedModel {
-                    Text("·")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(model)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-    }
-
-    private var normalizedTitle: String? {
-        let title = row.summary.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return nil }
-        guard title.localizedCaseInsensitiveCompare("Untitled") != .orderedSame else { return nil }
-        return title
-    }
-
-    private var hasExplicitTitle: Bool {
-        normalizedTitle != nil
-    }
-
-    private var rowDisplayTitle: String {
-        if let normalizedTitle {
-            return normalizedTitle
-        }
-        if let normalizedPreview {
-            return normalizedPreview
-        }
-        return row.summary.id
-    }
-
-    private var updatedLabel: String {
-        SessionTimestampPresentation.updatedLabel(for: row.sortTimestamp)
-    }
-
-    private var normalizedPreview: String? {
-        let preview = row.summary.preview?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let preview, !preview.isEmpty else { return nil }
-        return preview
-    }
-
-    private var normalizedModel: String? {
-        let model = row.summary.model?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let model, !model.isEmpty else { return nil }
-        return model
     }
 }
