@@ -212,6 +212,42 @@ public final class SessionsViewModel: ObservableObject {
         )
     }
 
+    public func refreshProject(
+        machineID: String,
+        projectPath: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let targetProject = matchingTrackedProject(
+            machineID: machineID,
+            projectPath: projectPath
+        ) else {
+            return
+        }
+        guard let upstreamSessionsLoader else { return }
+        guard !isLoadingUpstreamSessions else { return }
+
+        isLoadingUpstreamSessions = true
+        defer { isLoadingUpstreamSessions = false }
+
+        do {
+            let refreshedRows = try await upstreamSessionsLoader.loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token,
+                projects: [targetProject]
+            )
+            upstreamSessions = mergeProjectScopedUpstreamRows(
+                existing: upstreamSessions,
+                refreshed: refreshedRows,
+                machineID: targetProject.machineID,
+                projectPath: targetProject.summary.path
+            )
+            upstreamSessionsErrorMessage = nil
+        } catch {
+            upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     private func loadUpstreamSessions(
         serverURLString: String,
         token: String,
@@ -517,5 +553,39 @@ public final class SessionsViewModel: ObservableObject {
         var nextSessions = sessions
         nextSessions[index] = session
         sessions = nextSessions
+    }
+
+    private func mergeProjectScopedUpstreamRows(
+        existing: [SessionLinkedUpstreamSession],
+        refreshed: [SessionLinkedUpstreamSession],
+        machineID: String,
+        projectPath: String
+    ) -> [SessionLinkedUpstreamSession] {
+        let targetProjectID = canonicalProjectID(
+            machineID: machineID,
+            projectPath: projectPath
+        )
+
+        let retained = existing.filter { row in
+            canonicalProjectID(
+                machineID: row.machineID,
+                projectPath: row.summary.cwd ?? ""
+            ) != targetProjectID
+        }
+
+        var seen = Set<String>()
+        let merged = (retained + refreshed).filter { row in
+            seen.insert(row.id).inserted
+        }
+
+        return merged.sorted { lhs, rhs in
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
     }
 }

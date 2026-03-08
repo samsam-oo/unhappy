@@ -86,6 +86,14 @@ public struct SessionProjectDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
+        .refreshable {
+            await viewModel.refreshProject(
+                machineID: group.machineID,
+                projectPath: group.projectPath,
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
         .navigationTitle(group.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { projectActionsToolbar }
@@ -109,13 +117,25 @@ public struct SessionProjectDetailView: View {
                 onSessionSpawned: { context in
                     guard let sessionID = context.sessionID else { return }
                     Task {
-                        guard context.agent == .codex || context.agent == .claude else {
-                            return
+                        let resolvedMachineID = context.machineID ?? group.machineID
+                        await viewModel.refreshProject(
+                            machineID: resolvedMachineID,
+                            projectPath: context.directoryPath,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        let provider: APIUpstreamSessionProvider
+                        switch context.agent {
+                        case .codex:
+                            provider = .codex
+                        case .claude:
+                            provider = .claude
+                        case .gemini:
+                            provider = .gemini
                         }
-                        await viewModel.load(serverURLString: serverURLString, token: token)
                         if let directRow = viewModel.upstreamSessions.first(where: {
-                            $0.machineID == (context.machineID ?? "") &&
-                            $0.summary.provider == (context.agent == .codex ? .codex : .claude) &&
+                            $0.machineID == resolvedMachineID &&
+                            $0.summary.provider == provider &&
                             $0.summary.id == sessionID
                         }), let identity = DirectSessionIdentityResolver.resolve(from: directRow) {
                             spawnedDirectSessionIdentity = identity
@@ -131,7 +151,7 @@ public struct SessionProjectDetailView: View {
                             fallbackProvider = .claude
                         }
                         spawnedDirectSessionIdentity = DirectSessionIdentity(
-                            machineID: context.machineID ?? group.machineID,
+                            machineID: resolvedMachineID,
                             machineDisplayName: group.machineDisplayName,
                             provider: fallbackProvider,
                             upstreamSessionID: sessionID,
