@@ -142,7 +142,7 @@ export async function runGemini(opts: {
   const directTranscript = new GeminiDirectTranscriptStore();
   const directSessionControl = await startGeminiDirectSessionControlServer({
     listMessages: () => directTranscript.listMessages(),
-    sendMessage: async (text) => {
+    sendMessage: async (text, options) => {
       session.enqueueUserMessage({
         role: 'user',
         content: {
@@ -151,6 +151,7 @@ export async function runGemini(opts: {
         },
         meta: {
           sentFrom: 'gemini-direct',
+          ...(options?.model ? { model: options.model } : {}),
         },
       });
     },

@@ -66,7 +66,9 @@ struct DirectSessionUseCasesTests {
                 transcriptPath: nil,
                 model: "gemini-3-flash-preview"
             ),
-            text: "hello gemini"
+            text: "hello gemini",
+            model: nil,
+            reasoningEffort: nil
         )
 
         #expect(result.success == true)
@@ -108,6 +110,7 @@ private actor GeminiMessagingService: MachineGeminiSessionMessaging {
         token: String,
         machineID: String,
         sessionID: String,
+        model: String?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         recordedCall = RecordedCall(sessionID: sessionID, text: text)
@@ -154,6 +157,8 @@ private actor FailingCodexMessagingService: MachineCodexThreadMessaging {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         Issue.record("Codex service should not be used")
@@ -173,6 +178,8 @@ private actor FailingClaudeMessagingService: MachineClaudeSessionMessaging {
         machineID: String,
         sessionID: String,
         cwd: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         Issue.record("Claude service should not be used")

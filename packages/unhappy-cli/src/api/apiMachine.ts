@@ -1017,6 +1017,17 @@ export class ApiMachineClient {
           typeof params?.cwd === 'string' ? params.cwd.trim() : '';
         const text =
           typeof params?.text === 'string' ? params.text.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
+        const effort =
+          params?.effort === 'low' ||
+          params?.effort === 'medium' ||
+          params?.effort === 'high' ||
+          params?.effort === 'max'
+            ? params.effort
+            : null;
         if (!sessionId) {
           return { success: false, error: 'sessionId is required' };
         }
@@ -1032,6 +1043,8 @@ export class ApiMachineClient {
           {
             sessionId,
             cwd,
+            model,
+            effort,
           },
           text,
         );
@@ -1118,6 +1131,10 @@ export class ApiMachineClient {
           typeof params?.sessionId === 'string' ? params.sessionId.trim() : '';
         const text =
           typeof params?.text === 'string' ? params.text.trim() : '';
+        const model =
+          typeof params?.model === 'string' && params.model.trim().length > 0
+            ? params.model.trim()
+            : null;
         if (!sessionId) {
           return { success: false, error: 'sessionId is required' };
         }
@@ -1138,6 +1155,7 @@ export class ApiMachineClient {
             controlPort: tracked.controlPort,
           },
           text,
+          { model },
         );
         return {
           success: true as const,

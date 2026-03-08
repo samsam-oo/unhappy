@@ -49,7 +49,9 @@ public protocol DirectSessionMessageSendingAction: Sendable {
         serverURLString: String,
         token: String,
         identity: DirectSessionIdentity,
-        text: String
+        text: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?
     ) async throws -> APISessionSendMessageResult
 }
 
@@ -185,7 +187,9 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
         serverURLString: String,
         token: String,
         identity: DirectSessionIdentity,
-        text: String
+        text: String,
+        model: String? = nil,
+        reasoningEffort: APISessionReasoningEffort? = nil
     ) async throws -> APISessionSendMessageResult {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -233,6 +237,8 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 threadID: normalizedUpstreamSessionID,
                 cwd: normalizedCWD,
                 transcriptPath: normalizedTranscriptPath?.isEmpty == true ? nil : normalizedTranscriptPath,
+                model: model,
+                reasoningEffort: reasoningEffort,
                 text: normalizedText
             )
 
@@ -243,6 +249,8 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
                 cwd: normalizedCWD,
+                model: model,
+                reasoningEffort: reasoningEffort,
                 text: normalizedText
             )
 
@@ -252,6 +260,7 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 token: normalizedToken,
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
+                model: model,
                 text: normalizedText
             )
         }

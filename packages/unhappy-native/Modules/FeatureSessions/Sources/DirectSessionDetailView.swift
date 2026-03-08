@@ -55,7 +55,9 @@ public struct DirectSessionDetailView: View {
                 .background(Color.clear)
         }
         .task {
-            await viewModel.load(serverURLString: serverURLString, token: token)
+            async let messageLoad: Void = viewModel.load(serverURLString: serverURLString, token: token)
+            async let capabilitiesLoad: Void = viewModel.loadCapabilities(serverURLString: serverURLString, token: token)
+            _ = await (messageLoad, capabilitiesLoad)
             viewModel.startPolling(serverURLString: serverURLString, token: token)
         }
         .onDisappear {
@@ -88,6 +90,56 @@ public struct DirectSessionDetailView: View {
                             .foregroundStyle(AppPalette.secondaryText)
                     }
                 }
+
+                if !viewModel.availableModelOptions.isEmpty || !viewModel.availableReasoningEfforts.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !viewModel.availableModelOptions.isEmpty {
+                            Menu {
+                                Button("Use Session Model") {
+                                    viewModel.selectedModelOverride = ""
+                                }
+                                ForEach(viewModel.availableModelOptions) { option in
+                                    Button(option.menuLabel) {
+                                        viewModel.selectedModelOverride = option.id
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text("Model")
+                                    Spacer()
+                                    Text(selectedModelLabel)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+
+                        if !viewModel.availableReasoningEfforts.isEmpty {
+                            Menu {
+                                Button("Use Session Default") {
+                                    viewModel.selectedReasoningEffortOverride = .auto
+                                }
+                                ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { effort in
+                                    Button(effort.displayName) {
+                                        viewModel.selectedReasoningEffortOverride = effort
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text("Reasoning")
+                                    Spacer()
+                                    Text(selectedReasoningLabel)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+
+                        if let capabilitiesError = viewModel.capabilitiesErrorMessage, !capabilitiesError.isEmpty {
+                            Text(capabilitiesError)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
             .padding(16)
         }
@@ -104,6 +156,23 @@ public struct DirectSessionDetailView: View {
 
     private var composerPlaceholder: String {
         "Message \(providerLabel)…"
+    }
+
+    private var selectedModelLabel: String {
+        if let option = viewModel.selectedModelOption {
+            return option.displayName
+        }
+        if let model = viewModel.identity.model, !model.isEmpty {
+            return model
+        }
+        return "Session Default"
+    }
+
+    private var selectedReasoningLabel: String {
+        if viewModel.selectedReasoningEffortOverride == .auto {
+            return "Session Default"
+        }
+        return viewModel.selectedReasoningEffortOverride.displayName
     }
 
     private var composerBar: some View {

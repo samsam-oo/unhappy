@@ -386,6 +386,8 @@ describe('ApiMachineClient public command handling', () => {
       {
         sessionId: 'claude-1',
         cwd: '/repo/app',
+        model: null,
+        effort: null,
       },
       'hello claude',
     );
@@ -564,6 +566,7 @@ describe('ApiMachineClient public command handling', () => {
         controlPort: 40123,
       },
       'hello gemini',
+      { model: null },
     );
     expect(callback).toHaveBeenCalledWith({ success: true });
   });
