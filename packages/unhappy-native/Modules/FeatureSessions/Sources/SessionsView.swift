@@ -17,6 +17,7 @@ public struct SessionsView: View {
     private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    private let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
     @State private var isPresentingProjectPicker = false
     @State private var navigationPath: [Selection] = []
 
@@ -28,7 +29,8 @@ public struct SessionsView: View {
         onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void = { _ in },
         makeViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
+        makeCodexDirectSessionViewModel: @escaping @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
     ) {
         self.serverURLString = serverURLString
         self.token = token
@@ -38,6 +40,7 @@ public struct SessionsView: View {
         _viewModel = StateObject(wrappedValue: makeViewModel())
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.makeCodexDirectSessionViewModel = makeCodexDirectSessionViewModel
     }
 
     public var body: some View {
@@ -325,6 +328,7 @@ public struct SessionsView: View {
                     defaultNewSessionAgent: defaultNewSessionAgent,
                     makeNewSessionViewModel: makeNewSessionViewModel,
                     makeSessionToolsViewModel: makeSessionToolsViewModel,
+                    makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel,
                     onProjectRemoved: {
                         navigationPath.removeAll()
                     }

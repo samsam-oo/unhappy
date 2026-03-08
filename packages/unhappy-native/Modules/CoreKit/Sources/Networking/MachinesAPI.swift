@@ -750,6 +750,28 @@ public protocol MachineCodexThreadsFetching: Sendable {
     ) async throws -> [APICodexThreadSummary]
 }
 
+public protocol MachineCodexThreadMessagesFetching: Sendable {
+    func fetchCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String
+    ) async throws -> [APISessionMessage]
+}
+
+public protocol MachineCodexThreadMessaging: Sendable {
+    func sendCodexThreadMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        cwd: String,
+        transcriptPath: String?,
+        text: String
+    ) async throws -> APISessionSendMessageResult
+}
+
 public protocol MachineClaudeSessionsFetching: Sendable {
     func fetchClaudeSessionsPage(
         serverURL: URL,
@@ -885,6 +907,8 @@ public actor URLSessionMachinesService:
     MachineDaemonUpdating,
     MachineDirectoryListing,
     MachineCodexThreadsFetching,
+    MachineCodexThreadMessagesFetching,
+    MachineCodexThreadMessaging,
     MachineClaudeSessionsFetching,
     MachineModelsListing,
     MachineProjectsFetching,

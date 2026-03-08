@@ -416,6 +416,42 @@ extension URLSessionMachinesService {
         return merged
     }
 
+    public func fetchCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String
+    ) async throws -> [APISessionMessage] {
+        try await rpcDirectoryService.fetchCodexThreadMessages(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            threadID: threadID,
+            transcriptPath: transcriptPath
+        )
+    }
+
+    public func sendCodexThreadMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        cwd: String,
+        transcriptPath: String?,
+        text: String
+    ) async throws -> APISessionSendMessageResult {
+        try await rpcDirectoryService.sendCodexThreadMessage(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            threadID: threadID,
+            cwd: cwd,
+            transcriptPath: transcriptPath,
+            text: text
+        )
+    }
+
     public func fetchCodexThreadsPage(
         serverURL: URL,
         token: String,

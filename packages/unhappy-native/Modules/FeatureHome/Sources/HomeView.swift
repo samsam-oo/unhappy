@@ -30,6 +30,7 @@ public struct HomeView: View {
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
     private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     private let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    private let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
     private let onSessionsChanged: @MainActor ([APISession]) async -> Void
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
@@ -44,6 +45,7 @@ public struct HomeView: View {
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
+        makeCodexDirectSessionViewModel: @escaping @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel,
         onSessionsChanged: @escaping @MainActor ([APISession]) async -> Void = { _ in },
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
@@ -59,6 +61,7 @@ public struct HomeView: View {
         self.makeSessionsViewModel = makeSessionsViewModel
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.makeCodexDirectSessionViewModel = makeCodexDirectSessionViewModel
         self.onSessionsChanged = onSessionsChanged
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
@@ -105,7 +108,8 @@ public struct HomeView: View {
                 onSessionsChanged: onSessionsChanged,
                 makeViewModel: makeSessionsViewModel,
                 makeNewSessionViewModel: makeNewSessionViewModel,
-                makeSessionToolsViewModel: makeSessionToolsViewModel
+                makeSessionToolsViewModel: makeSessionToolsViewModel,
+                makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel
             )
             .tabItem {
                 Label("Projects", systemImage: "folder")
@@ -148,6 +152,7 @@ public struct HomeView: View {
             makeSessionsViewModel: makeSessionsViewModel,
             makeNewSessionViewModel: makeNewSessionViewModel,
             makeSessionToolsViewModel: makeSessionToolsViewModel,
+            makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel,
             onSessionsChanged: onSessionsChanged,
             makeMachinesViewModel: makeMachinesViewModel,
             makeUsageViewModel: makeUsageViewModel,

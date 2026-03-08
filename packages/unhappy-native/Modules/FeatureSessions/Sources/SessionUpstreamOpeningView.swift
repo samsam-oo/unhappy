@@ -9,6 +9,7 @@ public struct SessionUpstreamOpeningView: View {
     let serverURLString: String
     let token: String
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
 
     @State private var didStartOpen = false
     @State private var linkedSessionID: String?
@@ -18,17 +19,27 @@ public struct SessionUpstreamOpeningView: View {
         viewModel: SessionsViewModel,
         serverURLString: String,
         token: String,
-        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel
+        makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
+        makeCodexDirectSessionViewModel: @escaping @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
     ) {
         self.row = row
         self.viewModel = viewModel
         self.serverURLString = serverURLString
         self.token = token
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.makeCodexDirectSessionViewModel = makeCodexDirectSessionViewModel
     }
 
     public var body: some View {
-        if let linkedSession {
+        if let codexIdentity {
+            CodexDirectSessionDetailView(
+                serverURLString: serverURLString,
+                token: token,
+                makeViewModel: {
+                    makeCodexDirectSessionViewModel(codexIdentity)
+                }
+            )
+        } else if let linkedSession {
             SessionDetailView(
                 session: linkedSession,
                 viewModel: viewModel,
@@ -100,6 +111,27 @@ public struct SessionUpstreamOpeningView: View {
     private var linkedSession: APISession? {
         guard let linkedSessionID else { return nil }
         return viewModel.sessions.first(where: { $0.id == linkedSessionID })
+    }
+
+    private var codexIdentity: CodexDirectSessionIdentity? {
+        guard row.summary.provider == .codex else { return nil }
+        guard let cwd = row.summary.cwd?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !cwd.isEmpty else {
+            return nil
+        }
+        guard let transcriptPath = row.summary.path?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !transcriptPath.isEmpty else {
+            return nil
+        }
+        return CodexDirectSessionIdentity(
+            machineID: row.machineID,
+            machineDisplayName: row.machineDisplayName,
+            threadID: row.summary.id,
+            title: row.title,
+            cwd: cwd,
+            transcriptPath: transcriptPath,
+            model: row.summary.model
+        )
     }
 
     private var isOpening: Bool {

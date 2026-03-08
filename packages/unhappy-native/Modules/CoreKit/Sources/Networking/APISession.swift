@@ -452,6 +452,7 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
     public let provider: APIUpstreamSessionProvider
     public let title: String
     public let cwd: String?
+    public let path: String?
     public let updatedAt: String?
     public let createdAt: String?
     public let archived: Bool?
@@ -465,6 +466,7 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
         provider: APIUpstreamSessionProvider,
         title: String,
         cwd: String?,
+        path: String? = nil,
         updatedAt: String?,
         createdAt: String?,
         archived: Bool?,
@@ -477,6 +479,7 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
         self.provider = provider
         self.title = title
         self.cwd = cwd
+        self.path = path
         self.updatedAt = updatedAt
         self.createdAt = createdAt
         self.archived = archived
@@ -494,6 +497,7 @@ public extension APICodexThreadSummary {
             provider: .codex,
             title: (name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? name! : "Untitled"),
             cwd: cwd,
+            path: path,
             updatedAt: updatedAt,
             createdAt: createdAt,
             archived: archived,
@@ -512,6 +516,7 @@ public extension APIClaudeSessionSummary {
             provider: .claude,
             title: id,
             cwd: cwd,
+            path: nil,
             updatedAt: updatedAt,
             createdAt: createdAt,
             archived: nil,

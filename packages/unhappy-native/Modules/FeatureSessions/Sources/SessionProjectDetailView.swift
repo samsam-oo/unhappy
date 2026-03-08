@@ -36,6 +36,7 @@ public struct SessionProjectDetailView: View {
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
     let makeSessionToolsViewModel: @MainActor () -> SessionToolsViewModel
+    let makeCodexDirectSessionViewModel: @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel
     let onProjectRemoved: (() -> Void)?
 
     @State private var isPresentingNewSession = false
@@ -52,6 +53,7 @@ public struct SessionProjectDetailView: View {
         defaultNewSessionAgent: APISessionSpawnAgent,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
         makeSessionToolsViewModel: @escaping @MainActor () -> SessionToolsViewModel,
+        makeCodexDirectSessionViewModel: @escaping @MainActor (CodexDirectSessionIdentity) -> CodexDirectSessionViewModel,
         onProjectRemoved: (() -> Void)? = nil
     ) {
         self.initialGroup = group
@@ -62,6 +64,7 @@ public struct SessionProjectDetailView: View {
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
         self.makeSessionToolsViewModel = makeSessionToolsViewModel
+        self.makeCodexDirectSessionViewModel = makeCodexDirectSessionViewModel
         self.onProjectRemoved = onProjectRemoved
     }
 
@@ -271,7 +274,8 @@ public struct SessionProjectDetailView: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                    makeSessionToolsViewModel: makeSessionToolsViewModel,
+                    makeCodexDirectSessionViewModel: makeCodexDirectSessionViewModel
                 )
             } label: {
                 ProjectUpstreamSessionRow(row: row)

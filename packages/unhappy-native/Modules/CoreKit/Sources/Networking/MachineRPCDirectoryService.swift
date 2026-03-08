@@ -35,6 +35,24 @@ public protocol MachineRPCDirectoryListing: Sendable {
         cwd: String?,
         cursor: String?
     ) async throws -> APIClaudeSessionsPage
+
+    func fetchCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String
+    ) async throws -> [APISessionMessage]
+
+    func sendCodexThreadMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        cwd: String,
+        transcriptPath: String?,
+        text: String
+    ) async throws -> APISessionSendMessageResult
 }
 
 public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
@@ -245,6 +263,94 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
     }
 
+    public func fetchCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String
+    ) async throws -> [APISessionMessage] {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedThreadID = threadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedThreadID.isEmpty else {
+            throw MachinesAPIError.rpcCallFailed("Thread ID is required")
+        }
+        let normalizedPath = transcriptPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "codex-list-messages",
+            params: [
+                "threadId": normalizedThreadID,
+                "path": normalizedPath,
+            ]
+        )
+        let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+        if raw?["success"] as? Bool == false {
+            let normalizedError = (raw?["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "RPC call failed"
+            )
+        }
+        let decoder = JSONDecoder()
+        return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
+    }
+
+    public func sendCodexThreadMessage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        cwd: String,
+        transcriptPath: String?,
+        text: String
+    ) async throws -> APISessionSendMessageResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedThreadID = threadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedThreadID.isEmpty else {
+            throw MachinesAPIError.rpcCallFailed("Thread ID is required")
+        }
+        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCWD.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedText.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+
+        var params: [String: Any] = [
+            "threadId": normalizedThreadID,
+            "cwd": normalizedCWD,
+            "text": normalizedText,
+        ]
+        let normalizedPath = transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedPath, !normalizedPath.isEmpty {
+            params["path"] = normalizedPath
+        }
+
+        let responseData = try await invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "codex-send-message",
+            params: params
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionSendMessageResult.self, from: responseData)
+    }
+
     private func getOrCreateConnectedSocket(
         serverURL: URL,
         token: String
@@ -364,4 +470,9 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
                 }
         }
     }
+}
+
+private struct CodexThreadMessagesEnvelope: Decodable {
+    let success: Bool
+    let messages: [APISessionMessage]
 }

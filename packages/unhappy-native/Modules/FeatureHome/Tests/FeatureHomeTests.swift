@@ -51,6 +51,14 @@ struct FeatureHomeTests {
                     difftasticRunner: SessionDifftasticUseCase(service: service)
                 )
             },
+            makeCodexDirectSessionViewModel: { identity in
+                let service = URLSessionMachinesService()
+                return CodexDirectSessionViewModel(
+                    identity: identity,
+                    loader: CodexDirectSessionMessagesLoadUseCase(service: service),
+                    sender: CodexDirectSessionMessageSendUseCase(service: service)
+                )
+            },
             makeMachinesViewModel: {
                 let service = URLSessionMachinesService()
                 return MachinesViewModel(
