@@ -251,31 +251,29 @@ private func makeLogicalProjection(
     mirroredSessions: [APISession],
     upstreamSessions: [SessionLinkedUpstreamSession]
 ) -> LogicalProjection {
-    var mirroredByKey: [String: APISession] = [:]
-
-    for session in mirroredSessions {
-        let key = SessionUpstreamIdentity(session: session)?.key ?? "mirrored:\(session.id)"
-        if let existing = mirroredByKey[key] {
-            if compareMirroredSession(session, existing) {
-                mirroredByKey[key] = session
-            }
-        } else {
-            mirroredByKey[key] = session
-        }
-    }
-
-    let mirroredKeys = Set(
-        mirroredByKey.keys.filter { !$0.hasPrefix("mirrored:") }
-    )
-
     var upstreamByKey: [String: SessionLinkedUpstreamSession] = [:]
-    for row in upstreamSessions where !mirroredKeys.contains(row.id) {
+    for row in upstreamSessions {
         if let existing = upstreamByKey[row.id] {
             if compareUpstreamSession(row, existing) {
                 upstreamByKey[row.id] = row
             }
         } else {
             upstreamByKey[row.id] = row
+        }
+    }
+
+    var mirroredByKey: [String: APISession] = [:]
+    for session in mirroredSessions {
+        let key = SessionUpstreamIdentity(session: session)?.key ?? "mirrored:\(session.id)"
+        if upstreamByKey[key] != nil {
+            continue
+        }
+        if let existing = mirroredByKey[key] {
+            if compareMirroredSession(session, existing) {
+                mirroredByKey[key] = session
+            }
+        } else {
+            mirroredByKey[key] = session
         }
     }
 

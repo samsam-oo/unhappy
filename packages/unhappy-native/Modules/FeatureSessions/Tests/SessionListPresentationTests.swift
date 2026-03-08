@@ -259,9 +259,9 @@ struct SessionListPresentationTests {
         )
 
         #expect(groups.count == 1)
-        #expect(groups.first?.displayMirroredSessions.map(\.id) == ["session-2"])
-        #expect(groups.first?.displayUpstreamSessions.isEmpty == true)
-        #expect(groups.first?.activeSessionCount == 1)
+        #expect(groups.first?.displayMirroredSessions.isEmpty == true)
+        #expect(groups.first?.displayUpstreamSessions.map(\.summary.id) == ["thread-1"])
+        #expect(groups.first?.activeSessionCount == 0)
         #expect(groups.first?.allSessionCount == 1)
     }
 }
