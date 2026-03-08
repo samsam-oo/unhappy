@@ -81,7 +81,7 @@ public struct SessionUpstreamOpeningView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Resume Session")
+        .navigationTitle("Open Session")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: row.id) {
             guard !didStartOpen else { return }
@@ -115,9 +115,9 @@ public struct SessionUpstreamOpeningView: View {
 
     private var currentStatusTitle: String {
         if isOpening {
-            return "Resuming Session…"
+            return "Opening Session…"
         }
-        return statusMessage == nil ? "Session Ready" : "Couldn't Resume Session"
+        return statusMessage == nil ? "Session Ready" : "Couldn't Open Session"
     }
 
     private var currentStatusIcon: String {

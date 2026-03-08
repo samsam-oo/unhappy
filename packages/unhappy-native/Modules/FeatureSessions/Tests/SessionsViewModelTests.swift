@@ -124,6 +124,125 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadUsesRuntimeProjectContextsForUpstreamSync() async throws {
+        let runtimeSession = APISession(
+            id: "runtime",
+            active: true,
+            activeAt: 1,
+            createdAt: 1,
+            updatedAt: 3,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let upstreamLoader = RecordingUpstreamSessionsLoader(result: .success([]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([runtimeSession])),
+            pageLoader: MockSessionsPageLoader(
+                result: .success(.init(sessions: [runtimeSession], nextCursor: nil, hasNext: false))
+            ),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+
+        let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
+        #expect(requestedProjects.count == 1)
+        #expect(requestedProjects.first?.count == 1)
+        #expect(requestedProjects.first?.first?.machineID == "machine-1")
+        #expect(requestedProjects.first?.first?.summary.path == "/repo/app")
+    }
+
+    @Test
+    func loadRemovesDuplicateMirroredSessionsBoundToSameUpstreamIdentity() async throws {
+        let olderSession = APISession(
+            id: "session-older",
+            active: false,
+            activeAt: 1,
+            createdAt: 1,
+            updatedAt: 2,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","cwd":"/repo/app"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let newerSession = APISession(
+            id: "session-newer",
+            active: true,
+            activeAt: 2,
+            createdAt: 2,
+            updatedAt: 3,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","cwd":"/repo/app"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let recorder = CallOrderRecorder()
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([olderSession, newerSession])),
+            pageLoader: MockSessionsPageLoader(
+                result: .success(.init(sessions: [olderSession, newerSession], nextCursor: nil, hasNext: false))
+            ),
+            poller: MockSessionsPoller(rows: []),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            deleteUseCase: RecordingSessionDeleteUseCase(recorder: recorder),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+
+        #expect(model.sessions.map(\.id) == ["session-newer"])
+        #expect(await recorder.snapshot() == ["delete:session-older"])
+    }
+
+    @Test
+    func startPollingSkipsSupportingDataRefreshWhenProjectFingerprintIsUnchanged() async throws {
+        let runtimeSession = APISession(
+            id: "runtime",
+            active: true,
+            activeAt: 1,
+            createdAt: 1,
+            updatedAt: 3,
+            metadataVersion: 1,
+            metadata: #"{"machineId":"machine-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
+            dataEncryptionKey: nil,
+            lastMessage: nil
+        )
+        let projectsLoader = RecordingProjectsLoader(result: .success([]))
+        let upstreamLoader = RecordingUpstreamSessionsLoader(result: .success([]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([runtimeSession])),
+            pageLoader: MockSessionsPageLoader(
+                result: .success(.init(sessions: [runtimeSession], nextCursor: nil, hasNext: false))
+            ),
+            poller: SequenceSessionsPoller(emissions: [[runtimeSession]]),
+            messageLoader: MockSessionsMessagesLoader(result: .success([])),
+            projectsLoader: projectsLoader,
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(())),
+            titleUseCase: MockSessionTitleUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        #expect(await projectsLoader.callCount() == 1)
+        #expect(await upstreamLoader.callCount() == 1)
+
+        await model.startPolling(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            interval: .seconds(60)
+        )
+
+        #expect(await projectsLoader.callCount() == 1)
+        #expect(await upstreamLoader.callCount() == 1)
+    }
+
+    @Test
     func loadProjectsFailurePreservesExistingProjects() async throws {
         let existingProject = SessionMachineProject(
             machineID: "machine-1",
@@ -299,7 +418,7 @@ struct SessionsViewModelTests {
         )
 
         #expect(model.linkingUpstreamSessionID == nil)
-        #expect(model.upstreamSessionStatusMessage == "Linked Codex session linked-session")
+        #expect(model.upstreamSessionStatusMessage == "Opened Codex session linked-session")
         #expect(model.sessions == reloadedSessions)
     }
 
@@ -410,7 +529,7 @@ struct SessionsViewModelTests {
         let projectsLoader = SequenceProjectsLoader(
             results: [
                 .success([project]),
-                .success([project]),
+                .success([]),
             ]
         )
         let model = SessionsViewModel(

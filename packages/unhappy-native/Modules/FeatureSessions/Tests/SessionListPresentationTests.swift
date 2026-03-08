@@ -97,7 +97,7 @@ struct SessionListPresentationTests {
     }
 
     @Test
-    func projectGroupsIgnoreUnaddedSessionPaths() {
+    func projectGroupsIncludeRuntimeSessionPathsWithoutExplicitProjects() {
         let mirroredSession = APISession(
             id: "session-1",
             active: true,
@@ -116,7 +116,10 @@ struct SessionListPresentationTests {
             projects: []
         )
 
-        #expect(groups.isEmpty)
+        #expect(groups.count == 1)
+        #expect(groups.first?.machineID == "machine-1")
+        #expect(groups.first?.projectPath == "/repo/app")
+        #expect(groups.first?.displayMirroredSessions.map(\.id) == ["session-1"])
     }
 
     @Test

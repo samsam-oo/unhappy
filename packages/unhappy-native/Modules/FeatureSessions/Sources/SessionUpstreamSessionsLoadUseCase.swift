@@ -36,36 +36,58 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
 
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
-        let explicitProjects = projects.filter(\.summary.openedExplicitly)
         var rows: [SessionLinkedUpstreamSession] = []
         var seenRowIDs = Set<String>()
+        let service = self.service
 
-        for machine in activeMachines {
-            let machineProjects = explicitProjects
-                .filter { $0.machineID == machine.id }
-                .map(\.summary.path)
-            guard !machineProjects.isEmpty else { continue }
+        try await withThrowingTaskGroup(of: [SessionLinkedUpstreamSession].self) { group in
+            for machine in activeMachines {
+                let machineProjects = Array(
+                    Set(
+                        projects
+                            .filter { $0.machineID == machine.id }
+                            .compactMap { SessionProjectPathCanonicalizer.canonicalPath($0.summary.path) }
+                    )
+                ).sorted()
+                guard !machineProjects.isEmpty else { continue }
 
-            let machineDisplayName = machineName(for: machine)
-            for projectPath in machineProjects {
-                async let codexRows = loadCodexRows(
-                    machine: machine,
-                    machineDisplayName: machineDisplayName,
-                    projectPath: projectPath,
-                    serverURL: serverURL,
-                    token: normalizedToken
-                )
-                async let claudeRows = loadClaudeRows(
-                    machine: machine,
-                    machineDisplayName: machineDisplayName,
-                    projectPath: projectPath,
-                    serverURL: serverURL,
-                    token: normalizedToken
-                )
-                for row in try await codexRows where seenRowIDs.insert(row.id).inserted {
-                    rows.append(row)
+                let machineDisplayName = machineName(for: machine)
+                for projectPath in machineProjects {
+                    group.addTask {
+                        async let codexThreads = service.fetchCodexThreads(
+                            serverURL: serverURL,
+                            token: normalizedToken,
+                            machineID: machine.id,
+                            limit: 50,
+                            cwd: projectPath
+                        )
+                        async let claudeSessions = service.fetchClaudeSessions(
+                            serverURL: serverURL,
+                            token: normalizedToken,
+                            machineID: machine.id,
+                            limit: 50,
+                            cwd: projectPath
+                        )
+                        let (threads, sessions) = try await (codexThreads, claudeSessions)
+                        return threads.map {
+                            SessionLinkedUpstreamSession(
+                                machineID: machine.id,
+                                machineDisplayName: machineDisplayName,
+                                summary: $0.upstreamSummary
+                            )
+                        } + sessions.map {
+                            SessionLinkedUpstreamSession(
+                                machineID: machine.id,
+                                machineDisplayName: machineDisplayName,
+                                summary: $0.upstreamSummary
+                            )
+                        }
+                    }
                 }
-                for row in try await claudeRows where seenRowIDs.insert(row.id).inserted {
+            }
+
+            for try await batch in group {
+                for row in batch where seenRowIDs.insert(row.id).inserted {
                     rows.append(row)
                 }
             }
@@ -81,52 +103,6 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                 return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
             }
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-        }
-    }
-
-    private func loadCodexRows(
-        machine: APIMachine,
-        machineDisplayName: String,
-        projectPath: String,
-        serverURL: URL,
-        token: String
-    ) async throws -> [SessionLinkedUpstreamSession] {
-        let threads = try await service.fetchCodexThreads(
-            serverURL: serverURL,
-            token: token,
-            machineID: machine.id,
-            limit: 50,
-            cwd: projectPath
-        )
-        return threads.map {
-            SessionLinkedUpstreamSession(
-                machineID: machine.id,
-                machineDisplayName: machineDisplayName,
-                summary: $0.upstreamSummary
-            )
-        }
-    }
-
-    private func loadClaudeRows(
-        machine: APIMachine,
-        machineDisplayName: String,
-        projectPath: String,
-        serverURL: URL,
-        token: String
-    ) async throws -> [SessionLinkedUpstreamSession] {
-        let sessions = try await service.fetchClaudeSessions(
-            serverURL: serverURL,
-            token: token,
-            machineID: machine.id,
-            limit: 50,
-            cwd: projectPath
-        )
-        return sessions.map {
-            SessionLinkedUpstreamSession(
-                machineID: machine.id,
-                machineDisplayName: machineDisplayName,
-                summary: $0.upstreamSummary
-            )
         }
     }
 

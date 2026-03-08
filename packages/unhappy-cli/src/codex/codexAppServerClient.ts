@@ -224,6 +224,7 @@ export class CodexAppServerClient {
   >();
   private completedTurns = new Map<string, TurnState>();
   private preferredResumeThreadId: string | null = null;
+  private preferredResumeThreadIdIsStrict = false;
   private pendingThreadName: string | null = null;
   private lastThreadResumeParams: Record<string, unknown> | null = null;
   private needsThreadReattach = false;
@@ -246,8 +247,9 @@ export class CodexAppServerClient {
   /**
    * Hint the client to attempt `thread/resume` with this id before creating a new thread.
    */
-  setPreferredResumeThreadId(threadId: string | null): void {
+  setPreferredResumeThreadId(threadId: string | null, strict = false): void {
     this.preferredResumeThreadId = threadId && threadId.trim() ? threadId.trim() : null;
+    this.preferredResumeThreadIdIsStrict = this.preferredResumeThreadId !== null && strict;
   }
 
   canonicalizeToolCallId(callId: unknown, inputs?: unknown): string {
@@ -672,6 +674,7 @@ export class CodexAppServerClient {
         this.extractIdentifiers(resumeResp);
         await this.flushPendingThreadName(signal);
         this.preferredResumeThreadId = null;
+        this.preferredResumeThreadIdIsStrict = false;
         this.needsThreadReattach = false;
         return {
           mode: 'resume',
@@ -681,6 +684,11 @@ export class CodexAppServerClient {
         };
       } catch (error) {
         logger.debug('[CodexAppServer] thread/resume failed, falling back to thread/start', error);
+        if (this.preferredResumeThreadIdIsStrict) {
+          this.preferredResumeThreadId = null;
+          this.preferredResumeThreadIdIsStrict = false;
+          throw normalizeError(error);
+        }
         const candidateThreadId = await this.findMostRecentThreadIdByCwd(baseParams.cwd);
         if (candidateThreadId && candidateThreadId !== resumeThreadId) {
           try {
@@ -703,6 +711,7 @@ export class CodexAppServerClient {
             this.extractIdentifiers(fallbackResumeResp);
             await this.flushPendingThreadName(signal);
             this.preferredResumeThreadId = null;
+            this.preferredResumeThreadIdIsStrict = false;
             this.needsThreadReattach = false;
             return {
               mode: 'resume',
@@ -730,6 +739,7 @@ export class CodexAppServerClient {
     });
     this.extractIdentifiers(startResp);
     await this.flushPendingThreadName(signal);
+    this.preferredResumeThreadIdIsStrict = false;
     this.needsThreadReattach = false;
     return {
       mode: 'start',

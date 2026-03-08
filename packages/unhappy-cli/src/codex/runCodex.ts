@@ -485,13 +485,17 @@ export async function runCodex(opts: {
 
   const providedSessionTag = resolveProvidedSessionTag();
   const providedSessionDataKey = resolveProvidedSessionDataKey();
+  const machineKey = opts.credentials.encryption?.machineKey;
   const derivedUpstreamBinding =
-    !providedSessionTag && !providedSessionDataKey && initialResumeThreadId
+    !providedSessionTag &&
+    !providedSessionDataKey &&
+    initialResumeThreadId &&
+    machineKey
       ? deriveUpstreamSessionBinding({
           machineId,
           agent: 'codex',
           upstreamSessionId: initialResumeThreadId,
-          machineKey: opts.credentials.encryption.machineKey,
+          machineKey,
         })
       : null;
   const sessionTag =
@@ -1226,7 +1230,7 @@ export async function runCodex(opts: {
 
   if (explicitResumeThreadId) {
     storedSessionIdForResume = explicitResumeThreadId;
-    client.setPreferredResumeThreadId(explicitResumeThreadId);
+    client.setPreferredResumeThreadId(explicitResumeThreadId, true);
     messageBuffer.addMessage('Resuming selected Codex session...', 'status');
   }
 

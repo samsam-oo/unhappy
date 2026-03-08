@@ -82,6 +82,23 @@ struct MockSessionsPoller: SessionsPolling {
     }
 }
 
+struct SequenceSessionsPoller: SessionsPolling {
+    let emissions: [[APISession]]
+
+    func makePollingStream(
+        serverURLString: String,
+        token: String,
+        interval: Duration
+    ) async -> AsyncThrowingStream<[APISession], Error> {
+        AsyncThrowingStream { continuation in
+            for rows in emissions {
+                continuation.yield(rows)
+            }
+            continuation.finish()
+        }
+    }
+}
+
 enum MockSessionsPageLoaderError: Error, Sendable {
     case failed
 }
@@ -330,6 +347,39 @@ actor SequenceUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
     }
 }
 
+actor RecordingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
+    private var calls = 0
+    private var requestedProjects: [[SessionMachineProject]] = []
+    let result: Result<[SessionLinkedUpstreamSession], MockUpstreamSessionsLoaderError>
+
+    init(result: Result<[SessionLinkedUpstreamSession], MockUpstreamSessionsLoaderError>) {
+        self.result = result
+    }
+
+    func loadUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async throws -> [SessionLinkedUpstreamSession] {
+        calls += 1
+        requestedProjects.append(projects)
+        switch result {
+        case .success(let rows):
+            return rows
+        case .failure(let error):
+            throw error
+        }
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+
+    func requestedProjectSnapshots() -> [[SessionMachineProject]] {
+        requestedProjects
+    }
+}
+
 enum MockUpstreamSessionLinkerError: Error, Sendable {
     case failed
 }
@@ -392,6 +442,29 @@ actor SequenceProjectsLoader: SessionProjectsLoadingAction {
         case .failure(let error):
             throw error
         }
+    }
+}
+
+actor RecordingProjectsLoader: SessionProjectsLoadingAction {
+    private var calls = 0
+    let result: Result<[SessionMachineProject], MockProjectsLoaderError>
+
+    init(result: Result<[SessionMachineProject], MockProjectsLoaderError>) {
+        self.result = result
+    }
+
+    func loadProjects(serverURLString: String, token: String) async throws -> [SessionMachineProject] {
+        calls += 1
+        switch result {
+        case .success(let projects):
+            return projects
+        case .failure(let error):
+            throw error
+        }
+    }
+
+    func callCount() -> Int {
+        calls
     }
 }
 

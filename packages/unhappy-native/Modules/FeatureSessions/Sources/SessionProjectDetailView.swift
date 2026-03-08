@@ -148,37 +148,42 @@ public struct SessionProjectDetailView: View {
             .accessibilityLabel("New Session")
         }
 
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                isPresentingProjectActions = true
-            } label: {
-                if viewModel.isRemoving(projectID: group.id) {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-            .accessibilityLabel("Project Actions")
-            .confirmationDialog(
-                "Project Actions",
-                isPresented: $isPresentingProjectActions,
-                titleVisibility: .visible
-            ) {
-                Button("Stop Syncing Project", role: .destructive) {
-                    Task {
-                        let didRemove = await viewModel.removeProject(
-                            machineID: group.machineID,
-                            projectPath: group.projectPath,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                        if didRemove {
-                            onProjectRemoved?()
-                        }
+        if viewModel.isTrackedProject(
+            machineID: group.machineID,
+            projectPath: group.projectPath
+        ) {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isPresentingProjectActions = true
+                } label: {
+                    if viewModel.isRemoving(projectID: group.id) {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
-                .disabled(viewModel.isRemoving(projectID: group.id))
+                .accessibilityLabel("Project Actions")
+                .confirmationDialog(
+                    "Project Actions",
+                    isPresented: $isPresentingProjectActions,
+                    titleVisibility: .visible
+                ) {
+                    Button("Stop Syncing Project", role: .destructive) {
+                        Task {
+                            let didRemove = await viewModel.removeProject(
+                                machineID: group.machineID,
+                                projectPath: group.projectPath,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                            if didRemove {
+                                onProjectRemoved?()
+                            }
+                        }
+                    }
+                    .disabled(viewModel.isRemoving(projectID: group.id))
+                }
             }
         }
     }
@@ -250,6 +255,7 @@ public struct SessionProjectDetailView: View {
                 ProjectMirroredSessionRow(
                     sessionDisplayTitle: mirroredSessionDisplayTitle(for: session),
                     sessionPreview: mirroredSessionSecondaryPreview(for: session),
+                    providerLabel: mirroredSessionProviderLabel(for: session),
                     isDisplayTitlePrimary: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) != nil,
                     sessionIsActive: session.active,
                     sessionUpdatedAt: session.updatedAt,
@@ -304,6 +310,10 @@ public struct SessionProjectDetailView: View {
         return firstMessagePreview
     }
 
+    private func mirroredSessionProviderLabel(for session: APISession) -> String? {
+        SessionRuntimeContext(session: session).provider?.displayName
+    }
+
     private func loadMissingFirstMessagePreviews() async {
         let pendingSessions = group.displayMirroredSessions.filter { session in
             SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) == nil
@@ -329,6 +339,7 @@ public struct SessionProjectDetailView: View {
 private struct ProjectMirroredSessionRow: View {
     let sessionDisplayTitle: String
     let sessionPreview: String?
+    let providerLabel: String?
     let isDisplayTitlePrimary: Bool
     let sessionIsActive: Bool
     let sessionUpdatedAt: TimeInterval
@@ -341,6 +352,11 @@ private struct ProjectMirroredSessionRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isDisplayTitlePrimary ? .primary : .secondary)
                     .lineLimit(1)
+                if let providerLabel {
+                    Text(providerLabel)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
                 if isDeleting {
                     ProgressView()
                         .controlSize(.small)

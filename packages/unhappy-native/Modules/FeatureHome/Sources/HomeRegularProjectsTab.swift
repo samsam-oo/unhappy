@@ -189,19 +189,24 @@ struct HomeRegularProjectsTab: View {
                                 }
                                 .buttonStyle(.plain)
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        Task {
-                                            await viewModel.removeProject(
-                                                machineID: group.machineID,
-                                                projectPath: group.projectPath,
-                                                serverURLString: serverURLString,
-                                                token: token
-                                            )
+                                    if viewModel.isTrackedProject(
+                                        machineID: group.machineID,
+                                        projectPath: group.projectPath
+                                    ) {
+                                        Button(role: .destructive) {
+                                            Task {
+                                                await viewModel.removeProject(
+                                                    machineID: group.machineID,
+                                                    projectPath: group.projectPath,
+                                                    serverURLString: serverURLString,
+                                                    token: token
+                                                )
+                                            }
+                                        } label: {
+                                            Label("Stop Syncing", systemImage: "xmark.bin")
                                         }
-                                    } label: {
-                                        Label("Stop Syncing", systemImage: "xmark.bin")
+                                        .disabled(viewModel.isRemoving(projectID: group.id))
                                     }
-                                    .disabled(viewModel.isRemoving(projectID: group.id))
                                 }
                             }
                         }
@@ -319,7 +324,13 @@ struct HomeRegularProjectsTab: View {
     }
 
     private var shouldShowFullScreenLoading: Bool {
-        isRefreshingProjectContent && !showsSessionSidebarList && viewModel.sessions.isEmpty
+        isRefreshingProjectContent
+            && !showsSessionSidebarList
+            && (
+                viewModel.sessions.isEmpty
+                    || viewModel.isLoadingProjects
+                    || viewModel.isLoadingUpstreamSessions
+            )
     }
 
     private var projectGroups: [SessionProjectGroup] {

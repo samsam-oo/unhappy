@@ -9,6 +9,10 @@ public final class SessionsViewModel: ObservableObject {
         static let maxMessagesPerSession = 150
     }
 
+    private enum SyncPolicy {
+        static let supportingDataRefreshInterval: TimeInterval = 15
+    }
+
     @Published public private(set) var sessions: [APISession] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
@@ -37,6 +41,7 @@ public final class SessionsViewModel: ObservableObject {
     @Published private(set) var queuedComposerDraftsBySessionID: [String: [SessionQueuedComposerDraft]] = [:]
     private var queuedComposerAwaitingTurnCompletionSessionIDs: Set<String> = []
     private var queuedComposerLastDispatchAtBySessionID: [String: TimeInterval] = [:]
+    private var attemptedDuplicateCleanupSessionIDs: Set<String> = []
 
     private let loader: any SessionsLoading
     private let pageLoader: any SessionsPageLoading
@@ -58,6 +63,8 @@ public final class SessionsViewModel: ObservableObject {
     private var nextCursor: String?
     private var selectedSessionMessagesPollingTask: Task<Void, Never>?
     private var selectedSessionMessagesPollingTaskID: UUID?
+    private var lastSupportingDataSyncAt: TimeInterval?
+    private var lastSupportingDataFingerprint: String?
 
     public init(
         loader: any SessionsLoading,
@@ -160,6 +167,16 @@ public final class SessionsViewModel: ObservableObject {
         removingProjectID == projectID
     }
 
+    public func isTrackedProject(
+        machineID: String,
+        projectPath: String
+    ) -> Bool {
+        matchingTrackedProject(
+            machineID: machineID,
+            projectPath: projectPath
+        )?.summary.openedExplicitly == true
+    }
+
     public func sendingSteerMode(sessionID: String) -> APISessionSteerMode? {
         guard sendingMessageSessionID == sessionID else { return nil }
         return sendingMessageSteerMode
@@ -205,16 +222,17 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = firstPage.sessions
-            nextCursor = firstPage.nextCursor
-            hasMoreSessions = firstPage.hasNext
-            errorMessage = nil
-            await loadProjects(
+            await cleanupMirroredDuplicateSessions(
                 serverURLString: serverURLString,
                 token: token
             )
-            await loadUpstreamSessions(
+            nextCursor = firstPage.nextCursor
+            hasMoreSessions = firstPage.hasNext
+            errorMessage = nil
+            await refreshSupportingProjectContent(
                 serverURLString: serverURLString,
-                token: token
+                token: token,
+                force: true
             )
             await maybeDispatchQueuedComposerDrafts(
                 serverURLString: serverURLString,
@@ -241,13 +259,14 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 sessions = mergeLatestRows(rows, into: sessions)
-                await loadProjects(
+                await cleanupMirroredDuplicateSessions(
                     serverURLString: serverURLString,
                     token: token
                 )
-                await loadUpstreamSessions(
+                await refreshSupportingProjectContent(
                     serverURLString: serverURLString,
-                    token: token
+                    token: token,
+                    force: false
                 )
                 errorMessage = nil
                 isLoading = false
@@ -283,16 +302,17 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             sessions = mergeLatestRows(page.sessions, into: sessions)
-            self.nextCursor = page.nextCursor
-            hasMoreSessions = page.hasNext
-            errorMessage = nil
-            await loadProjects(
+            await cleanupMirroredDuplicateSessions(
                 serverURLString: serverURLString,
                 token: token
             )
-            await loadUpstreamSessions(
+            self.nextCursor = page.nextCursor
+            hasMoreSessions = page.hasNext
+            errorMessage = nil
+            await refreshSupportingProjectContent(
                 serverURLString: serverURLString,
-                token: token
+                token: token,
+                force: false
             )
             await maybeDispatchQueuedComposerDrafts(
                 serverURLString: serverURLString,
@@ -451,11 +471,24 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async {
+        await loadUpstreamSessions(
+            serverURLString: serverURLString,
+            token: token,
+            projectsToSync: projectsForUpstreamSync()
+        )
+    }
+
+    private func loadUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projectsToSync: [SessionMachineProject]
+    ) async {
         guard let upstreamSessionsLoader else {
             upstreamSessions = []
             upstreamSessionsErrorMessage = nil
             return
         }
+        guard !isLoadingUpstreamSessions else { return }
 
         isLoadingUpstreamSessions = true
         defer { isLoadingUpstreamSessions = false }
@@ -464,7 +497,7 @@ public final class SessionsViewModel: ObservableObject {
             let rows = try await upstreamSessionsLoader.loadUpstreamSessions(
                 serverURLString: serverURLString,
                 token: token,
-                projects: projects
+                projects: projectsToSync
             )
             upstreamSessions = filterMirroredUpstreamSessions(rows)
             upstreamSessionsErrorMessage = nil
@@ -482,6 +515,7 @@ public final class SessionsViewModel: ObservableObject {
             projectsErrorMessage = nil
             return
         }
+        guard !isLoadingProjects else { return }
 
         isLoadingProjects = true
         defer { isLoadingProjects = false }
@@ -495,6 +529,37 @@ public final class SessionsViewModel: ObservableObject {
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+    }
+
+    private func refreshSupportingProjectContent(
+        serverURLString: String,
+        token: String,
+        force: Bool
+    ) async {
+        let fingerprint = supportingDataFingerprint()
+        let now = Date().timeIntervalSince1970
+        let isStale: Bool
+        if let lastSupportingDataSyncAt {
+            isStale = now - lastSupportingDataSyncAt >= SyncPolicy.supportingDataRefreshInterval
+        } else {
+            isStale = true
+        }
+
+        guard force || isStale || lastSupportingDataFingerprint != fingerprint else {
+            return
+        }
+
+        await loadProjects(
+            serverURLString: serverURLString,
+            token: token
+        )
+        await loadUpstreamSessions(
+            serverURLString: serverURLString,
+            token: token,
+            projectsToSync: projectsForUpstreamSync()
+        )
+        lastSupportingDataFingerprint = supportingDataFingerprint()
+        lastSupportingDataSyncAt = Date().timeIntervalSince1970
     }
 
     public func openProject(
@@ -528,9 +593,10 @@ public final class SessionsViewModel: ObservableObject {
             if !projects.contains(where: { $0.id == openedProject.id }) {
                 projects.insert(openedProject, at: 0)
             }
-            await loadProjects(
+            await refreshSupportingProjectContent(
                 serverURLString: serverURLString,
-                token: token
+                token: token,
+                force: true
             )
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -566,6 +632,11 @@ public final class SessionsViewModel: ObservableObject {
             )
             projects.removeAll { $0.id == projectID }
             projectsErrorMessage = nil
+            await refreshSupportingProjectContent(
+                serverURLString: serverURLString,
+                token: token,
+                force: true
+            )
             return true
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -629,9 +700,9 @@ public final class SessionsViewModel: ObservableObject {
                 )
             )
             if let sessionID = response.sessionID, !sessionID.isEmpty {
-                upstreamSessionStatusMessage = "Linked \(row.summary.provider.displayName) session \(sessionID)"
+                upstreamSessionStatusMessage = "Opened \(row.summary.provider.displayName) session \(sessionID)"
             } else {
-                upstreamSessionStatusMessage = "Linked \(row.summary.provider.displayName) session"
+                upstreamSessionStatusMessage = "Opened \(row.summary.provider.displayName) session"
             }
             await load(serverURLString: serverURLString, token: token)
             return response.sessionID
@@ -1149,6 +1220,165 @@ public final class SessionsViewModel: ObservableObject {
                 return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
             }
             .first
+    }
+
+    private func projectsForUpstreamSync() -> [SessionMachineProject] {
+        SessionListPresentationBuilder.projectGroups(
+            sessions: sessions,
+            upstreamSessions: [],
+            projects: projects
+        ).compactMap { group in
+            guard group.hasConcreteProjectPath else { return nil }
+
+            if let trackedProject = matchingTrackedProject(
+                machineID: group.machineID,
+                projectPath: group.projectPath
+            ) {
+                return trackedProject
+            }
+
+            return SessionMachineProject(
+                machineID: group.machineID,
+                machineDisplayName: group.machineDisplayName,
+                summary: APIMachineProjectSummary(
+                    path: group.projectPath,
+                    latestUpdatedAt: Date(
+                        timeIntervalSince1970: max(0, group.latestUpdatedAt)
+                    ).ISO8601Format(),
+                    codexThreadCount: group.displayMirroredSessions.count,
+                    claudeSessionCount: 0,
+                    openedExplicitly: false
+                )
+            )
+        }
+    }
+
+    private func supportingDataFingerprint() -> String {
+        let trackedProjectIDs = projects.compactMap { project in
+            canonicalProjectID(
+                machineID: project.machineID,
+                projectPath: project.summary.path
+            )
+        }
+        .sorted()
+        let runtimeProjectIDs = SessionListPresentationBuilder.projectGroups(
+            sessions: sessions,
+            upstreamSessions: [],
+            projects: projects
+        )
+        .filter(\.hasConcreteProjectPath)
+        .map(\.id)
+        .sorted()
+        return (trackedProjectIDs + ["--"] + runtimeProjectIDs).joined(separator: ",")
+    }
+
+    private func matchingTrackedProject(
+        machineID: String,
+        projectPath: String
+    ) -> SessionMachineProject? {
+        projects.first { project in
+            canonicalProjectID(
+                machineID: project.machineID,
+                projectPath: project.summary.path
+            ) == canonicalProjectID(
+                machineID: machineID,
+                projectPath: projectPath
+            )
+        }
+    }
+
+    private func canonicalProjectID(
+        machineID: String,
+        projectPath: String
+    ) -> String? {
+        guard let normalizedPath = SessionProjectPathCanonicalizer.canonicalPath(projectPath) else {
+            return nil
+        }
+        return "\(machineID)|\(normalizedPath)"
+    }
+
+    private func cleanupMirroredDuplicateSessions(
+        serverURLString: String,
+        token: String
+    ) async {
+        let duplicateSessionIDs = redundantMirroredSessionIDs().filter { sessionID in
+            !attemptedDuplicateCleanupSessionIDs.contains(sessionID)
+        }
+        guard !duplicateSessionIDs.isEmpty else { return }
+
+        for sessionID in duplicateSessionIDs {
+            attemptedDuplicateCleanupSessionIDs.insert(sessionID)
+            await silentlyDeleteDuplicateSession(
+                sessionID: sessionID,
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
+    }
+
+    private func redundantMirroredSessionIDs() -> [String] {
+        let groupedSessions = Dictionary(
+            grouping: sessions.compactMap { session -> (String, APISession)? in
+                guard let key = SessionUpstreamIdentity(session: session)?.key else {
+                    return nil
+                }
+                return (key, session)
+            },
+            by: \.0
+        )
+
+        return groupedSessions.values.flatMap { entries -> [String] in
+            let sortedSessions = entries
+                .map(\.1)
+                .sorted(by: compareMirroredDuplicateSessions)
+            guard sortedSessions.count > 1 else { return [] }
+            return Array(sortedSessions.dropFirst().map(\.id))
+        }
+    }
+
+    private func compareMirroredDuplicateSessions(
+        _ lhs: APISession,
+        _ rhs: APISession
+    ) -> Bool {
+        if lhs.active != rhs.active {
+            return lhs.active && !rhs.active
+        }
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+        return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
+    }
+
+    private func silentlyDeleteDuplicateSession(
+        sessionID: String,
+        serverURLString: String,
+        token: String
+    ) async {
+        do {
+            if let preDeleteKiller {
+                try? await preDeleteKiller.killSession(
+                    serverURLString: serverURLString,
+                    token: token,
+                    sessionID: sessionID
+                )
+            }
+            try await deleteUseCase.deleteSession(
+                serverURLString: serverURLString,
+                token: token,
+                sessionID: sessionID
+            )
+            sessions.removeAll { $0.id == sessionID }
+            queuedComposerDraftsBySessionID[sessionID] = nil
+            queuedComposerAwaitingTurnCompletionSessionIDs.remove(sessionID)
+            queuedComposerLastDispatchAtBySessionID[sessionID] = nil
+            messagesBySessionID[sessionID] = nil
+            messageCacheLRU.removeAll { $0 == sessionID }
+            if selectedSessionID == sessionID {
+                clearDetailSelectionIfNeeded(sessionID: sessionID)
+            }
+        } catch {
+            // Ignore best-effort cleanup failures to avoid blocking the main session list.
+        }
     }
 
     private func replaceSession(_ session: APISession) {

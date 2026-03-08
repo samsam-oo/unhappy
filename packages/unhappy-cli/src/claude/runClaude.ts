@@ -119,12 +119,18 @@ export async function runClaude(
     options.claudeArgs,
     () => claudeFindLastSession(workingDirectory)
   );
-  if (!resolveProvidedSessionTag() && !resolveProvidedSessionDataKey() && initialClaudeResumeSessionId) {
+  const machineKey = credentials.encryption?.machineKey;
+  if (
+    !resolveProvidedSessionTag() &&
+    !resolveProvidedSessionDataKey() &&
+    initialClaudeResumeSessionId &&
+    machineKey
+  ) {
     const upstreamBinding = deriveUpstreamSessionBinding({
       machineId,
       agent: 'claude',
       upstreamSessionId: initialClaudeResumeSessionId,
-      machineKey: credentials.encryption.machineKey,
+      machineKey,
     });
     sessionTag = upstreamBinding.sessionTag;
     sessionDataKey = upstreamBinding.sessionDataKey;
