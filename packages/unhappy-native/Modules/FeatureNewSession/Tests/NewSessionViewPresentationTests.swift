@@ -68,4 +68,24 @@ struct NewSessionViewPresentationTests {
             ) == nil
         )
     }
+
+    @Test
+    func selectProjectRequiresExplicitDirectoryConfirmation() {
+        #expect(
+            !NewSessionViewPresentation.canOpenProject(
+                mode: .selectProject,
+                selectedMachineID: "machine-1",
+                directoryPath: "~",
+                hasConfirmedDirectorySelection: false
+            )
+        )
+        #expect(
+            NewSessionViewPresentation.canOpenProject(
+                mode: .selectProject,
+                selectedMachineID: "machine-1",
+                directoryPath: "~",
+                hasConfirmedDirectorySelection: true
+            )
+        )
+    }
 }

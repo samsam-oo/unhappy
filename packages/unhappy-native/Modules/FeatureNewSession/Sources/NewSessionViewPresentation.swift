@@ -31,6 +31,23 @@ enum NewSessionViewPresentation {
         selectedAgent == .codex || selectedAgent == .claude
     }
 
+    static func canOpenProject(
+        mode: NewSessionView.Mode,
+        selectedMachineID: String?,
+        directoryPath: String,
+        hasConfirmedDirectorySelection: Bool
+    ) -> Bool {
+        guard selectedMachineID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return false
+        }
+        let normalizedPath = directoryPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else { return false }
+        if mode == .selectProject && !hasConfirmedDirectorySelection {
+            return false
+        }
+        return true
+    }
+
     static func existingSessionButtonTitle(
         selectedAgent: APISessionSpawnAgent,
         codexResumeThreadID: String,

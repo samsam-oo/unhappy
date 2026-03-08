@@ -6,6 +6,9 @@ import { Socket } from "socket.io";
 
 const ALLOWED_MACHINE_COMMANDS = new Set<string>([
     "listDirectory",
+    "open-project",
+    "close-project",
+    "list-projects",
     "list-models",
     "codex-list-threads",
     "codex-open-thread",
