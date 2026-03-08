@@ -278,7 +278,8 @@ public struct SessionsView: View {
                     viewModel: viewModel,
                     serverURLString: serverURLString,
                     token: token,
-                    makeSessionToolsViewModel: makeSessionToolsViewModel
+                    makeSessionToolsViewModel: makeSessionToolsViewModel,
+                    makeDirectSessionViewModel: makeDirectSessionViewModel
                 )
             } label: {
                 Label("Recent", systemImage: "clock")
