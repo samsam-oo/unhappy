@@ -26,6 +26,10 @@ import {
   type CodexModelMetadata,
 } from '@/modules/common/listModels';
 import {
+  listClaudeSessionMessages,
+  sendClaudeSessionMessage,
+} from '@/claude/directSession';
+import {
   openCodexThread,
   listCodexThreadMessages,
   sendCodexThreadMessage,
@@ -893,6 +897,65 @@ export class ApiMachineClient {
         };
       },
     );
+
+    this.rpcHandlerManager.registerHandler(
+      'claude-list-messages',
+      async (params: any) => {
+        const sessionId =
+          typeof params?.sessionId === 'string' ? params.sessionId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        if (!sessionId) {
+          return { success: false, error: 'sessionId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        const messages = await listClaudeSessionMessages({
+          sessionId,
+          cwd,
+        });
+        return {
+          success: true as const,
+          messages,
+        };
+      },
+    );
+
+    this.rpcHandlerManager.registerHandler(
+      'claude-send-message',
+      async (params: any) => {
+        const sessionId =
+          typeof params?.sessionId === 'string' ? params.sessionId.trim() : '';
+        const cwdRaw =
+          typeof params?.cwd === 'string' ? params.cwd.trim() : '';
+        const text =
+          typeof params?.text === 'string' ? params.text.trim() : '';
+        if (!sessionId) {
+          return { success: false, error: 'sessionId is required' };
+        }
+        if (!cwdRaw) {
+          return { success: false, error: 'cwd is required' };
+        }
+        if (!text) {
+          return { success: false, error: 'text is required' };
+        }
+
+        const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
+        await sendClaudeSessionMessage(
+          {
+            sessionId,
+            cwd,
+          },
+          text,
+        );
+        return {
+          success: true as const,
+        };
+      },
+    );
   }
 
   /**
@@ -1137,6 +1200,8 @@ export class ApiMachineClient {
           'codex-send-message',
           'codex-set-thread-name',
           'claude-list-sessions',
+          'claude-list-messages',
+          'claude-send-message',
         ]);
         if (!supportedCommands.has(command)) {
           callback({ success: false, error: `Unsupported command: ${command}` });

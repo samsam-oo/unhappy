@@ -10,10 +10,14 @@ const {
   mockOpenCodexThread,
   mockListCodexThreadMessages,
   mockSendCodexThreadMessage,
+  mockListClaudeSessionMessages,
+  mockSendClaudeSessionMessage,
 } = vi.hoisted(() => ({
   mockOpenCodexThread: vi.fn(),
   mockListCodexThreadMessages: vi.fn(),
   mockSendCodexThreadMessage: vi.fn(),
+  mockListClaudeSessionMessages: vi.fn(),
+  mockSendClaudeSessionMessage: vi.fn(),
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -36,6 +40,11 @@ vi.mock('@/codex/directSession', () => ({
   listCodexThreadMessages: mockListCodexThreadMessages,
   sendCodexThreadMessage: mockSendCodexThreadMessage,
   setCodexThreadName: vi.fn(),
+}));
+
+vi.mock('@/claude/directSession', () => ({
+  listClaudeSessionMessages: mockListClaudeSessionMessages,
+  sendClaudeSessionMessage: mockSendClaudeSessionMessage,
 }));
 
 vi.mock('@/configuration', () => ({
@@ -99,6 +108,8 @@ describe('ApiMachineClient public command handling', () => {
     mockListCodexThreadMessages.mockResolvedValue([]);
     mockSendCodexThreadMessage.mockResolvedValue(undefined);
     mockOpenCodexThread.mockResolvedValue({ threadId: 'thread-1' });
+    mockListClaudeSessionMessages.mockResolvedValue([]);
+    mockSendClaudeSessionMessage.mockResolvedValue(undefined);
   });
 
   it('allows close-project over public-command and removes the tracked path', async () => {
@@ -268,6 +279,98 @@ describe('ApiMachineClient public command handling', () => {
         effort: null,
       },
       'hello',
+    );
+    expect(callback).toHaveBeenCalledWith({ success: true });
+  });
+
+  it('routes claude-list-messages over machine public-command', async () => {
+    mockListClaudeSessionMessages.mockResolvedValue([
+      {
+        id: 'claude-msg-1',
+        seq: 1,
+        localId: null,
+        content: { type: 'text', payload: '{}' },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ]);
+    const client = new ApiMachineClient('token', machine);
+    client.setRPCHandlers({
+      spawnSession: vi.fn(),
+      stopSession: vi.fn(() => true),
+      requestShutdown: vi.fn(),
+      requestUpdate: vi.fn(() => ({ message: 'ok' })),
+    });
+    client.connect();
+
+    const publicCommandHandler = mockSocket.on.mock.calls.find(
+      ([event]: [string, Function]) => event === 'public-command',
+    )?.[1];
+    const callback = vi.fn();
+
+    await publicCommandHandler(
+      {
+        command: 'claude-list-messages',
+        params: {
+          sessionId: 'claude-1',
+          cwd: '/repo/app',
+        },
+      },
+      callback,
+    );
+
+    expect(mockListClaudeSessionMessages).toHaveBeenCalledWith({
+      sessionId: 'claude-1',
+      cwd: '/repo/app',
+    });
+    expect(callback).toHaveBeenCalledWith({
+      success: true,
+      messages: [
+        {
+          id: 'claude-msg-1',
+          seq: 1,
+          localId: null,
+          content: { type: 'text', payload: '{}' },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    });
+  });
+
+  it('routes claude-send-message over machine public-command', async () => {
+    const client = new ApiMachineClient('token', machine);
+    client.setRPCHandlers({
+      spawnSession: vi.fn(),
+      stopSession: vi.fn(() => true),
+      requestShutdown: vi.fn(),
+      requestUpdate: vi.fn(() => ({ message: 'ok' })),
+    });
+    client.connect();
+
+    const publicCommandHandler = mockSocket.on.mock.calls.find(
+      ([event]: [string, Function]) => event === 'public-command',
+    )?.[1];
+    const callback = vi.fn();
+
+    await publicCommandHandler(
+      {
+        command: 'claude-send-message',
+        params: {
+          sessionId: 'claude-1',
+          cwd: '/repo/app',
+          text: 'hello claude',
+        },
+      },
+      callback,
+    );
+
+    expect(mockSendClaudeSessionMessage).toHaveBeenCalledWith(
+      {
+        sessionId: 'claude-1',
+        cwd: '/repo/app',
+      },
+      'hello claude',
     );
     expect(callback).toHaveBeenCalledWith({ success: true });
   });

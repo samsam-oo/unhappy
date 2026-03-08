@@ -13,6 +13,8 @@ const ALLOWED_MACHINE_COMMANDS = new Set<string>([
     "codex-send-message",
     "codex-set-thread-name",
     "claude-list-sessions",
+    "claude-list-messages",
+    "claude-send-message",
     "spawn-unhappy-session",
     "stop-daemon",
     "update-daemon",
