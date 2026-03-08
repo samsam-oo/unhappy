@@ -501,6 +501,24 @@ export async function startDaemon(): Promise<void> {
         claudeResumeSessionId.trim().length > 0
           ? claudeResumeSessionId.trim()
           : null;
+      if (resolvedAgent === 'codex' && normalizedCodexResumeThreadId) {
+        logger.debug(
+          `[DAEMON RUN] Returning direct Codex session id without spawning wrapper: ${normalizedCodexResumeThreadId}`,
+        );
+        return {
+          type: 'success',
+          sessionId: normalizedCodexResumeThreadId,
+        };
+      }
+      if (resolvedAgent === 'claude' && normalizedClaudeResumeSessionId) {
+        logger.debug(
+          `[DAEMON RUN] Returning direct Claude session id without spawning wrapper: ${normalizedClaudeResumeSessionId}`,
+        );
+        return {
+          type: 'success',
+          sessionId: normalizedClaudeResumeSessionId,
+        };
+      }
       const upstreamSessionBinding =
         resolvedAgent === 'codex' && normalizedCodexResumeThreadId
           ? deriveUpstreamSessionBinding({
