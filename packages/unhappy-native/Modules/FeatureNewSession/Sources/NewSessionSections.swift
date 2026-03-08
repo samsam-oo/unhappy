@@ -157,7 +157,7 @@ struct NewSessionActionSection: View {
     let serverURLString: String
     let token: String
     let primaryActionTitle: String
-    let onSpawned: (String?) -> Void
+    let onSpawned: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -169,7 +169,7 @@ struct NewSessionActionSection: View {
                         token: token
                     )
                     if success {
-                        onSpawned(viewModel.spawnedSessionID)
+                        onSpawned()
                         onDismiss()
                     }
                 }
@@ -191,7 +191,7 @@ struct NewSessionActionSection: View {
                             token: token
                         )
                         if success {
-                            onSpawned(viewModel.spawnedSessionID)
+                            onSpawned()
                             onDismiss()
                         }
                     }

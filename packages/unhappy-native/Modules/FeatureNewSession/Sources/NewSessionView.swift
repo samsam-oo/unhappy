@@ -3,6 +3,14 @@ import CoreKit
 
 @MainActor
 public struct NewSessionView: View {
+    public struct SpawnedContext: Equatable {
+        public let sessionID: String?
+        public let agent: APISessionSpawnAgent
+        public let machineID: String?
+        public let directoryPath: String
+        public let model: String?
+    }
+
     public enum Mode {
         case startSession
         case selectProject
@@ -14,7 +22,7 @@ public struct NewSessionView: View {
     private let initialMachineID: String?
     private let initialDirectoryPath: String?
     private let mode: Mode
-    private let onSessionSpawned: @MainActor (String?) -> Void
+    private let onSessionSpawned: @MainActor (SpawnedContext) -> Void
     private let onProjectSelected: @MainActor (String?, String, String?) -> Void
 
     @StateObject private var viewModel: NewSessionViewModel
@@ -36,7 +44,7 @@ public struct NewSessionView: View {
         initialDirectoryPath: String? = nil,
         mode: Mode = .startSession,
         makeViewModel: @escaping @MainActor () -> NewSessionViewModel,
-        onSessionSpawned: @escaping @MainActor (String?) -> Void = { _ in },
+        onSessionSpawned: @escaping @MainActor (SpawnedContext) -> Void = { _ in },
         onProjectSelected: @escaping @MainActor (String?, String, String?) -> Void = { _, _, _ in }
     ) {
         self.serverURLString = serverURLString
@@ -83,7 +91,17 @@ public struct NewSessionView: View {
                         serverURLString: serverURLString,
                         token: token,
                         primaryActionTitle: primaryActionTitle,
-                        onSpawned: onSessionSpawned,
+                        onSpawned: {
+                            onSessionSpawned(
+                                SpawnedContext(
+                                    sessionID: viewModel.spawnedSessionID,
+                                    agent: viewModel.selectedAgent,
+                                    machineID: viewModel.selectedMachineID,
+                                    directoryPath: viewModel.directoryPath,
+                                    model: viewModel.selectedModel
+                                )
+                            )
+                        },
                         onDismiss: { dismiss() }
                     )
                 } else {

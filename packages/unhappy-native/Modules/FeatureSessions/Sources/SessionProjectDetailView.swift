@@ -42,6 +42,7 @@ public struct SessionProjectDetailView: View {
     @State private var isPresentingNewSession = false
     @State private var isPresentingProjectActions = false
     @State private var spawnedSessionNavigationSessionID: String?
+    @State private var spawnedDirectSessionIdentity: DirectSessionIdentity?
 
     public init(
         group: SessionProjectGroup,
@@ -111,6 +112,15 @@ public struct SessionProjectDetailView: View {
                 ProgressView("Opening session…")
             }
         }
+        .navigationDestination(item: $spawnedDirectSessionIdentity) { identity in
+            DirectSessionDetailView(
+                serverURLString: serverURLString,
+                token: token,
+                makeViewModel: {
+                    makeDirectSessionViewModel(identity)
+                }
+            )
+        }
         .sheet(isPresented: $isPresentingNewSession) {
             NewSessionView(
                 serverURLString: serverURLString,
@@ -119,9 +129,33 @@ public struct SessionProjectDetailView: View {
                 initialMachineID: group.machineID,
                 initialDirectoryPath: group.projectPath,
                 makeViewModel: makeNewSessionViewModel,
-                onSessionSpawned: { sessionID in
-                    guard let sessionID else { return }
+                onSessionSpawned: { context in
+                    guard let sessionID = context.sessionID else { return }
                     Task {
+                        if context.agent == .codex || context.agent == .claude {
+                            await viewModel.load(serverURLString: serverURLString, token: token)
+                            if let directRow = viewModel.upstreamSessions.first(where: {
+                                $0.machineID == (context.machineID ?? "") &&
+                                $0.summary.provider == (context.agent == .codex ? .codex : .claude) &&
+                                $0.summary.id == sessionID
+                            }), let identity = DirectSessionIdentityResolver.resolve(from: directRow) {
+                                spawnedDirectSessionIdentity = identity
+                                return
+                            }
+                            let fallbackProvider: APIUpstreamSessionProvider = context.agent == .codex ? .codex : .claude
+                            spawnedDirectSessionIdentity = DirectSessionIdentity(
+                                machineID: context.machineID ?? group.machineID,
+                                machineDisplayName: group.machineDisplayName,
+                                provider: fallbackProvider,
+                                upstreamSessionID: sessionID,
+                                title: "Session",
+                                cwd: context.directoryPath,
+                                transcriptPath: nil,
+                                model: context.model
+                            )
+                            return
+                        }
+
                         if let session = await viewModel.refreshAndSelectSession(
                             sessionID: sessionID,
                             serverURLString: serverURLString,

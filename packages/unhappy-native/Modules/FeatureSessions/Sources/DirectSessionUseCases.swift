@@ -1,7 +1,7 @@
 import Foundation
 import CoreKit
 
-public struct DirectSessionIdentity: Equatable, Hashable, Sendable {
+public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable {
     public let machineID: String
     public let machineDisplayName: String
     public let provider: APIUpstreamSessionProvider
@@ -29,6 +29,10 @@ public struct DirectSessionIdentity: Equatable, Hashable, Sendable {
         self.cwd = cwd
         self.transcriptPath = transcriptPath
         self.model = model
+    }
+
+    public var id: String {
+        "\(machineID)|\(provider.rawValue)|\(upstreamSessionID)"
     }
 }
 
