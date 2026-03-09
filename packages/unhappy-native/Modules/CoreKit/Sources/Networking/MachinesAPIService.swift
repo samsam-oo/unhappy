@@ -378,6 +378,68 @@ extension URLSessionMachinesService {
         )
     }
 
+    public func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APISessionReadFileResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await rpcDirectoryService.invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "readFile",
+            params: ["path": normalizedPath]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionReadFileResult.self, from: responseData)
+    }
+
+    public func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCWD.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await rpcDirectoryService.invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "bash",
+            params: [
+                "command": normalizedCommand,
+                "cwd": normalizedCWD,
+                "timeout": max(timeoutMilliseconds, 1_000),
+            ]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionBashResult.self, from: responseData)
+    }
+
     public func fetchCodexThreads(
         serverURL: URL,
         token: String,
@@ -439,6 +501,8 @@ extension URLSessionMachinesService {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         try await rpcDirectoryService.sendCodexThreadMessage(
@@ -448,6 +512,8 @@ extension URLSessionMachinesService {
             threadID: threadID,
             cwd: cwd,
             transcriptPath: transcriptPath,
+            model: model,
+            reasoningEffort: reasoningEffort,
             text: text
         )
     }
@@ -474,6 +540,8 @@ extension URLSessionMachinesService {
         machineID: String,
         sessionID: String,
         cwd: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         try await rpcDirectoryService.sendClaudeSessionMessage(
@@ -482,6 +550,8 @@ extension URLSessionMachinesService {
             machineID: machineID,
             sessionID: sessionID,
             cwd: cwd,
+            model: model,
+            reasoningEffort: reasoningEffort,
             text: text
         )
     }
@@ -705,6 +775,7 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         sessionID: String,
+        model: String?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         try await rpcDirectoryService.sendGeminiSessionMessage(
@@ -712,6 +783,7 @@ extension URLSessionMachinesService {
             token: token,
             machineID: machineID,
             sessionID: sessionID,
+            model: model,
             text: text
         )
     }

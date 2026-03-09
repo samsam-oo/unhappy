@@ -42,7 +42,7 @@ public struct NewSessionModelOption: Equatable, Identifiable, Sendable {
         return displayName
     }
 
-    static func fromCapabilities(_ capabilities: APIMachineAgentCapabilities) -> [NewSessionModelOption] {
+    public static func fromCapabilities(_ capabilities: APIMachineAgentCapabilities) -> [NewSessionModelOption] {
         let preferred = capabilities.modelCapabilities
             .filter { $0.hidden != true }
             .compactMap { capability -> NewSessionModelOption? in

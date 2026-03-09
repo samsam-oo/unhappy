@@ -5,7 +5,12 @@ import { log } from "@/utils/log";
 import { Socket } from "socket.io";
 
 const ALLOWED_MACHINE_COMMANDS = new Set<string>([
+    "bash",
+    "readFile",
+    "writeFile",
     "listDirectory",
+    "getDirectoryTree",
+    "ripgrep",
     "open-project",
     "close-project",
     "list-projects",
