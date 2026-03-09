@@ -1,13 +1,70 @@
 import Foundation
 import SocketIO
 
+public enum RPCParameterValue: Sendable, Equatable, ExpressibleByNilLiteral, ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral, ExpressibleByFloatLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
+    case string(String)
+    case bool(Bool)
+    case int(Int)
+    case double(Double)
+    case array([RPCParameterValue])
+    case object([String: RPCParameterValue])
+    case null
+
+    public init(nilLiteral: ()) {
+        self = .null
+    }
+
+    public init(stringLiteral value: String) {
+        self = .string(value)
+    }
+
+    public init(booleanLiteral value: Bool) {
+        self = .bool(value)
+    }
+
+    public init(integerLiteral value: Int) {
+        self = .int(value)
+    }
+
+    public init(floatLiteral value: Double) {
+        self = .double(value)
+    }
+
+    public init(arrayLiteral elements: RPCParameterValue...) {
+        self = .array(elements)
+    }
+
+    public init(dictionaryLiteral elements: (String, RPCParameterValue)...) {
+        self = .object(Dictionary(uniqueKeysWithValues: elements))
+    }
+
+    fileprivate var socketValue: Any {
+        switch self {
+        case .string(let value):
+            return value
+        case .bool(let value):
+            return value
+        case .int(let value):
+            return value
+        case .double(let value):
+            return value
+        case .array(let values):
+            return values.map(\.socketValue)
+        case .object(let values):
+            return values.mapValues(\.socketValue)
+        case .null:
+            return NSNull()
+        }
+    }
+}
+
 public protocol MachineRPCDirectoryListing: Sendable {
     func invokeCommand(
         serverURL: URL,
         token: String,
         machineID: String,
         command: String,
-        params: [String: Any]
+        params: [String: RPCParameterValue]
     ) async throws -> Data
 
     func listDirectory(
@@ -143,11 +200,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             machineID: normalizedMachineID,
             command: "listDirectory",
             params: [
-                "path": normalizedPath,
-                "includeStats": false,
-                "types": ["directory"],
-                "sort": true,
-                "maxEntries": 2_000,
+                "path": .string(normalizedPath),
+                "includeStats": .bool(false),
+                "types": .array([.string("directory")]),
+                "sort": .bool(true),
+                "maxEntries": .int(2_000),
             ]
         )
         let decoded = try MachinesAPI.decodeListDirectoryResponse(responseData)
@@ -175,16 +232,16 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
 
         let boundedLimit = min(max(limit, 1), 100)
-        var params: [String: Any] = [
-            "limit": boundedLimit,
+        var params: [String: RPCParameterValue] = [
+            "limit": .int(boundedLimit),
         ]
         let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCWD, !normalizedCWD.isEmpty {
-            params["cwd"] = normalizedCWD
+            params["cwd"] = .string(normalizedCWD)
         }
         let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCursor, !normalizedCursor.isEmpty {
-            params["cursor"] = normalizedCursor
+            params["cursor"] = .string(normalizedCursor)
         }
 
         let responseData = try await invokeCommand(
@@ -218,16 +275,16 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
 
         let boundedLimit = min(max(limit, 1), 100)
-        var params: [String: Any] = [
-            "limit": boundedLimit,
+        var params: [String: RPCParameterValue] = [
+            "limit": .int(boundedLimit),
         ]
         let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCWD, !normalizedCWD.isEmpty {
-            params["cwd"] = normalizedCWD
+            params["cwd"] = .string(normalizedCWD)
         }
         let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCursor, !normalizedCursor.isEmpty {
-            params["cursor"] = normalizedCursor
+            params["cursor"] = .string(normalizedCursor)
         }
 
         let responseData = try await invokeCommand(
@@ -252,7 +309,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         token: String,
         machineID: String,
         command: String,
-        params: [String: Any]
+        params: [String: RPCParameterValue]
     ) async throws -> Data {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -272,7 +329,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         let requestPayload: [String: Any] = [
             "machineId": normalizedMachineID,
             "command": normalizedCommand,
-            "params": params,
+            "params": params.mapValues(\.socketValue),
         ]
 
         let maxAttempts = retryableMessageLoadCommands.contains(normalizedCommand) ? 2 : 1
@@ -363,8 +420,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             machineID: normalizedMachineID,
             command: "codex-list-messages",
             params: [
-                "threadId": normalizedThreadID,
-                "path": normalizedPath,
+                "threadId": .string(normalizedThreadID),
+                "path": .string(normalizedPath),
             ]
         )
         let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
@@ -407,24 +464,24 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
-        var params: [String: Any] = [
-            "threadId": normalizedThreadID,
-            "cwd": normalizedCWD,
-            "text": normalizedText,
+        var params: [String: RPCParameterValue] = [
+            "threadId": .string(normalizedThreadID),
+            "cwd": .string(normalizedCWD),
+            "text": .string(normalizedText),
         ]
         let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedModel, !normalizedModel.isEmpty {
-            params["model"] = normalizedModel
+            params["model"] = .string(normalizedModel)
         }
         if let reasoningEffort {
-            params["effort"] = reasoningEffort.rawValue
+            params["effort"] = .string(reasoningEffort.rawValue)
         }
         if let permissionMode {
-            params["permissionMode"] = permissionMode.rawValue
+            params["permissionMode"] = .string(permissionMode.rawValue)
         }
         let normalizedPath = transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedPath, !normalizedPath.isEmpty {
-            params["path"] = normalizedPath
+            params["path"] = .string(normalizedPath)
         }
 
         let responseData = try await invokeCommand(
@@ -464,8 +521,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             machineID: normalizedMachineID,
             command: "claude-list-messages",
             params: [
-                "sessionId": normalizedSessionID,
-                "cwd": normalizedCWD,
+                "sessionId": .string(normalizedSessionID),
+                "cwd": .string(normalizedCWD),
             ]
         )
         let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
@@ -507,20 +564,20 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
-        var params: [String: Any] = [
-            "sessionId": normalizedSessionID,
-            "cwd": normalizedCWD,
-            "text": normalizedText,
+        var params: [String: RPCParameterValue] = [
+            "sessionId": .string(normalizedSessionID),
+            "cwd": .string(normalizedCWD),
+            "text": .string(normalizedText),
         ]
         let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedModel, !normalizedModel.isEmpty {
-            params["model"] = normalizedModel
+            params["model"] = .string(normalizedModel)
         }
         if let reasoningEffort {
-            params["effort"] = reasoningEffort.rawValue
+            params["effort"] = .string(reasoningEffort.rawValue)
         }
         if let permissionMode {
-            params["permissionMode"] = permissionMode.rawValue
+            params["permissionMode"] = .string(permissionMode.rawValue)
         }
 
         let responseData = try await invokeCommand(
@@ -555,7 +612,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             machineID: normalizedMachineID,
             command: "gemini-list-messages",
             params: [
-                "sessionId": normalizedSessionID,
+                "sessionId": .string(normalizedSessionID),
             ]
         )
         let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
@@ -591,16 +648,16 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
-        var params: [String: Any] = [
-            "sessionId": normalizedSessionID,
-            "text": normalizedText,
+        var params: [String: RPCParameterValue] = [
+            "sessionId": .string(normalizedSessionID),
+            "text": .string(normalizedText),
         ]
         let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedModel, !normalizedModel.isEmpty {
-            params["model"] = normalizedModel
+            params["model"] = .string(normalizedModel)
         }
         if let permissionMode {
-            params["permissionMode"] = permissionMode.rawValue
+            params["permissionMode"] = .string(permissionMode.rawValue)
         }
 
         let responseData = try await invokeCommand(
