@@ -66,7 +66,7 @@ vi.mock('@/daemon/controlClient', () => ({
   notifyDaemonProviderSessionStarted: vi.fn(async () => ({ error: null })),
 }));
 
-vi.mock('@/daemon/run', () => ({
+vi.mock('@/daemon/initialMachineMetadata', () => ({
   initialMachineMetadata: { os: 'linux' },
 }));
 

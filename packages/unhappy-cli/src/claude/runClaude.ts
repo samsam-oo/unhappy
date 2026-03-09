@@ -12,7 +12,7 @@ import {
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { startHookServer } from '@/claude/utils/startHookServer';
 import { configuration } from '@/configuration';
-import { initialMachineMetadata } from '@/daemon/run';
+import { initialMachineMetadata } from '@/daemon/initialMachineMetadata';
 import { listClaudeModels } from '@/modules/common/listModels';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { Credentials, readSettings } from '@/persistence';
