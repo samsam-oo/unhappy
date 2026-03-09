@@ -24,21 +24,17 @@ pub async fn codex_list_threads(config: &Config, payload: &Value) -> Result<Valu
     let limit = payload.get("limit").and_then(Value::as_u64).map(|value| value.clamp(1, 100) as usize).unwrap_or(20);
     let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
 
-    let mut merged_rows = std::collections::HashMap::<String, Value>::new();
-    for codex_home in codex_home_candidates(config) {
-        if let Some(filter) = normalized_cwd.as_deref() {
-            for row in list_codex_threads_via_app_server(filter, limit, &codex_home).await? {
-                merge_codex_thread_row(&mut merged_rows, row);
-            }
-        }
+    let Some(filter) = normalized_cwd.as_deref() else {
+        return Ok(json!({
+            "success": true,
+            "threads": [],
+            "hasNext": false,
+            "nextCursor": None::<String>
+        }));
+    };
 
-        for row in list_codex_threads_from_local_sessions(&codex_home, normalized_cwd.as_deref()).await? {
-            merge_codex_thread_row(&mut merged_rows, row);
-        }
-    }
-
-    let mut rows = merged_rows.into_values().collect::<Vec<_>>();
-    rows.sort_by(|lhs, rhs| rhs.get("updatedAt").and_then(Value::as_str).cmp(&lhs.get("updatedAt").and_then(Value::as_str)));
+    let codex_home = config.codex_home_dir();
+    let rows = list_codex_threads_via_app_server(filter, limit, &codex_home).await?;
     let start = cursor.min(rows.len());
     let end = (start + limit).min(rows.len());
     let has_next = end < rows.len();
@@ -503,48 +499,6 @@ fn claude_project_dir_with_config(cwd: &str, config_dir: &Path) -> PathBuf {
 }
 
 #[derive(Clone)]
-struct CodexSessionMeta {
-    id: String,
-    cwd: String,
-    name: Option<String>,
-    model: Option<String>,
-    effort: Option<String>,
-    preview: Option<String>,
-}
-
-async fn read_codex_session_meta(path: &Path) -> Result<Option<CodexSessionMeta>> {
-    let file = File::open(path).await?;
-    let mut lines = BufReader::new(file).lines();
-    while let Some(line) = lines.next_line().await? {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let parsed: Value = match serde_json::from_str(trimmed) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        let Some(object) = parsed.as_object() else { continue };
-        if object.get("type").and_then(Value::as_str) != Some("session_meta") {
-            continue;
-        }
-        let Some(payload) = object.get("payload").and_then(Value::as_object) else { continue };
-        let id = payload.get("id").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-        let cwd = payload.get("cwd").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-        let Some((id, cwd)) = id.zip(cwd) else { continue };
-        return Ok(Some(CodexSessionMeta {
-            id: id.to_string(),
-            cwd: cwd.to_string(),
-            name: payload.get("name").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).map(ToOwned::to_owned),
-            model: payload.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).map(ToOwned::to_owned),
-            effort: payload.get("effort").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).map(ToOwned::to_owned),
-            preview: payload.get("summary").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).map(ToOwned::to_owned),
-        }));
-    }
-    Ok(None)
-}
-
-#[derive(Clone)]
 struct ClaudeSessionMeta {
     session_id: String,
     cwd: String,
@@ -701,27 +655,6 @@ async fn collect_session_json_files(root: &Path) -> Result<Vec<PathBuf>> {
         }
     }
     Ok(files)
-}
-
-fn codex_home_candidates(config: &Config) -> Vec<PathBuf> {
-    let mut candidates = Vec::<PathBuf>::new();
-
-    if let Ok(value) = std::env::var("CODEX_HOME") {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            candidates.push(PathBuf::from(trimmed));
-        }
-    }
-
-    candidates.push(config.codex_home_dir());
-    candidates.push(home_dir().join(".codex"));
-
-    let mut seen = std::collections::HashSet::<String>::new();
-    candidates
-        .into_iter()
-        .filter(|path| path.exists())
-        .filter(|path| seen.insert(path.to_string_lossy().to_string()))
-        .collect()
 }
 
 async fn claude_session_files(cwd_filter: Option<&str>, claude_config_dir: &Path) -> Result<Vec<PathBuf>> {
@@ -1008,63 +941,6 @@ async fn list_codex_threads_via_app_server(
 
     let _ = child.start_kill();
     Ok(extract_codex_thread_summaries_from_list_response(&response))
-}
-
-async fn list_codex_threads_from_local_sessions(
-    codex_home: &Path,
-    cwd_filter: Option<&str>,
-) -> Result<Vec<Value>> {
-    let mut files = collect_jsonl_files(&codex_home.join("sessions")).await?;
-    files.extend(collect_jsonl_files(&codex_home.join("archived_sessions")).await?);
-
-    let mut rows = Vec::<Value>::new();
-    let mut seen = std::collections::HashSet::<String>::new();
-    for path in files {
-        let Some(meta) = read_codex_session_meta(&path).await? else { continue };
-        if let Some(filter) = cwd_filter {
-            if meta.cwd.trim() != filter {
-                continue;
-            }
-        }
-        if !seen.insert(meta.id.clone()) {
-            continue;
-        }
-        let updated_at = fs::metadata(&path).await.ok().and_then(|value| value.modified().ok()).and_then(system_time_to_rfc3339);
-        rows.push(json!({
-            "id": meta.id,
-            "name": meta.name,
-            "cwd": meta.cwd,
-            "path": path.to_string_lossy().to_string(),
-            "updatedAt": updated_at,
-            "createdAt": updated_at,
-            "archived": path.to_string_lossy().contains("/archived_sessions/"),
-            "model": meta.model,
-            "effort": meta.effort,
-            "preview": meta.preview
-        }));
-    }
-    Ok(rows)
-}
-
-fn merge_codex_thread_row(
-    rows: &mut std::collections::HashMap<String, Value>,
-    row: Value,
-) {
-    let id = row.get("id").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let Some(id) = id else { return };
-
-    match rows.get(id) {
-        Some(existing) => {
-            let existing_updated = existing.get("updatedAt").and_then(Value::as_str).unwrap_or_default();
-            let next_updated = row.get("updatedAt").and_then(Value::as_str).unwrap_or_default();
-            if next_updated > existing_updated {
-                rows.insert(id.to_string(), row);
-            }
-        }
-        None => {
-            rows.insert(id.to_string(), row);
-        }
-    }
 }
 
 fn extract_codex_thread_summaries_from_list_response(response: &Value) -> Vec<Value> {
