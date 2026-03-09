@@ -2,10 +2,11 @@
 
 const { execFileSync } = require("child_process");
 const { join } = require("path");
-const { existsSync, rmSync } = require("fs");
+const { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } = require("fs");
 
 const repoRoot = process.cwd();
 const cliDir = join(repoRoot, "packages", "unhappy-cli");
+const rustDaemonBinaryName = process.platform === "win32" ? "unhappy-daemon-rs.exe" : "unhappy-daemon-rs";
 
 function run(cmd, args, cwd = repoRoot) {
   return execFileSync(cmd, args, {
@@ -29,12 +30,35 @@ function main() {
   const tarballPath = join(cliDir, packed);
   try {
     run("npm", ["install", "-g", tarballPath]);
+    installRustDaemonBinary();
     console.log(`Installed unhappy-cli globally from tarball: ${packed}`);
   } finally {
     if (existsSync(tarballPath)) {
       rmSync(tarballPath);
     }
   }
+}
+
+function installRustDaemonBinary() {
+  const sourceBinary = join(
+    repoRoot,
+    "packages",
+    "unhappy-daemon-rs",
+    "target",
+    "release",
+    rustDaemonBinaryName,
+  );
+  if (!existsSync(sourceBinary)) {
+    return;
+  }
+
+  const globalRoot = run("npm", ["root", "-g"]);
+  const targetDir = join(globalRoot, "unhappy-daemon-rs", "target", "release");
+  const targetBinary = join(targetDir, rustDaemonBinaryName);
+
+  mkdirSync(targetDir, { recursive: true });
+  copyFileSync(sourceBinary, targetBinary);
+  chmodSync(targetBinary, 0o755);
 }
 
 main();
