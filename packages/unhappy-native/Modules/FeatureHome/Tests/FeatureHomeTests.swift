@@ -138,6 +138,10 @@ private struct MockHomeServerStatusLoader: HomeServerConnectionStatusLoadingActi
 private actor MockAccountSecretPresenceChecker: AccountSecretPresenceCheckingAction {
     let hasStoredSecret: Bool
 
+    init(hasStoredSecret: Bool) {
+        self.hasStoredSecret = hasStoredSecret
+    }
+
     func hasStoredSecret() async -> Bool {
         hasStoredSecret
     }

@@ -90,6 +90,12 @@ public struct HomeView: View {
                 hasLoadedAccountSecretPresence = true
             }
         }
+        .onChange(of: settingsViewModel.apiToken) { _, _ in
+            Task {
+                hasStoredAccountSecret = await accountSecretPresenceChecker.hasStoredSecret()
+                hasLoadedAccountSecretPresence = true
+            }
+        }
     }
 
     private var hasToken: Bool {
