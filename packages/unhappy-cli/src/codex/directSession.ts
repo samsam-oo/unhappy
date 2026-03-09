@@ -148,7 +148,19 @@ function buildResumeBackfillMessage(
   lineNumber: number,
   resumeFile: string,
 ): ResumeBackfillMessage | null {
-  if (payload.type !== 'message') return null;
+  const payloadType = typeof payload.type === 'string'
+    ? payload.type.trim().toLowerCase()
+    : '';
+
+  if (payloadType === 'function_call') {
+    return buildFunctionCallBackfillMessage(payload, lineNumber, resumeFile);
+  }
+
+  if (payloadType === 'function_call_output') {
+    return buildFunctionCallOutputBackfillMessage(payload, lineNumber, resumeFile);
+  }
+
+  if (payloadType !== 'message') return null;
   const role = typeof payload.role === 'string' ? payload.role.toLowerCase() : '';
   if (role !== 'user' && role !== 'assistant') return null;
 
@@ -180,17 +192,150 @@ function buildResumeBackfillMessage(
 
   const payloadId =
     typeof payload.id === 'string' ? payload.id.trim() : '';
-  const digest = createHash('sha1')
-    .update(`${resumeFile}:${lineNumber}:${role}:${payloadId}`)
-    .digest('hex')
-    .slice(0, 20);
 
   return {
-    localId: `codex-resume-${digest}`,
+    localId: makeResumeBackfillLocalID(resumeFile, lineNumber, role, payloadId),
     data: backfillEnvelope,
     role,
     lineNumber,
   };
+}
+
+function buildFunctionCallBackfillMessage(
+  payload: Record<string, unknown>,
+  lineNumber: number,
+  resumeFile: string,
+): ResumeBackfillMessage | null {
+  const name =
+    typeof payload.name === 'string' && payload.name.trim().length > 0
+      ? payload.name.trim()
+      : null;
+  const callId =
+    typeof payload.call_id === 'string' && payload.call_id.trim().length > 0
+      ? payload.call_id.trim()
+      : typeof payload.callId === 'string' && payload.callId.trim().length > 0
+        ? payload.callId.trim()
+        : null;
+  if (!name || !callId) {
+    return null;
+  }
+
+  const normalizedInput = normalizeFunctionCallInput(name, payload.arguments);
+  const backfillEnvelope = {
+    type: 'assistant',
+    message: {
+      content: [
+        {
+          type: 'tool_use',
+          name,
+          callId,
+          input: normalizedInput,
+        },
+      ],
+    },
+  };
+
+  return {
+    localId: makeResumeBackfillLocalID(resumeFile, lineNumber, 'assistant', callId),
+    data: backfillEnvelope,
+    role: 'assistant',
+    lineNumber,
+  };
+}
+
+function buildFunctionCallOutputBackfillMessage(
+  payload: Record<string, unknown>,
+  lineNumber: number,
+  resumeFile: string,
+): ResumeBackfillMessage | null {
+  const callId =
+    typeof payload.call_id === 'string' && payload.call_id.trim().length > 0
+      ? payload.call_id.trim()
+      : typeof payload.callId === 'string' && payload.callId.trim().length > 0
+        ? payload.callId.trim()
+        : null;
+  if (!callId) {
+    return null;
+  }
+
+  const backfillEnvelope = {
+    type: 'assistant',
+    message: {
+      content: [
+        {
+          type: 'tool_result',
+          toolUseId: callId,
+          output: normalizeStructuredTranscriptValue(payload.output),
+        },
+      ],
+    },
+  };
+
+  return {
+    localId: makeResumeBackfillLocalID(resumeFile, lineNumber, 'assistant', callId),
+    data: backfillEnvelope,
+    role: 'assistant',
+    lineNumber,
+  };
+}
+
+function normalizeFunctionCallInput(
+  name: string,
+  value: unknown,
+): unknown {
+  const normalized = normalizeStructuredTranscriptValue(value);
+  if (!isRecord(normalized)) {
+    return normalized;
+  }
+
+  const withCommandAlias: Record<string, unknown> = { ...normalized };
+  const normalizedName = name.trim().toLowerCase();
+  const cmd =
+    typeof withCommandAlias.cmd === 'string' && withCommandAlias.cmd.trim().length > 0
+      ? withCommandAlias.cmd.trim()
+      : null;
+  if (
+    cmd &&
+    (normalizedName === 'exec_command' || normalizedName === 'execcommand') &&
+    (typeof withCommandAlias.command !== 'string' || withCommandAlias.command.trim().length === 0)
+  ) {
+    withCommandAlias.command = cmd;
+  }
+  return withCommandAlias;
+}
+
+function normalizeStructuredTranscriptValue(value: unknown): unknown {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return value;
+  }
+
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function makeResumeBackfillLocalID(
+  resumeFile: string,
+  lineNumber: number,
+  role: 'user' | 'assistant',
+  payloadId: string,
+): string {
+  const digest = createHash('sha1')
+    .update(`${resumeFile}:${lineNumber}:${role}:${payloadId}`)
+    .digest('hex')
+    .slice(0, 20);
+  return `codex-resume-${digest}`;
 }
 
 export async function listCodexThreadMessages(

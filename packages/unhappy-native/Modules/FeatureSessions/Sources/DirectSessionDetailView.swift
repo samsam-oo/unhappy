@@ -46,7 +46,7 @@ public struct DirectSessionDetailView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var regularTranscriptHorizontalPadding: CGFloat = 14
-    @ScaledMetric(relativeTo: .body) private var transcriptTopSpacing: CGFloat = 18
+    @ScaledMetric(relativeTo: .body) private var transcriptTopSpacing: CGFloat = 12
     @FocusState private var focusedComposerField: ComposerFocusField?
 
     public init(
