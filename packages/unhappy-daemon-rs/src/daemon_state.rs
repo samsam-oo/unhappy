@@ -387,7 +387,7 @@ impl DaemonState {
     }
 
     fn session_store_path(&self) -> PathBuf {
-        self.config.unhappy_home_dir.join("daemon.sessions.json")
+        self.config.session_store_path()
     }
 }
 

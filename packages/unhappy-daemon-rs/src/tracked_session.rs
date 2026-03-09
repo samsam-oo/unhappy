@@ -52,12 +52,13 @@ impl TrackedSession {
         pid: u32,
         request: &ProviderSessionStartedRequest,
     ) -> Self {
+        let merged_metadata = merge_metadata(self.metadata, Some(request.metadata.clone()));
         Self {
             started_by: self.started_by,
             provider: Some(request.provider),
             provider_session_id: Some(request.provider_session_id.clone()),
             pid,
-            metadata: Some(request.metadata.clone()),
+            metadata: merged_metadata,
         }
     }
 
@@ -105,4 +106,18 @@ fn extract_started_by(metadata: &Value) -> Option<String> {
         .get("startedBy")
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
+}
+
+fn merge_metadata(existing: Option<Value>, incoming: Option<Value>) -> Option<Value> {
+    match (existing, incoming) {
+        (Some(Value::Object(mut existing_map)), Some(Value::Object(incoming_map))) => {
+            for (key, value) in incoming_map {
+                existing_map.insert(key, value);
+            }
+            Some(Value::Object(existing_map))
+        }
+        (None, incoming) => incoming,
+        (existing, None) => existing,
+        (_, incoming @ Some(_)) => incoming,
+    }
 }

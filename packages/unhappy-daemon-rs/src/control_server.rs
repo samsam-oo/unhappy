@@ -206,6 +206,10 @@ async fn claude_session_hook(
     if let Some(session_id) = session_id {
         let metadata = match payload {
             Value::Object(mut object) => {
+                object.insert(
+                    "agentSessionId".to_string(),
+                    Value::String(session_id.clone()),
+                );
                 if let Some(transcript_path) = object
                     .get("transcript_path")
                     .or_else(|| object.get("transcriptPath"))
