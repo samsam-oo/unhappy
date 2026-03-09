@@ -26,6 +26,9 @@ export type MachineDataPlaneSealedBody = z.infer<typeof MachineDataPlaneSealedBo
 
 export const MachineDataPlaneOperationSchema = z.enum([
   'provider.spawn',
+  'machine.listModels',
+  'daemon.stop',
+  'daemon.update',
   'project.list',
   'project.open',
   'project.remove',

@@ -29,6 +29,8 @@ pub struct PersistedSessionStore {
     pub schema_version: u32,
     pub tracked_sessions: Vec<PersistedTrackedSession>,
     pub awaiting_provider_session_pids: Vec<u32>,
+    #[serde(default)]
+    pub opened_projects: Vec<String>,
 }
 
 impl Default for PersistedSessionStore {
@@ -37,6 +39,7 @@ impl Default for PersistedSessionStore {
             schema_version: 1,
             tracked_sessions: Vec::new(),
             awaiting_provider_session_pids: Vec::new(),
+            opened_projects: Vec::new(),
         }
     }
 }

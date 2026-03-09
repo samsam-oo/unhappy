@@ -1,8 +1,12 @@
 mod config;
+mod codex_transcript;
 mod codex_app_server;
 mod control_server;
 mod daemon_state;
 mod data_plane;
+mod helper;
+mod lock;
+mod machine_sync;
 mod provider;
 mod protocol;
 mod session_store;
@@ -12,7 +16,10 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use config::Config;
 use control_server::start_control_server;
+use data_plane::spawn_data_plane_service;
 use daemon_state::DaemonState;
+use lock::DaemonLockGuard;
+use machine_sync::spawn_machine_sync;
 use std::net::SocketAddr;
 
 #[derive(Debug, Parser)]
@@ -42,6 +49,10 @@ async fn main() -> Result<()> {
         }
         Command::LocalControlServer { bind } => {
             let config = Config::from_env()?;
+            let Some(lock_guard) = DaemonLockGuard::acquire(&config.unhappy_home_dir)? else {
+                eprintln!("daemon already running");
+                return Ok(());
+            };
             let state = DaemonState::new_shared(config);
             state.restore_persisted_sessions().await?;
             let server = start_control_server(state.clone(), bind).await?;
@@ -50,6 +61,7 @@ async fn main() -> Result<()> {
                     .request_shutdown_with_reason("state-file-initialization-failed")
                     .await;
                 let _ = server.wait().await;
+                drop(lock_guard);
                 return Err(error);
             }
             println!(
@@ -57,6 +69,9 @@ async fn main() -> Result<()> {
                 server.local_addr(),
                 state.banner().await
             );
+
+            let machine_sync_task = spawn_machine_sync(state.clone());
+            let data_plane_task = spawn_data_plane_service(state.clone());
 
             tokio::select! {
                 signal = tokio::signal::ctrl_c() => {
@@ -72,6 +87,8 @@ async fn main() -> Result<()> {
             }
 
             let wait_result = server.wait().await;
+            machine_sync_task.abort();
+            data_plane_task.abort();
             let offline_reason = if wait_result.is_ok() {
                 "control-server-stopped"
             } else {
@@ -80,6 +97,7 @@ async fn main() -> Result<()> {
             if let Err(error) = state.mark_offline(offline_reason).await {
                 eprintln!("warning: failed to finalize daemon state file: {error:#}");
             }
+            drop(lock_guard);
             wait_result?;
         }
     }

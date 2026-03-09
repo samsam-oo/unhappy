@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     env,
     io::{Error, ErrorKind},
     path::{Path, PathBuf},
@@ -198,12 +199,17 @@ pub struct ProviderSpawnContext<'a> {
     pub directory: &'a str,
     pub codex_resume_thread_id: Option<&'a str>,
     pub claude_resume_session_id: Option<&'a str>,
+    pub model: Option<&'a str>,
+    pub reasoning_effort: Option<&'a str>,
+    pub token: Option<&'a str>,
+    pub environment_variables: Option<&'a HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ProviderLaunchRequest {
     pub directory: PathBuf,
     pub args: Vec<String>,
+    pub env: HashMap<String, String>,
 }
 
 pub trait ProviderAdapter: Send + Sync {
@@ -262,6 +268,7 @@ impl ProviderProcessSpawner for TokioProviderProcessSpawner {
             .args(command.args())
             .args(&request.args)
             .current_dir(&request.directory)
+            .envs(&request.env)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
@@ -318,6 +325,7 @@ impl ProviderAdapter for CodexProviderAdapter {
         ProviderLaunchRequest {
             directory: PathBuf::from(context.directory),
             args,
+            env: context.environment_variables.cloned().unwrap_or_default(),
         }
     }
 }
@@ -342,10 +350,24 @@ impl ProviderAdapter for ClaudeProviderAdapter {
             args.push("--resume".to_string());
             args.push(session_id.to_string());
         }
+        if let Some(model) = normalized_arg(context.model) {
+            args.push("--model".to_string());
+            args.push(model.to_string());
+        }
+        if let Some(effort) = normalized_arg(context.reasoning_effort) {
+            args.push("--reasoning-effort".to_string());
+            args.push(effort.to_string());
+        }
+
+        let mut env = context.environment_variables.cloned().unwrap_or_default();
+        if let Some(token) = normalized_arg(context.token) {
+            env.insert("CLAUDE_CODE_OAUTH_TOKEN".to_string(), token.to_string());
+        }
 
         ProviderLaunchRequest {
             directory: PathBuf::from(context.directory),
             args,
+            env,
         }
     }
 }
@@ -356,13 +378,20 @@ impl ProviderAdapter for GeminiProviderAdapter {
     }
 
     fn build_launch_request(&self, context: ProviderSpawnContext<'_>) -> ProviderLaunchRequest {
+        let mut args = if provider_uses_direct_binary(Provider::Gemini) {
+            Vec::new()
+        } else {
+            vec!["--started-by".to_string(), "daemon".to_string()]
+        };
+        if let Some(model) = normalized_arg(context.model) {
+            args.push("--model".to_string());
+            args.push(model.to_string());
+        }
+
         ProviderLaunchRequest {
             directory: PathBuf::from(context.directory),
-            args: if provider_uses_direct_binary(Provider::Gemini) {
-                Vec::new()
-            } else {
-                vec!["--started-by".to_string(), "daemon".to_string()]
-            },
+            args,
+            env: context.environment_variables.cloned().unwrap_or_default(),
         }
     }
 }

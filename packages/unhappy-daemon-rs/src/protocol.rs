@@ -31,6 +31,12 @@ pub struct MachineDataPlaneSealedBody {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MachineDataPlaneOperation {
+    #[serde(rename = "machine.listModels")]
+    MachineListModels,
+    #[serde(rename = "daemon.stop")]
+    DaemonStop,
+    #[serde(rename = "daemon.update")]
+    DaemonUpdate,
     #[serde(rename = "provider.spawn")]
     ProviderSpawn,
     #[serde(rename = "project.list")]
@@ -99,4 +105,40 @@ pub struct MachineDataPlaneHelloAckFrame {
     pub max_chunk_bytes: u32,
     pub max_in_flight_streams: u16,
     pub idle_timeout_seconds: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineDataPlaneRequestFrame {
+    pub v: u8,
+    pub t: String,
+    pub stream_id: String,
+    pub op: MachineDataPlaneOperation,
+    pub body: MachineDataPlaneSealedBody,
+    pub expects_chunks: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineDataPlaneCompleteFrame {
+    pub v: u8,
+    pub t: String,
+    pub stream_id: String,
+    pub seq: u32,
+    pub body: MachineDataPlaneSealedBody,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_more: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineDataPlaneErrorFrame {
+    pub v: u8,
+    pub t: String,
+    pub stream_id: String,
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
 }

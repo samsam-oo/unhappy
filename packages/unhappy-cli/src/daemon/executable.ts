@@ -166,6 +166,7 @@ async function buildRustDaemonEnvironment(
     UNHAPPY_CLI_VERSION: configuration.currentCliVersion,
     UNHAPPY_HOME_DIR: configuration.unhappyHomeDir,
     UNHAPPY_CLI_ROOT: projectPath(),
+    UNHAPPY_NODE_EXECUTABLE: process.execPath,
     UNHAPPY_SERVER_URL: baseEnv.UNHAPPY_SERVER_URL || configuration.serverUrl,
   };
 }
