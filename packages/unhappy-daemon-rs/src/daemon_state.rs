@@ -1,17 +1,29 @@
-use crate::control_server::{
-    ListChild, Provider, ProviderSessionStartedRequest, SpawnSessionRequest, SpawnSessionResponse,
+use crate::{
+    config::Config,
+    control_server::{
+        ListChild, ProviderSessionStartedRequest, SpawnSessionRequest, SpawnSessionResponse,
+    },
+    provider::{
+        ProviderAdapters, ProviderProcessSpawner, ProviderSpawnContext, TokioProviderProcessSpawner,
+    },
+    session_store::{write_json_file, PersistedSessionStore},
+    tracked_session::TrackedSession,
 };
-use crate::config::Config;
-use serde_json::{json, Value};
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     collections::HashMap,
+    path::PathBuf,
     process,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tokio::process::Command;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::{oneshot, watch, RwLock};
 use tokio::time::{timeout, Duration};
+
+const PERSISTED_DAEMON_STATE_SCHEMA_VERSION: u32 = 1;
 
 pub type SharedDaemonState = Arc<DaemonState>;
 
@@ -20,36 +32,59 @@ pub struct DaemonState {
     inner: RwLock<DaemonStateInner>,
     config: Config,
     shutdown_tx: watch::Sender<bool>,
+    process_spawner: Arc<dyn ProviderProcessSpawner>,
 }
 
 #[derive(Debug)]
 struct DaemonStateInner {
     status: DaemonStatus,
     pid: u32,
+    http_port: Option<u16>,
+    start_time: String,
     started_at: u64,
     shutdown_requested_at: Option<u64>,
-    next_synthetic_pid: u32,
+    state_reason: Option<String>,
     sessions_by_pid: HashMap<u32, TrackedSession>,
     awaiters_by_pid: HashMap<u32, oneshot::Sender<TrackedSession>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 enum DaemonStatus {
     Running,
     ShuttingDown,
+    Offline,
 }
 
-#[derive(Debug, Clone)]
-struct TrackedSession {
-    started_by: String,
-    provider: Option<Provider>,
-    provider_session_id: Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct PersistedDaemonState {
+    schema_version: u32,
     pid: u32,
-    metadata: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    http_port: Option<u16>,
+    start_time: String,
+    started_with_cli_version: String,
+    status: DaemonStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state_reason: Option<String>,
+    started_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shutdown_requested_at: Option<u64>,
+    updated_at: u64,
+    last_heartbeat: String,
+    registry: PersistedSessionStore,
 }
 
 impl DaemonState {
     pub fn new_shared(config: Config) -> SharedDaemonState {
+        Self::new_shared_with_spawner(config, Arc::new(TokioProviderProcessSpawner))
+    }
+
+    fn new_shared_with_spawner(
+        config: Config,
+        process_spawner: Arc<dyn ProviderProcessSpawner>,
+    ) -> SharedDaemonState {
         let pid = process::id();
         let started_at = now_millis();
         let (shutdown_tx, _) = watch::channel(false);
@@ -58,14 +93,17 @@ impl DaemonState {
             inner: RwLock::new(DaemonStateInner {
                 status: DaemonStatus::Running,
                 pid,
+                http_port: None,
+                start_time: timestamp_millis_to_rfc3339(started_at),
                 started_at,
                 shutdown_requested_at: None,
-                next_synthetic_pid: pid.saturating_add(1),
+                state_reason: None,
                 sessions_by_pid: HashMap::new(),
                 awaiters_by_pid: HashMap::new(),
             }),
             config,
             shutdown_tx,
+            process_spawner,
         })
     }
 
@@ -73,23 +111,33 @@ impl DaemonState {
         self.shutdown_tx.subscribe()
     }
 
+    pub async fn initialize_persistence(&self, http_port: u16) -> Result<()> {
+        let snapshot = {
+            let mut inner = self.inner.write().await;
+            inner.http_port = Some(http_port);
+            inner.status = DaemonStatus::Running;
+            inner.state_reason = None;
+            self.snapshot_from_inner(&inner)
+        };
+        self.write_snapshot(&snapshot).await
+    }
+
+    pub async fn mark_offline(&self, reason: &str) -> Result<()> {
+        let snapshot = {
+            let mut inner = self.inner.write().await;
+            inner.status = DaemonStatus::Offline;
+            inner.state_reason = Some(reason.to_string());
+            self.snapshot_from_inner(&inner)
+        };
+        self.write_snapshot(&snapshot).await
+    }
+
     pub async fn list_children(&self) -> Vec<ListChild> {
         let inner = self.inner.read().await;
         let mut sessions = inner
             .sessions_by_pid
             .values()
-            .filter_map(|session| {
-                session
-                    .provider_session_id
-                    .as_ref()
-                    .map(|provider_session_id| ListChild {
-                        started_by: session.started_by.clone(),
-                        provider: session.provider,
-                        provider_session_id: provider_session_id.clone(),
-                        pid: session.pid,
-                        metadata: session.metadata.clone(),
-                    })
-            })
+            .filter_map(TrackedSession::to_list_child)
             .collect::<Vec<_>>();
         sessions.sort_by(|left, right| left.pid.cmp(&right.pid));
         sessions
@@ -100,7 +148,7 @@ impl DaemonState {
             let inner = self.inner.read().await;
 
             let by_provider_session = inner.sessions_by_pid.iter().find_map(|(pid, session)| {
-                (session.provider_session_id.as_deref() == Some(session_id)).then_some(*pid)
+                (session.provider_session_id() == Some(session_id)).then_some(*pid)
             });
 
             by_provider_session.or_else(|| parse_pid_fallback(session_id))
@@ -111,85 +159,88 @@ impl DaemonState {
         };
 
         terminate_pid(pid);
-        let mut inner = self.inner.write().await;
-        inner.awaiters_by_pid.remove(&pid);
-        inner.sessions_by_pid.remove(&pid).is_some()
+        let snapshot = {
+            let mut inner = self.inner.write().await;
+            inner.awaiters_by_pid.remove(&pid);
+            inner
+                .sessions_by_pid
+                .remove(&pid)
+                .map(|_| self.snapshot_from_inner(&inner))
+        };
+
+        if let Some(snapshot) = snapshot {
+            self.persist_snapshot_best_effort(snapshot).await;
+            true
+        } else {
+            false
+        }
     }
 
-    pub async fn spawn_session(&self, request: SpawnSessionRequest) -> SpawnSessionResponse {
+    pub async fn spawn_session(self: &Arc<Self>, request: SpawnSessionRequest) -> SpawnSessionResponse {
         if !std::path::Path::new(&request.directory).exists() {
             return SpawnSessionResponse::requires_user_approval(request.directory);
         }
 
-        let args = build_provider_args(&request);
-        let mut command = Command::new(&self.config.provider_cli);
-        command
-            .args(&args)
-            .current_dir(&request.directory)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        #[cfg(unix)]
-        {
-            command.process_group(0);
-        }
+        let adapter = ProviderAdapters::for_provider(request.agent);
+        let launch_request = adapter.build_launch_request(ProviderSpawnContext {
+            directory: &request.directory,
+            codex_resume_thread_id: request.codex_resume_thread_id.as_deref(),
+            claude_resume_session_id: request.claude_resume_session_id.as_deref(),
+        });
+        let resolved_command = adapter.resolve_command(&self.config.provider_commands);
 
-        let mut child = match command.spawn() {
-            Ok(child) => child,
+        let launched = match self.process_spawner.spawn(resolved_command, &launch_request) {
+            Ok(launched) => launched,
             Err(error) => {
                 return SpawnSessionResponse::error(format!(
                     "Failed to spawn provider process: {error}"
                 ));
             }
         };
-        let Some(pid) = child.id() else {
-            return SpawnSessionResponse::error(
-                "Failed to spawn provider process: no PID returned".to_string()
-            );
-        };
-        tokio::spawn(async move {
-            let _ = child.wait().await;
-        });
+        let pid = launched.pid();
 
-        let receiver = {
+        let (receiver, snapshot) = {
             let mut inner = self.inner.write().await;
-            let metadata = json!({
-                "directory": request.directory,
-                "agent": request.agent,
-                "codexResumeThreadId": request.codex_resume_thread_id,
-                "claudeResumeSessionId": request.claude_resume_session_id,
-            });
             let (tx, rx) = oneshot::channel();
             inner.awaiters_by_pid.insert(pid, tx);
-            inner.sessions_by_pid.insert(
-                pid,
-                TrackedSession {
-                    started_by: "daemon".to_string(),
-                    provider: Some(request.agent),
-                    provider_session_id: None,
-                    pid,
-                    metadata: Some(metadata),
-                },
-            );
-            rx
+            inner
+                .sessions_by_pid
+                .insert(pid, TrackedSession::pending_spawn(pid, &request));
+            (rx, self.snapshot_from_inner(&inner))
         };
+        self.persist_snapshot_best_effort(snapshot).await;
 
-        match timeout(Duration::from_millis(self.config.session_webhook_timeout_ms), receiver).await {
+        let state = Arc::clone(self);
+        tokio::spawn(async move {
+            let _ = launched.into_child().wait().await;
+            state.handle_spawned_child_exit(pid).await;
+        });
+
+        match timeout(
+            Duration::from_millis(self.config.session_webhook_timeout_ms),
+            receiver,
+        )
+        .await
+        {
             Ok(Ok(session)) => {
-                if let Some(provider_session_id) = session.provider_session_id {
-                    SpawnSessionResponse::success(provider_session_id)
+                if let Some(provider_session_id) = session.provider_session_id() {
+                    SpawnSessionResponse::success(provider_session_id.to_string())
                 } else {
                     SpawnSessionResponse::error(format!(
                         "Session webhook completed for PID {pid} without providerSessionId"
                     ))
                 }
             }
-            Ok(Err(_)) => SpawnSessionResponse::error(format!(
-                "Session webhook receiver closed for PID {pid}"
-            )),
+            Ok(Err(_)) => {
+                SpawnSessionResponse::error(format!("Session webhook receiver closed for PID {pid}"))
+            }
             Err(_) => {
-                let mut inner = self.inner.write().await;
-                inner.awaiters_by_pid.remove(&pid);
+                let snapshot = {
+                    let mut inner = self.inner.write().await;
+                    inner.awaiters_by_pid.remove(&pid);
+                    self.snapshot_from_inner(&inner)
+                };
+                self.persist_snapshot_best_effort(snapshot).await;
                 SpawnSessionResponse::error(format!("Session webhook timeout for PID {pid}"))
             }
         }
@@ -200,64 +251,41 @@ impl DaemonState {
             return;
         };
 
-        let started_by = extract_started_by(&request.metadata)
-            .unwrap_or_else(|| "provider directly".to_string());
-
-        let mut inner = self.inner.write().await;
-        let prior_pid = inner
-            .sessions_by_pid
-            .iter()
-            .find_map(|(existing_pid, session)| {
-                (session.provider_session_id.as_deref()
-                    == Some(request.provider_session_id.as_str()))
-                .then_some(*existing_pid)
+        let (awaiter, tracked, snapshot) = {
+            let mut inner = self.inner.write().await;
+            let prior_pid = inner.sessions_by_pid.iter().find_map(|(existing_pid, session)| {
+                (session.provider_session_id() == Some(request.provider_session_id.as_str()))
+                    .then_some(*existing_pid)
             });
 
-        let tracked = match prior_pid {
-            Some(existing_pid) if existing_pid != pid => {
-                inner.sessions_by_pid.remove(&existing_pid)
+            let tracked = match prior_pid {
+                Some(existing_pid) if existing_pid != pid => inner.sessions_by_pid.remove(&existing_pid),
+                _ => inner.sessions_by_pid.remove(&pid),
             }
-            _ => inner.sessions_by_pid.remove(&pid),
-        }
-        .unwrap_or(TrackedSession {
-            started_by,
-            provider: Some(request.provider),
-            provider_session_id: Some(request.provider_session_id.clone()),
-            pid,
-            metadata: None,
-        });
+            .unwrap_or_else(|| TrackedSession::from_provider_session_started(pid, &request))
+            .with_provider_session_started(pid, &request);
 
-        let provider_session_id = request.provider_session_id.clone();
+            inner.sessions_by_pid.insert(pid, tracked.clone());
+            let awaiter = inner.awaiters_by_pid.remove(&pid);
+            let snapshot = self.snapshot_from_inner(&inner);
+            (awaiter, tracked, snapshot)
+        };
 
-        inner.sessions_by_pid.insert(
-            pid,
-            TrackedSession {
-                started_by: tracked.started_by,
-                provider: Some(request.provider),
-                provider_session_id: Some(provider_session_id.clone()),
-                pid,
-                metadata: Some(request.metadata),
-            },
-        );
-        if let Some(awaiter) = inner.awaiters_by_pid.remove(&pid) {
-            let _ = awaiter.send(
-                inner.sessions_by_pid.get(&pid).cloned().unwrap_or(TrackedSession {
-                    started_by: "daemon".to_string(),
-                    provider: Some(request.provider),
-                    provider_session_id: Some(provider_session_id),
-                    pid,
-                    metadata: None,
-                })
-            );
+        if let Some(awaiter) = awaiter {
+            let _ = awaiter.send(tracked);
         }
+        self.persist_snapshot_best_effort(snapshot).await;
     }
 
-    pub async fn request_shutdown(&self) {
-        {
+    pub async fn request_shutdown_with_reason(&self, reason: &str) {
+        let snapshot = {
             let mut inner = self.inner.write().await;
             inner.status = DaemonStatus::ShuttingDown;
-            inner.shutdown_requested_at = Some(now_millis());
-        }
+            inner.shutdown_requested_at.get_or_insert_with(now_millis);
+            inner.state_reason = Some(reason.to_string());
+            self.snapshot_from_inner(&inner)
+        };
+        self.persist_snapshot_best_effort(snapshot).await;
 
         let _ = self.shutdown_tx.send(true);
     }
@@ -271,18 +299,80 @@ impl DaemonState {
             match inner.status {
                 DaemonStatus::Running => "running",
                 DaemonStatus::ShuttingDown => "shutting-down",
+                DaemonStatus::Offline => "offline",
             }
         )
     }
-}
 
-fn allocate_synthetic_pid(inner: &mut DaemonStateInner) -> u32 {
-    loop {
-        let candidate = inner.next_synthetic_pid;
-        inner.next_synthetic_pid = inner.next_synthetic_pid.saturating_add(1);
-        if !inner.sessions_by_pid.contains_key(&candidate) {
-            return candidate;
+    async fn handle_spawned_child_exit(&self, pid: u32) {
+        let snapshot = {
+            let mut inner = self.inner.write().await;
+            let removed_session = inner.sessions_by_pid.remove(&pid);
+            let removed_awaiter = inner.awaiters_by_pid.remove(&pid);
+            if removed_session.is_none() && removed_awaiter.is_none() {
+                None
+            } else {
+                Some(self.snapshot_from_inner(&inner))
+            }
+        };
+
+        if let Some(snapshot) = snapshot {
+            self.persist_snapshot_best_effort(snapshot).await;
         }
+    }
+
+    async fn persist_snapshot_best_effort(&self, snapshot: PersistedDaemonState) {
+        if let Err(error) = self.write_snapshot(&snapshot).await {
+            eprintln!(
+                "warning: failed to persist daemon state to {}: {error:#}",
+                self.state_file_path().display()
+            );
+        }
+    }
+
+    async fn write_snapshot(&self, snapshot: &PersistedDaemonState) -> Result<()> {
+        write_json_file(self.state_file_path().as_path(), snapshot).await
+    }
+
+    fn snapshot_from_inner(&self, inner: &DaemonStateInner) -> PersistedDaemonState {
+        let mut tracked_sessions = inner
+            .sessions_by_pid
+            .values()
+            .map(TrackedSession::to_persisted)
+            .collect::<Vec<_>>();
+        tracked_sessions.sort_by_key(|session| session.pid);
+
+        let mut awaiting_provider_session_pids =
+            inner.awaiters_by_pid.keys().copied().collect::<Vec<_>>();
+        awaiting_provider_session_pids.sort_unstable();
+
+        let updated_at = now_millis();
+        PersistedDaemonState {
+            schema_version: PERSISTED_DAEMON_STATE_SCHEMA_VERSION,
+            pid: inner.pid,
+            http_port: if inner.status == DaemonStatus::Offline {
+                None
+            } else {
+                inner.http_port
+            },
+            start_time: inner.start_time.clone(),
+            started_with_cli_version: env!("CARGO_PKG_VERSION").to_string(),
+            status: inner.status,
+            state_reason: inner.state_reason.clone(),
+            started_at: inner.started_at,
+            shutdown_requested_at: inner.shutdown_requested_at,
+            updated_at,
+            last_heartbeat: timestamp_millis_to_rfc3339(updated_at),
+            registry: PersistedSessionStore {
+                schema_version: 1,
+                tracked_sessions,
+                awaiting_provider_session_pids,
+            },
+        }
+    }
+
+    fn state_file_path(&self) -> PathBuf {
+        self.config.unhappy_home_dir.join("daemon.state.json")
     }
 }
 
@@ -299,13 +389,6 @@ fn extract_host_pid(metadata: &Value) -> Option<u32> {
         .and_then(|pid| u32::try_from(pid).ok())
 }
 
-fn extract_started_by(metadata: &Value) -> Option<String> {
-    metadata
-        .get("startedBy")
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned)
-}
-
 fn now_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -313,41 +396,111 @@ fn now_millis() -> u64 {
         .unwrap_or_default()
 }
 
-fn build_provider_args(request: &SpawnSessionRequest) -> Vec<String> {
-    let mut args = Vec::new();
-    match request.agent {
-        Provider::Codex => {
-            args.push("codex".to_string());
-            args.push("--started-by".to_string());
-            args.push("daemon".to_string());
-            if let Some(thread_id) = request.codex_resume_thread_id.as_ref().filter(|value| !value.trim().is_empty()) {
-                args.push("--resume-thread-id".to_string());
-                args.push(thread_id.trim().to_string());
-            }
-        }
-        Provider::Claude => {
-            args.push("claude".to_string());
-            args.push("--unhappy-starting-mode".to_string());
-            args.push("remote".to_string());
-            args.push("--started-by".to_string());
-            args.push("daemon".to_string());
-            if let Some(session_id) = request.claude_resume_session_id.as_ref().filter(|value| !value.trim().is_empty()) {
-                args.push("--resume".to_string());
-                args.push(session_id.trim().to_string());
-            }
-        }
-        Provider::Gemini => {
-            args.push("gemini".to_string());
-            args.push("--started-by".to_string());
-            args.push("daemon".to_string());
-        }
-    }
-    args
+fn timestamp_millis_to_rfc3339(timestamp_millis: u64) -> String {
+    OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_millis) * 1_000_000)
+        .ok()
+        .and_then(|timestamp| timestamp.format(&Rfc3339).ok())
+        .unwrap_or_else(|| timestamp_millis.to_string())
 }
 
 fn terminate_pid(pid: u32) {
     #[cfg(unix)]
     unsafe {
         libc::kill(pid as i32, libc::SIGTERM);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{provider::ProviderCommandConfig, session_store::read_json_file};
+    use tempfile::tempdir;
+
+    fn test_config(home_dir: &std::path::Path) -> Config {
+        Config {
+            server_url: "https://example.com".to_string(),
+            token: "token".to_string(),
+            machine_id: "machine-id".to_string(),
+            machine_data_key_base64url: "key".to_string(),
+            unhappy_home_dir: home_dir.to_path_buf(),
+            provider_commands: ProviderCommandConfig::from_env().unwrap(),
+            session_webhook_timeout_ms: 100,
+        }
+    }
+
+    #[tokio::test]
+    async fn persisted_state_includes_registry_shape_for_control_diagnostics() {
+        let temp_dir = tempdir().expect("tempdir");
+        let state = DaemonState::new_shared(test_config(temp_dir.path()));
+        state.initialize_persistence(4321).await.unwrap();
+
+        state
+            .provider_session_started(ProviderSessionStartedRequest {
+                provider: crate::provider::Provider::Claude,
+                provider_session_id: "session-123".to_string(),
+                metadata: serde_json::json!({
+                    "hostPid": 42424,
+                    "startedBy": "terminal",
+                    "cwd": "/tmp/project"
+                }),
+            })
+            .await;
+
+        let persisted = read_json_file::<PersistedDaemonState>(&state.state_file_path())
+            .await
+            .unwrap()
+            .unwrap();
+        let serialized = serde_json::to_value(&persisted).unwrap();
+
+        assert_eq!(serialized["status"], "running");
+        assert_eq!(serialized["httpPort"], 4321);
+        assert_eq!(
+            serialized["registry"]["trackedSessions"][0]["providerSessionId"],
+            "session-123"
+        );
+        assert_eq!(
+            serialized["registry"]["trackedSessions"][0]["startedBy"],
+            "terminal"
+        );
+        assert_eq!(
+            serialized["registry"]["awaitingProviderSessionPids"],
+            serde_json::json!([])
+        );
+    }
+
+    #[tokio::test]
+    async fn spawned_child_exit_removes_registry_entries_from_persisted_state() {
+        let temp_dir = tempdir().expect("tempdir");
+        let state = DaemonState::new_shared(test_config(temp_dir.path()));
+        state.initialize_persistence(4321).await.unwrap();
+
+        let snapshot = {
+            let mut inner = state.inner.write().await;
+            let (tx, _rx) = oneshot::channel();
+            inner.awaiters_by_pid.insert(555, tx);
+            inner.sessions_by_pid.insert(
+                555,
+                TrackedSession::pending_spawn(
+                    555,
+                    &SpawnSessionRequest {
+                        directory: "/tmp/project".to_string(),
+                        codex_resume_thread_id: None,
+                        claude_resume_session_id: None,
+                        agent: crate::provider::Provider::Gemini,
+                    },
+                ),
+            );
+            state.snapshot_from_inner(&inner)
+        };
+        state.persist_snapshot_best_effort(snapshot).await;
+
+        state.handle_spawned_child_exit(555).await;
+
+        let persisted = read_json_file::<PersistedDaemonState>(&state.state_file_path())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(persisted.registry.tracked_sessions.is_empty());
+        assert!(persisted.registry.awaiting_provider_session_pids.is_empty());
     }
 }
