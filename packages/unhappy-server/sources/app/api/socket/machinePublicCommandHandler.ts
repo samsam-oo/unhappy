@@ -5,28 +5,7 @@ import { log } from "@/utils/log";
 import { Socket } from "socket.io";
 
 const ALLOWED_MACHINE_COMMANDS = new Set<string>([
-    "bash",
-    "readFile",
-    "writeFile",
-    "listDirectory",
-    "getDirectoryTree",
-    "ripgrep",
-    "open-project",
-    "close-project",
-    "list-projects",
     "list-models",
-    "codex-list-threads",
-    "codex-open-thread",
-    "codex-list-messages",
-    "codex-send-message",
-    "codex-set-thread-name",
-    "claude-list-sessions",
-    "claude-list-messages",
-    "claude-send-message",
-    "gemini-list-sessions",
-    "gemini-list-messages",
-    "gemini-send-message",
-    "spawn-provider-session",
     "stop-daemon",
     "update-daemon",
 ]);
