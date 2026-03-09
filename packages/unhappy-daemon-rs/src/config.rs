@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 const CODEX_HOME_DIR_ENV: &str = "UNHAPPY_CODEX_HOME_DIR";
 const CODEX_AUTH_FILE_ENV: &str = "UNHAPPY_CODEX_AUTH_FILE";
 const CODEX_SESSIONS_DIR_ENV: &str = "UNHAPPY_CODEX_SESSIONS_DIR";
+const GEMINI_CONFIG_DIR_ENV: &str = "UNHAPPY_GEMINI_CONFIG_DIR";
+const GEMINI_SETTINGS_FILE_ENV: &str = "UNHAPPY_GEMINI_SETTINGS_FILE";
+const GEMINI_AUTH_FILE_ENV: &str = "UNHAPPY_GEMINI_AUTH_FILE";
+const GEMINI_OAUTH_CREDS_FILE_ENV: &str = "UNHAPPY_GEMINI_OAUTH_CREDS_FILE";
 const UNHAPPY_CLI_ROOT_ENV: &str = "UNHAPPY_CLI_ROOT";
 const CLAUDE_HOOK_FORWARDER_SCRIPT_ENV: &str = "UNHAPPY_CLAUDE_HOOK_FORWARDER";
 
@@ -14,6 +18,14 @@ pub struct CodexRuntimePaths {
     pub home_dir: PathBuf,
     pub auth_file: PathBuf,
     pub sessions_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GeminiRuntimePaths {
+    pub config_dir: PathBuf,
+    pub oauth_credentials_file: PathBuf,
+    pub settings_candidates: Vec<PathBuf>,
+    pub auth_candidates: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -159,6 +171,52 @@ impl Config {
             port,
         )
     }
+
+    pub fn gemini_config_dir(&self) -> PathBuf {
+        env::var(GEMINI_CONFIG_DIR_ENV)
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home_dir().join(".gemini"))
+    }
+
+    pub fn gemini_runtime_paths(&self) -> GeminiRuntimePaths {
+        let config_dir = self.gemini_config_dir();
+        let oauth_credentials_file = env::var(GEMINI_OAUTH_CREDS_FILE_ENV)
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| config_dir.join("oauth_creds.json"));
+
+        let settings_candidates = if let Ok(explicit) = env::var(GEMINI_SETTINGS_FILE_ENV) {
+            vec![PathBuf::from(explicit)]
+        } else {
+            vec![
+                config_dir.join("settings.json"),
+                home_dir().join(".config").join("gemini").join("settings.json"),
+                config_dir.join("config.json"),
+                home_dir().join(".config").join("gemini").join("config.json"),
+            ]
+        };
+
+        let auth_candidates = if let Ok(explicit) = env::var(GEMINI_AUTH_FILE_ENV) {
+            vec![PathBuf::from(explicit)]
+        } else {
+            vec![
+                config_dir.join("auth.json"),
+                home_dir().join(".config").join("gemini").join("auth.json"),
+            ]
+        };
+
+        GeminiRuntimePaths {
+            config_dir,
+            oauth_credentials_file,
+            settings_candidates,
+            auth_candidates,
+        }
+    }
+}
+
+fn home_dir() -> PathBuf {
+    PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
 }
 
 #[cfg(test)]
@@ -215,5 +273,35 @@ mod tests {
             config.claude_hook_command(3344),
             "node \"/tmp/.unhappy-test/scripts/session_hook_forwarder.cjs\" 3344",
         );
+    }
+
+    #[test]
+    fn gemini_runtime_paths_default_to_expected_locations() {
+        std::env::set_var(GEMINI_CONFIG_DIR_ENV, "/tmp/.gemini-test");
+        let config = sample_config();
+        let paths = config.gemini_runtime_paths();
+
+        assert_eq!(paths.config_dir, PathBuf::from("/tmp/.gemini-test"));
+        assert_eq!(
+            paths.oauth_credentials_file,
+            PathBuf::from("/tmp/.gemini-test/oauth_creds.json"),
+        );
+        assert_eq!(
+            paths.settings_candidates,
+            vec![
+                PathBuf::from("/tmp/.gemini-test/settings.json"),
+                home_dir().join(".config").join("gemini").join("settings.json"),
+                PathBuf::from("/tmp/.gemini-test/config.json"),
+                home_dir().join(".config").join("gemini").join("config.json"),
+            ],
+        );
+        assert_eq!(
+            paths.auth_candidates,
+            vec![
+                PathBuf::from("/tmp/.gemini-test/auth.json"),
+                home_dir().join(".config").join("gemini").join("auth.json"),
+            ],
+        );
+        std::env::remove_var(GEMINI_CONFIG_DIR_ENV);
     }
 }
