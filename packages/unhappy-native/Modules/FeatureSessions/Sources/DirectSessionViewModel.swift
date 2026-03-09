@@ -37,6 +37,7 @@ public final class DirectSessionViewModel: ObservableObject {
     private let reviewLoader: (any DirectSessionReviewLoadingAction)?
     private let worktreeLoader: (any DirectSessionWorktreeLoadingAction)?
     private var pollingTask: Task<Void, Never>?
+    private var activeMessagesLoadTask: Task<[APISessionMessage], Error>?
 
     public init(
         identity: DirectSessionIdentity,
@@ -71,10 +72,9 @@ public final class DirectSessionViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let loadedMessages = try await loader.loadMessages(
+            let loadedMessages = try await loadMessagesShared(
                 serverURLString: serverURLString,
-                token: token,
-                identity: identity
+                token: token
             )
             setMessagesIfChanged(loadedMessages)
             errorMessage = nil
@@ -311,10 +311,9 @@ public final class DirectSessionViewModel: ObservableObject {
             }
 
             do {
-                let loadedMessages = try await loader.loadMessages(
+                let loadedMessages = try await loadMessagesShared(
                     serverURLString: serverURLString,
-                    token: token,
-                    identity: identity
+                    token: token
                 )
                 setMessagesIfChanged(loadedMessages)
                 errorMessage = nil
@@ -329,6 +328,30 @@ public final class DirectSessionViewModel: ObservableObject {
     private func setMessagesIfChanged(_ nextMessages: [APISessionMessage]) {
         guard messages != nextMessages else { return }
         messages = nextMessages
+    }
+
+    private func loadMessagesShared(
+        serverURLString: String,
+        token: String
+    ) async throws -> [APISessionMessage] {
+        if let activeMessagesLoadTask {
+            return try await activeMessagesLoadTask.value
+        }
+
+        let task = Task {
+            try await loader.loadMessages(
+                serverURLString: serverURLString,
+                token: token,
+                identity: identity
+            )
+        }
+        activeMessagesLoadTask = task
+
+        defer {
+            activeMessagesLoadTask = nil
+        }
+
+        return try await task.value
     }
 }
 
