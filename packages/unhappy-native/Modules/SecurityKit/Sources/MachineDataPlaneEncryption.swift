@@ -40,6 +40,8 @@ public struct MachineDataPlaneSealedPayload: Sendable, Equatable {
 
 public enum MachineDataPlaneEncryption {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
+    private static let localUnhappyHomeEnvKey = "UNHAPPY_HOME_DIR"
+    private static let simulatorHostHomeEnvKey = "SIMULATOR_HOST_HOME"
     private static let payloadBundleVersion: UInt8 = 2
     private static let wrappedDataKeyBundleVersion: UInt8 = 2
     private static let x25519PublicKeyLength = 32
@@ -55,16 +57,19 @@ public enum MachineDataPlaneEncryption {
     private static let sessionKeyInfo =
         Data("unhappy.machine-data-plane.session.v1".utf8)
 
-    public static func resolveMachineDataKey(rawWrappedKey: String?) -> Data? {
-        guard let rawWrappedKey else { return nil }
-        guard let wrappedKey = decodeBase64(rawWrappedKey) else { return nil }
-        guard
-            let accountSecret = loadAccountSecret(),
-            let contentSecret = deriveContentBoxSecretKey(fromAccountSecret: accountSecret)
-        else {
-            return nil
+    public static func resolveMachineDataKey(
+        rawWrappedKey: String?,
+        machineID: String? = nil
+    ) -> Data? {
+        if let rawWrappedKey,
+           let wrappedKey = decodeBase64(rawWrappedKey),
+           let accountSecret = loadAccountSecret(),
+           let contentSecret = deriveContentBoxSecretKey(fromAccountSecret: accountSecret),
+           let decrypted = decryptWrappedDataKey(bundle: wrappedKey, secretKey: contentSecret) {
+            return decrypted
         }
-        return decryptWrappedDataKey(bundle: wrappedKey, secretKey: contentSecret)
+
+        return loadLocalMachineDataKey(machineID: machineID)
     }
 
     public static func encryptJSONPayload(_ object: Any, dataKey: Data) throws -> String {
@@ -277,6 +282,81 @@ public enum MachineDataPlaneEncryption {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let raw, !raw.isEmpty else { return nil }
         guard let decoded = decodeBase64(raw), decoded.count == 32 else {
+            return nil
+        }
+        return decoded
+    }
+
+    private static func loadLocalMachineDataKey(machineID: String?) -> Data? {
+        let normalizedMachineID = machineID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        for unhappyHomeDirectory in localUnhappyHomeDirectories() {
+            guard let localMachineID = loadLocalMachineID(from: unhappyHomeDirectory) else {
+                continue
+            }
+            if let normalizedMachineID,
+               !normalizedMachineID.isEmpty,
+               localMachineID != normalizedMachineID {
+                continue
+            }
+            if let dataKey = loadLocalMachineKey(from: unhappyHomeDirectory) {
+                return dataKey
+            }
+        }
+
+        return nil
+    }
+
+    private static func localUnhappyHomeDirectories() -> [URL] {
+        let environment = ProcessInfo.processInfo.environment
+        var candidates: [URL] = []
+
+        func appendIfNeeded(_ path: String?) {
+            guard let path else { return }
+            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            let url = URL(fileURLWithPath: trimmed, isDirectory: true)
+            if !candidates.contains(url) {
+                candidates.append(url)
+            }
+        }
+
+        appendIfNeeded(environment[localUnhappyHomeEnvKey])
+        if let simulatorHostHome = environment[simulatorHostHomeEnvKey] {
+            appendIfNeeded((simulatorHostHome as NSString).appendingPathComponent(".unhappy"))
+        }
+        if let home = environment["HOME"] {
+            appendIfNeeded((home as NSString).appendingPathComponent(".unhappy"))
+        }
+
+        return candidates
+    }
+
+    private static func loadLocalMachineID(from unhappyHomeDirectory: URL) -> String? {
+        let settingsURL = unhappyHomeDirectory.appendingPathComponent("settings.json")
+        guard
+            let data = try? Data(contentsOf: settingsURL),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let machineID = object["machineId"] as? String
+        else {
+            return nil
+        }
+
+        let normalized = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private static func loadLocalMachineKey(from unhappyHomeDirectory: URL) -> Data? {
+        let accessKeyURL = unhappyHomeDirectory.appendingPathComponent("access.key")
+        guard
+            let data = try? Data(contentsOf: accessKeyURL),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let encryption = object["encryption"] as? [String: Any],
+            let machineKey = encryption["machineKey"] as? String,
+            let decoded = decodeBase64(machineKey),
+            decoded.count == 32
+        else {
             return nil
         }
         return decoded
