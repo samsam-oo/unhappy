@@ -6,7 +6,7 @@ use crate::{
     session_store::PersistedTrackedSession,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackedSession {
@@ -19,17 +19,53 @@ pub struct TrackedSession {
 
 impl TrackedSession {
     pub fn pending_spawn(pid: u32, request: &SpawnSessionRequest) -> Self {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert("directory".to_string(), Value::String(request.directory.clone()));
+        metadata.insert("agent".to_string(), Value::String(request.agent.command_name().to_string()));
+        if let Some(value) = request.codex_resume_thread_id.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("codexResumeThreadId".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.claude_resume_session_id.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("claudeResumeSessionId".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.model.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("model".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.reasoning_effort.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("reasoningEffort".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.codex_home_dir.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("codexHomeDir".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.agent_session_id.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("agentSessionId".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.agent_conversation_id.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("agentConversationId".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.agent_transcript_path.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("agentTranscriptPath".to_string(), Value::String(value.trim().to_string()));
+        }
+        if let Some(value) = request.agent_control_port {
+            metadata.insert("agentControlPort".to_string(), Value::Number(value.into()));
+        }
+        if let Some(environment_variables) = request.environment_variables.as_ref() {
+            let env_object = environment_variables.iter().fold(serde_json::Map::new(), |mut map, (key, value)| {
+                map.insert(key.clone(), Value::String(value.clone()));
+                map
+            });
+            metadata.insert("environmentVariables".to_string(), Value::Object(env_object));
+        }
+        if let Some(token) = request.token.as_ref().filter(|value| !value.trim().is_empty()) {
+            metadata.insert("providerTokenPresent".to_string(), Value::Bool(!token.trim().is_empty()));
+        }
+
         Self {
             started_by: "daemon".to_string(),
             provider: Some(request.agent),
             provider_session_id: None,
             pid,
-            metadata: Some(json!({
-                "directory": request.directory,
-                "agent": request.agent,
-                "codexResumeThreadId": request.codex_resume_thread_id,
-                "claudeResumeSessionId": request.claude_resume_session_id,
-            })),
+            metadata: Some(Value::Object(metadata)),
         }
     }
 
