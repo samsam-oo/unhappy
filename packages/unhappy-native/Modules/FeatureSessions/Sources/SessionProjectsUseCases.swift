@@ -9,6 +9,29 @@ public protocol SessionProjectsLoadingAction: Sendable {
     ) async throws -> [SessionMachineProject]
 }
 
+public struct SessionProjectsLoadSnapshot: Sendable, Equatable {
+    public let projects: [SessionMachineProject]
+    public let errorMessage: String?
+    public let isFinal: Bool
+
+    public init(
+        projects: [SessionMachineProject],
+        errorMessage: String?,
+        isFinal: Bool
+    ) {
+        self.projects = projects
+        self.errorMessage = errorMessage
+        self.isFinal = isFinal
+    }
+}
+
+public protocol SessionProjectsStreamingAction: Sendable {
+    func loadProjectsStream(
+        serverURLString: String,
+        token: String
+    ) async -> AsyncStream<SessionProjectsLoadSnapshot>
+}
+
 public protocol SessionProjectOpeningAction: Sendable {
     func openProject(
         serverURLString: String,
@@ -30,7 +53,7 @@ public protocol SessionProjectRemovingAction: Sendable {
     ) async throws -> SessionMachineProject
 }
 
-public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
+public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionProjectsStreamingAction {
     private struct MachineProjectsBatch: Sendable {
         let projects: [SessionMachineProject]
         let error: Error?
@@ -51,8 +74,55 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
         serverURLString: String,
         token: String
     ) async throws -> [SessionMachineProject] {
+        var finalSnapshot = SessionProjectsLoadSnapshot(
+            projects: [],
+            errorMessage: nil,
+            isFinal: true
+        )
+        for await snapshot in await loadProjectsStream(
+            serverURLString: serverURLString,
+            token: token
+        ) {
+            finalSnapshot = snapshot
+        }
+
+        if finalSnapshot.projects.isEmpty,
+           let errorMessage = finalSnapshot.errorMessage,
+           !errorMessage.isEmpty {
+            throw MachinesAPIError.rpcCallFailed(errorMessage)
+        }
+
+        return finalSnapshot.projects
+    }
+
+    public func loadProjectsStream(
+        serverURLString: String,
+        token: String
+    ) async -> AsyncStream<SessionProjectsLoadSnapshot> {
+        AsyncStream { continuation in
+            Task {
+                await self.streamProjects(
+                    serverURLString: serverURLString,
+                    token: token,
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
+    private func streamProjects(
+        serverURLString: String,
+        token: String,
+        continuation: AsyncStream<SessionProjectsLoadSnapshot>.Continuation
+    ) async {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedToken.isEmpty else { return [] }
+        guard !normalizedToken.isEmpty else {
+            continuation.yield(
+                SessionProjectsLoadSnapshot(projects: [], errorMessage: nil, isFinal: true)
+            )
+            continuation.finish()
+            return
+        }
 
         let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
@@ -61,70 +131,115 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
             serverURL.scheme != nil,
             serverURL.host != nil
         else {
-            return []
+            continuation.yield(
+                SessionProjectsLoadSnapshot(projects: [], errorMessage: nil, isFinal: true)
+            )
+            continuation.finish()
+            return
         }
 
-        let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
-        let activeMachines = machines.filter(\.active)
-        var projects: [SessionMachineProject] = []
-        var firstError: Error?
-        let service = self.service
-        let machineRequestTimeout = self.machineRequestTimeout
+        do {
+            let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
+            let activeMachines = machines.filter(\.active)
+            var projects: [SessionMachineProject] = []
+            var firstError: Error?
+            let service = self.service
+            let machineRequestTimeout = self.machineRequestTimeout
 
-        await withTaskGroup(of: MachineProjectsBatch.self) { group in
-            for machine in activeMachines {
-                let machineDisplayName = machineName(for: machine)
-                group.addTask {
-                    do {
-                        let machineProjects = try await withSessionLoadTimeout(machineRequestTimeout) {
-                            try await service.fetchProjects(
-                                serverURL: serverURL,
-                                token: normalizedToken,
-                                machineID: machine.id,
-                                explicitOnly: true,
-                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
+            await withTaskGroup(of: MachineProjectsBatch.self) { group in
+                for machine in activeMachines {
+                    let machineDisplayName = machineName(for: machine)
+                    group.addTask {
+                        do {
+                            let machineProjects = try await withSessionLoadTimeout(machineRequestTimeout) {
+                                try await service.fetchProjects(
+                                    serverURL: serverURL,
+                                    token: normalizedToken,
+                                    machineID: machine.id,
+                                    explicitOnly: true,
+                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
+                                )
+                            }
+                            return MachineProjectsBatch(
+                                projects: machineProjects.map {
+                                    SessionMachineProject(
+                                        machineID: machine.id,
+                                        machineDisplayName: machineDisplayName,
+                                        wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                        summary: $0
+                                    )
+                                },
+                                error: nil
+                            )
+                        } catch {
+                            return MachineProjectsBatch(
+                                projects: [],
+                                error: error
                             )
                         }
-                        return MachineProjectsBatch(
-                            projects: machineProjects.map {
-                                SessionMachineProject(
-                                    machineID: machine.id,
-                                    machineDisplayName: machineDisplayName,
-                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                    summary: $0
-                                )
-                            },
-                            error: nil
+                    }
+                }
+
+                for await batch in group {
+                    projects.append(contentsOf: batch.projects)
+                    projects = sortedProjects(projects)
+                    if batch.projects.isEmpty == false {
+                        continuation.yield(
+                            SessionProjectsLoadSnapshot(
+                                projects: projects,
+                                errorMessage: nil,
+                                isFinal: false
+                            )
                         )
-                    } catch {
-                        return MachineProjectsBatch(
-                            projects: [],
-                            error: error
-                        )
+                    }
+                    if firstError == nil {
+                        firstError = batch.error
                     }
                 }
             }
 
-            for await batch in group {
-                projects.append(contentsOf: batch.projects)
-                if firstError == nil {
-                    firstError = batch.error
+            let finalErrorMessage: String?
+            if projects.isEmpty, let firstError {
+                if let machinesError = firstError as? MachinesAPIError {
+                    finalErrorMessage = machinesError.errorDescription
+                } else {
+                    let message = (firstError as? LocalizedError)?.errorDescription ?? firstError.localizedDescription
+                    let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    finalErrorMessage = normalizedMessage.isEmpty ? nil : normalizedMessage
                 }
+            } else {
+                finalErrorMessage = nil
             }
-        }
 
-        if projects.isEmpty, let firstError {
-            if let machinesError = firstError as? MachinesAPIError {
-                throw machinesError
-            }
-            let message = (firstError as? LocalizedError)?.errorDescription ?? firstError.localizedDescription
-            let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !normalizedMessage.isEmpty {
-                throw MachinesAPIError.rpcCallFailed(normalizedMessage)
-            }
+            continuation.yield(
+                SessionProjectsLoadSnapshot(
+                    projects: projects,
+                    errorMessage: finalErrorMessage,
+                    isFinal: true
+                )
+            )
+            continuation.finish()
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            continuation.yield(
+                SessionProjectsLoadSnapshot(
+                    projects: [],
+                    errorMessage: message.trimmingCharacters(in: .whitespacesAndNewlines),
+                    isFinal: true
+                )
+            )
+            continuation.finish()
         }
+    }
 
-        return projects.sorted { lhs, rhs in
+    private func machineName(for machine: APIMachine) -> String {
+        NewSessionMachinePresentation.displayName(for: machine)
+    }
+
+    private func sortedProjects(
+        _ projects: [SessionMachineProject]
+    ) -> [SessionMachineProject] {
+        projects.sorted { lhs, rhs in
             let lhsDate = Date.parseISO8601(lhs.summary.latestUpdatedAt) ?? .distantPast
             let rhsDate = Date.parseISO8601(rhs.summary.latestUpdatedAt) ?? .distantPast
             if lhsDate != rhsDate {
@@ -135,10 +250,6 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
             }
             return lhs.summary.path.localizedCaseInsensitiveCompare(rhs.summary.path) == .orderedAscending
         }
-    }
-
-    private func machineName(for machine: APIMachine) -> String {
-        NewSessionMachinePresentation.displayName(for: machine)
     }
 }
 
