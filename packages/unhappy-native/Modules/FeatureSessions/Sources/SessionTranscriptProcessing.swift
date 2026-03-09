@@ -377,6 +377,7 @@ enum SessionTranscriptProcessing {
         completedAt: TimeInterval
     ) {
         let indices = Array(Set(openCommandIndexByToolUseID.values)).sorted()
+        guard indices.count == 1 else { return }
         for index in indices where result.indices.contains(index) {
             guard let existingPayload = commandPayloadIfApplicable(for: result[index].entry) else {
                 continue
