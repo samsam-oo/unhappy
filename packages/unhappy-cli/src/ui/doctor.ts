@@ -7,7 +7,7 @@
 
 import { configuration } from '@/configuration';
 import { checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
-import { findAllUnhappyProcesses } from '@/daemon/doctor';
+import { listDaemonProcessesViaRust } from '@/daemon/rustLauncher';
 import { readCredentials, readDaemonState, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import chalk from 'chalk';
@@ -187,18 +187,21 @@ export async function runDoctorCommand(
     }
 
     // All Unhappy processes
-    const allProcesses = await findAllUnhappyProcesses();
+    const allProcesses = await listDaemonProcessesViaRust();
     if (allProcesses.length > 0) {
       console.log(chalk.bold('\n🔍 All Unhappy CLI Processes'));
 
       // Group by type
       const grouped = allProcesses.reduce(
         (groups, process) => {
-          if (!groups[process.type]) groups[process.type] = [];
-          groups[process.type].push(process);
+          if (!groups[process.processType]) groups[process.processType] = [];
+          groups[process.processType].push({
+            pid: process.pid,
+            command: process.command,
+          });
           return groups;
         },
-        {} as Record<string, typeof allProcesses>,
+        {} as Record<string, Array<{ pid: number; command: string }>>,
       );
 
       // Display each group

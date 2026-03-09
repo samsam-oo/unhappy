@@ -22,14 +22,14 @@ import {
   stopDaemon,
   stopDaemonSession,
 } from './daemon/controlClient';
-import { killRunawayHappyProcesses } from './daemon/doctor';
-import { install } from './daemon/install';
 import {
+  cleanDaemonProcessesViaRust,
+  installDaemonViaRust,
   printDaemonStatusViaRustLauncher,
   startDaemonViaRustLauncher,
   stopDaemonViaRustLauncher,
+  uninstallDaemonViaRust,
 } from './daemon/rustLauncher';
-import { uninstall } from './daemon/uninstall';
 import { runDaemonUpdate } from './daemon/update';
 import { spawnDaemonExecutable } from './daemon/executable';
 import { readCredentials, readSettings } from './persistence';
@@ -55,7 +55,7 @@ import { getLatestDaemonLog, logger } from './ui/logger';
   if (subcommand === 'doctor') {
     // Check for clean subcommand
     if (args[1] === 'clean') {
-      const result = await killRunawayHappyProcesses();
+      const result = await cleanDaemonProcessesViaRust();
       console.log(`Cleaned up ${result.killed} runaway processes`);
       if (result.errors.length > 0) {
         console.log('Errors:', result.errors);
@@ -828,7 +828,7 @@ ${chalk.bold('Examples:')}
       process.exit(0);
     } else if (daemonSubcommand === 'install') {
       try {
-        await install();
+        await installDaemonViaRust({ env: process.env });
       } catch (error) {
         console.error(
           chalk.red('Error:'),
@@ -838,7 +838,7 @@ ${chalk.bold('Examples:')}
       }
     } else if (daemonSubcommand === 'uninstall') {
       try {
-        await uninstall();
+        await uninstallDaemonViaRust({ env: process.env });
       } catch (error) {
         console.error(
           chalk.red('Error:'),

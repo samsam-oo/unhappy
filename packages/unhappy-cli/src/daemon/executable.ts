@@ -167,7 +167,7 @@ async function buildRustDaemonEnvironment(
   };
 }
 
-export async function getDaemonLaunchEnvironmentVariables(
+export async function getDaemonLauncherEnvironment(
   baseEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<NodeJS.ProcessEnv> {
   return await buildRustDaemonEnvironment(baseEnv);
@@ -194,31 +194,4 @@ export async function spawnDaemonExecutable(
     closeSync(logFd);
   }
   return child;
-}
-
-export function getDaemonLaunchProgramArguments(): string[] {
-  const executable = resolveDaemonExecutable();
-  return [executable.executablePath, ...executable.args];
-}
-
-export function isConfiguredDaemonProcessCommand(
-  command: string,
-  processName?: string,
-): boolean {
-  const executable = resolveDaemonExecutable();
-  const normalizedCommand = normalizeForMatch(command);
-  const normalizedProcessName = processName
-    ? normalizeForMatch(processName)
-    : '';
-
-  const normalizedExecutablePath = normalizeForMatch(executable.executablePath);
-  const firstCommandPart = stripWrappingQuotes(
-    normalizedCommand.split(/\s+/, 1)[0] ?? '',
-  );
-  return (
-    normalizedCommand.includes(normalizedExecutablePath) ||
-    firstCommandPart === executable.executableBasename ||
-    firstCommandPart.endsWith(`/${executable.executableBasename}`) ||
-    normalizedProcessName === executable.executableBasename
-  );
 }

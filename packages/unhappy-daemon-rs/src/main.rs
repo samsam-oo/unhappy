@@ -12,6 +12,7 @@ mod provider;
 mod provider_session_ops;
 mod protocol;
 mod session_store;
+mod system_ops;
 mod tracked_session;
 
 use anyhow::Result;
@@ -28,6 +29,9 @@ use lock::DaemonLockGuard;
 use machine_sync::spawn_machine_sync;
 use std::env;
 use std::net::SocketAddr;
+use system_ops::{
+    doctor_clean, install_launchd_service, list_unhappy_processes, uninstall_launchd_service,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "unhappy-daemon-rs")]
@@ -59,6 +63,16 @@ enum Command {
         #[arg(long)]
         request_json: String,
     },
+    DoctorProcesses {
+        #[arg(long)]
+        json: bool,
+    },
+    DoctorClean {
+        #[arg(long)]
+        json: bool,
+    },
+    Install,
+    Uninstall,
     LocalControlServer {
         #[arg(long)]
         bind: Option<SocketAddr>,
@@ -156,6 +170,35 @@ async fn main() -> Result<()> {
                     &provider_session_started(&unhappy_home_dir, &request_json).await?
                 )?
             );
+        }
+        Command::DoctorProcesses { json } => {
+            let rows = list_unhappy_processes(std::process::id())?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                for row in rows {
+                    println!("{} {} {}", row.pid, row.process_type, row.command);
+                }
+            }
+        }
+        Command::DoctorClean { json } => {
+            let result = doctor_clean(std::process::id()).await?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("killed={}", result.killed);
+            }
+        }
+        Command::Install => {
+            let config = Config::from_env()?;
+            install_launchd_service(
+                &config.unhappy_home_dir,
+                &config.server_url,
+                &config.current_cli_version,
+            )?;
+        }
+        Command::Uninstall => {
+            uninstall_launchd_service()?;
         }
         Command::LocalControlServer { bind } => {
             let config = Config::from_env()?;

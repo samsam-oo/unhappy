@@ -1,25 +1,20 @@
 import { execFile, spawn } from 'node:child_process';
 
 import {
-  getDaemonLaunchEnvironmentVariables,
+  getDaemonLauncherEnvironment,
   resolveDaemonExecutable,
   spawnDaemonExecutable,
 } from './executable';
 
 function resolveLauncherEnvironment(opts?: {
-  includeDaemonCredentials?: boolean;
   env?: NodeJS.ProcessEnv;
 }): Promise<NodeJS.ProcessEnv> {
-  if (opts?.includeDaemonCredentials === true) {
-    return getDaemonLaunchEnvironmentVariables(opts.env ?? process.env);
-  }
-  return Promise.resolve(opts?.env ?? process.env);
+  return getDaemonLauncherEnvironment(opts?.env ?? process.env);
 }
 
 export async function runRustDaemonLauncherCommand(
   args: string[],
   opts?: {
-    includeDaemonCredentials?: boolean;
     env?: NodeJS.ProcessEnv;
   },
 ): Promise<string> {
@@ -74,7 +69,6 @@ export async function startDaemonViaRustLauncher(opts?: {
   }
 
   return await runRustDaemonLauncherCommand(['start'], {
-    includeDaemonCredentials: true,
     env: opts?.env,
   });
 }
@@ -107,5 +101,39 @@ export async function printDaemonStatusViaRustLauncher(opts?: {
       }
       resolve();
     });
+  });
+}
+
+export async function listDaemonProcessesViaRust(opts?: {
+  env?: NodeJS.ProcessEnv;
+}): Promise<Array<{ pid: number; command: string; processType: string }>> {
+  const output = await runRustDaemonLauncherCommand(['doctor-processes', '--json'], {
+    env: opts?.env,
+  });
+  return JSON.parse(output) as Array<{ pid: number; command: string; processType: string }>;
+}
+
+export async function cleanDaemonProcessesViaRust(opts?: {
+  env?: NodeJS.ProcessEnv;
+}): Promise<{ killed: number; errors: Array<{ pid: number; error: string }> }> {
+  const output = await runRustDaemonLauncherCommand(['doctor-clean', '--json'], {
+    env: opts?.env,
+  });
+  return JSON.parse(output) as { killed: number; errors: Array<{ pid: number; error: string }> };
+}
+
+export async function installDaemonViaRust(opts?: {
+  env?: NodeJS.ProcessEnv;
+}): Promise<void> {
+  await runRustDaemonLauncherCommand(['install'], {
+    env: opts?.env,
+  });
+}
+
+export async function uninstallDaemonViaRust(opts?: {
+  env?: NodeJS.ProcessEnv;
+}): Promise<void> {
+  await runRustDaemonLauncherCommand(['uninstall'], {
+    env: opts?.env,
   });
 }
