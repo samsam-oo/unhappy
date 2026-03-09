@@ -101,6 +101,7 @@ struct UnhappyNativeApp: App {
         )
         let directSessionFileLoader = DirectSessionFileLoadUseCase(service: machinesService)
         let directSessionReviewLoader = DirectSessionReviewLoadUseCase(service: machinesService)
+        let directSessionWorktreeLoader = DirectSessionWorktreeLoadUseCase(service: machinesService)
         let sessionDeleteUseCase = SessionDeleteUseCase(service: sessionsService)
         self.onboarding = onboardingUseCase
         self.makeSettingsViewModel = { SettingsViewModel(settingsManager: settingsUseCase) }
@@ -143,7 +144,8 @@ struct UnhappyNativeApp: App {
                 sender: directSessionMessageSender,
                 capabilitiesLoader: directSessionCapabilitiesLoader,
                 fileLoader: directSessionFileLoader,
-                reviewLoader: directSessionReviewLoader
+                reviewLoader: directSessionReviewLoader,
+                worktreeLoader: directSessionWorktreeLoader
             )
         }
         self.makeMachinesViewModel = {

@@ -9,6 +9,7 @@ const MAX_DIRECT_MESSAGES = 1200;
 export type GeminiDirectSessionDescriptor = {
   sessionId: string;
   controlPort: number;
+  permissionMode?: string | null;
 };
 
 export type GeminiDirectSessionMessage = {

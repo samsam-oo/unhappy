@@ -35,7 +35,10 @@ struct DirectSessionUseCasesTests {
                 title: "Gemini Session",
                 cwd: "/repo",
                 transcriptPath: nil,
-                model: "gemini-3-flash-preview"
+                model: "gemini-3-flash-preview",
+                effort: nil,
+                permissionMode: nil,
+                collabInProgressCount: 0
             )
         )
 
@@ -64,11 +67,15 @@ struct DirectSessionUseCasesTests {
                 title: "Gemini Session",
                 cwd: "/repo",
                 transcriptPath: nil,
-                model: "gemini-3-flash-preview"
+                model: "gemini-3-flash-preview",
+                effort: nil,
+                permissionMode: nil,
+                collabInProgressCount: 0
             ),
             text: "hello gemini",
             model: nil,
-            reasoningEffort: nil
+            reasoningEffort: nil,
+            permissionMode: nil
         )
 
         #expect(result.success == true)
@@ -93,7 +100,10 @@ struct DirectSessionUseCasesTests {
                 title: "Codex Session",
                 cwd: "/repo",
                 transcriptPath: "/repo/.codex/transcript.jsonl",
-                model: "gpt-5-codex"
+                model: "gpt-5-codex",
+                effort: nil,
+                permissionMode: nil,
+                collabInProgressCount: 0
             ),
             path: "Sources/App.swift"
         )
@@ -127,7 +137,10 @@ struct DirectSessionUseCasesTests {
                 title: "Claude Session",
                 cwd: "/repo",
                 transcriptPath: nil,
-                model: "sonnet"
+                model: "sonnet",
+                effort: nil,
+                permissionMode: nil,
+                collabInProgressCount: 0
             ),
             repositoryPath: nil
         )
@@ -222,6 +235,7 @@ private actor GeminiMessagingService: MachineGeminiSessionMessaging {
         machineID: String,
         sessionID: String,
         model: String?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         recordedCall = RecordedCall(sessionID: sessionID, text: text)
@@ -270,6 +284,7 @@ private actor FailingCodexMessagingService: MachineCodexThreadMessaging {
         transcriptPath: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         Issue.record("Codex service should not be used")
@@ -291,6 +306,7 @@ private actor FailingClaudeMessagingService: MachineClaudeSessionMessaging {
         cwd: String,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         Issue.record("Claude service should not be used")

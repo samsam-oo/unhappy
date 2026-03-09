@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import FeatureNewSession
 
 enum DirectSessionIdentityResolver {
     static func resolve(from row: SessionLinkedUpstreamSession) -> DirectSessionIdentity? {
@@ -22,7 +23,10 @@ enum DirectSessionIdentityResolver {
                 title: row.title,
                 cwd: cwd,
                 transcriptPath: transcriptPath,
-                model: row.summary.model
+                model: row.summary.model,
+                effort: row.summary.effort.map { NewSessionReasoningEffort(threadEffort: $0) },
+                permissionMode: nil,
+                collabInProgressCount: 0
             )
         }
 
@@ -34,7 +38,10 @@ enum DirectSessionIdentityResolver {
             title: row.title,
             cwd: cwd,
             transcriptPath: nil,
-            model: row.summary.model
+            model: row.summary.model,
+            effort: row.summary.effort.map { NewSessionReasoningEffort(threadEffort: $0) },
+            permissionMode: nil,
+            collabInProgressCount: 0
         )
     }
 
@@ -59,7 +66,10 @@ enum DirectSessionIdentityResolver {
                 title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session),
                 cwd: cwd,
                 transcriptPath: transcriptPath,
-                model: context.currentModelLabel
+                model: context.currentModelLabel,
+                effort: context.currentEffortLabel.flatMap { NewSessionReasoningEffort.fromBackend($0) },
+                permissionMode: context.currentPermissionMode,
+                collabInProgressCount: context.collabInProgressCount
             )
         }
 
@@ -72,7 +82,10 @@ enum DirectSessionIdentityResolver {
                 title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session),
                 cwd: cwd,
                 transcriptPath: upstreamIdentity.transcriptPath,
-                model: context.currentModelLabel
+                model: context.currentModelLabel,
+                effort: context.currentEffortLabel.flatMap { NewSessionReasoningEffort.fromBackend($0) },
+                permissionMode: context.currentPermissionMode,
+                collabInProgressCount: context.collabInProgressCount
             )
         }
 

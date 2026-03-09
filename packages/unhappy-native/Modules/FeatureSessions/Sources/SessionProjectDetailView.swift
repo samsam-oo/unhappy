@@ -168,7 +168,10 @@ public struct SessionProjectDetailView: View {
                             title: "Session",
                             cwd: context.directoryPath,
                             transcriptPath: nil,
-                            model: context.model
+                            model: context.model,
+                            effort: nil,
+                            permissionMode: nil,
+                            collabInProgressCount: 0
                         )
                     }
                 }

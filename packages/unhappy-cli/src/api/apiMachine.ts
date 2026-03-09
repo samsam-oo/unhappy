@@ -39,7 +39,8 @@ import {
   sendCodexThreadMessage,
   setCodexThreadName,
 } from '@/codex/directSession';
-import type { Metadata } from './types';
+import type { Metadata, PermissionMode } from './types';
+import { isPermissionMode } from '@/utils/permissionModeAdapter';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import {
   defaultClaudeConfigDir,
@@ -915,6 +916,11 @@ export class ApiMachineClient {
           params?.effort === 'xhigh'
             ? params.effort
             : null;
+        const permissionMode: PermissionMode | null = isPermissionMode(
+          params?.permissionMode,
+        )
+          ? params.permissionMode
+          : null;
 
         if (!threadId) {
           return { success: false, error: 'threadId is required' };
@@ -934,6 +940,7 @@ export class ApiMachineClient {
             transcriptPath: transcriptPath || null,
             model,
             effort,
+            permissionMode,
           },
           text,
         );
@@ -1028,6 +1035,11 @@ export class ApiMachineClient {
           params?.effort === 'max'
             ? params.effort
             : null;
+        const permissionMode: PermissionMode | null = isPermissionMode(
+          params?.permissionMode,
+        )
+          ? params.permissionMode
+          : null;
         if (!sessionId) {
           return { success: false, error: 'sessionId is required' };
         }
@@ -1045,6 +1057,7 @@ export class ApiMachineClient {
             cwd,
             model,
             effort,
+            permissionMode,
           },
           text,
         );
@@ -1135,6 +1148,11 @@ export class ApiMachineClient {
           typeof params?.model === 'string' && params.model.trim().length > 0
             ? params.model.trim()
             : null;
+        const permissionMode: PermissionMode | null = isPermissionMode(
+          params?.permissionMode,
+        )
+          ? params.permissionMode
+          : null;
         if (!sessionId) {
           return { success: false, error: 'sessionId is required' };
         }
@@ -1153,6 +1171,7 @@ export class ApiMachineClient {
           {
             sessionId,
             controlPort: tracked.controlPort,
+            permissionMode,
           },
           text,
           { model },
