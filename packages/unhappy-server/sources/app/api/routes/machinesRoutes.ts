@@ -16,6 +16,8 @@ import {
 } from "./codexPublicCommands";
 
 export function machinesRoutes(app: Fastify) {
+    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 60 * 2;
+
     function rejectEncryptedDataPlaneRequired(
         reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }
     ) {
@@ -46,6 +48,55 @@ export function machinesRoutes(app: Fastify) {
             select: { id: true }
         });
         return Boolean(machine);
+    }
+
+    async function normalizeStaleMachineState<T extends {
+        id: string;
+        accountId: string;
+        active: boolean;
+        lastActiveAt: Date;
+        metadata: string;
+        metadataVersion: number;
+        daemonState: string | null;
+        daemonStateVersion: number;
+        dataEncryptionKey: Uint8Array | null;
+        seq: number;
+        createdAt: Date;
+        updatedAt: Date;
+    }>(machine: T): Promise<T> {
+        if (!machine.active) {
+            return machine;
+        }
+
+        const staleCutoff = Date.now() - MACHINE_ACTIVE_STALE_AFTER_MS;
+        if (machine.lastActiveAt.getTime() > staleCutoff) {
+            return machine;
+        }
+
+        const updated = await db.machine.updateManyAndReturn({
+            where: {
+                accountId: machine.accountId,
+                id: machine.id,
+                active: true,
+                lastActiveAt: machine.lastActiveAt,
+            },
+            data: {
+                active: false,
+            }
+        });
+
+        const normalized = updated[0];
+        if (!normalized) {
+            return machine;
+        }
+
+        eventRouter.emitEphemeral({
+            userId: normalized.accountId,
+            payload: buildMachineActivityEphemeral(normalized.id, false, normalized.lastActiveAt.getTime()),
+            recipientFilter: { type: 'user-scoped-only' }
+        });
+
+        return normalized as T;
     }
 
     async function invokeMachineCommand(
@@ -259,7 +310,11 @@ export function machinesRoutes(app: Fastify) {
             orderBy: { lastActiveAt: 'desc' }
         });
 
-        return machines.map(m => ({
+        const normalizedMachines = await Promise.all(
+            machines.map((machine) => normalizeStaleMachineState(machine))
+        );
+
+        return normalizedMachines.map(m => ({
             id: m.id,
             metadata: m.metadata,
             metadataVersion: m.metadataVersion,
@@ -297,19 +352,21 @@ export function machinesRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Machine not found' });
         }
 
+        const normalizedMachine = await normalizeStaleMachineState(machine);
+
         return {
             machine: {
-                id: machine.id,
-                metadata: machine.metadata,
-                metadataVersion: machine.metadataVersion,
-                daemonState: machine.daemonState,
-                daemonStateVersion: machine.daemonStateVersion,
-                dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
-                seq: machine.seq,
-                active: machine.active,
-                activeAt: machine.lastActiveAt.getTime(),
-                createdAt: machine.createdAt.getTime(),
-                updatedAt: machine.updatedAt.getTime()
+                id: normalizedMachine.id,
+                metadata: normalizedMachine.metadata,
+                metadataVersion: normalizedMachine.metadataVersion,
+                daemonState: normalizedMachine.daemonState,
+                daemonStateVersion: normalizedMachine.daemonStateVersion,
+                dataEncryptionKey: normalizedMachine.dataEncryptionKey ? Buffer.from(normalizedMachine.dataEncryptionKey).toString('base64') : null,
+                seq: normalizedMachine.seq,
+                active: normalizedMachine.active,
+                activeAt: normalizedMachine.lastActiveAt.getTime(),
+                createdAt: normalizedMachine.createdAt.getTime(),
+                updatedAt: normalizedMachine.updatedAt.getTime()
             }
         };
     });
