@@ -66,6 +66,14 @@ pub struct CodexDirectRuntimeContract {
     pub resume_thread_id: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct GeminiDirectRuntimeContract {
+    pub executable: String,
+    pub startup_args: Vec<String>,
+    pub control_port_metadata_key: &'static str,
+    pub session_id_metadata_key: &'static str,
+}
+
 impl ProviderCommand {
     fn from_env(provider: Provider, legacy_cli: Option<&str>) -> Result<Self> {
         let executable_env = provider.executable_env();
@@ -171,6 +179,16 @@ impl ProviderCommandConfig {
             sessions_dir: codex_home_dir.join("sessions"),
             codex_home_dir,
             resume_thread_id: normalized_arg(resume_thread_id).map(ToOwned::to_owned),
+        }
+    }
+
+    pub fn gemini_direct_contract(&self) -> GeminiDirectRuntimeContract {
+        let command = self.resolve(Provider::Gemini);
+        GeminiDirectRuntimeContract {
+            executable: command.executable().to_string(),
+            startup_args: command.args().to_vec(),
+            control_port_metadata_key: "agentControlPort",
+            session_id_metadata_key: "agentSessionId",
         }
     }
 }
