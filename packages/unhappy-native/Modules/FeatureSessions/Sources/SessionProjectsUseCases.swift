@@ -31,6 +31,11 @@ public protocol SessionProjectRemovingAction: Sendable {
 }
 
 public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
+    private struct MachineProjectsBatch: Sendable {
+        let projects: [SessionMachineProject]
+        let errorMessage: String?
+    }
+
     private let service: any MachinesFetching & MachineProjectsFetching
 
     public init(service: any MachinesFetching & MachineProjectsFetching) {
@@ -57,9 +62,10 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
         var projects: [SessionMachineProject] = []
+        var firstErrorMessage: String?
         let service = self.service
 
-        await withTaskGroup(of: [SessionMachineProject].self) { group in
+        await withTaskGroup(of: MachineProjectsBatch.self) { group in
             for machine in activeMachines {
                 let machineDisplayName = machineName(for: machine)
                 group.addTask {
@@ -71,23 +77,38 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
                             explicitOnly: true,
                             wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
                         )
-                        return machineProjects.map {
-                            SessionMachineProject(
-                                machineID: machine.id,
-                                machineDisplayName: machineDisplayName,
-                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                summary: $0
-                            )
-                        }
+                        return MachineProjectsBatch(
+                            projects: machineProjects.map {
+                                SessionMachineProject(
+                                    machineID: machine.id,
+                                    machineDisplayName: machineDisplayName,
+                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                    summary: $0
+                                )
+                            },
+                            errorMessage: nil
+                        )
                     } catch {
-                        return []
+                        return MachineProjectsBatch(
+                            projects: [],
+                            errorMessage: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                        )
                     }
                 }
             }
 
-            for await machineProjects in group {
-                projects.append(contentsOf: machineProjects)
+            for await batch in group {
+                projects.append(contentsOf: batch.projects)
+                if firstErrorMessage == nil {
+                    firstErrorMessage = batch.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
+        }
+
+        if projects.isEmpty,
+           let firstErrorMessage,
+           !firstErrorMessage.isEmpty {
+            throw MachinesAPIError.rpcCallFailed(firstErrorMessage)
         }
 
         return projects.sorted { lhs, rhs in

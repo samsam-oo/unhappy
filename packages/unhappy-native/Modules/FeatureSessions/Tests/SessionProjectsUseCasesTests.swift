@@ -67,19 +67,52 @@ struct SessionProjectsUseCasesTests {
         #expect(project.summary.path == "/repo/app")
         #expect(project.summary.openedExplicitly == true)
     }
+
+    @Test
+    func loadProjectsThrowsWhenAllMachineProjectFetchesFail() async {
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-1",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Work Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                )
+            ],
+            projectsByMachineID: [:],
+            fetchProjectsError: MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
+        )
+        let useCase = SessionProjectsLoadUseCase(service: service)
+
+        await #expect(throws: MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")) {
+            _ = try await useCase.loadProjects(
+                serverURLString: "https://api.unhappy.im",
+                token: "token"
+            )
+        }
+    }
 }
 
 private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
     let machines: [APIMachine]
     let projectsByMachineID: [String: [APIMachineProjectSummary]]
+    let fetchProjectsError: Error?
     private(set) var requestedExplicitOnlyValues: [Bool] = []
 
     init(
         machines: [APIMachine],
-        projectsByMachineID: [String: [APIMachineProjectSummary]]
+        projectsByMachineID: [String: [APIMachineProjectSummary]],
+        fetchProjectsError: Error? = nil
     ) {
         self.machines = machines
         self.projectsByMachineID = projectsByMachineID
+        self.fetchProjectsError = fetchProjectsError
     }
 
     func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -94,6 +127,9 @@ private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
         requestedExplicitOnlyValues.append(explicitOnly)
+        if let fetchProjectsError {
+            throw fetchProjectsError
+        }
         return projectsByMachineID[machineID] ?? []
     }
 }
