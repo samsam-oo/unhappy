@@ -421,7 +421,7 @@ impl DaemonState {
                 inner.http_port
             },
             start_time: inner.start_time.clone(),
-            started_with_cli_version: env!("CARGO_PKG_VERSION").to_string(),
+            started_with_cli_version: self.config.current_cli_version.clone(),
             status: inner.status,
             state_reason: inner.state_reason.clone(),
             started_at: inner.started_at,
