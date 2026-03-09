@@ -6,7 +6,7 @@ use crate::{
     provider::{
         ProviderAdapters, ProviderProcessSpawner, ProviderSpawnContext, TokioProviderProcessSpawner,
     },
-    session_store::{write_json_file, PersistedSessionStore},
+    session_store::{read_session_store, write_json_file, PersistedSessionStore},
     tracked_session::TrackedSession,
 };
 use anyhow::Result;
@@ -109,6 +109,17 @@ impl DaemonState {
 
     pub fn subscribe_shutdown(&self) -> watch::Receiver<bool> {
         self.shutdown_tx.subscribe()
+    }
+
+    pub async fn restore_persisted_sessions(&self) -> Result<()> {
+        let store = read_session_store(&self.session_store_path()).await?;
+        let mut inner = self.inner.write().await;
+        inner.sessions_by_pid = store
+            .tracked_sessions
+            .into_iter()
+            .map(|session| (session.pid, TrackedSession::from(session)))
+            .collect();
+        Ok(())
     }
 
     pub async fn initialize_persistence(&self, http_port: u16) -> Result<()> {
@@ -373,6 +384,10 @@ impl DaemonState {
 
     fn state_file_path(&self) -> PathBuf {
         self.config.unhappy_home_dir.join("daemon.state.json")
+    }
+
+    fn session_store_path(&self) -> PathBuf {
+        self.config.unhappy_home_dir.join("daemon.sessions.json")
     }
 }
 
