@@ -10,15 +10,18 @@ public protocol SessionProjectsLoadingAction: Sendable {
 }
 
 public struct SessionProjectsLoadSnapshot: Sendable, Equatable {
+    public let machineID: String?
     public let projects: [SessionMachineProject]
     public let errorMessage: String?
     public let isFinal: Bool
 
     public init(
+        machineID: String?,
         projects: [SessionMachineProject],
         errorMessage: String?,
         isFinal: Bool
     ) {
+        self.machineID = machineID
         self.projects = projects
         self.errorMessage = errorMessage
         self.isFinal = isFinal
@@ -75,24 +78,33 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
         token: String
     ) async throws -> [SessionMachineProject] {
         var finalSnapshot = SessionProjectsLoadSnapshot(
+            machineID: nil,
             projects: [],
             errorMessage: nil,
             isFinal: true
         )
+        var aggregatedProjects: [SessionMachineProject] = []
         for await snapshot in await loadProjectsStream(
             serverURLString: serverURLString,
             token: token
         ) {
             finalSnapshot = snapshot
+            if let machineID = snapshot.machineID {
+                aggregatedProjects = mergeMachineScopedProjects(
+                    existing: aggregatedProjects,
+                    refreshed: snapshot.projects,
+                    machineID: machineID
+                )
+            }
         }
 
-        if finalSnapshot.projects.isEmpty,
+        if aggregatedProjects.isEmpty,
            let errorMessage = finalSnapshot.errorMessage,
            !errorMessage.isEmpty {
             throw MachinesAPIError.rpcCallFailed(errorMessage)
         }
 
-        return finalSnapshot.projects
+        return aggregatedProjects
     }
 
     public func loadProjectsStream(
@@ -118,7 +130,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
             continuation.yield(
-                SessionProjectsLoadSnapshot(projects: [], errorMessage: nil, isFinal: true)
+                SessionProjectsLoadSnapshot(machineID: nil, projects: [], errorMessage: nil, isFinal: true)
             )
             continuation.finish()
             return
@@ -132,7 +144,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
             serverURL.host != nil
         else {
             continuation.yield(
-                SessionProjectsLoadSnapshot(projects: [], errorMessage: nil, isFinal: true)
+                SessionProjectsLoadSnapshot(machineID: nil, projects: [], errorMessage: nil, isFinal: true)
             )
             continuation.finish()
             return
@@ -186,7 +198,8 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
                     if batch.projects.isEmpty == false {
                         continuation.yield(
                             SessionProjectsLoadSnapshot(
-                                projects: projects,
+                                machineID: batch.projects.first?.machineID,
+                                projects: batch.projects,
                                 errorMessage: nil,
                                 isFinal: false
                             )
@@ -213,7 +226,8 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
 
             continuation.yield(
                 SessionProjectsLoadSnapshot(
-                    projects: projects,
+                    machineID: nil,
+                    projects: [],
                     errorMessage: finalErrorMessage,
                     isFinal: true
                 )
@@ -223,6 +237,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             continuation.yield(
                 SessionProjectsLoadSnapshot(
+                    machineID: nil,
                     projects: [],
                     errorMessage: message.trimmingCharacters(in: .whitespacesAndNewlines),
                     isFinal: true
@@ -250,6 +265,15 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
             }
             return lhs.summary.path.localizedCaseInsensitiveCompare(rhs.summary.path) == .orderedAscending
         }
+    }
+
+    private func mergeMachineScopedProjects(
+        existing: [SessionMachineProject],
+        refreshed: [SessionMachineProject],
+        machineID: String
+    ) -> [SessionMachineProject] {
+        let retained = existing.filter { $0.machineID != machineID }
+        return sortedProjects(retained + refreshed)
     }
 }
 
@@ -356,7 +380,7 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
     }
 }
 
-private extension Date {
+extension Date {
     nonisolated(unsafe) static let fractionalISO8601Formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

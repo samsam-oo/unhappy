@@ -10,7 +10,37 @@ public protocol SessionUpstreamSessionsLoadingAction: Sendable {
     ) async throws -> [SessionLinkedUpstreamSession]
 }
 
-public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingAction {
+public struct SessionUpstreamSessionsLoadSnapshot: Sendable, Equatable {
+    public let machineID: String?
+    public let projectPath: String?
+    public let rows: [SessionLinkedUpstreamSession]
+    public let errorMessage: String?
+    public let isFinal: Bool
+
+    public init(
+        machineID: String?,
+        projectPath: String?,
+        rows: [SessionLinkedUpstreamSession],
+        errorMessage: String?,
+        isFinal: Bool
+    ) {
+        self.machineID = machineID
+        self.projectPath = projectPath
+        self.rows = rows
+        self.errorMessage = errorMessage
+        self.isFinal = isFinal
+    }
+}
+
+public protocol SessionUpstreamSessionsStreamingAction: Sendable {
+    func loadUpstreamSessionsStream(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async -> AsyncStream<SessionUpstreamSessionsLoadSnapshot>
+}
+
+public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingAction, SessionUpstreamSessionsStreamingAction {
     private let service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching
     private let upstreamRequestTimeout: Duration
 
@@ -27,8 +57,69 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         token: String,
         projects: [SessionMachineProject]
     ) async throws -> [SessionLinkedUpstreamSession] {
+        var finalSnapshot = SessionUpstreamSessionsLoadSnapshot(
+            machineID: nil,
+            projectPath: nil,
+            rows: [],
+            errorMessage: nil,
+            isFinal: true
+        )
+        var aggregatedRows: [SessionLinkedUpstreamSession] = []
+        for await snapshot in await loadUpstreamSessionsStream(
+            serverURLString: serverURLString,
+            token: token,
+            projects: projects
+        ) {
+            finalSnapshot = snapshot
+            if let machineID = snapshot.machineID,
+               let projectPath = snapshot.projectPath {
+                aggregatedRows = mergeProjectScopedRows(
+                    existing: aggregatedRows,
+                    refreshed: snapshot.rows,
+                    machineID: machineID,
+                    projectPath: projectPath
+                )
+            }
+        }
+
+        if aggregatedRows.isEmpty,
+           let errorMessage = finalSnapshot.errorMessage,
+           !errorMessage.isEmpty {
+            throw MachinesAPIError.rpcCallFailed(errorMessage)
+        }
+
+        return aggregatedRows
+    }
+
+    public func loadUpstreamSessionsStream(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async -> AsyncStream<SessionUpstreamSessionsLoadSnapshot> {
+        AsyncStream { continuation in
+            Task {
+                await self.streamUpstreamSessions(
+                    serverURLString: serverURLString,
+                    token: token,
+                    projects: projects,
+                    continuation: continuation
+                )
+            }
+        }
+    }
+
+    private func streamUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject],
+        continuation: AsyncStream<SessionUpstreamSessionsLoadSnapshot>.Continuation
+    ) async {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedToken.isEmpty else { return [] }
+        guard !normalizedToken.isEmpty else {
+            continuation.yield(.init(machineID: nil, projectPath: nil, rows: [], errorMessage: nil, isFinal: true))
+            continuation.finish()
+            return
+        }
 
         let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard
@@ -37,97 +128,148 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
             serverURL.scheme != nil,
             serverURL.host != nil
         else {
-            return []
+            continuation.yield(.init(machineID: nil, projectPath: nil, rows: [], errorMessage: nil, isFinal: true))
+            continuation.finish()
+            return
         }
 
-        let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
-        let activeMachines = machines.filter(\.active)
-        let projectPathsByMachineID = groupedProjectPathsByMachineID(from: projects)
-        var rows: [SessionLinkedUpstreamSession] = []
-        var seenRowIDs = Set<String>()
-        let service = self.service
-        let upstreamRequestTimeout = self.upstreamRequestTimeout
+        do {
+            let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
+            let activeMachines = machines.filter(\.active)
+            let projectPathsByMachineID = groupedProjectPathsByMachineID(from: projects)
+            var rows: [SessionLinkedUpstreamSession] = []
+            var seenRowIDs = Set<String>()
+            var firstErrorMessage: String?
+            let service = self.service
+            let upstreamRequestTimeout = self.upstreamRequestTimeout
 
-        await withTaskGroup(of: [SessionLinkedUpstreamSession].self) { group in
-            for machine in activeMachines {
-                let machineProjects = projectPathsByMachineID[machine.id] ?? []
-                guard !machineProjects.isEmpty else { continue }
+            await withTaskGroup(of: SessionUpstreamSessionsLoadSnapshot.self) { group in
+                for machine in activeMachines {
+                    let machineProjects = projectPathsByMachineID[machine.id] ?? []
+                    guard !machineProjects.isEmpty else { continue }
 
-                let machineDisplayName = machineName(for: machine)
-                for projectPath in machineProjects {
-                    group.addTask {
-                        do {
-                            return try await withSessionLoadTimeout(upstreamRequestTimeout) {
-                                async let codexThreads = service.fetchCodexThreads(
-                                    serverURL: serverURL,
-                                    token: normalizedToken,
-                                    machineID: machine.id,
-                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                    limit: 50,
-                                    cwd: projectPath
-                                )
-                                async let claudeSessions = service.fetchClaudeSessions(
-                                    serverURL: serverURL,
-                                    token: normalizedToken,
-                                    machineID: machine.id,
-                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                    limit: 50,
-                                    cwd: projectPath
-                                )
-                                async let geminiSessions = service.fetchGeminiSessions(
-                                    serverURL: serverURL,
-                                    token: normalizedToken,
-                                    machineID: machine.id,
-                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                    limit: 50,
-                                    cwd: projectPath
-                                )
-                                let (threads, sessions, geminiRows) = try await (codexThreads, claudeSessions, geminiSessions)
-                                return threads.map {
-                                    SessionLinkedUpstreamSession(
+                    let machineDisplayName = machineName(for: machine)
+                    for projectPath in machineProjects {
+                        group.addTask {
+                            do {
+                                let batch = try await withSessionLoadTimeout(upstreamRequestTimeout) {
+                                    async let codexThreads = service.fetchCodexThreads(
+                                        serverURL: serverURL,
+                                        token: normalizedToken,
                                         machineID: machine.id,
-                                        machineDisplayName: machineDisplayName,
                                         wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                        summary: $0.upstreamSummary
+                                        limit: 50,
+                                        cwd: projectPath
                                     )
-                                } + sessions.map {
-                                    SessionLinkedUpstreamSession(
+                                    async let claudeSessions = service.fetchClaudeSessions(
+                                        serverURL: serverURL,
+                                        token: normalizedToken,
                                         machineID: machine.id,
-                                        machineDisplayName: machineDisplayName,
                                         wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                        summary: $0.upstreamSummary
+                                        limit: 50,
+                                        cwd: projectPath
                                     )
-                                } + geminiRows.map {
-                                    SessionLinkedUpstreamSession(
+                                    async let geminiSessions = service.fetchGeminiSessions(
+                                        serverURL: serverURL,
+                                        token: normalizedToken,
                                         machineID: machine.id,
-                                        machineDisplayName: machineDisplayName,
                                         wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                        summary: $0.upstreamSummary
+                                        limit: 50,
+                                        cwd: projectPath
                                     )
+                                    let (threads, sessions, geminiRows) = try await (codexThreads, claudeSessions, geminiSessions)
+                                    return threads.map {
+                                        SessionLinkedUpstreamSession(
+                                            machineID: machine.id,
+                                            machineDisplayName: machineDisplayName,
+                                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                            summary: $0.upstreamSummary
+                                        )
+                                    } + sessions.map {
+                                        SessionLinkedUpstreamSession(
+                                            machineID: machine.id,
+                                            machineDisplayName: machineDisplayName,
+                                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                            summary: $0.upstreamSummary
+                                        )
+                                    } + geminiRows.map {
+                                        SessionLinkedUpstreamSession(
+                                            machineID: machine.id,
+                                            machineDisplayName: machineDisplayName,
+                                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                            summary: $0.upstreamSummary
+                                        )
+                                    }
                                 }
+                                return SessionUpstreamSessionsLoadSnapshot(
+                                    machineID: machine.id,
+                                    projectPath: projectPath,
+                                    rows: batch,
+                                    errorMessage: nil,
+                                    isFinal: false
+                                )
+                            } catch {
+                                let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                                let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                                return SessionUpstreamSessionsLoadSnapshot(
+                                    machineID: machine.id,
+                                    projectPath: projectPath,
+                                    rows: [],
+                                    errorMessage: normalizedMessage.isEmpty ? nil : normalizedMessage,
+                                    isFinal: false
+                                )
                             }
-                        } catch {
-                            return []
                         }
+                    }
+                }
+
+                for await snapshot in group {
+                    for row in snapshot.rows where seenRowIDs.insert(row.id).inserted {
+                        rows.append(row)
+                    }
+                    rows = sortedRows(rows)
+                    if snapshot.rows.isEmpty == false {
+                        continuation.yield(
+                            SessionUpstreamSessionsLoadSnapshot(
+                                machineID: snapshot.machineID,
+                                projectPath: snapshot.projectPath,
+                                rows: snapshot.rows,
+                                errorMessage: nil,
+                                isFinal: false
+                            )
+                        )
+                    }
+                    if firstErrorMessage == nil,
+                       let errorMessage = snapshot.errorMessage,
+                       !errorMessage.isEmpty {
+                        firstErrorMessage = errorMessage
                     }
                 }
             }
 
-            for await batch in group {
-                for row in batch where seenRowIDs.insert(row.id).inserted {
-                    rows.append(row)
-                }
-            }
-        }
-
-        return rows.sorted { lhs, rhs in
-            if lhs.sortTimestamp != rhs.sortTimestamp {
-                return lhs.sortTimestamp > rhs.sortTimestamp
-            }
-            if lhs.machineDisplayName != rhs.machineDisplayName {
-                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
-            }
-            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+            continuation.yield(
+                SessionUpstreamSessionsLoadSnapshot(
+                    machineID: nil,
+                    projectPath: nil,
+                    rows: [],
+                    errorMessage: rows.isEmpty ? firstErrorMessage : nil,
+                    isFinal: true
+                )
+            )
+            continuation.finish()
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            continuation.yield(
+                SessionUpstreamSessionsLoadSnapshot(
+                    machineID: nil,
+                    projectPath: nil,
+                    rows: [],
+                    errorMessage: normalizedMessage.isEmpty ? nil : normalizedMessage,
+                    isFinal: true
+                )
+            )
+            continuation.finish()
         }
     }
 
@@ -148,4 +290,46 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         return grouped.mapValues { Array($0).sorted() }
     }
 
+    private func sortedRows(
+        _ rows: [SessionLinkedUpstreamSession]
+    ) -> [SessionLinkedUpstreamSession] {
+        rows.sorted { lhs, rhs in
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    private func mergeProjectScopedRows(
+        existing: [SessionLinkedUpstreamSession],
+        refreshed: [SessionLinkedUpstreamSession],
+        machineID: String,
+        projectPath: String
+    ) -> [SessionLinkedUpstreamSession] {
+        let targetProjectID = canonicalProjectID(
+            machineID: machineID,
+            projectPath: projectPath
+        )
+        let retained = existing.filter { row in
+            canonicalProjectID(
+                machineID: row.machineID,
+                projectPath: row.summary.cwd ?? ""
+            ) != targetProjectID
+        }
+        return sortedRows(retained + refreshed)
+    }
+
+    private func canonicalProjectID(
+        machineID: String,
+        projectPath: String
+    ) -> String? {
+        guard let normalizedPath = SessionProjectPathCanonicalizer.canonicalPath(projectPath) else {
+            return nil
+        }
+        return "\(machineID)|\(normalizedPath)"
+    }
 }

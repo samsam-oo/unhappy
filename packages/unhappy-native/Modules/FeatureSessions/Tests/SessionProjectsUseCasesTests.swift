@@ -211,10 +211,12 @@ struct SessionProjectsUseCasesTests {
         let finalSnapshot = await iterator.next()
 
         #expect(firstSnapshot?.isFinal == false)
+        #expect(firstSnapshot?.machineID == "machine-fast")
         #expect(firstSnapshot?.projects.count == 1)
         #expect(firstSnapshot?.projects.first?.machineID == "machine-fast")
         #expect(finalSnapshot?.isFinal == true)
-        #expect(finalSnapshot?.projects.count == 1)
+        #expect(finalSnapshot?.machineID == nil)
+        #expect(finalSnapshot?.projects.isEmpty == true)
     }
 }
 
