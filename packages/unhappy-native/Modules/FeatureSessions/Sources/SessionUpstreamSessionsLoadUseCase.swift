@@ -80,18 +80,21 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
                                 machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                                 summary: $0.upstreamSummary
                             )
                         } + sessions.map {
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
                                 machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                                 summary: $0.upstreamSummary
                             )
                         } + geminiRows.map {
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
                                 machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                                 summary: $0.upstreamSummary
                             )
                         }

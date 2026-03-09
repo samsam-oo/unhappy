@@ -18,6 +18,7 @@ enum DirectSessionIdentityResolver {
             return DirectSessionIdentity(
                 machineID: row.machineID,
                 machineDisplayName: row.machineDisplayName,
+                wrappedMachineDataEncryptionKey: row.wrappedMachineDataEncryptionKey,
                 provider: .codex,
                 upstreamSessionID: row.summary.id,
                 title: row.title,
@@ -33,6 +34,7 @@ enum DirectSessionIdentityResolver {
         return DirectSessionIdentity(
             machineID: row.machineID,
             machineDisplayName: row.machineDisplayName,
+            wrappedMachineDataEncryptionKey: row.wrappedMachineDataEncryptionKey,
             provider: row.summary.provider,
             upstreamSessionID: row.summary.id,
             title: row.title,
@@ -61,6 +63,7 @@ enum DirectSessionIdentityResolver {
             return DirectSessionIdentity(
                 machineID: upstreamIdentity.machineID,
                 machineDisplayName: upstreamIdentity.machineDisplayName ?? upstreamIdentity.machineID,
+                wrappedMachineDataEncryptionKey: session.dataEncryptionKey,
                 provider: .codex,
                 upstreamSessionID: upstreamIdentity.upstreamSessionID,
                 title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session),
@@ -77,6 +80,7 @@ enum DirectSessionIdentityResolver {
             return DirectSessionIdentity(
                 machineID: upstreamIdentity.machineID,
                 machineDisplayName: upstreamIdentity.machineDisplayName ?? upstreamIdentity.machineID,
+                wrappedMachineDataEncryptionKey: session.dataEncryptionKey,
                 provider: upstreamIdentity.provider,
                 upstreamSessionID: upstreamIdentity.upstreamSessionID,
                 title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session) ?? SessionDisplayTitleResolver.fallbackTitle(for: session),

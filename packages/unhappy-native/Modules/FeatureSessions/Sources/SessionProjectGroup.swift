@@ -6,6 +6,7 @@ public enum SessionListPresentationBuilder {}
 public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
     public let machineID: String
     public let machineDisplayName: String
+    public let wrappedMachineDataEncryptionKey: String?
     public let projectPath: String
     public let hasConcreteProjectPath: Bool
     public let catalogSessionCount: Int
@@ -15,6 +16,7 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
     public init(
         machineID: String,
         machineDisplayName: String,
+        wrappedMachineDataEncryptionKey: String? = nil,
         projectPath: String,
         hasConcreteProjectPath: Bool,
         catalogSessionCount: Int = 0,
@@ -23,6 +25,7 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
     ) {
         self.machineID = machineID
         self.machineDisplayName = machineDisplayName
+        self.wrappedMachineDataEncryptionKey = wrappedMachineDataEncryptionKey
         self.projectPath = projectPath
         self.hasConcreteProjectPath = hasConcreteProjectPath
         self.catalogSessionCount = max(0, catalogSessionCount)
@@ -79,6 +82,7 @@ public extension SessionListPresentationBuilder {
 
         struct Accumulator {
             var machineDisplayName: String
+            var wrappedMachineDataEncryptionKey: String?
             var projectPath: String
             var hasConcreteProjectPath: Bool
             var catalogSessionCount: Int
@@ -96,6 +100,7 @@ public extension SessionListPresentationBuilder {
             if groups[key] == nil {
                 groups[key] = Accumulator(
                     machineDisplayName: project.machineDisplayName,
+                    wrappedMachineDataEncryptionKey: project.wrappedMachineDataEncryptionKey,
                     projectPath: projectPath,
                     hasConcreteProjectPath: true,
                     catalogSessionCount: max(0, project.summary.codexThreadCount + project.summary.claudeSessionCount),
@@ -107,6 +112,9 @@ public extension SessionListPresentationBuilder {
                     candidate: project.machineDisplayName,
                     machineID: project.machineID
                 )
+                if accumulator.wrappedMachineDataEncryptionKey == nil {
+                    accumulator.wrappedMachineDataEncryptionKey = project.wrappedMachineDataEncryptionKey
+                }
                 accumulator.hasConcreteProjectPath = true
                 accumulator.catalogSessionCount = max(
                     accumulator.catalogSessionCount,
@@ -139,6 +147,7 @@ public extension SessionListPresentationBuilder {
             return SessionProjectGroup(
                 machineID: parts.first ?? value.machineDisplayName,
                 machineDisplayName: value.machineDisplayName,
+                wrappedMachineDataEncryptionKey: value.wrappedMachineDataEncryptionKey,
                 projectPath: value.projectPath,
                 hasConcreteProjectPath: value.hasConcreteProjectPath,
                 catalogSessionCount: value.catalogSessionCount,

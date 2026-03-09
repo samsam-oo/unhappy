@@ -30,6 +30,7 @@ struct DirectSessionUseCasesTests {
             identity: DirectSessionIdentity(
                 machineID: "machine-1",
                 machineDisplayName: "Mac",
+                wrappedMachineDataEncryptionKey: nil,
                 provider: .gemini,
                 upstreamSessionID: "gemini-session-1",
                 title: "Gemini Session",
@@ -62,6 +63,7 @@ struct DirectSessionUseCasesTests {
             identity: DirectSessionIdentity(
                 machineID: "machine-1",
                 machineDisplayName: "Mac",
+                wrappedMachineDataEncryptionKey: nil,
                 provider: .gemini,
                 upstreamSessionID: "gemini-session-1",
                 title: "Gemini Session",
@@ -95,6 +97,7 @@ struct DirectSessionUseCasesTests {
             identity: DirectSessionIdentity(
                 machineID: "machine-1",
                 machineDisplayName: "Mac",
+                wrappedMachineDataEncryptionKey: nil,
                 provider: .codex,
                 upstreamSessionID: "thread-1",
                 title: "Codex Session",
@@ -132,6 +135,7 @@ struct DirectSessionUseCasesTests {
             identity: DirectSessionIdentity(
                 machineID: "machine-1",
                 machineDisplayName: "Mac",
+                wrappedMachineDataEncryptionKey: nil,
                 provider: .claude,
                 upstreamSessionID: "claude-session-1",
                 title: "Claude Session",
@@ -214,7 +218,8 @@ private actor GeminiMessagesService: MachineGeminiSessionMessagesFetching {
         serverURL: URL,
         token: String,
         machineID: String,
-        sessionID: String
+        sessionID: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         recordedSessionID = sessionID
         return messages
@@ -234,6 +239,7 @@ private actor GeminiMessagingService: MachineGeminiSessionMessaging {
         token: String,
         machineID: String,
         sessionID: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         permissionMode: APISessionMessagePermissionMode?,
         text: String
@@ -254,7 +260,8 @@ private actor FailingCodexMessagesService: MachineCodexThreadMessagesFetching {
         token: String,
         machineID: String,
         threadID: String,
-        transcriptPath: String
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         Issue.record("Codex service should not be used")
         return []
@@ -267,7 +274,8 @@ private actor FailingClaudeMessagesService: MachineClaudeSessionMessagesFetching
         token: String,
         machineID: String,
         sessionID: String,
-        cwd: String
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         Issue.record("Claude service should not be used")
         return []
@@ -282,6 +290,7 @@ private actor FailingCodexMessagingService: MachineCodexThreadMessaging {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -304,6 +313,7 @@ private actor FailingClaudeMessagingService: MachineClaudeSessionMessaging {
         machineID: String,
         sessionID: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,

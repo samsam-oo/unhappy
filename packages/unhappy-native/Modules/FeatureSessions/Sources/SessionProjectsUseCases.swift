@@ -71,6 +71,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
                         SessionMachineProject(
                             machineID: machine.id,
                             machineDisplayName: machineDisplayName,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             summary: $0
                         )
                     }

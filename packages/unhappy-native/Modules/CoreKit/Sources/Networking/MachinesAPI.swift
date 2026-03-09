@@ -833,7 +833,8 @@ public protocol MachineCodexThreadMessagesFetching: Sendable {
         token: String,
         machineID: String,
         threadID: String,
-        transcriptPath: String
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage]
 }
 
@@ -845,6 +846,7 @@ public protocol MachineCodexThreadMessaging: Sendable {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -877,7 +879,8 @@ public protocol MachineClaudeSessionMessagesFetching: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
-        cwd: String
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage]
 }
 
@@ -888,6 +891,7 @@ public protocol MachineClaudeSessionMessaging: Sendable {
         machineID: String,
         sessionID: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -919,7 +923,8 @@ public protocol MachineGeminiSessionMessagesFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
-        sessionID: String
+        sessionID: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage]
 }
 
@@ -929,6 +934,7 @@ public protocol MachineGeminiSessionMessaging: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         permissionMode: APISessionMessagePermissionMode?,
         text: String
