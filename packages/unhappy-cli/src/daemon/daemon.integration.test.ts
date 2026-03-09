@@ -34,7 +34,7 @@ import { readCredentials, readDaemonState, clearDaemonState, readSettings } from
 import { Metadata } from '@/api/types';
 import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import { getLatestDaemonLog } from '@/ui/logger';
-import { initialMachineMetadata } from './run';
+import { initialMachineMetadata } from './initialMachineMetadata';
 
 // Utility to wait for condition
 async function waitFor(

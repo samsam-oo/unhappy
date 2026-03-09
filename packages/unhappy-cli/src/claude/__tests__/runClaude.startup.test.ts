@@ -82,7 +82,7 @@ vi.mock('@/claude/utils/startHookServer', () => ({
   startHookServer: vi.fn(async () => mockState.hookServer),
 }));
 
-vi.mock('@/daemon/run', () => ({
+vi.mock('@/daemon/initialMachineMetadata', () => ({
   initialMachineMetadata: { os: 'linux' },
 }));
 

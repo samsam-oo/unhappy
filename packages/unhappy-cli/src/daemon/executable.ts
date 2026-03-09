@@ -6,15 +6,12 @@ import { encodeBase64 } from '@/api/encryption';
 import { configuration } from '@/configuration';
 import { readCredentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
-import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 
 const DAEMON_EXECUTABLE_ENV = 'UNHAPPY_DAEMON_EXECUTABLE';
 const DAEMON_EXECUTABLE_ARGS_ENV = 'UNHAPPY_DAEMON_EXECUTABLE_ARGS';
-const DAEMON_PREFER_NODE_ENV = 'UNHAPPY_DAEMON_PREFER_NODE';
 
 export interface ResolvedDaemonExecutable {
-  kind: 'node-cli' | 'external-binary';
-  source: 'default-node-cli' | 'default-rust-daemon' | 'environment';
+  source: 'default-rust-daemon' | 'environment';
   executablePath: string;
   args: string[];
   displayCommand: string;
@@ -79,11 +76,6 @@ function resolveConfiguredExecutablePath(rawValue: string): string {
   return cwdResolvedPath;
 }
 
-function buildNodeCliDisplayCommand(): string {
-  const entrypoint = join(projectPath(), 'dist', 'index.mjs');
-  return `${process.execPath} --no-warnings --no-deprecation ${entrypoint} daemon start-sync`;
-}
-
 function findBundledRustDaemonExecutable(): string | null {
   const candidatePaths = [
     resolve(projectPath(), '..', 'unhappy-daemon-rs', 'target', 'release', 'unhappy-daemon-rs'),
@@ -105,7 +97,6 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
       process.env[DAEMON_EXECUTABLE_ARGS_ENV] ?? '',
     );
     return {
-      kind: 'external-binary',
       source: 'environment',
       executablePath,
       args,
@@ -114,16 +105,10 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
     };
   }
 
-  const shouldPreferNodeDaemon = ['1', 'true', 'yes'].includes(
-    process.env[DAEMON_PREFER_NODE_ENV]?.trim().toLowerCase() ?? '',
-  );
-  const bundledRustDaemonExecutable = shouldPreferNodeDaemon
-    ? null
-    : findBundledRustDaemonExecutable();
+  const bundledRustDaemonExecutable = findBundledRustDaemonExecutable();
   if (bundledRustDaemonExecutable) {
     const args = ['local-control-server'];
     return {
-      kind: 'external-binary',
       source: 'default-rust-daemon',
       executablePath: bundledRustDaemonExecutable,
       args,
@@ -132,14 +117,9 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
     };
   }
 
-  return {
-    kind: 'node-cli',
-    source: 'default-node-cli',
-    executablePath: process.execPath,
-    args: [],
-    displayCommand: buildNodeCliDisplayCommand(),
-    executableBasename: basename(process.execPath),
-  };
+  throw new Error(
+    'Rust daemon executable not found. Build packages/unhappy-daemon-rs first or set UNHAPPY_DAEMON_EXECUTABLE.',
+  );
 }
 
 async function buildRustDaemonEnvironment(
@@ -174,10 +154,6 @@ async function buildRustDaemonEnvironment(
 export async function getDaemonLaunchEnvironmentVariables(
   baseEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<NodeJS.ProcessEnv> {
-  const executable = resolveDaemonExecutable();
-  if (executable.kind === 'node-cli') {
-    return { ...baseEnv };
-  }
   return await buildRustDaemonEnvironment(baseEnv);
 }
 
@@ -185,10 +161,6 @@ export async function spawnDaemonExecutable(
   options: SpawnOptions = {},
 ): Promise<ChildProcess> {
   const executable = resolveDaemonExecutable();
-
-  if (executable.kind === 'node-cli') {
-    return spawnUnhappyCLI(['daemon', 'start-sync'], options);
-  }
 
   if (!existsSync(executable.executablePath)) {
     throw new Error(
@@ -204,19 +176,7 @@ export async function spawnDaemonExecutable(
 
 export function getDaemonLaunchProgramArguments(): string[] {
   const executable = resolveDaemonExecutable();
-
-  if (executable.kind === 'external-binary') {
-    return [executable.executablePath, ...executable.args];
-  }
-
-  return [
-    process.execPath,
-    '--no-warnings',
-    '--no-deprecation',
-    join(projectPath(), 'dist', 'index.mjs'),
-    'daemon',
-    'start-sync',
-  ];
+  return [executable.executablePath, ...executable.args];
 }
 
 export function isConfiguredDaemonProcessCommand(
@@ -228,15 +188,6 @@ export function isConfiguredDaemonProcessCommand(
   const normalizedProcessName = processName
     ? normalizeForMatch(processName)
     : '';
-
-  if (executable.kind === 'node-cli') {
-    return (
-      normalizedCommand.includes('daemon start-sync') &&
-      (normalizedCommand.includes('unhappy') ||
-        normalizedCommand.includes('dist/index.mjs') ||
-        normalizedCommand.includes('src/index.ts'))
-    );
-  }
 
   const normalizedExecutablePath = normalizeForMatch(executable.executablePath);
   const firstCommandPart = stripWrappingQuotes(

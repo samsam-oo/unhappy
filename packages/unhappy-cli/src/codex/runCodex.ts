@@ -4,7 +4,7 @@ import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
-import { initialMachineMetadata } from '@/daemon/run';
+import { initialMachineMetadata } from '@/daemon/initialMachineMetadata';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
   clearCodexResumeEntry,
