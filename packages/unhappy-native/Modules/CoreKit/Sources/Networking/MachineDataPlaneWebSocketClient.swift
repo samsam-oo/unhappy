@@ -3,9 +3,14 @@ import SecurityKit
 
 public actor MachineDataPlaneWebSocketClient {
     private let session: URLSession
+    private let requestTimeoutInterval: TimeInterval
 
-    public init(session: URLSession = .shared) {
+    public init(
+        session: URLSession = .shared,
+        requestTimeoutInterval: TimeInterval = 4
+    ) {
         self.session = session
+        self.requestTimeoutInterval = requestTimeoutInterval
     }
 
     public func requestJSON(
@@ -28,72 +33,92 @@ public actor MachineDataPlaneWebSocketClient {
             task.cancel(with: .goingAway, reason: nil)
         }
 
-        let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
-        let hello = MachineDataPlaneHelloFrame(
-            connectionID: UUID().uuidString,
-            role: .native,
-            keyExchange: MachineDataPlaneKeyExchange(
-                publicKey: handshake.publicKeyBase64URL,
-                nonce: handshake.nonceBase64URL
-            )
-        )
-        try await send(frame: hello, task: task)
-
-        let helloAck = try await receiveHelloAck(task: task)
-        let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
-            machineDataKey: machineDataKey,
-            localPrivateKey: handshake.privateKey,
-            localNonceBase64URL: handshake.nonceBase64URL,
-            peerPublicKeyBase64URL: helloAck.keyExchange.publicKey,
-            peerNonceBase64URL: helloAck.keyExchange.nonce,
-            role: "native"
-        )
-
-        let streamID = UUID().uuidString
-        let requestHeader = MachineDataPlaneRequestFrame(
-            streamID: streamID,
-            op: operation,
-            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: ""),
-            expectsChunks: false
-        )
-        let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
-            bodyObject,
-            sessionKey: sessionKey,
-            authenticatedData: requestAAD(for: requestHeader)
-        )
-        let requestFrame = MachineDataPlaneRequestFrame(
-            streamID: streamID,
-            op: operation,
-            body: MachineDataPlaneSealedBody(
-                nonce: sealedBody.nonce,
-                ciphertext: sealedBody.ciphertext,
-                tag: sealedBody.tag
-            ),
-            expectsChunks: false
-        )
-        try await send(frame: requestFrame, task: task)
-
-        while true {
-            let message = try await task.receive()
-            guard case .string(let text) = message else { continue }
-            if let errorFrame = try? JSONDecoder().decode(MachineDataPlaneErrorFrame.self, from: Data(text.utf8)),
-               errorFrame.streamID == streamID {
-                throw MachinesAPIError.rpcCallFailed(errorFrame.message)
-            }
-            if let completeFrame = try? JSONDecoder().decode(MachineDataPlaneCompleteFrame.self, from: Data(text.utf8)),
-               completeFrame.streamID == streamID {
-                let decrypted = try MachineDataPlaneEncryption.decryptDataPlanePayload(
-                    MachineDataPlaneSealedPayload(
-                        nonce: completeFrame.body.nonce,
-                        ciphertext: completeFrame.body.ciphertext,
-                        tag: completeFrame.body.tag
-                    ),
-                    sessionKey: sessionKey,
-                    authenticatedData: completeAAD(for: completeFrame)
+        do {
+            let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
+            let hello = MachineDataPlaneHelloFrame(
+                connectionID: UUID().uuidString,
+                role: .native,
+                keyExchange: MachineDataPlaneKeyExchange(
+                    publicKey: handshake.publicKeyBase64URL,
+                    nonce: handshake.nonceBase64URL
                 )
-                return decrypted
+            )
+            try await send(frame: hello, task: task)
+
+            let helloAck = try await receiveHelloAck(task: task)
+            let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
+                machineDataKey: machineDataKey,
+                localPrivateKey: handshake.privateKey,
+                localNonceBase64URL: handshake.nonceBase64URL,
+                peerPublicKeyBase64URL: helloAck.keyExchange.publicKey,
+                peerNonceBase64URL: helloAck.keyExchange.nonce,
+                role: "native"
+            )
+
+            let streamID = UUID().uuidString
+            let requestHeader = MachineDataPlaneRequestFrame(
+                streamID: streamID,
+                op: operation,
+                body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: ""),
+                expectsChunks: false
+            )
+            let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
+                bodyObject,
+                sessionKey: sessionKey,
+                authenticatedData: requestAAD(for: requestHeader)
+            )
+            let requestFrame = MachineDataPlaneRequestFrame(
+                streamID: streamID,
+                op: operation,
+                body: MachineDataPlaneSealedBody(
+                    nonce: sealedBody.nonce,
+                    ciphertext: sealedBody.ciphertext,
+                    tag: sealedBody.tag
+                ),
+                expectsChunks: false
+            )
+            try await send(frame: requestFrame, task: task)
+
+            while true {
+                let message = try await task.receive()
+                guard case .string(let text) = message else { continue }
+                if let errorFrame = try? JSONDecoder().decode(MachineDataPlaneErrorFrame.self, from: Data(text.utf8)),
+                   errorFrame.streamID == streamID {
+                    throw MachinesAPIError.rpcCallFailed(errorFrame.message)
+                }
+                if let completeFrame = try? JSONDecoder().decode(MachineDataPlaneCompleteFrame.self, from: Data(text.utf8)),
+                   completeFrame.streamID == streamID {
+                    let decrypted = try MachineDataPlaneEncryption.decryptDataPlanePayload(
+                        MachineDataPlaneSealedPayload(
+                            nonce: completeFrame.body.nonce,
+                            ciphertext: completeFrame.body.ciphertext,
+                            tag: completeFrame.body.tag
+                        ),
+                        sessionKey: sessionKey,
+                        authenticatedData: completeAAD(for: completeFrame)
+                    )
+                    return decrypted
+                }
             }
+        } catch let error as MachinesAPIError {
+            throw error
+        } catch {
+            throw mapTransportError(error)
         }
+    }
+
+    nonisolated func mapTransportError(_ error: Error) -> MachinesAPIError {
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain, nsError.code == 57 {
+            return .rpcCallFailed("Machine data-plane socket is not connected")
+        }
+        if nsError.domain == NSURLErrorDomain,
+           nsError.code == NSURLErrorNetworkConnectionLost ||
+            nsError.code == NSURLErrorCannotConnectToHost ||
+            nsError.code == NSURLErrorTimedOut {
+            return .rpcTimedOut
+        }
+        return .rpcCallFailed(nsError.localizedDescription)
     }
 
     private func makeTask(serverURL: URL, token: String, machineID: String) throws -> URLSessionWebSocketTask {
@@ -103,6 +128,7 @@ public actor MachineDataPlaneWebSocketClient {
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(MachineDataPlaneProtocol.subprotocol, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        request.timeoutInterval = requestTimeoutInterval
         return session.webSocketTask(with: request)
     }
 
