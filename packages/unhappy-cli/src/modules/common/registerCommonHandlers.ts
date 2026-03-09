@@ -154,6 +154,12 @@ export interface SpawnSessionOptions {
     model?: string;
     // Optional reasoning effort override for Codex.
     reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh';
+    providerRuntime?: {
+        codexHomeDir?: string;
+        codexTranscriptPath?: string;
+        claudeHookPort?: number;
+        geminiControlPort?: number;
+    };
     approvedNewDirectoryCreation?: boolean;
     agent: 'claude' | 'codex' | 'gemini';
     token?: string;

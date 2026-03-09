@@ -113,11 +113,21 @@ export function startDaemonControlServer({
     typed.post('/spawn-session', {
       schema: {
         body: z.object({
-          directory: z.string(),
-          codexResumeThreadId: z.string().optional(),
-          claudeResumeSessionId: z.string().optional(),
-          agent: z.enum(['claude', 'codex', 'gemini']),
-        }),
+                directory: z.string(),
+                codexResumeThreadId: z.string().optional(),
+                claudeResumeSessionId: z.string().optional(),
+                providerRuntime: z.object({
+                  codexHomeDir: z.string().optional(),
+                  codexTranscriptPath: z.string().optional(),
+                  claudeHookPort: z.number().int().positive().optional(),
+                  geminiControlPort: z.number().int().positive().optional(),
+                }).optional(),
+                token: z.string().optional(),
+                environmentVariables: z.record(z.string(), z.string()).optional(),
+                model: z.string().optional(),
+                reasoningEffort: z.enum(['low', 'medium', 'high', 'max', 'xhigh']).optional(),
+                agent: z.enum(['claude', 'codex', 'gemini']),
+            }),
         response: {
           200: z.object({
             success: z.boolean(),
@@ -141,6 +151,11 @@ export function startDaemonControlServer({
         directory,
         codexResumeThreadId,
         claudeResumeSessionId,
+        providerRuntime,
+        token,
+        environmentVariables,
+        model,
+        reasoningEffort,
         agent,
       } = request.body;
 
@@ -149,6 +164,11 @@ export function startDaemonControlServer({
         directory,
         codexResumeThreadId,
         claudeResumeSessionId,
+        providerRuntime,
+        token,
+        environmentVariables,
+        model,
+        reasoningEffort,
         agent,
       });
 

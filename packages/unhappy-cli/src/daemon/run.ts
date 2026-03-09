@@ -42,6 +42,10 @@ import {
   stopDaemon,
 } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
+import {
+  isConfiguredDaemonProcessCommand,
+  spawnDaemonExecutable,
+} from './executable';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -305,17 +309,22 @@ export async function startDaemon(): Promise<void> {
       if (!staleVersionRestartRequested) {
         staleVersionRestartRequested = true;
         try {
-          const child = spawnUnhappyCLI(['daemon', 'start'], {
+          void spawnDaemonExecutable({
             detached: true,
             stdio: 'ignore',
             env: process.env,
-          });
-          child.unref();
+          })
+            .then((child) => {
+              child.unref();
+            })
+            .catch((error) => {
+              logger.debug(
+                '[DAEMON RUN] Failed to spawn replacement daemon for stale-version guard',
+                error,
+              );
+            });
         } catch (error) {
-          logger.debug(
-            '[DAEMON RUN] Failed to spawn replacement daemon for stale-version guard',
-            error,
-          );
+          logger.debug('[DAEMON RUN] Failed to schedule replacement daemon', error);
         }
 
         requestShutdown(
@@ -1219,17 +1228,14 @@ export async function startDaemon(): Promise<void> {
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
 
-        // Spawn new daemon through the CLI
+        // Spawn the configured replacement daemon executable.
         // We do not need to clean ourselves up - we will be killed by
-        // the CLI start command.
-        // 1. It will first check if daemon is running (yes in this case)
-        // 2. If the version is stale (it will read daemon.state.json file and check startedWithCliVersion) & compare it to its own version
-        // 3. Next it will start a new daemon with the latest version with daemon-sync :D
-        // Done!
+        // the replacement process once it takes over.
         try {
-          spawnUnhappyCLI(['daemon', 'start'], {
+          await spawnDaemonExecutable({
             detached: true,
             stdio: 'ignore',
+            env: process.env,
           });
         } catch (error) {
           logger.debug(
@@ -1380,12 +1386,7 @@ function isLikelyUnhappyDaemonProcess(pid: number): boolean {
     return false;
   }
 
-  return (
-    command.includes('daemon start-sync') &&
-    (command.includes('unhappy') ||
-      command.includes('dist/index.mjs') ||
-      command.includes('src/index.ts'))
-  );
+  return isConfiguredDaemonProcessCommand(command);
 }
 
 async function waitForProcessDeath(pid: number, timeoutMs: number): Promise<boolean> {

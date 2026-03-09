@@ -23,15 +23,16 @@ import {
   stopDaemonSession,
 } from './daemon/controlClient';
 import { killRunawayHappyProcesses } from './daemon/doctor';
+import { runDaemonHelperCommand } from './daemon/daemonHelper';
 import { install } from './daemon/install';
 import { startDaemon } from './daemon/run';
 import { uninstall } from './daemon/uninstall';
 import { runDaemonUpdate } from './daemon/update';
+import { spawnDaemonExecutable } from './daemon/executable';
 import { readCredentials, readSettings } from './persistence';
 import { authAndSetupMachineIfNeeded } from './ui/auth';
 import { runDoctorCommand } from './ui/doctor';
 import { getLatestDaemonLog, logger } from './ui/logger';
-import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
 
 (async () => {
   const args = process.argv.slice(2);
@@ -60,6 +61,20 @@ import { spawnUnhappyCLI } from './utils/spawnUnhappyCLI';
     }
     await runDoctorCommand();
     return;
+  } else if (subcommand === 'internal') {
+    const internalSubcommand = args[1]?.toLowerCase();
+    if (internalSubcommand === 'daemon-helper') {
+      try {
+        await runDaemonHelperCommand(args.slice(2));
+      } catch (error) {
+        console.error(
+          chalk.red('Error:'),
+          error instanceof Error ? error.message : 'Unknown error',
+        );
+        process.exit(1);
+      }
+      return;
+    }
   } else if (subcommand === 'auth') {
     // Handle auth subcommands
     try {
@@ -365,7 +380,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
       if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
         logger.debug('Starting Unhappy background service...');
-        const daemonProcess = spawnUnhappyCLI(['daemon', 'start-sync'], {
+        const daemonProcess = await spawnDaemonExecutable({
           detached: true,
           stdio: 'ignore',
           env: process.env,
@@ -684,7 +699,7 @@ ${chalk.bold('Examples:')}
       );
       if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
         logger.debug('Starting Unhappy background service...');
-        const daemonProcess = spawnUnhappyCLI(['daemon', 'start-sync'], {
+        const daemonProcess = await spawnDaemonExecutable({
           detached: true,
           stdio: 'ignore',
           env: process.env,
@@ -779,31 +794,39 @@ ${chalk.bold('Examples:')}
       }
       return;
     } else if (daemonSubcommand === 'start') {
-      // Spawn detached daemon process
-      const child = spawnUnhappyCLI(['daemon', 'start-sync'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env,
-      });
-      child.unref();
+      try {
+        // Spawn detached daemon process
+        const child = await spawnDaemonExecutable({
+          detached: true,
+          stdio: 'ignore',
+          env: process.env,
+        });
+        child.unref();
 
-      // Wait for daemon to write state file (up to 5 seconds)
-      let started = false;
-      for (let i = 0; i < 50; i++) {
-        if (await checkIfDaemonRunningAndCleanupStaleState()) {
-          started = true;
-          break;
+        // Wait for daemon to write state file (up to 5 seconds)
+        let started = false;
+        for (let i = 0; i < 50; i++) {
+          if (await checkIfDaemonRunningAndCleanupStaleState()) {
+            started = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
 
-      if (started) {
-        console.log('Daemon started successfully');
-      } else {
-        console.error('Failed to start daemon');
+        if (started) {
+          console.log('Daemon started successfully');
+        } else {
+          console.error('Failed to start daemon');
+          process.exit(1);
+        }
+        process.exit(0);
+      } catch (error) {
+        console.error(
+          chalk.red('Error:'),
+          error instanceof Error ? error.message : 'Unknown error',
+        );
         process.exit(1);
       }
-      process.exit(0);
     } else if (daemonSubcommand === 'start-sync') {
       await startDaemon();
       process.exit(0);

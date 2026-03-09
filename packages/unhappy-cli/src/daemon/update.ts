@@ -1,8 +1,8 @@
 import { spawn } from 'child_process';
 
 import { logger } from '@/ui/logger';
-import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import { stopDaemon } from './controlClient';
+import { spawnDaemonExecutable } from './executable';
 
 const DEFAULT_UPDATE_COMMAND = 'npm install -g unhappy-cli@latest';
 
@@ -56,7 +56,7 @@ export async function runDaemonUpdate(opts?: {
   // This keeps behavior predictable for "update now" requests from mobile.
   await stopDaemon();
 
-  const child = spawnUnhappyCLI(['daemon', 'start-sync'], {
+  const child = await spawnDaemonExecutable({
     detached: true,
     stdio: 'ignore',
     env: process.env,

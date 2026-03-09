@@ -3,6 +3,7 @@ import {
   checkIfDaemonRunningAndCleanupStaleState,
   stopDaemon,
 } from '@/daemon/controlClient';
+import { spawnDaemonExecutable } from '@/daemon/executable';
 import {
   clearCredentials,
   clearMachineId,
@@ -12,7 +13,6 @@ import {
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { logger } from '@/ui/logger';
 import { resolveMachineHost } from '@/utils/machineHost';
-import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import chalk from 'chalk';
 import { existsSync, rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
@@ -191,18 +191,19 @@ async function promptDaemonRegistrationAfterLogin(): Promise<void> {
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const daemonProcess = spawnUnhappyCLI(['daemon', 'start'], {
+      void spawnDaemonExecutable({
         stdio: 'inherit',
         env: process.env,
-      });
-      daemonProcess.once('error', reject);
-      daemonProcess.once('close', (code) => {
-        if (code === 0) {
-          resolve();
-          return;
-        }
-        reject(new Error(`daemon start exited with code ${code}`));
-      });
+      }).then((daemonProcess) => {
+        daemonProcess.once('error', reject);
+        daemonProcess.once('close', (code) => {
+          if (code === 0) {
+            resolve();
+            return;
+          }
+          reject(new Error(`daemon start exited with code ${code}`));
+        });
+      }).catch(reject);
     });
     console.log(chalk.green('  ✓ Background daemon enabled'));
   } catch (error) {
