@@ -226,16 +226,41 @@ public final class SessionsViewModel: ObservableObject {
             return
         }
         guard let upstreamSessionsLoader else { return }
-        guard !isLoadingUpstreamSessions else { return }
+        let acceptedProjects = beginUpstreamLoad(for: [targetProject])
+        guard !acceptedProjects.isEmpty else { return }
+        defer { endUpstreamLoad(for: acceptedProjects) }
 
-        isLoadingUpstreamSessions = true
-        defer { isLoadingUpstreamSessions = false }
+        if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
+            for await snapshot in await streamingLoader.loadUpstreamSessionsStream(
+                serverURLString: serverURLString,
+                token: token,
+                projects: acceptedProjects
+            ) {
+                if let machineID = snapshot.machineID,
+                   let scopedProjectPath = snapshot.projectPath {
+                    setUpstreamSessionsIfChanged(
+                        mergeProjectScopedUpstreamRows(
+                            existing: upstreamSessions,
+                            refreshed: snapshot.rows,
+                            machineID: machineID,
+                            projectPath: scopedProjectPath
+                        )
+                    )
+                }
+                if snapshot.errorMessage?.isEmpty == false {
+                    upstreamSessionsErrorMessage = snapshot.errorMessage
+                } else if snapshot.machineID != nil || snapshot.isFinal {
+                    upstreamSessionsErrorMessage = nil
+                }
+            }
+            return
+        }
 
         do {
             let refreshedRows = try await upstreamSessionsLoader.loadUpstreamSessions(
                 serverURLString: serverURLString,
                 token: token,
-                projects: [targetProject]
+                projects: acceptedProjects
             )
             setUpstreamSessionsIfChanged(mergeProjectScopedUpstreamRows(
                 existing: upstreamSessions,
