@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import FeatureNewSession
 
 public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable {
     public let machineID: String
@@ -10,6 +11,9 @@ public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable
     public let cwd: String
     public let transcriptPath: String?
     public let model: String?
+    public let effort: NewSessionReasoningEffort?
+    public let permissionMode: APISessionMessagePermissionMode?
+    public let collabInProgressCount: Int
 
     public init(
         machineID: String,
@@ -19,7 +23,10 @@ public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable
         title: String,
         cwd: String,
         transcriptPath: String?,
-        model: String?
+        model: String?,
+        effort: NewSessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
+        collabInProgressCount: Int
     ) {
         self.machineID = machineID
         self.machineDisplayName = machineDisplayName
@@ -29,10 +36,24 @@ public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable
         self.cwd = cwd
         self.transcriptPath = transcriptPath
         self.model = model
+        self.effort = effort
+        self.permissionMode = permissionMode
+        self.collabInProgressCount = max(0, collabInProgressCount)
     }
 
     public var id: String {
         "\(machineID)|\(provider.rawValue)|\(upstreamSessionID)"
+    }
+
+    public var agent: APISessionSpawnAgent? {
+        switch provider {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claude
+        case .gemini:
+            return .gemini
+        }
     }
 }
 
@@ -51,7 +72,8 @@ public protocol DirectSessionMessageSendingAction: Sendable {
         identity: DirectSessionIdentity,
         text: String,
         model: String?,
-        reasoningEffort: APISessionReasoningEffort?
+        reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?
     ) async throws -> APISessionSendMessageResult
 }
 
@@ -81,6 +103,33 @@ public protocol DirectSessionReviewLoadingAction: Sendable {
         identity: DirectSessionIdentity,
         repositoryPath: String?
     ) async throws -> DirectSessionReviewOutput
+}
+
+public struct DirectSessionWorktreeSnapshot: Equatable, Sendable {
+    public let repositoryRoot: String
+    public let currentBranch: String
+    public let worktreeListOutput: String
+    public let statusOutput: String
+
+    public init(
+        repositoryRoot: String,
+        currentBranch: String,
+        worktreeListOutput: String,
+        statusOutput: String
+    ) {
+        self.repositoryRoot = repositoryRoot
+        self.currentBranch = currentBranch
+        self.worktreeListOutput = worktreeListOutput
+        self.statusOutput = statusOutput
+    }
+}
+
+public protocol DirectSessionWorktreeLoadingAction: Sendable {
+    func loadWorktreeSnapshot(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws -> DirectSessionWorktreeSnapshot
 }
 
 public enum DirectSessionUseCaseError: LocalizedError, Equatable {
@@ -226,7 +275,8 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
         identity: DirectSessionIdentity,
         text: String,
         model: String? = nil,
-        reasoningEffort: APISessionReasoningEffort? = nil
+        reasoningEffort: APISessionReasoningEffort? = nil,
+        permissionMode: APISessionMessagePermissionMode? = nil
     ) async throws -> APISessionSendMessageResult {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -276,6 +326,7 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 transcriptPath: normalizedTranscriptPath?.isEmpty == true ? nil : normalizedTranscriptPath,
                 model: model,
                 reasoningEffort: reasoningEffort,
+                permissionMode: permissionMode,
                 text: normalizedText
             )
 
@@ -288,6 +339,7 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 cwd: normalizedCWD,
                 model: model,
                 reasoningEffort: reasoningEffort,
+                permissionMode: permissionMode,
                 text: normalizedText
             )
 
@@ -298,6 +350,7 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
                 model: model,
+                permissionMode: permissionMode,
                 text: normalizedText
             )
         }
@@ -458,6 +511,122 @@ public actor DirectSessionReviewLoadUseCase: DirectSessionReviewLoadingAction {
         fi
         """
     }
+}
+
+public actor DirectSessionWorktreeLoadUseCase: DirectSessionWorktreeLoadingAction {
+    private static let defaultTimeoutMilliseconds = 20_000
+    private static let notGitRepositorySentinel = "__UNHAPPY_NOT_GIT_REPO__"
+    private static let rootMarker = "__UNHAPPY_REPO_ROOT__"
+    private static let branchMarker = "__UNHAPPY_BRANCH__"
+    private static let worktreesMarker = "__UNHAPPY_WORKTREES__"
+    private static let statusMarker = "__UNHAPPY_STATUS__"
+
+    private let service: any MachineBashRunning
+
+    public init(service: any MachineBashRunning) {
+        self.service = service
+    }
+
+    public func loadWorktreeSnapshot(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws -> DirectSessionWorktreeSnapshot {
+        let serverURL = try validatedServerURL(from: serverURLString)
+        let normalizedToken = try validatedToken(token)
+        let normalizedMachineID = try validatedMachineID(identity.machineID)
+        let normalizedCWD = try validatedCWD(identity.cwd)
+
+        let result = try await service.runBash(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            command: worktreeCommand,
+            cwd: normalizedCWD,
+            timeoutMilliseconds: Self.defaultTimeoutMilliseconds
+        )
+
+        guard result.success else {
+            let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let stderr = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw DirectSessionUseCaseError.failed(
+                message: (normalizedError?.isEmpty == false ? normalizedError : nil) ??
+                    (stderr.isEmpty ? "Failed to inspect worktree" : stderr)
+            )
+        }
+
+        let normalizedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedStdout == Self.notGitRepositorySentinel {
+            throw DirectSessionUseCaseError.failed(message: "Not a git repository")
+        }
+
+        return DirectSessionWorktreeSnapshot(
+            repositoryRoot: extractDirectSessionWorktreeLine(
+                prefixedBy: Self.rootMarker,
+                from: normalizedStdout
+            ) ?? normalizedCWD,
+            currentBranch: extractDirectSessionWorktreeLine(
+                prefixedBy: Self.branchMarker,
+                from: normalizedStdout
+            ) ?? "unknown",
+            worktreeListOutput: extractDirectSessionWorktreeSection(
+                between: Self.worktreesMarker,
+                and: Self.statusMarker,
+                from: normalizedStdout
+            ) ?? "No worktree details",
+            statusOutput: extractDirectSessionTrailingSection(
+                after: Self.statusMarker,
+                from: normalizedStdout
+            ) ?? "No changes"
+        )
+    }
+
+    private var worktreeCommand: String {
+        """
+        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          printf '\(Self.rootMarker)%s\\n' "$(git rev-parse --show-toplevel)"
+          printf '\(Self.branchMarker)%s\\n' "$(git branch --show-current)"
+          printf '\(Self.worktreesMarker)\\n'
+          git worktree list --porcelain
+          printf '\\n\(Self.statusMarker)\\n'
+          git status --short --branch
+        else
+          printf '\(Self.notGitRepositorySentinel)'
+        fi
+        """
+    }
+}
+
+private func extractDirectSessionWorktreeLine(prefixedBy marker: String, from output: String) -> String? {
+    output
+        .components(separatedBy: .newlines)
+        .first(where: { $0.hasPrefix(marker) })?
+        .replacingOccurrences(of: marker, with: "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func extractDirectSessionWorktreeSection(
+    between startMarker: String,
+    and endMarker: String,
+    from output: String
+) -> String? {
+    guard let startRange = output.range(of: "\(startMarker)\n") else {
+        return nil
+    }
+    let remaining = String(output[startRange.upperBound...])
+    guard let endRange = remaining.range(of: "\n\(endMarker)") else {
+        return nil
+    }
+    let section = String(remaining[..<endRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+    return section.isEmpty ? nil : section
+}
+
+private func extractDirectSessionTrailingSection(after marker: String, from output: String) -> String? {
+    guard let range = output.range(of: "\(marker)\n") else {
+        return nil
+    }
+    let section = String(output[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+    return section.isEmpty ? nil : section
 }
 
 private func validatedToken(_ token: String) throws -> String {

@@ -503,6 +503,7 @@ extension URLSessionMachinesService {
         transcriptPath: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         try await rpcDirectoryService.sendCodexThreadMessage(
@@ -514,6 +515,7 @@ extension URLSessionMachinesService {
             transcriptPath: transcriptPath,
             model: model,
             reasoningEffort: reasoningEffort,
+            permissionMode: permissionMode,
             text: text
         )
     }
@@ -542,6 +544,7 @@ extension URLSessionMachinesService {
         cwd: String,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         try await rpcDirectoryService.sendClaudeSessionMessage(
@@ -552,6 +555,7 @@ extension URLSessionMachinesService {
             cwd: cwd,
             model: model,
             reasoningEffort: reasoningEffort,
+            permissionMode: permissionMode,
             text: text
         )
     }
@@ -776,6 +780,7 @@ extension URLSessionMachinesService {
         machineID: String,
         sessionID: String,
         model: String?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         try await rpcDirectoryService.sendGeminiSessionMessage(
@@ -784,6 +789,7 @@ extension URLSessionMachinesService {
             machineID: machineID,
             sessionID: sessionID,
             model: model,
+            permissionMode: permissionMode,
             text: text
         )
     }

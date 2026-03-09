@@ -24,6 +24,9 @@ public final class DirectSessionViewModel: ObservableObject {
     @Published public private(set) var reviewStatusMessage: String?
     @Published public private(set) var reviewErrorMessage: String?
     @Published public private(set) var isLoadingReview = false
+    @Published public private(set) var worktreeSnapshot: DirectSessionWorktreeSnapshot?
+    @Published public private(set) var worktreeErrorMessage: String?
+    @Published public private(set) var isLoadingWorktree = false
 
     public let identity: DirectSessionIdentity
 
@@ -32,6 +35,7 @@ public final class DirectSessionViewModel: ObservableObject {
     private let capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)?
     private let fileLoader: (any DirectSessionFileLoadingAction)?
     private let reviewLoader: (any DirectSessionReviewLoadingAction)?
+    private let worktreeLoader: (any DirectSessionWorktreeLoadingAction)?
     private var pollingTask: Task<Void, Never>?
 
     public init(
@@ -40,7 +44,8 @@ public final class DirectSessionViewModel: ObservableObject {
         sender: any DirectSessionMessageSendingAction,
         capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)? = nil,
         fileLoader: (any DirectSessionFileLoadingAction)? = nil,
-        reviewLoader: (any DirectSessionReviewLoadingAction)? = nil
+        reviewLoader: (any DirectSessionReviewLoadingAction)? = nil,
+        worktreeLoader: (any DirectSessionWorktreeLoadingAction)? = nil
     ) {
         self.identity = identity
         self.loader = loader
@@ -48,6 +53,13 @@ public final class DirectSessionViewModel: ObservableObject {
         self.capabilitiesLoader = capabilitiesLoader
         self.fileLoader = fileLoader
         self.reviewLoader = reviewLoader
+        self.worktreeLoader = worktreeLoader
+        if let agent = identity.agent {
+            self.selectedModelOverride = SessionPreferenceDefaults.defaultModel(for: agent) ?? ""
+            self.selectedReasoningEffortOverride =
+                SessionPreferenceDefaults.defaultReasoningRawValue(for: agent)
+                    .flatMap(NewSessionReasoningEffort.fromBackend) ?? .auto
+        }
     }
 
     deinit {
@@ -59,11 +71,12 @@ public final class DirectSessionViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            messages = try await loader.loadMessages(
+            let loadedMessages = try await loader.loadMessages(
                 serverURLString: serverURLString,
                 token: token,
                 identity: identity
             )
+            setMessagesIfChanged(loadedMessages)
             errorMessage = nil
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -94,7 +107,8 @@ public final class DirectSessionViewModel: ObservableObject {
     public func sendMessage(
         _ text: String,
         serverURLString: String,
-        token: String
+        token: String,
+        permissionMode: APISessionMessagePermissionMode? = nil
     ) async -> Bool {
         guard !isSending else { return false }
 
@@ -109,7 +123,8 @@ public final class DirectSessionViewModel: ObservableObject {
                 identity: identity,
                 text: text,
                 model: normalizedModelOverride,
-                reasoningEffort: selectedReasoningEffortOverride.apiValue
+                reasoningEffort: selectedReasoningEffortOverride.apiValue,
+                permissionMode: permissionMode
             )
             await load(serverURLString: serverURLString, token: token)
             return true
@@ -141,12 +156,22 @@ public final class DirectSessionViewModel: ObservableObject {
                 token: token,
                 identity: identity
             )
-            availableModelOptions = NewSessionModelOption.fromCapabilities(capabilities)
-            availableReasoningEfforts = normalizeReasoningEfforts(capabilities.reasoningEfforts)
+            let nextModelOptions = NewSessionModelOption.fromCapabilities(capabilities)
+            let nextReasoningEfforts = normalizeReasoningEfforts(capabilities.reasoningEfforts)
+            if availableModelOptions != nextModelOptions {
+                availableModelOptions = nextModelOptions
+            }
+            if availableReasoningEfforts != nextReasoningEfforts {
+                availableReasoningEfforts = nextReasoningEfforts
+            }
             capabilitiesErrorMessage = nil
         } catch {
-            availableModelOptions = []
-            availableReasoningEfforts = []
+            if !availableModelOptions.isEmpty {
+                availableModelOptions = []
+            }
+            if !availableReasoningEfforts.isEmpty {
+                availableReasoningEfforts = []
+            }
             capabilitiesErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -235,6 +260,34 @@ public final class DirectSessionViewModel: ObservableObject {
         }
     }
 
+    public func loadWorktree(
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let worktreeLoader else {
+            worktreeSnapshot = nil
+            worktreeErrorMessage = "Worktree tools are unavailable"
+            return
+        }
+        guard !isLoadingWorktree else { return }
+
+        isLoadingWorktree = true
+        worktreeErrorMessage = nil
+        defer { isLoadingWorktree = false }
+
+        do {
+            worktreeSnapshot = try await worktreeLoader.loadWorktreeSnapshot(
+                serverURLString: serverURLString,
+                token: token,
+                identity: identity
+            )
+            worktreeErrorMessage = nil
+        } catch {
+            worktreeSnapshot = nil
+            worktreeErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     private var normalizedModelOverride: String {
         selectedModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -258,11 +311,12 @@ public final class DirectSessionViewModel: ObservableObject {
             }
 
             do {
-                messages = try await loader.loadMessages(
+                let loadedMessages = try await loader.loadMessages(
                     serverURLString: serverURLString,
                     token: token,
                     identity: identity
                 )
+                setMessagesIfChanged(loadedMessages)
                 errorMessage = nil
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -270,6 +324,11 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         pollingTask = nil
+    }
+
+    private func setMessagesIfChanged(_ nextMessages: [APISessionMessage]) {
+        guard messages != nextMessages else { return }
+        messages = nextMessages
     }
 }
 

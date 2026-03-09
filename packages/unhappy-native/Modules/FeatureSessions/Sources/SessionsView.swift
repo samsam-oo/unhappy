@@ -221,7 +221,7 @@ public struct SessionsView: View {
     }
 
     private var shouldShowProjectsStatusRow: Bool {
-        hasSidebarRows
+        viewModel.multiAgentInProgressCount > 0
     }
 
     private var shouldShowFullScreenLoading: Bool {

@@ -81,8 +81,8 @@ public final class NewSessionViewModel: ObservableObject {
         let supportedAgent = supportedNativeAgent(newAgent)
         rememberCurrentAgentSelections()
         selectedAgent = supportedAgent
-        selectedModel = selectedModelByAgent[supportedAgent] ?? ""
-        selectedReasoningEffort = selectedReasoningEffortByAgent[supportedAgent] ?? .medium
+        selectedModel = selectedModelByAgent[supportedAgent] ?? preferredDefaultModel(for: supportedAgent) ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[supportedAgent] ?? preferredDefaultReasoning(for: supportedAgent) ?? .medium
         lastSelectedAgent = supportedAgent
         await loadModels(serverURLString: serverURLString, token: token, agent: supportedAgent)
     }
@@ -90,8 +90,8 @@ public final class NewSessionViewModel: ObservableObject {
     public func setInitialSelectedAgent(_ agent: APISessionSpawnAgent) {
         let supportedAgent = supportedNativeAgent(agent)
         selectedAgent = supportedAgent
-        selectedModel = selectedModelByAgent[supportedAgent] ?? ""
-        selectedReasoningEffort = selectedReasoningEffortByAgent[supportedAgent] ?? .medium
+        selectedModel = selectedModelByAgent[supportedAgent] ?? preferredDefaultModel(for: supportedAgent) ?? ""
+        selectedReasoningEffort = selectedReasoningEffortByAgent[supportedAgent] ?? preferredDefaultReasoning(for: supportedAgent) ?? .medium
         lastSelectedAgent = supportedAgent
     }
 
@@ -232,7 +232,7 @@ public final class NewSessionViewModel: ObservableObject {
             if let nextModel = resolvedSelectedModel(
                 current: selected,
                 available: models,
-                preferredDefault: modelOptions.first(where: \.isDefault)?.id
+                preferredDefault: preferredDefaultModel(for: targetAgent) ?? modelOptions.first(where: \.isDefault)?.id
             ) {
                 selectedModel = nextModel
             } else {
@@ -240,7 +240,7 @@ public final class NewSessionViewModel: ObservableObject {
             }
 
             if let nextEffort = resolvedSelectedReasoningEffort(
-                current: selectedReasoningEffort,
+                current: preferredDefaultReasoning(for: targetAgent) ?? selectedReasoningEffort,
                 available: reasoningEfforts
             ) {
                 selectedReasoningEffort = nextEffort
@@ -820,6 +820,17 @@ public final class NewSessionViewModel: ObservableObject {
 
     private func supportedNativeAgent(_ agent: APISessionSpawnAgent) -> APISessionSpawnAgent {
         agent
+    }
+
+    private func preferredDefaultModel(for agent: APISessionSpawnAgent) -> String? {
+        SessionPreferenceDefaults.defaultModel(for: agent)
+    }
+
+    private func preferredDefaultReasoning(for agent: APISessionSpawnAgent) -> NewSessionReasoningEffort? {
+        guard let raw = SessionPreferenceDefaults.defaultReasoningRawValue(for: agent) else {
+            return nil
+        }
+        return NewSessionReasoningEffort.fromBackend(raw)
     }
 }
 

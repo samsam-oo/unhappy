@@ -420,6 +420,7 @@ enum SessionTranscriptRichContentParser {
 
         let summary = normalizeString(object["summary"]) ?? commandSummary(from: rawBody)
         let command = normalizeString(object["command"]) ??
+            normalizeString(object["cmd"]) ??
             extractCommand(from: object["commandActions"]) ??
             extractCommand(from: object["parsed_cmd"]) ??
             extractCommand(from: object["parsedCmd"])

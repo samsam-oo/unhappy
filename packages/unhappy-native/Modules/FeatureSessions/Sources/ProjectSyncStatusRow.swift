@@ -2,12 +2,10 @@ import SwiftUI
 
 struct ProjectSyncStatusPresentation: Equatable {
     enum Layout: Equatable {
-        case centered
         case leading
     }
 
     let layout: Layout
-    let showsSpinner: Bool
     let primaryText: String
     let secondaryText: String?
     let multiAgentStatus: MultiAgentStatusPresentation?
@@ -17,20 +15,19 @@ struct ProjectSyncStatusPresentation: Equatable {
         isRefreshing: Bool,
         refreshLabel: String
     ) {
+        _ = isRefreshing
+        _ = refreshLabel
         if let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
             inProgressCount: multiAgentInProgressCount
         ) {
             self.layout = .leading
-            self.showsSpinner = true
             self.primaryText = multiAgentStatus.summaryText
-            self.secondaryText = isRefreshing ? refreshLabel : nil
+            self.secondaryText = nil
             self.multiAgentStatus = multiAgentStatus
             return
         }
-
-        self.layout = .centered
-        self.showsSpinner = isRefreshing
-        self.primaryText = isRefreshing ? refreshLabel : "Projects are up to date"
+        self.layout = .leading
+        self.primaryText = ""
         self.secondaryText = nil
         self.multiAgentStatus = nil
     }
@@ -53,25 +50,8 @@ public struct ProjectSyncStatusRow: View {
 
     public var body: some View {
         Group {
-            switch presentation.layout {
-            case .centered:
+            if presentation.multiAgentStatus != nil {
                 HStack(spacing: 10) {
-                    if presentation.showsSpinner {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Text(presentation.primaryText)
-                        .font(.subheadline.weight(.semibold))
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-
-            case .leading:
-                HStack(spacing: 10) {
-                    if presentation.showsSpinner {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-
                     VStack(alignment: .leading, spacing: presentation.secondaryText == nil ? 0 : 2) {
                         HStack(spacing: 8) {
                             if let multiAgentStatus = presentation.multiAgentStatus {

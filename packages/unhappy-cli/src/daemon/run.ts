@@ -1126,7 +1126,6 @@ export async function startDaemon(): Promise<void> {
     const machine = await api.getOrCreateMachine({
       machineId,
       metadata: initialMachineMetadata,
-      daemonState: initialDaemonState,
     });
     logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
 

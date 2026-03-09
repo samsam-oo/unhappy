@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import { getProfileEnvironmentVariables, readSettings, validateProfileForAgent } from '@/persistence';
 import { logger } from '@/ui/logger';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
+import type { PermissionMode } from '@/api/types';
+import { mapPermissionModeToClaudeSdkMode } from '@/utils/permissionModeAdapter';
 
 import { query } from './sdk/query';
 import type { RawJSONLines } from './types';
@@ -18,6 +20,7 @@ export type ClaudeDirectSessionDescriptor = {
   cwd: string;
   model?: string | null;
   effort?: 'low' | 'medium' | 'high' | 'max' | null;
+  permissionMode?: PermissionMode | null;
 };
 
 export type ClaudeDirectSessionMessage = {
@@ -207,7 +210,9 @@ export async function sendClaudeSessionMessage(
       options: {
         cwd: descriptor.cwd,
         resume: descriptor.sessionId,
-        permissionMode: 'default',
+        permissionMode: mapPermissionModeToClaudeSdkMode(
+          descriptor.permissionMode ?? 'default',
+        ),
         model: descriptor.model ?? undefined,
         maxThinkingTokens: resolveMaxThinkingTokens(descriptor.effort),
       },

@@ -33,12 +33,6 @@ public struct NewSessionModelOption: Equatable, Identifiable, Sendable {
     }
 
     public var menuLabel: String {
-        if isDefault {
-            return "\(displayName) (Default)"
-        }
-        if let upgradeBadge, !upgradeBadge.isEmpty {
-            return "\(displayName) (\(upgradeBadge.capitalized))"
-        }
         return displayName
     }
 
