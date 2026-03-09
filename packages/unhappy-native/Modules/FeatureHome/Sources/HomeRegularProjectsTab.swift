@@ -315,7 +315,7 @@ struct HomeRegularProjectsTab: View {
     }
 
     private var shouldShowProjectsStatusRow: Bool {
-        showsSessionSidebarList
+        viewModel.multiAgentInProgressCount > 0
     }
 
     private var shouldShowFullScreenLoading: Bool {

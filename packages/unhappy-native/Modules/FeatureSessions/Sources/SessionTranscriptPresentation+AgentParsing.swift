@@ -179,7 +179,7 @@ extension SessionTranscriptPresentationBuilder {
             }
 
             switch type {
-            case "text":
+            case "text", "output_text", "input_text":
                 let text = normalizedText(chunk["text"]) ?? stringify(chunk)
                 entries.append(
                     makeEntry(
@@ -192,7 +192,7 @@ extension SessionTranscriptPresentationBuilder {
                         isSidechain: isSidechain
                     )
                 )
-            case "thinking":
+            case "thinking", "reasoning", "reasoning_text", "output_reasoning":
                 let text = normalizedText(chunk["thinking"]) ?? normalizedText(chunk["text"]) ?? stringify(chunk)
                 entries.append(
                     makeEntry(
