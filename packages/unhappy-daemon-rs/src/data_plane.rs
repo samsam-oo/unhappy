@@ -20,7 +20,7 @@ use aes_gcm::{
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use futures_util::{SinkExt, StreamExt};
-use http::{header, Request};
+use http::header;
 use hkdf::Hkdf;
 use rand::RngCore;
 use serde_json::{json, Value};
@@ -31,7 +31,10 @@ use tokio::{
     time::{sleep, Duration},
 };
 use tokio_tungstenite::{
-    connect_async, tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream,
+    connect_async,
+    tungstenite::{client::IntoClientRequest, protocol::Message},
+    MaybeTlsStream,
+    WebSocketStream,
 };
 use url::Url;
 use uuid::Uuid;
@@ -209,16 +212,7 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
     url.set_path(&format!("/v1/machines/{}/data-plane", config.machine_id));
     url.set_query(None);
 
-    let request = Request::builder()
-        .method("GET")
-        .uri(url.as_str())
-        .header(header::AUTHORIZATION, format!("Bearer {}", config.token))
-        .header(
-            header::SEC_WEBSOCKET_PROTOCOL,
-            MACHINE_DATA_PLANE_SUBPROTOCOL,
-        )
-        .body(())
-        .context("failed to build websocket request")?;
+    let request = machine_data_plane_request(&url, &config.token)?;
 
     let (mut socket, _) = connect_async(request)
         .await
@@ -259,6 +253,27 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
     }
 
     Ok((socket, session_key))
+}
+
+fn machine_data_plane_request(url: &Url, token: &str) -> Result<http::Request<()>> {
+    let mut request = url
+        .as_str()
+        .into_client_request()
+        .context("failed to build websocket request")?;
+    request
+        .headers_mut()
+        .insert(
+            header::AUTHORIZATION,
+            http::HeaderValue::from_str(&format!("Bearer {token}"))
+                .context("failed to encode authorization header")?,
+        );
+    request
+        .headers_mut()
+        .insert(
+            header::SEC_WEBSOCKET_PROTOCOL,
+            http::HeaderValue::from_static(MACHINE_DATA_PLANE_SUBPROTOCOL),
+        );
+    Ok(request.map(|_| ()))
 }
 
 async fn handle_request_frame(
@@ -713,4 +728,27 @@ fn timestamp_to_rfc3339(timestamp_millis: u64) -> String {
         .ok()
         .and_then(|timestamp| timestamp.format(&time::format_description::well_known::Rfc3339).ok())
         .unwrap_or_else(|| timestamp_millis.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn machine_data_plane_request_adds_authentication_headers() {
+        let url = Url::parse("wss://api.unhappy.im/v1/machines/machine/data-plane").unwrap();
+        let request = machine_data_plane_request(&url, "token-123").unwrap();
+
+        assert_eq!(
+            request.headers().get(header::AUTHORIZATION).unwrap(),
+            "Bearer token-123"
+        );
+        assert_eq!(
+            request
+                .headers()
+                .get(header::SEC_WEBSOCKET_PROTOCOL)
+                .unwrap(),
+            MACHINE_DATA_PLANE_SUBPROTOCOL
+        );
+    }
 }
