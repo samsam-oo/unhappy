@@ -71,11 +71,12 @@ public final class DirectSessionViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            messages = try await loader.loadMessages(
+            let loadedMessages = try await loader.loadMessages(
                 serverURLString: serverURLString,
                 token: token,
                 identity: identity
             )
+            setMessagesIfChanged(loadedMessages)
             errorMessage = nil
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -155,12 +156,22 @@ public final class DirectSessionViewModel: ObservableObject {
                 token: token,
                 identity: identity
             )
-            availableModelOptions = NewSessionModelOption.fromCapabilities(capabilities)
-            availableReasoningEfforts = normalizeReasoningEfforts(capabilities.reasoningEfforts)
+            let nextModelOptions = NewSessionModelOption.fromCapabilities(capabilities)
+            let nextReasoningEfforts = normalizeReasoningEfforts(capabilities.reasoningEfforts)
+            if availableModelOptions != nextModelOptions {
+                availableModelOptions = nextModelOptions
+            }
+            if availableReasoningEfforts != nextReasoningEfforts {
+                availableReasoningEfforts = nextReasoningEfforts
+            }
             capabilitiesErrorMessage = nil
         } catch {
-            availableModelOptions = []
-            availableReasoningEfforts = []
+            if !availableModelOptions.isEmpty {
+                availableModelOptions = []
+            }
+            if !availableReasoningEfforts.isEmpty {
+                availableReasoningEfforts = []
+            }
             capabilitiesErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
@@ -300,11 +311,12 @@ public final class DirectSessionViewModel: ObservableObject {
             }
 
             do {
-                messages = try await loader.loadMessages(
+                let loadedMessages = try await loader.loadMessages(
                     serverURLString: serverURLString,
                     token: token,
                     identity: identity
                 )
+                setMessagesIfChanged(loadedMessages)
                 errorMessage = nil
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -312,6 +324,11 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         pollingTask = nil
+    }
+
+    private func setMessagesIfChanged(_ nextMessages: [APISessionMessage]) {
+        guard messages != nextMessages else { return }
+        messages = nextMessages
     }
 }
 
