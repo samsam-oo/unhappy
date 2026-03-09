@@ -1,4 +1,5 @@
 mod config;
+mod codex_app_server;
 mod control_server;
 mod daemon_state;
 mod data_plane;

@@ -1,4 +1,5 @@
 use crate::{
+    codex_app_server::open_or_resume_codex_thread,
     config::Config,
     control_server::{
         ListChild, ProviderSessionStartedRequest, SpawnSessionRequest, SpawnSessionResponse,
@@ -192,6 +193,10 @@ impl DaemonState {
             return SpawnSessionResponse::requires_user_approval(request.directory);
         }
 
+        if request.agent == crate::provider::Provider::Codex {
+            return self.spawn_codex_session(request).await;
+        }
+
         let adapter = ProviderAdapters::for_provider(request.agent);
         let launch_request = adapter.build_launch_request(ProviderSpawnContext {
             directory: &request.directory,
@@ -254,6 +259,55 @@ impl DaemonState {
                 self.persist_snapshot_best_effort(snapshot).await;
                 SpawnSessionResponse::error(format!("Session webhook timeout for PID {pid}"))
             }
+        }
+    }
+
+    async fn spawn_codex_session(
+        &self,
+        request: SpawnSessionRequest,
+    ) -> SpawnSessionResponse {
+        match open_or_resume_codex_thread(
+            &self.config,
+            &request.directory,
+            request.codex_resume_thread_id.as_deref(),
+        )
+        .await
+        {
+            Ok(session) => {
+                let metadata = serde_json::json!({
+                    "agentSessionId": session.thread_id,
+                    "agentConversationId": session.conversation_id,
+                    "agentTranscriptPath": session
+                        .transcript_path
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().to_string()),
+                    "codexHomeDir": session.codex_home_dir.to_string_lossy().to_string(),
+                    "directory": request.directory,
+                    "agent": "codex",
+                    "startedBy": "daemon"
+                });
+                let tracked_session = TrackedSession::from_provider_session_started(
+                    synthetic_codex_pid(&session.thread_id),
+                    &ProviderSessionStartedRequest {
+                        provider: crate::provider::Provider::Codex,
+                        provider_session_id: session.thread_id.clone(),
+                        metadata,
+                    },
+                );
+
+                let snapshot = {
+                    let mut inner = self.inner.write().await;
+                    inner
+                        .sessions_by_pid
+                        .insert(tracked_session.pid(), tracked_session);
+                    self.snapshot_from_inner(&inner)
+                };
+                self.persist_snapshot_best_effort(snapshot).await;
+                SpawnSessionResponse::success(session.thread_id)
+            }
+            Err(error) => SpawnSessionResponse::error(format!(
+                "Failed to open Codex thread: {error}"
+            )),
         }
     }
 
@@ -423,6 +477,14 @@ fn terminate_pid(pid: u32) {
     unsafe {
         libc::kill(pid as i32, libc::SIGTERM);
     }
+}
+
+fn synthetic_codex_pid(thread_id: &str) -> u32 {
+    let mut hash = 5381_u32;
+    for byte in thread_id.as_bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(u32::from(*byte));
+    }
+    hash | 0x8000_0000
 }
 
 #[cfg(test)]
