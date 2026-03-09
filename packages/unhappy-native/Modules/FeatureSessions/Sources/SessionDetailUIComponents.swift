@@ -2,10 +2,10 @@ import SwiftUI
 import CoreKit
 
 enum SessionListRowInsets {
-    static let badge = EdgeInsets(top: 2, leading: 14, bottom: 2, trailing: 14)
-    static let sectionCard = EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
-    static let messageCard = EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14)
-    static let messageEntry = EdgeInsets(top: 4, leading: 14, bottom: 4, trailing: 14)
+    static let badge = EdgeInsets(top: 2, leading: 18, bottom: 2, trailing: 18)
+    static let sectionCard = EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18)
+    static let messageCard = EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 18)
+    static let messageEntry = EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 18)
     static let anchor = EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
 }
 
