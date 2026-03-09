@@ -13,6 +13,7 @@ const GEMINI_OAUTH_CREDS_FILE_ENV: &str = "UNHAPPY_GEMINI_OAUTH_CREDS_FILE";
 const UNHAPPY_CLI_ROOT_ENV: &str = "UNHAPPY_CLI_ROOT";
 const CLAUDE_HOOK_FORWARDER_SCRIPT_ENV: &str = "UNHAPPY_CLAUDE_HOOK_FORWARDER";
 const CLI_VERSION_ENV: &str = "UNHAPPY_CLI_VERSION";
+const NODE_EXECUTABLE_ENV: &str = "UNHAPPY_NODE_EXECUTABLE";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexRuntimePaths {
@@ -79,6 +80,10 @@ impl Config {
     
     pub fn session_store_path(&self) -> PathBuf {
         self.unhappy_home_dir.join("daemon.sessions.json")
+    }
+
+    pub fn daemon_lock_path(&self) -> PathBuf {
+        self.unhappy_home_dir.join("daemon.state.json.lock")
     }
 
     pub fn codex_home_dir(&self) -> PathBuf {
@@ -217,6 +222,34 @@ impl Config {
             settings_candidates,
             auth_candidates,
         }
+    }
+
+    pub fn node_executable(&self) -> PathBuf {
+        env::var(NODE_EXECUTABLE_ENV)
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("node"))
+    }
+
+    pub fn cli_entrypoint(&self) -> PathBuf {
+        if let Ok(cli_root) = env::var(UNHAPPY_CLI_ROOT_ENV) {
+            let trimmed = cli_root.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed).join("dist").join("index.mjs");
+            }
+        }
+        self.unhappy_home_dir.join("cli").join("dist").join("index.mjs")
+    }
+
+    pub fn daemon_helper_command(&self) -> (PathBuf, Vec<String>) {
+        (
+            self.node_executable(),
+            vec![
+                self.cli_entrypoint().to_string_lossy().to_string(),
+                "internal".to_string(),
+                "daemon-helper".to_string(),
+            ],
+        )
     }
 }
 

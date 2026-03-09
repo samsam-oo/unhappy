@@ -45,8 +45,17 @@ struct DaemonStateInner {
     started_at: u64,
     shutdown_requested_at: Option<u64>,
     state_reason: Option<String>,
+    opened_projects: Vec<OpenedProject>,
     sessions_by_pid: HashMap<u32, TrackedSession>,
     awaiters_by_pid: HashMap<u32, oneshot::Sender<TrackedSession>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedProject {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opened_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,6 +83,8 @@ struct PersistedDaemonState {
     shutdown_requested_at: Option<u64>,
     updated_at: u64,
     last_heartbeat: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    opened_projects: Vec<OpenedProject>,
     registry: PersistedSessionStore,
 }
 
@@ -99,6 +110,7 @@ impl DaemonState {
                 started_at,
                 shutdown_requested_at: None,
                 state_reason: None,
+                opened_projects: Vec::new(),
                 sessions_by_pid: HashMap::new(),
                 awaiters_by_pid: HashMap::new(),
             }),
@@ -114,7 +126,37 @@ impl DaemonState {
 
     pub async fn restore_persisted_sessions(&self) -> Result<()> {
         let store = read_session_store(&self.session_store_path()).await?;
+        let persisted_state = tokio::fs::read(self.state_file_path())
+            .await
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<PersistedDaemonState>(&bytes).ok());
         let mut inner = self.inner.write().await;
+        inner.opened_projects = persisted_state
+            .map(|state| state.opened_projects)
+            .unwrap_or_else(|| {
+                store
+                    .tracked_sessions
+                    .iter()
+                    .filter_map(|session| {
+                        session
+                            .metadata
+                            .as_ref()
+                            .and_then(|metadata| metadata.get("directory"))
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|value| !value.is_empty())
+                            .map(|path| OpenedProject {
+                                path: path.to_string(),
+                                opened_at: None,
+                            })
+                    })
+                    .fold(Vec::<OpenedProject>::new(), |mut acc, entry| {
+                        if acc.iter().all(|item| item.path != entry.path) {
+                            acc.push(entry);
+                        }
+                        acc
+                    })
+            });
         inner.sessions_by_pid = store
             .tracked_sessions
             .into_iter()
@@ -153,6 +195,61 @@ impl DaemonState {
             .collect::<Vec<_>>();
         sessions.sort_by(|left, right| left.pid.cmp(&right.pid));
         sessions
+    }
+
+    pub async fn list_opened_projects(&self) -> Vec<OpenedProject> {
+        self.inner.read().await.opened_projects.clone()
+    }
+
+    pub async fn open_project(&self, path: &str) -> Result<()> {
+        let normalized = path.trim();
+        if normalized.is_empty() {
+            return Ok(());
+        }
+        let snapshot = {
+            let mut inner = self.inner.write().await;
+            inner.opened_projects.retain(|entry| entry.path != normalized);
+            inner.opened_projects.push(OpenedProject {
+                path: normalized.to_string(),
+                opened_at: Some(now_millis()),
+            });
+            self.snapshot_from_inner(&inner)
+        };
+        self.write_snapshot(&snapshot).await
+    }
+
+    pub async fn remove_project(&self, path: &str) -> Result<()> {
+        let normalized = path.trim();
+        if normalized.is_empty() {
+            return Ok(());
+        }
+        let snapshot = {
+            let mut inner = self.inner.write().await;
+            inner.opened_projects.retain(|entry| entry.path != normalized);
+            self.snapshot_from_inner(&inner)
+        };
+        self.write_snapshot(&snapshot).await
+    }
+
+    pub async fn current_daemon_state_payload(&self) -> Value {
+        let inner = self.inner.read().await;
+        let status = match inner.status {
+            DaemonStatus::Running => "running",
+            DaemonStatus::ShuttingDown => "shutting-down",
+            DaemonStatus::Offline => "offline",
+        };
+        serde_json::json!({
+            "status": status,
+            "pid": inner.pid,
+            "httpPort": inner.http_port,
+            "startedAt": inner.started_at,
+            "shutdownRequestedAt": inner.shutdown_requested_at,
+            "openedProjects": inner.opened_projects,
+        })
+    }
+
+    pub fn config(&self) -> Config {
+        self.config.clone()
     }
 
     pub async fn stop_session(&self, session_id: &str) -> bool {
@@ -202,6 +299,10 @@ impl DaemonState {
             directory: &request.directory,
             codex_resume_thread_id: request.codex_resume_thread_id.as_deref(),
             claude_resume_session_id: request.claude_resume_session_id.as_deref(),
+            model: request.model.as_deref(),
+            reasoning_effort: request.reasoning_effort.as_deref(),
+            token: request.token.as_deref(),
+            environment_variables: request.environment_variables.as_ref(),
         });
         let resolved_command = adapter.resolve_command(&self.config.provider_commands);
 
@@ -270,6 +371,8 @@ impl DaemonState {
             &self.config,
             &request.directory,
             request.codex_resume_thread_id.as_deref(),
+            request.model.as_deref(),
+            request.reasoning_effort.as_deref(),
         )
         .await
         {
@@ -428,10 +531,16 @@ impl DaemonState {
             shutdown_requested_at: inner.shutdown_requested_at,
             updated_at,
             last_heartbeat: timestamp_millis_to_rfc3339(updated_at),
+            opened_projects: inner.opened_projects.clone(),
             registry: PersistedSessionStore {
                 schema_version: 1,
                 tracked_sessions,
                 awaiting_provider_session_pids,
+                opened_projects: inner
+                    .opened_projects
+                    .iter()
+                    .map(|entry| entry.path.clone())
+                    .collect(),
             },
         }
     }

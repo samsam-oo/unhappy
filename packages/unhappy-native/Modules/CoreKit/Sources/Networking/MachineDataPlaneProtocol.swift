@@ -50,6 +50,9 @@ public struct MachineDataPlaneSealedBody: Codable, Equatable, Sendable {
 
 public enum MachineDataPlaneOperation: String, Codable, CaseIterable, Sendable {
     case providerSpawn = "provider.spawn"
+    case machineListModels = "machine.listModels"
+    case daemonStop = "daemon.stop"
+    case daemonUpdate = "daemon.update"
     case projectList = "project.list"
     case projectOpen = "project.open"
     case projectRemove = "project.remove"

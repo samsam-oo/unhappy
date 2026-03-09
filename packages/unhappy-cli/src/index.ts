@@ -23,6 +23,7 @@ import {
   stopDaemonSession,
 } from './daemon/controlClient';
 import { killRunawayHappyProcesses } from './daemon/doctor';
+import { runDaemonHelperCommand } from './daemon/daemonHelper';
 import { install } from './daemon/install';
 import { startDaemon } from './daemon/run';
 import { uninstall } from './daemon/uninstall';
@@ -60,6 +61,20 @@ import { getLatestDaemonLog, logger } from './ui/logger';
     }
     await runDoctorCommand();
     return;
+  } else if (subcommand === 'internal') {
+    const internalSubcommand = args[1]?.toLowerCase();
+    if (internalSubcommand === 'daemon-helper') {
+      try {
+        await runDaemonHelperCommand(args.slice(2));
+      } catch (error) {
+        console.error(
+          chalk.red('Error:'),
+          error instanceof Error ? error.message : 'Unknown error',
+        );
+        process.exit(1);
+      }
+      return;
+    }
   } else if (subcommand === 'auth') {
     // Handle auth subcommands
     try {

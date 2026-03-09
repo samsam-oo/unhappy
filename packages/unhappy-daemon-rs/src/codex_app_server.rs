@@ -17,6 +17,8 @@ pub async fn open_or_resume_codex_thread(
     config: &Config,
     cwd: &str,
     resume_thread_id: Option<&str>,
+    model: Option<&str>,
+    reasoning_effort: Option<&str>,
 ) -> Result<CodexDirectSession> {
     let mut child = Command::new("codex")
         .arg("app-server")
@@ -42,6 +44,12 @@ pub async fn open_or_resume_codex_thread(
         .await
         .context("codex app-server initialize failed")?;
 
+    let model = model.map(str::trim).filter(|value| !value.is_empty());
+    let reasoning_effort = reasoning_effort
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| if value == "max" { "xhigh" } else { value });
+
     let response = if let Some(thread_id) = resume_thread_id.filter(|value| !value.trim().is_empty()) {
         client
             .call(
@@ -49,7 +57,9 @@ pub async fn open_or_resume_codex_thread(
                 json!({
                     "threadId": thread_id.trim(),
                     "cwd": cwd,
-                    "persistExtendedHistory": true
+                    "persistExtendedHistory": true,
+                    "model": model,
+                    "config": reasoning_effort.map(|effort| json!({ "model_reasoning_effort": effort })),
                 }),
             )
             .await
@@ -62,7 +72,9 @@ pub async fn open_or_resume_codex_thread(
                     "input": [],
                     "cwd": cwd,
                     "persistExtendedHistory": true,
-                    "experimentalRawEvents": false
+                    "experimentalRawEvents": false,
+                    "model": model,
+                    "config": reasoning_effort.map(|effort| json!({ "model_reasoning_effort": effort })),
                 }),
             )
             .await

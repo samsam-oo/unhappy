@@ -77,12 +77,13 @@ export function machinesRoutes(app: Fastify) {
                 id: z.string(),
                 metadata: z.string(), // Encrypted metadata
                 daemonState: z.string().optional(), // Encrypted daemon state
-                dataEncryptionKey: z.string().nullish()
+                dataEncryptionKey: z.string().nullish(),
+                active: z.boolean().optional(),
             })
         }
     }, async (request, reply) => {
         const userId = request.userId;
-        const { id, metadata, daemonState, dataEncryptionKey } = request.body;
+        const { id, metadata, daemonState, dataEncryptionKey, active } = request.body;
 
         // Check if machine exists (like sessions do)
         const machine = await db.machine.findFirst({
@@ -102,9 +103,12 @@ export function machinesRoutes(app: Fastify) {
             const dataEncryptionKeyChanged =
                 incomingDataEncryptionKey !== null &&
                 !equalBytes(machine.dataEncryptionKey, incomingDataEncryptionKey);
+            const activeChanged =
+                typeof active === 'boolean' &&
+                machine.active !== active;
 
             let currentMachine = machine;
-            if (metadataChanged || daemonStateChanged || dataEncryptionKeyChanged) {
+            if (metadataChanged || daemonStateChanged || dataEncryptionKeyChanged || activeChanged) {
                 log(
                     {
                         module: 'machines',
@@ -112,7 +116,8 @@ export function machinesRoutes(app: Fastify) {
                         userId,
                         metadataChanged,
                         daemonStateChanged,
-                        dataEncryptionKeyChanged
+                        dataEncryptionKeyChanged,
+                        activeChanged
                     },
                     'Refreshing existing machine metadata/state'
                 );
@@ -124,7 +129,9 @@ export function machinesRoutes(app: Fastify) {
                         metadataVersion: metadataChanged ? machine.metadataVersion + 1 : machine.metadataVersion,
                         daemonState: daemonStateChanged ? daemonState : machine.daemonState,
                         daemonStateVersion: daemonStateChanged ? machine.daemonStateVersion + 1 : machine.daemonStateVersion,
-                        dataEncryptionKey: dataEncryptionKeyChanged ? incomingDataEncryptionKey : machine.dataEncryptionKey
+                        dataEncryptionKey: dataEncryptionKeyChanged ? incomingDataEncryptionKey : machine.dataEncryptionKey,
+                        active: typeof active === 'boolean' ? active : machine.active,
+                        lastActiveAt: typeof active === 'boolean' ? new Date() : machine.lastActiveAt,
                     }
                 });
 
@@ -145,6 +152,13 @@ export function machinesRoutes(app: Fastify) {
                         userId,
                         payload: updatePayload,
                         recipientFilter: { type: 'machine-scoped-only', machineId: id }
+                    });
+                }
+                if (activeChanged) {
+                    eventRouter.emitEphemeral({
+                        userId,
+                        payload: buildMachineActivityEphemeral(id, Boolean(active), Date.now()),
+                        recipientFilter: { type: 'user-scoped-only' }
                     });
                 }
             } else {
@@ -180,8 +194,7 @@ export function machinesRoutes(app: Fastify) {
                     daemonState: daemonState || null,
                     daemonStateVersion: daemonState ? 1 : 0,
                     dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
-                    // Default to offline - in case the user does not start daemon
-                    active: false,
+                    active: active ?? false,
                     // lastActiveAt and activeAt defaults to now() in schema
                 }
             });
@@ -209,6 +222,13 @@ export function machinesRoutes(app: Fastify) {
                 payload: updatePayload,
                 recipientFilter: { type: 'machine-scoped-only', machineId: newMachine.id }
             });
+            if (typeof active === 'boolean') {
+                eventRouter.emitEphemeral({
+                    userId,
+                    payload: buildMachineActivityEphemeral(newMachine.id, active, Date.now()),
+                    recipientFilter: { type: 'user-scoped-only' }
+                });
+            }
 
             return reply.send({
                 machine: {
