@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose, Engine as _};
 use reqwest::Client;
 use serde_json::{json, Value};
-use std::env;
+use std::{env, process::Command};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
@@ -91,17 +91,77 @@ async fn post_machine_snapshot(
 
 fn build_machine_metadata(config: &Config) -> Value {
     json!({
-        "host": env::var("HOSTNAME")
-            .or_else(|_| env::var("COMPUTERNAME"))
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "unknown".to_string()),
+        "host": resolve_machine_host(),
         "platform": std::env::consts::OS,
         "happyCliVersion": config.current_cli_version,
         "homeDir": env::var("HOME").unwrap_or_else(|_| ".".to_string()),
         "unhappyHomeDir": config.unhappy_home_dir.to_string_lossy().to_string(),
         "unhappyLibDir": env::var("UNHAPPY_CLI_ROOT").unwrap_or_default(),
     })
+}
+
+fn resolve_machine_host() -> String {
+    let mut candidates: Vec<String> = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        for key in ["ComputerName", "LocalHostName", "HostName"] {
+            if let Some(value) = read_scutil_host(key) {
+                candidates.push(value);
+            }
+        }
+    }
+
+    if let Some(value) = normalize_host(env::var("HOSTNAME").ok().as_deref()) {
+        candidates.push(value);
+    }
+    if let Some(value) = normalize_host(env::var("COMPUTERNAME").ok().as_deref()) {
+        candidates.push(value);
+    }
+    if let Some(value) = normalize_host(hostname_command().as_deref()) {
+        candidates.push(value);
+    }
+
+    candidates
+        .into_iter()
+        .find(|value| !is_generic_host(value))
+        .unwrap_or_else(|| "unknown-host".to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn read_scutil_host(key: &str) -> Option<String> {
+    let output = Command::new("scutil")
+        .args(["--get", key])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    normalize_host(Some(String::from_utf8_lossy(&output.stdout).as_ref()))
+}
+
+fn hostname_command() -> Option<String> {
+    let output = Command::new("hostname").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn normalize_host(value: Option<&str>) -> Option<String> {
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.trim_end_matches(".local").to_string())
+}
+
+fn is_generic_host(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized.is_empty()
+        || normalized == "mac"
+        || normalized == "localhost"
+        || normalized == "unknown-host"
 }
 
 fn decode_machine_key(raw: &str) -> Result<[u8; 32]> {
