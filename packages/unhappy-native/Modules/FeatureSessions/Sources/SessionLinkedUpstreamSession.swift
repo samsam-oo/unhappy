@@ -2,18 +2,6 @@ import Foundation
 import CoreKit
 
 public struct SessionLinkedUpstreamSession: Identifiable, Equatable, Sendable {
-    private static let fractionalFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    private static let fallbackFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
     public let machineID: String
     public let machineDisplayName: String
     public let wrappedMachineDataEncryptionKey: String?
@@ -46,9 +34,21 @@ public struct SessionLinkedUpstreamSession: Identifiable, Equatable, Sendable {
     public var sortTimestamp: TimeInterval {
         let candidate = summary.updatedAt ?? summary.createdAt
         guard let candidate else { return 0 }
-        if let date = Self.fractionalFormatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) {
+        if let date = Self.parseISO8601(candidate) {
             return date.timeIntervalSince1970
         }
         return 0
+    }
+
+    private static func parseISO8601(_ raw: String) -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: raw) {
+            return date
+        }
+
+        let fallbackFormatter = ISO8601DateFormatter()
+        fallbackFormatter.formatOptions = [.withInternetDateTime]
+        return fallbackFormatter.date(from: raw)
     }
 }

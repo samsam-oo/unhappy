@@ -200,21 +200,14 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
 
 private extension Date {
     static func parseISO8601(_ value: String) -> Date? {
-        ISO8601DateFormatter.withFractional.date(from: value)
-            ?? ISO8601DateFormatter.withInternet.date(from: value)
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: value) {
+            return date
+        }
+
+        let fallbackFormatter = ISO8601DateFormatter()
+        fallbackFormatter.formatOptions = [.withInternetDateTime]
+        return fallbackFormatter.date(from: value)
     }
-}
-
-private extension ISO8601DateFormatter {
-    static let withFractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    static let withInternet: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
 }

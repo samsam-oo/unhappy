@@ -67,12 +67,11 @@ public actor UserDefaultsTerminalDataKeyStore: TerminalDataKeyStoring {
     private let accountSecretStore: any AccountSecretStoring
 
     public init(
-        defaults: UserDefaults = .standard,
         contentDataKeyStorageKey: String = "unhappy.native.terminal.contentDataKey",
         accountSecretStore: (any AccountSecretStoring)? = nil
     ) {
         _ = contentDataKeyStorageKey
-        self.accountSecretStore = accountSecretStore ?? UserDefaultsAccountSecretStore(defaults: defaults)
+        self.accountSecretStore = accountSecretStore ?? UserDefaultsAccountSecretStore()
     }
 
     public func loadOrCreateDataKey() async throws -> Data {

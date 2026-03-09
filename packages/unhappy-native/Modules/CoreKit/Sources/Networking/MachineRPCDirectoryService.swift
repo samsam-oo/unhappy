@@ -175,6 +175,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         let socket: SocketIOClient
     }
 
+    private enum SocketAckPayload: Sendable, Equatable {
+        case noAck
+        case json(Data)
+    }
+
     public init(
         connectTimeoutSeconds: Double = 8,
         ackTimeoutSeconds: Double = 30
@@ -348,22 +353,19 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             )
 
             do {
-                let ackItems = try await emitWithAck(
+                let ackPayload = try await emitWithAck(
                     socket: socket,
                     event: "machine-public-command",
                     payload: requestPayload
                 )
 
-                if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
+                if ackPayload == .noAck {
                     teardownLiveConnection()
                     throw MachinesAPIError.rpcTimedOut
                 }
 
-                guard let responseObject = ackItems.first as? [String: Any] else {
-                    teardownLiveConnection()
-                    throw MachinesAPIError.invalidRPCPayload
-                }
-                guard JSONSerialization.isValidJSONObject(responseObject) else {
+                guard case .json(let responseData) = ackPayload,
+                      let responseObject = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] else {
                     teardownLiveConnection()
                     throw MachinesAPIError.invalidRPCPayload
                 }
@@ -437,21 +439,22 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             dataKey: dataKey
         )
 
-        let ackItems = try await emitWithAck(
-            socket: socket,
-            event: "rpc-call",
-            payload: [
-                "method": "\(normalizedMachineID):\(normalizedCommand)",
-                "params": encryptedParams,
-            ]
-        )
+                let ackPayload = try await emitWithAck(
+                    socket: socket,
+                    event: "rpc-call",
+                    payload: [
+                        "method": "\(normalizedMachineID):\(normalizedCommand)",
+                        "params": encryptedParams,
+                    ]
+                )
 
-        if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
+        if ackPayload == .noAck {
             teardownLiveConnection()
             throw MachinesAPIError.rpcTimedOut
         }
 
-        guard let responseObject = ackItems.first as? [String: Any] else {
+        guard case .json(let ackData) = ackPayload,
+              let responseObject = try? JSONSerialization.jsonObject(with: ackData) as? [String: Any] else {
             teardownLiveConnection()
             throw MachinesAPIError.invalidRPCPayload
         }
@@ -887,12 +890,23 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         socket: SocketIOClient,
         event: String,
         payload: [String: Any]
-    ) async throws -> [Any] {
+    ) async throws -> SocketAckPayload {
         try await withCheckedThrowingContinuation { continuation in
             socket.rawEmitView
                 .emitWithAck(event, with: [payload])
                 .timingOut(after: ackTimeoutSeconds) { items in
-                    continuation.resume(returning: items)
+                    if let first = items.first as? String,
+                       first == SocketAckStatus.noAck.rawValue {
+                        continuation.resume(returning: .noAck)
+                        return
+                    }
+                    guard let first = items.first,
+                          JSONSerialization.isValidJSONObject(first),
+                          let data = try? JSONSerialization.data(withJSONObject: first) else {
+                        continuation.resume(throwing: MachinesAPIError.invalidRPCPayload)
+                        return
+                    }
+                    continuation.resume(returning: .json(data))
                 }
         }
     }
