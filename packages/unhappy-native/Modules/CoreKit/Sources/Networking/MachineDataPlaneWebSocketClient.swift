@@ -2,6 +2,39 @@ import Foundation
 import SecurityKit
 
 public actor MachineDataPlaneWebSocketClient {
+    private enum RequestPriority: Int, Comparable, Sendable {
+        case background = 0
+        case normal = 1
+        case interactive = 2
+
+        static func < (lhs: RequestPriority, rhs: RequestPriority) -> Bool {
+            lhs.rawValue < rhs.rawValue
+        }
+
+        static func forOperation(_ operation: MachineDataPlaneOperation) -> RequestPriority {
+            switch operation {
+            case .codexSendMessage,
+                 .claudeSendMessage,
+                 .geminiSendMessage,
+                 .fsReadFile,
+                 .execBash,
+                 .providerSpawn:
+                return .interactive
+
+            case .codexListMessages,
+                 .claudeListMessages,
+                 .geminiListMessages,
+                 .codexListThreads,
+                 .claudeListSessions,
+                 .geminiListSessions:
+                return .background
+
+            default:
+                return .normal
+            }
+        }
+    }
+
     private struct ConnectionKey: Hashable, Sendable {
         let serverURLString: String
         let token: String
@@ -12,6 +45,7 @@ public actor MachineDataPlaneWebSocketClient {
     private struct QueuedRequest {
         let operation: MachineDataPlaneOperation
         let bodyObject: Any
+        let priority: RequestPriority
         let continuation: CheckedContinuation<Data, Error>
     }
 
@@ -65,6 +99,7 @@ public actor MachineDataPlaneWebSocketClient {
                 QueuedRequest(
                     operation: operation,
                     bodyObject: bodyObject,
+                    priority: RequestPriority.forOperation(operation),
                     continuation: continuation
                 ),
                 machineDataKey: machineDataKey,
@@ -124,7 +159,10 @@ public actor MachineDataPlaneWebSocketClient {
         serverURL: URL
     ) {
         var state = connectionStates[key] ?? ConnectionState(machineDataKey: machineDataKey)
-        state.queuedRequests.append(request)
+        let insertionIndex = state.queuedRequests.partitioningIndex { queuedRequest in
+            queuedRequest.priority < request.priority
+        }
+        state.queuedRequests.insert(request, at: insertionIndex)
         let shouldStartProcessing = state.isProcessing == false
         state.isProcessing = true
         connectionStates[key] = state
@@ -344,5 +382,26 @@ public actor MachineDataPlaneWebSocketClient {
 
     private func aadData(_ entries: [(String, String)]) -> Data {
         Data(entries.map { "\($0.0)=\($0.1)" }.joined(separator: "\n").utf8)
+    }
+}
+
+private extension Array {
+    func partitioningIndex(
+        where predicate: (Element) -> Bool
+    ) -> Int {
+        var low = startIndex
+        var high = endIndex
+
+        while low < high {
+            let distance = self.distance(from: low, to: high)
+            let mid = index(low, offsetBy: distance / 2)
+            if predicate(self[mid]) {
+                low = index(after: mid)
+            } else {
+                high = mid
+            }
+        }
+
+        return low
     }
 }

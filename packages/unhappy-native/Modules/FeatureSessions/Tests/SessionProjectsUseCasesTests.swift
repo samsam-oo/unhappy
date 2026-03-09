@@ -154,6 +154,68 @@ struct SessionProjectsUseCasesTests {
         #expect(projects.count == 1)
         #expect(projects.first?.machineID == "machine-fast")
     }
+
+    @Test
+    func loadProjectsStreamYieldsFastMachineBeforeSlowMachineTimesOut() async throws {
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-fast",
+                    active: true,
+                    activeAt: 20,
+                    createdAt: 1,
+                    updatedAt: 20,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Fast Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+                APIMachine(
+                    id: "machine-slow",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Slow Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+            ],
+            projectsByMachineID: [
+                "machine-fast": [
+                    APIMachineProjectSummary(
+                        path: "/repo/app",
+                        latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                ]
+            ],
+            delayedMachineIDs: ["machine-slow"],
+            fetchDelay: .milliseconds(200)
+        )
+        let useCase = SessionProjectsLoadUseCase(
+            service: service,
+            machineRequestTimeout: .milliseconds(30)
+        )
+        var iterator = await useCase.loadProjectsStream(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        ).makeAsyncIterator()
+
+        let firstSnapshot = await iterator.next()
+        let finalSnapshot = await iterator.next()
+
+        #expect(firstSnapshot?.isFinal == false)
+        #expect(firstSnapshot?.projects.count == 1)
+        #expect(firstSnapshot?.projects.first?.machineID == "machine-fast")
+        #expect(finalSnapshot?.isFinal == true)
+        #expect(finalSnapshot?.projects.count == 1)
+    }
 }
 
 private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {

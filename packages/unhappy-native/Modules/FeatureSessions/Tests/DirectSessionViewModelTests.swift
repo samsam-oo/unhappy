@@ -6,6 +6,47 @@ import CoreKit
 @MainActor
 struct DirectSessionViewModelTests {
     @Test
+    func pollingStrategyUsesSmallerRefreshLimitWhenMessagesExist() {
+        let limit = DirectSessionPollingStrategy.refreshLimit(
+            hasExistingMessages: true,
+            defaultPageSize: 120
+        )
+
+        #expect(limit == 20)
+    }
+
+    @Test
+    func pollingStrategySkipsRefreshWhileSendOrPostSendRefreshIsPending() {
+        #expect(
+            DirectSessionPollingStrategy.shouldRefreshLatestMessages(
+                hasExistingMessages: true,
+                isSending: true,
+                isLoadingOlderMessages: false,
+                hasPendingPostSendRefresh: false,
+                hasActiveMessagesLoad: false
+            ) == false
+        )
+        #expect(
+            DirectSessionPollingStrategy.shouldRefreshLatestMessages(
+                hasExistingMessages: true,
+                isSending: false,
+                isLoadingOlderMessages: false,
+                hasPendingPostSendRefresh: true,
+                hasActiveMessagesLoad: false
+            ) == false
+        )
+        #expect(
+            DirectSessionPollingStrategy.shouldRefreshLatestMessages(
+                hasExistingMessages: true,
+                isSending: false,
+                isLoadingOlderMessages: false,
+                hasPendingPostSendRefresh: false,
+                hasActiveMessagesLoad: false
+            ) == true
+        )
+    }
+
+    @Test
     func sendMessageReturnsBeforeBackgroundRefreshCompletes() async throws {
         let loader = BlockingMessagesLoader()
         let sender = SuccessfulSender()

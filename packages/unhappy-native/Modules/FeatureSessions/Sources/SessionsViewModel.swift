@@ -289,6 +289,21 @@ public final class SessionsViewModel: ObservableObject {
         isLoadingProjects = true
         defer { isLoadingProjects = false }
 
+        if let streamingProjectsLoader = projectsLoader as? any SessionProjectsStreamingAction {
+            for await snapshot in await streamingProjectsLoader.loadProjectsStream(
+                serverURLString: serverURLString,
+                token: token
+            ) {
+                setProjectsIfChanged(snapshot.projects.filter(\.summary.openedExplicitly))
+                if snapshot.errorMessage?.isEmpty == false {
+                    projectsErrorMessage = snapshot.errorMessage
+                } else if snapshot.projects.isEmpty == false || snapshot.isFinal {
+                    projectsErrorMessage = nil
+                }
+            }
+            return
+        }
+
         do {
             let loadedProjects = try await projectsLoader.loadProjects(
                 serverURLString: serverURLString,
