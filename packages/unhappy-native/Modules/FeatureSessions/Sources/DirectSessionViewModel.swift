@@ -4,8 +4,12 @@ import FeatureNewSession
 
 @MainActor
 public final class DirectSessionViewModel: ObservableObject {
+    private static let messagePageSize = 120
+
     @Published public private(set) var messages: [APISessionMessage] = []
+    @Published public private(set) var hasOlderMessages = false
     @Published public private(set) var isLoading = false
+    @Published public private(set) var isLoadingOlderMessages = false
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isSending = false
     @Published public private(set) var sendErrorMessage: String?
@@ -37,7 +41,9 @@ public final class DirectSessionViewModel: ObservableObject {
     private let reviewLoader: (any DirectSessionReviewLoadingAction)?
     private let worktreeLoader: (any DirectSessionWorktreeLoadingAction)?
     private var pollingTask: Task<Void, Never>?
-    private var activeMessagesLoadTask: Task<[APISessionMessage], Error>?
+    private var activeMessagesLoadTask: Task<APISessionMessagesPage, Error>?
+    private var olderMessagesCursor: String?
+    private var hasPrependedOlderPages = false
 
     public init(
         identity: DirectSessionIdentity,
@@ -72,11 +78,44 @@ public final class DirectSessionViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let loadedMessages = try await loadMessagesShared(
+            let page = try await loadMessagesShared(
                 serverURLString: serverURLString,
                 token: token
             )
-            setMessagesIfChanged(loadedMessages)
+            applyLatestPage(page)
+            errorMessage = nil
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
+    public func loadOlderMessages(serverURLString: String, token: String) async {
+        guard !isLoadingOlderMessages else { return }
+        guard let olderMessagesCursor, !olderMessagesCursor.isEmpty else {
+            hasOlderMessages = false
+            return
+        }
+
+        isLoadingOlderMessages = true
+        defer { isLoadingOlderMessages = false }
+
+        do {
+            let page = try await loader.loadMessages(
+                serverURLString: serverURLString,
+                token: token,
+                identity: identity,
+                limit: Self.messagePageSize,
+                cursor: olderMessagesCursor
+            )
+
+            let existingIDs = Set(messages.map(\.id))
+            let prepended = page.messages.filter { !existingIDs.contains($0.id) }
+            if !prepended.isEmpty {
+                messages = prepended + messages
+                hasPrependedOlderPages = true
+            }
+            self.olderMessagesCursor = page.nextCursor
+            hasOlderMessages = page.hasNext
             errorMessage = nil
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -311,11 +350,11 @@ public final class DirectSessionViewModel: ObservableObject {
             }
 
             do {
-                let loadedMessages = try await loadMessagesShared(
+                let page = try await loadMessagesShared(
                     serverURLString: serverURLString,
                     token: token
                 )
-                setMessagesIfChanged(loadedMessages)
+                applyLatestPage(page)
                 errorMessage = nil
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -330,10 +369,28 @@ public final class DirectSessionViewModel: ObservableObject {
         messages = nextMessages
     }
 
+    private func applyLatestPage(_ page: APISessionMessagesPage) {
+        let latestMessages = page.messages
+        let latestIDs = Set(latestMessages.map(\.id))
+
+        if hasPrependedOlderPages {
+            let preservedOlderMessages = messages.filter { !latestIDs.contains($0.id) }
+            setMessagesIfChanged(preservedOlderMessages + latestMessages)
+            if olderMessagesCursor == nil {
+                hasOlderMessages = false
+            }
+            return
+        }
+
+        setMessagesIfChanged(latestMessages)
+        olderMessagesCursor = page.nextCursor
+        hasOlderMessages = page.hasNext
+    }
+
     private func loadMessagesShared(
         serverURLString: String,
         token: String
-    ) async throws -> [APISessionMessage] {
+    ) async throws -> APISessionMessagesPage {
         if let activeMessagesLoadTask {
             return try await activeMessagesLoadTask.value
         }
@@ -342,7 +399,9 @@ public final class DirectSessionViewModel: ObservableObject {
             try await loader.loadMessages(
                 serverURLString: serverURLString,
                 token: token,
-                identity: identity
+                identity: identity,
+                limit: Self.messagePageSize,
+                cursor: nil
             )
         }
         activeMessagesLoadTask = task

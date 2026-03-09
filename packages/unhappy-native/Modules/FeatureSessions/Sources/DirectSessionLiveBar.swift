@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import UIFoundation
 
 struct SessionSubAgentLiveBar: View {
     let count: Int

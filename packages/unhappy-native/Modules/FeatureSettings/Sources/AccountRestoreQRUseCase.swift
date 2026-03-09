@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import SecurityKit
 
 public struct AccountRestoreQRSession: Sendable, Equatable {
     public let publicKeyBase64: String

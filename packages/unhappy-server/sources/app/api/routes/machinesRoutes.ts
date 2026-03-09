@@ -16,6 +16,15 @@ import {
 } from "./codexPublicCommands";
 
 export function machinesRoutes(app: Fastify) {
+    function rejectEncryptedDataPlaneRequired(
+        reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }
+    ) {
+        return reply.code(403).send({
+            success: false,
+            error: "This machine route now requires the encrypted RPC data plane.",
+        });
+    }
+
     function equalBytes(left: Uint8Array | null, right: Uint8Array | null): boolean {
         if (!left && !right) return true;
         if (!left || !right) return false;
@@ -304,82 +313,7 @@ export function machinesRoutes(app: Fastify) {
             })
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-        const {
-            directory,
-            agent,
-            model,
-            reasoningEffort,
-            codexResumeThreadId,
-            claudeResumeSessionId,
-            approvedNewDirectoryCreation,
-            token,
-            environmentVariables
-        } = request.body;
-
-        const machineExists = await ensureMachineBelongsToUser(userId, id);
-        if (!machineExists) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-
-        const normalizedDirectory = directory.trim();
-        if (!normalizedDirectory) {
-            return reply.code(400).send({ success: false, error: 'Directory is required' });
-        }
-
-        const invoked = await invokeMachineCommand(
-            userId,
-            id,
-            'spawn-provider-session',
-            {
-                directory: normalizedDirectory,
-                machineId: id,
-                sessionId: undefined,
-                agent,
-                model: typeof model === 'string' && model.trim().length > 0 ? model.trim() : undefined,
-                reasoningEffort,
-                codexResumeThreadId:
-                    typeof codexResumeThreadId === 'string' && codexResumeThreadId.trim().length > 0
-                        ? codexResumeThreadId.trim()
-                        : undefined,
-                claudeResumeSessionId:
-                    typeof claudeResumeSessionId === 'string' && claudeResumeSessionId.trim().length > 0
-                        ? claudeResumeSessionId.trim()
-                        : undefined,
-                approvedNewDirectoryCreation,
-                token: typeof token === 'string' && token.trim().length > 0 ? token.trim() : undefined,
-                environmentVariables
-            }
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        const result = invoked.result;
-        if (result?.type === 'requestToApproveDirectoryCreation') {
-            return reply.code(409).send({
-                success: false,
-                requiresUserApproval: true,
-                actionRequired: 'CREATE_DIRECTORY',
-                directory: result.directory
-            });
-        }
-        if (result?.type === 'success' && typeof result?.sessionId === 'string') {
-            return reply.send({
-                success: true,
-                sessionId: result.sessionId
-            });
-        }
-
-        return reply.code(502).send({
-            success: false,
-            error: typeof result?.error === 'string'
-                ? result.error
-                : typeof result?.errorMessage === 'string'
-                    ? result.errorMessage
-                    : 'Failed to spawn session'
-        });
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.post('/v1/machines/:id/projects/open', {
@@ -393,29 +327,7 @@ export function machinesRoutes(app: Fastify) {
             })
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-        const projectPath = request.body.path.trim();
-
-        const machineExists = await ensureMachineBelongsToUser(userId, id);
-        if (!machineExists) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-        if (!projectPath) {
-            return reply.code(400).send({ success: false, error: 'Project path is required' });
-        }
-
-        const invoked = await invokeMachineCommand(
-            userId,
-            id,
-            'open-project',
-            { path: projectPath }
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.post('/v1/machines/:id/projects/remove', {
@@ -429,29 +341,7 @@ export function machinesRoutes(app: Fastify) {
             })
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-        const projectPath = request.body.path.trim();
-
-        const machineExists = await ensureMachineBelongsToUser(userId, id);
-        if (!machineExists) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-        if (!projectPath) {
-            return reply.code(400).send({ success: false, error: 'Project path is required' });
-        }
-
-        const invoked = await invokeMachineCommand(
-            userId,
-            id,
-            'close-project',
-            { path: projectPath }
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.get('/v1/machines/:id/projects', {
@@ -465,26 +355,7 @@ export function machinesRoutes(app: Fastify) {
             }).optional()
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-        const explicitOnly = request.query?.explicitOnly === true;
-
-        const machineExists = await ensureMachineBelongsToUser(userId, id);
-        if (!machineExists) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-
-        const invoked = await invokeMachineCommand(
-            userId,
-            id,
-            'list-projects',
-            { explicitOnly }
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.post('/v1/machines/:id/daemon/stop', {
@@ -610,25 +481,7 @@ export function machinesRoutes(app: Fastify) {
             })
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-
-        const machineExists = await ensureMachineBelongsToUser(userId, id);
-        if (!machineExists) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-
-        const invoked = await invokeMachineCommand(
-            userId,
-            id,
-            'listDirectory',
-            request.body
-        );
-        if (!invoked.ok) {
-            return reply.code(invoked.statusCode).send({ success: false, error: invoked.error });
-        }
-
-        return reply.send(invoked.result);
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.get('/v1/machines/:id/codex/threads', {
@@ -644,46 +497,7 @@ export function machinesRoutes(app: Fastify) {
             }).optional()
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-        const cwd = request.query?.cwd?.trim();
-        const limit = request.query?.limit ?? 20;
-        const cursor = request.query?.cursor?.trim();
-
-        const machine = await db.machine.findFirst({
-            where: {
-                accountId: userId,
-                id
-            },
-            select: { id: true }
-        });
-
-        if (!machine) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-
-        const target = findConnectedMachine(userId, id);
-        if (!target) {
-            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
-        }
-
-        const result = await invokePublicCommand(target, {
-            command: 'codex-list-threads',
-            params: {
-                cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit,
-                cursor: cursor && cursor.length > 0 ? cursor : undefined
-            }
-        });
-
-        if (!result?.success) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to list Codex threads'
-            });
-        }
-
-        return reply.send(result);
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.get('/v1/machines/:id/claude/sessions', {
@@ -699,46 +513,7 @@ export function machinesRoutes(app: Fastify) {
             }).optional()
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-        const cwd = request.query?.cwd?.trim();
-        const limit = request.query?.limit ?? 20;
-        const cursor = request.query?.cursor?.trim();
-
-        const machine = await db.machine.findFirst({
-            where: {
-                accountId: userId,
-                id
-            },
-            select: { id: true }
-        });
-
-        if (!machine) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-
-        const target = findConnectedMachine(userId, id);
-        if (!target) {
-            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
-        }
-
-        const result = await invokePublicCommand(target, {
-            command: 'claude-list-sessions',
-            params: {
-                cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit,
-                cursor: cursor && cursor.length > 0 ? cursor : undefined
-            }
-        });
-
-        if (!result?.success) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to list Claude sessions'
-            });
-        }
-
-        return reply.send(result);
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.get('/v1/machines/:id/gemini/sessions', {
@@ -754,46 +529,7 @@ export function machinesRoutes(app: Fastify) {
             }).optional()
         }
     }, async (request, reply) => {
-        const userId = request.userId;
-        const { id } = request.params;
-        const cwd = request.query?.cwd?.trim();
-        const limit = request.query?.limit ?? 20;
-        const cursor = request.query?.cursor?.trim();
-
-        const machine = await db.machine.findFirst({
-            where: {
-                accountId: userId,
-                id
-            },
-            select: { id: true }
-        });
-
-        if (!machine) {
-            return reply.code(404).send({ error: 'Machine not found' });
-        }
-
-        const target = findConnectedMachine(userId, id);
-        if (!target) {
-            return reply.code(409).send({ success: false, error: 'Machine daemon is not connected' });
-        }
-
-        const result = await invokePublicCommand(target, {
-            command: 'gemini-list-sessions',
-            params: {
-                cwd: cwd && cwd.length > 0 ? cwd : undefined,
-                limit,
-                cursor: cursor && cursor.length > 0 ? cursor : undefined
-            }
-        });
-
-        if (!result?.success) {
-            return reply.code(502).send({
-                success: false,
-                error: typeof result?.error === 'string' ? result.error : 'Failed to list Gemini sessions'
-            });
-        }
-
-        return reply.send(result);
+        return rejectEncryptedDataPlaneRequired(reply);
     });
 
     app.get('/v1/machines/:id/models', {

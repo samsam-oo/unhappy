@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import UIFoundation
 
 enum SessionListRowInsets {
     static let badge = EdgeInsets(top: 6, leading: 40, bottom: 8, trailing: 40)

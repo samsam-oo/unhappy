@@ -64,8 +64,10 @@ public protocol DirectSessionMessagesLoadingAction: Sendable {
     func loadMessages(
         serverURLString: String,
         token: String,
-        identity: DirectSessionIdentity
-    ) async throws -> [APISessionMessage]
+        identity: DirectSessionIdentity,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage
 }
 
 public protocol DirectSessionMessageSendingAction: Sendable {
@@ -191,8 +193,10 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
     public func loadMessages(
         serverURLString: String,
         token: String,
-        identity: DirectSessionIdentity
-    ) async throws -> [APISessionMessage] {
+        identity: DirectSessionIdentity,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
             throw DirectSessionUseCaseError.missingToken
@@ -235,7 +239,9 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
                 machineID: normalizedMachineID,
                 threadID: normalizedUpstreamSessionID,
                 transcriptPath: normalizedTranscriptPath,
-                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
+                limit: limit,
+                cursor: cursor
             )
 
         case .claude:
@@ -245,7 +251,9 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
                 cwd: normalizedCWD,
-                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
+                limit: limit,
+                cursor: cursor
             )
 
         case .gemini:
@@ -254,7 +262,9 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
                 token: normalizedToken,
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
-                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
+                limit: limit,
+                cursor: cursor
             )
         }
     }

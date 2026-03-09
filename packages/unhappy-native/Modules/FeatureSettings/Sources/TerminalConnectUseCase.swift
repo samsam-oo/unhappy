@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import CoreKit
+import SecurityKit
 
 public enum TerminalConnectRequestState: Equatable, Sendable {
     case pending(supportsV2: Bool)

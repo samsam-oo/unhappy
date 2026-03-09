@@ -1,7 +1,7 @@
 import Foundation
 
-enum AccountSecretCodec {
-    static func decode(_ raw: String) -> Data? {
+public enum AccountSecretCodec {
+    public static func decode(_ raw: String) -> Data? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 

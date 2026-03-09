@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import FeatureSettings
+import SecurityKit
 
 struct AccountSecretCodecTests {
     @Test

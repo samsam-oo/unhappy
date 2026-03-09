@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import UIFoundation
 
 struct MessagesSectionRows: View {
     let isLoading: Bool
@@ -39,6 +40,7 @@ struct MessagesSectionRows: View {
                         onMessageInspect(presentation.messageID)
                     }
                 )
+                .id(presentation.messageID)
                 .sessionListRow(insets: SessionListRowInsets.messageEntry)
             }
         }

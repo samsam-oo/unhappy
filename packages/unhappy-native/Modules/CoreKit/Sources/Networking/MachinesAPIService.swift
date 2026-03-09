@@ -382,15 +382,19 @@ extension URLSessionMachinesService {
         machineID: String,
         threadID: String,
         transcriptPath: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         try await rpcDirectoryService.fetchCodexThreadMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             threadID: threadID,
             transcriptPath: transcriptPath,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            limit: limit,
+            cursor: cursor
         )
     }
 
@@ -428,15 +432,19 @@ extension URLSessionMachinesService {
         machineID: String,
         sessionID: String,
         cwd: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         try await rpcDirectoryService.fetchClaudeSessionMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             sessionID: sessionID,
             cwd: cwd,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            limit: limit,
+            cursor: cursor
         )
     }
 
@@ -611,14 +619,18 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         sessionID: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         try await rpcDirectoryService.fetchGeminiSessionMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             sessionID: sessionID,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            limit: limit,
+            cursor: cursor
         )
     }
 

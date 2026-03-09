@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import Security
 
-enum AuthEnvelopeCryptoError: Error {
+public enum AuthEnvelopeCryptoError: Error {
     case invalidPublicKey
     case invalidPrivateKey
     case invalidBundle
@@ -12,22 +12,27 @@ enum AuthEnvelopeCryptoError: Error {
     case randomGenerationFailed
 }
 
-struct AuthEnvelopeKeyPair: Sendable {
-    let publicKey: Data
-    let privateKey: Data
+public struct AuthEnvelopeKeyPair: Sendable {
+    public let publicKey: Data
+    public let privateKey: Data
+
+    public init(publicKey: Data, privateKey: Data) {
+        self.publicKey = publicKey
+        self.privateKey = privateKey
+    }
 }
 
-enum AuthEnvelopeCrypto {
-    static let version: UInt8 = 2
-    static let publicKeyLength = 32
-    static let nonceLength = 12
-    static let tagLength = 16
-    static let minimumBundleLength = 1 + publicKeyLength + nonceLength + tagLength
+public enum AuthEnvelopeCrypto {
+    public static let version: UInt8 = 2
+    public static let publicKeyLength = 32
+    public static let nonceLength = 12
+    public static let tagLength = 16
+    public static let minimumBundleLength = 1 + publicKeyLength + nonceLength + tagLength
 
     private static let kdfSalt = Data("unhappy.auth.envelope.salt.v2".utf8)
     private static let kdfInfo = Data("unhappy.auth.envelope.info.v2".utf8)
 
-    static func generateKeyPair() throws -> AuthEnvelopeKeyPair {
+    public static func generateKeyPair() throws -> AuthEnvelopeKeyPair {
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
         return AuthEnvelopeKeyPair(
             publicKey: privateKey.publicKey.rawRepresentation,
@@ -35,7 +40,7 @@ enum AuthEnvelopeCrypto {
         )
     }
 
-    static func encrypt(message: Data, recipientPublicKey: Data) throws -> Data {
+    public static func encrypt(message: Data, recipientPublicKey: Data) throws -> Data {
         guard recipientPublicKey.count == publicKeyLength else {
             throw AuthEnvelopeCryptoError.invalidPublicKey
         }
@@ -63,7 +68,7 @@ enum AuthEnvelopeCrypto {
         }
     }
 
-    static func decrypt(bundle: Data, recipientPrivateKey: Data) throws -> Data {
+    public static func decrypt(bundle: Data, recipientPrivateKey: Data) throws -> Data {
         guard recipientPrivateKey.count == publicKeyLength else {
             throw AuthEnvelopeCryptoError.invalidPrivateKey
         }

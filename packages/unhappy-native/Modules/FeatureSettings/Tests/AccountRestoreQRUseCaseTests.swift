@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import CoreKit
 import CryptoKit
+import SecurityKit
 @testable import FeatureSettings
 
 struct AccountRestoreQRUseCaseTests {
