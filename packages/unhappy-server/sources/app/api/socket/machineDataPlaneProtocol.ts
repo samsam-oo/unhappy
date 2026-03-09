@@ -125,3 +125,5 @@ export const MachineDataPlaneFrameSchema = z.discriminatedUnion('t', [
   MachineDataPlaneErrorFrameSchema,
   MachineDataPlaneAckFrameSchema,
 ])
+
+export type MachineDataPlaneHelloFrame = z.infer<typeof MachineDataPlaneHelloFrameSchema>
