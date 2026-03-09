@@ -1,5 +1,5 @@
 import Testing
-@testable import CoreKit
+import UIFoundation
 
 struct CoreKitTests {
     @Test

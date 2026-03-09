@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import CoreKit
+import SecurityKit
 @testable import FeatureSettings
 
 struct AccountRestoreUseCaseTests {
