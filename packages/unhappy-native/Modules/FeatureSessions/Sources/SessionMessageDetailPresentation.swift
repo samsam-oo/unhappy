@@ -19,6 +19,7 @@ struct SessionMessageDetailPresentation: Equatable, Sendable {
     let payloadCharacterCount: Int
     let payloadTruncated: Bool
     let payloadFields: [SessionMessagePayloadField]
+    let parsedEntries: [SessionTranscriptEntry]
 }
 
 enum SessionMessageDetailPresentationBuilder {
@@ -27,6 +28,7 @@ enum SessionMessageDetailPresentationBuilder {
 
     static func make(
         from message: APISessionMessage,
+        transcriptPresentation: SessionTranscriptMessagePresentation? = nil,
         timestampFormatter: (TimeInterval) -> String = defaultTimestampFormatter
     ) -> SessionMessageDetailPresentation {
         let normalizedContentType = message.content?.type.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -44,6 +46,15 @@ enum SessionMessageDetailPresentationBuilder {
             payloadTruncated = false
         }
         let payloadFields = parsePayloadFields(payload)
+        let parsedEntries = {
+            if let transcriptPresentation {
+                return transcriptPresentation.entries
+            }
+            return SessionTranscriptPresentationBuilder.parseEntries(
+                payloadString: payload,
+                messageID: message.id
+            )
+        }()
 
         return SessionMessageDetailPresentation(
             id: message.id,
@@ -55,7 +66,8 @@ enum SessionMessageDetailPresentationBuilder {
             payloadPreview: payloadPreview,
             payloadCharacterCount: payloadCharacterCount,
             payloadTruncated: payloadTruncated,
-            payloadFields: payloadFields
+            payloadFields: payloadFields,
+            parsedEntries: parsedEntries
         )
     }
 

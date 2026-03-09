@@ -35,7 +35,7 @@ public struct DirectSessionDetailView: View {
 
     @State private var draftMessage = ""
     @State private var queuedDraftMessages: [String] = []
-    @State private var inspectedMessage: APISessionMessage?
+    @State private var inspectedMessage: InspectedMessage?
     @State private var presentedQuickSurface: QuickSurface?
     @State private var isUsingCustomModelOverride = false
     @State private var customModelDraft = ""
@@ -89,7 +89,14 @@ public struct DirectSessionDetailView: View {
                             presentedQuickSurface = QuickSurface(kind: .files, filterPath: path)
                         },
                         onMessageInspect: { messageID in
-                            inspectedMessage = viewModel.messages.first(where: { $0.id == messageID })
+                            guard let message = viewModel.messages.first(where: { $0.id == messageID }) else {
+                                inspectedMessage = nil
+                                return
+                            }
+                            inspectedMessage = InspectedMessage(
+                                message: message,
+                                transcriptPresentation: transcriptPresentations.first(where: { $0.messageID == messageID })
+                            )
                         },
                         onRetry: {
                             Task {
@@ -161,10 +168,13 @@ public struct DirectSessionDetailView: View {
             }
             .padding(.bottom, 8)
         }
-        .sheet(item: $inspectedMessage) { message in
+        .sheet(item: $inspectedMessage) { inspected in
             NavigationStack {
                 SessionMessageDetailView(
-                    presentation: SessionMessageDetailPresentationBuilder.make(from: message)
+                    presentation: SessionMessageDetailPresentationBuilder.make(
+                        from: inspected.message,
+                        transcriptPresentation: inspected.transcriptPresentation
+                    )
                 )
             }
         }
@@ -745,6 +755,13 @@ public struct DirectSessionDetailView: View {
             proxy.scrollTo(messageID, anchor: .top)
         }
     }
+}
+
+private struct InspectedMessage: Identifiable {
+    let message: APISessionMessage
+    let transcriptPresentation: SessionTranscriptMessagePresentation?
+
+    var id: String { message.id }
 }
 
 private struct DirectSessionInfoView: View {

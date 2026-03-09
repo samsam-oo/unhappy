@@ -516,6 +516,15 @@ struct SessionMessageDetailView: View {
                 }
             }
 
+            if !presentation.parsedEntries.isEmpty {
+                Section("Parsed Transcript") {
+                    ForEach(presentation.parsedEntries) { entry in
+                        SessionMessageDetailEntryView(entry: entry)
+                            .listRowSeparator(.hidden)
+                    }
+                }
+            }
+
             Section("Content") {
                 if let contentType = presentation.contentType {
                     LabeledContent("Type") {
@@ -563,5 +572,116 @@ struct SessionMessageDetailView: View {
         }
         .navigationTitle("Message")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct SessionMessageDetailEntryView: View {
+    let entry: SessionTranscriptEntry
+
+    var body: some View {
+        if SessionTranscriptRichContentParser.richToolContent(for: entry) != nil {
+            SessionTranscriptToolRichContentView(entry: entry)
+                .padding(.vertical, 4)
+        } else {
+            SessionSurfaceCard(
+                cornerRadius: 14,
+                fillColor: entry.role == .user
+                    ? AppPalette.chatUserBubble.opacity(0.96)
+                    : AppPalette.chatAgentBubble.opacity(0.96),
+                strokeColor: strokeColor
+            ) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Circle()
+                            .fill(roleColor)
+                            .frame(width: 7, height: 7)
+                        Text(roleLabel)
+                            .font(.caption2.monospaced().weight(.semibold))
+                            .foregroundStyle(roleColor)
+                        if let title = entry.title, !title.isEmpty {
+                            Text(title)
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(AppPalette.secondaryText)
+                                .lineLimit(1)
+                        }
+                        if entry.isSidechain {
+                            Text("Collab")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(AppPalette.liveActivity)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(AppPalette.liveActivityMuted)
+                                )
+                        }
+                        Spacer(minLength: 0)
+                    }
+
+                    if usesMarkdownBody {
+                        SessionTranscriptMarkdownView(
+                            markdown: entry.body,
+                            role: entry.role,
+                            kind: entry.kind,
+                            onOpenFilePath: { _ in }
+                        )
+                    } else {
+                        SessionTranscriptMonospaceBlock(
+                            text: entry.body,
+                            language: monospaceLanguage,
+                            accentColor: roleColor
+                        )
+                    }
+                }
+                .padding(12)
+            }
+        }
+    }
+
+    private var usesMarkdownBody: Bool {
+        switch entry.kind {
+        case .text, .thinking, .event:
+            return true
+        case .toolCall, .toolResult, .raw:
+            return false
+        }
+    }
+
+    private var monospaceLanguage: String? {
+        switch entry.kind {
+        case .toolCall:
+            return "json"
+        case .toolResult, .raw, .text, .thinking, .event:
+            return nil
+        }
+    }
+
+    private var roleLabel: String {
+        switch entry.role {
+        case .user:
+            return "user"
+        case .agent:
+            return "assistant"
+        case .system:
+            return "system"
+        }
+    }
+
+    private var roleColor: Color {
+        switch entry.role {
+        case .user:
+            return AppPalette.terminalLineUser
+        case .agent:
+            return AppPalette.terminalLineAgent
+        case .system:
+            return AppPalette.secondaryText
+        }
+    }
+
+    private var strokeColor: Color {
+        if entry.isSidechain {
+            return AppPalette.liveActivity.opacity(0.28)
+        }
+        return roleColor.opacity(0.18)
     }
 }
