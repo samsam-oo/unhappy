@@ -51,6 +51,8 @@ public protocol MachineRPCDirectoryListing: Sendable {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult
 
@@ -68,6 +70,8 @@ public protocol MachineRPCDirectoryListing: Sendable {
         machineID: String,
         sessionID: String,
         cwd: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult
 
@@ -83,6 +87,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
+        model: String?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }
@@ -343,6 +348,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -367,6 +374,13 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             "cwd": normalizedCWD,
             "text": normalizedText,
         ]
+        let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedModel, !normalizedModel.isEmpty {
+            params["model"] = normalizedModel
+        }
+        if let reasoningEffort {
+            params["effort"] = reasoningEffort.rawValue
+        }
         let normalizedPath = transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedPath, !normalizedPath.isEmpty {
             params["path"] = normalizedPath
@@ -430,6 +444,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         machineID: String,
         sessionID: String,
         cwd: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -449,16 +465,25 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
+        var params: [String: Any] = [
+            "sessionId": normalizedSessionID,
+            "cwd": normalizedCWD,
+            "text": normalizedText,
+        ]
+        let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedModel, !normalizedModel.isEmpty {
+            params["model"] = normalizedModel
+        }
+        if let reasoningEffort {
+            params["effort"] = reasoningEffort.rawValue
+        }
+
         let responseData = try await invokeCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
             command: "claude-send-message",
-            params: [
-                "sessionId": normalizedSessionID,
-                "cwd": normalizedCWD,
-                "text": normalizedText,
-            ]
+            params: params
         )
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionSendMessageResult.self, from: responseData)
@@ -504,6 +529,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         token: String,
         machineID: String,
         sessionID: String,
+        model: String?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -519,15 +545,21 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
+        var params: [String: Any] = [
+            "sessionId": normalizedSessionID,
+            "text": normalizedText,
+        ]
+        let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedModel, !normalizedModel.isEmpty {
+            params["model"] = normalizedModel
+        }
+
         let responseData = try await invokeCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
             command: "gemini-send-message",
-            params: [
-                "sessionId": normalizedSessionID,
-                "text": normalizedText,
-            ]
+            params: params
         )
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionSendMessageResult.self, from: responseData)

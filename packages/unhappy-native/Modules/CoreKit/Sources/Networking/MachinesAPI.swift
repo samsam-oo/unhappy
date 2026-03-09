@@ -788,6 +788,26 @@ public protocol MachineDirectoryListing: Sendable {
     ) async throws -> APIMachineListDirectoryResult
 }
 
+public protocol MachineFileReading: Sendable {
+    func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APISessionReadFileResult
+}
+
+public protocol MachineBashRunning: Sendable {
+    func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult
+}
+
 public protocol MachineCodexThreadsFetching: Sendable {
     func fetchCodexThreadsPage(
         serverURL: URL,
@@ -825,6 +845,8 @@ public protocol MachineCodexThreadMessaging: Sendable {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }
@@ -865,6 +887,8 @@ public protocol MachineClaudeSessionMessaging: Sendable {
         machineID: String,
         sessionID: String,
         cwd: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }
@@ -903,6 +927,7 @@ public protocol MachineGeminiSessionMessaging: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
+        model: String?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }
@@ -1022,6 +1047,8 @@ public actor URLSessionMachinesService:
     MachineDaemonStopping,
     MachineDaemonUpdating,
     MachineDirectoryListing,
+    MachineFileReading,
+    MachineBashRunning,
     MachineCodexThreadsFetching,
     MachineCodexThreadMessagesFetching,
     MachineCodexThreadMessaging,

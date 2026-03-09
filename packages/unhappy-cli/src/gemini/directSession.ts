@@ -25,7 +25,7 @@ export type GeminiDirectSessionMessage = {
 
 type GeminiDirectControlServerOptions = {
   listMessages: () => GeminiDirectSessionMessage[];
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, options?: { model?: string | null }) => Promise<void>;
 };
 
 function shouldRecordAgentPayload(payload: ACPMessageData): boolean {
@@ -178,15 +178,20 @@ export async function startGeminiDirectSessionControlServer(
 
       if (request.url === '/messages/send') {
         const body = await readJSONBody(request);
+        const payload = body && typeof body === 'object' ? body as { text?: unknown; model?: unknown } : {};
         const text =
-          body && typeof body === 'object' && typeof (body as { text?: unknown }).text === 'string'
-            ? (body as { text: string }).text.trim()
+          typeof payload.text === 'string'
+            ? payload.text.trim()
             : '';
         if (!text) {
           sendJSON(response, 400, { success: false, error: 'text is required' });
           return;
         }
-        await options.sendMessage(text);
+        const model =
+          typeof payload.model === 'string' && payload.model.trim().length > 0
+            ? payload.model.trim()
+            : null;
+        await options.sendMessage(text, { model });
         sendJSON(response, 200, { success: true });
         return;
       }
@@ -254,6 +259,7 @@ export async function listGeminiSessionMessages(
 export async function sendGeminiSessionMessage(
   descriptor: GeminiDirectSessionDescriptor,
   text: string,
+  options?: { model?: string | null },
 ): Promise<void> {
   const normalizedText = text.trim();
   if (!normalizedText) {
@@ -263,6 +269,10 @@ export async function sendGeminiSessionMessage(
   await callGeminiDirectControl<{ success: true }>(
     descriptor.controlPort,
     '/messages/send',
-    { text: normalizedText, sessionId: descriptor.sessionId },
+    {
+      text: normalizedText,
+      sessionId: descriptor.sessionId,
+      ...(options?.model ? { model: options.model } : {}),
+    },
   );
 }

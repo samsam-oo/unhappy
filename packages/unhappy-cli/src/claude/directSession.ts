@@ -16,6 +16,8 @@ const MAX_DIRECT_MESSAGES = 1200;
 export type ClaudeDirectSessionDescriptor = {
   sessionId: string;
   cwd: string;
+  model?: string | null;
+  effort?: 'low' | 'medium' | 'high' | 'max' | null;
 };
 
 export type ClaudeDirectSessionMessage = {
@@ -169,6 +171,23 @@ async function resolveClaudeDirectEnvironment(): Promise<Record<string, string>>
   );
 }
 
+function resolveMaxThinkingTokens(
+  effort: 'low' | 'medium' | 'high' | 'max' | null | undefined,
+): number | undefined {
+  switch (effort) {
+    case 'low':
+      return 1024;
+    case 'medium':
+      return 4096;
+    case 'high':
+      return 8192;
+    case 'max':
+      return 16384;
+    default:
+      return undefined;
+  }
+}
+
 export async function sendClaudeSessionMessage(
   descriptor: ClaudeDirectSessionDescriptor,
   text: string,
@@ -189,6 +208,8 @@ export async function sendClaudeSessionMessage(
         cwd: descriptor.cwd,
         resume: descriptor.sessionId,
         permissionMode: 'default',
+        model: descriptor.model ?? undefined,
+        maxThinkingTokens: resolveMaxThinkingTokens(descriptor.effort),
       },
     });
 

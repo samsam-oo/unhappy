@@ -66,13 +66,126 @@ struct DirectSessionUseCasesTests {
                 transcriptPath: nil,
                 model: "gemini-3-flash-preview"
             ),
-            text: "hello gemini"
+            text: "hello gemini",
+            model: nil,
+            reasoningEffort: nil
         )
 
         #expect(result.success == true)
         let recorded = await service.recordedCall
         #expect(recorded?.sessionID == "gemini-session-1")
         #expect(recorded?.text == "hello gemini")
+    }
+
+    @Test
+    func loadFileDecodesBase64ContentFromMachineService() async throws {
+        let service = FileReadingService()
+        let useCase = DirectSessionFileLoadUseCase(service: service)
+
+        let content = try await useCase.loadFile(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            identity: DirectSessionIdentity(
+                machineID: "machine-1",
+                machineDisplayName: "Mac",
+                provider: .codex,
+                upstreamSessionID: "thread-1",
+                title: "Codex Session",
+                cwd: "/repo",
+                transcriptPath: "/repo/.codex/transcript.jsonl",
+                model: "gpt-5-codex"
+            ),
+            path: "Sources/App.swift"
+        )
+
+        #expect(content == "print(\"hello\")")
+        let recordedPath = await service.recordedPath
+        #expect(recordedPath == "Sources/App.swift")
+    }
+
+    @Test
+    func loadReviewUsesMachineBashService() async throws {
+        let service = BashRunningService(
+            result: APISessionBashResult(
+                success: true,
+                stdout: "diff --git a/App.swift b/App.swift\n@@ -1 +1 @@\n-old\n+new\n",
+                stderr: "",
+                exitCode: 0,
+                error: nil
+            )
+        )
+        let useCase = DirectSessionReviewLoadUseCase(service: service)
+
+        let output = try await useCase.loadReview(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            identity: DirectSessionIdentity(
+                machineID: "machine-1",
+                machineDisplayName: "Mac",
+                provider: .claude,
+                upstreamSessionID: "claude-session-1",
+                title: "Claude Session",
+                cwd: "/repo",
+                transcriptPath: nil,
+                model: "sonnet"
+            ),
+            repositoryPath: nil
+        )
+
+        #expect(output.diffText.contains("diff --git a/App.swift b/App.swift"))
+        #expect(output.statusMessage == "Loaded review diff")
+        let recorded = await service.recordedCall
+        #expect(recorded?.cwd == "/repo")
+        #expect(recorded?.command.contains("git diff --no-ext-diff") == true)
+    }
+}
+
+private actor FileReadingService: MachineFileReading {
+    private(set) var recordedPath: String?
+
+    func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APISessionReadFileResult {
+        recordedPath = path
+        return APISessionReadFileResult(
+            success: true,
+            content: Data("print(\"hello\")".utf8).base64EncodedString(),
+            error: nil
+        )
+    }
+}
+
+private actor BashRunningService: MachineBashRunning {
+    struct RecordedCall: Equatable {
+        let command: String
+        let cwd: String
+        let timeoutMilliseconds: Int
+    }
+
+    let result: APISessionBashResult
+    private(set) var recordedCall: RecordedCall?
+
+    init(result: APISessionBashResult) {
+        self.result = result
+    }
+
+    func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult {
+        recordedCall = RecordedCall(
+            command: command,
+            cwd: cwd,
+            timeoutMilliseconds: timeoutMilliseconds
+        )
+        return result
     }
 }
 
@@ -108,6 +221,7 @@ private actor GeminiMessagingService: MachineGeminiSessionMessaging {
         token: String,
         machineID: String,
         sessionID: String,
+        model: String?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         recordedCall = RecordedCall(sessionID: sessionID, text: text)
@@ -154,6 +268,8 @@ private actor FailingCodexMessagingService: MachineCodexThreadMessaging {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         Issue.record("Codex service should not be used")
@@ -173,6 +289,8 @@ private actor FailingClaudeMessagingService: MachineClaudeSessionMessaging {
         machineID: String,
         sessionID: String,
         cwd: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         Issue.record("Claude service should not be used")
