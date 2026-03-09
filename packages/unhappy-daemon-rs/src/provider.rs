@@ -172,7 +172,15 @@ impl ProviderCommandConfig {
         resume_thread_id: Option<&str>,
     ) -> CodexDirectRuntimeContract {
         let command = self.resolve(Provider::Codex);
-        let codex_home_dir = unhappy_home_dir.join("codex-home");
+        let codex_home_dir = env::var("UNHAPPY_CODEX_HOME_DIR")
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                env::var("HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|_| unhappy_home_dir.to_path_buf())
+                    .join(".codex")
+            });
         CodexDirectRuntimeContract {
             executable: command.executable().to_string(),
             startup_args: command.args().to_vec(),
