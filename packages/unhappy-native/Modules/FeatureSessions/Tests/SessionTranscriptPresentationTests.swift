@@ -403,6 +403,30 @@ struct SessionTranscriptPresentationTests {
     }
 
     @Test
+    func codexTaskStartedUsesProvidedDescriptionWhenAvailable() {
+        let payload: [String: Any] = [
+            "role": "agent",
+            "content": [
+                "type": "codex",
+                "data": [
+                    "type": "task_started",
+                    "description": "Delegate command audit to sub-agent",
+                ],
+            ],
+        ]
+        let message = makeMessage(from: payload)
+
+        let presentation = SessionTranscriptPresentationBuilder.make(
+            from: message,
+            dataEncryptionKey: nil
+        )
+
+        #expect(presentation.entries.count == 1)
+        #expect(presentation.entries[0].kind == .thinking)
+        #expect(presentation.entries[0].body == "Delegate command audit to sub-agent")
+    }
+
+    @Test
     func userInputImageChunkShowsImagePlaceholder() {
         let payload: [String: Any] = [
             "role": "user",

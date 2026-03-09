@@ -613,13 +613,20 @@ extension SessionTranscriptPresentationBuilder {
                 )
             ]
         case "task_started":
+            let taskSummary =
+                normalizedText(dictionary["description"]) ??
+                normalizedText(dictionary["prompt"]) ??
+                normalizedText(dictionary["message"]) ??
+                normalizedText(dictionary["title"]) ??
+                normalizedText(dictionary["task"]) ??
+                "Thinking…"
             return [
                 makeEntry(
                     id: "\(messageID)-acp-task",
                     role: .agent,
                     kind: .thinking,
                     title: nil,
-                    body: "Thinking…",
+                    body: taskSummary,
                     sourceType: type,
                     isSidechain: isSidechain,
                     threadID: threadID
