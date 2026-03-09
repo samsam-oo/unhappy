@@ -3,14 +3,19 @@ import CoreKit
 
 private struct TranscriptReadableWidthModifier: ViewModifier {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .body) private var compactHorizontalPadding: CGFloat = 6
+    @ScaledMetric(relativeTo: .body) private var regularHorizontalPadding: CGFloat = 18
 
     func body(content: Content) -> some View {
         if horizontalSizeClass == .regular {
             content
-                .frame(maxWidth: 920, alignment: .leading)
+                .frame(maxWidth: 880, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, regularHorizontalPadding)
         } else {
             content
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, compactHorizontalPadding)
         }
     }
 }
