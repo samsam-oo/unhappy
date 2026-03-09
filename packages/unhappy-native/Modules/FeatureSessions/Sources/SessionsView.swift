@@ -104,6 +104,9 @@ public struct SessionsView: View {
             if shouldShowFullScreenLoading {
                 ProgressView("Loading sessions…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isPreparingProjectsFromLoadedSessions {
+                ProgressView("Preparing projects…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -248,11 +251,13 @@ public struct SessionsView: View {
     private var shouldShowFullScreenLoading: Bool {
         isRefreshingProjectContent
             && !hasSidebarRows
-            && (
-                viewModel.sessions.isEmpty
-                    || viewModel.isLoadingProjects
-                    || viewModel.isLoadingUpstreamSessions
-            )
+            && viewModel.sessions.isEmpty
+    }
+
+    private var isPreparingProjectsFromLoadedSessions: Bool {
+        !viewModel.sessions.isEmpty
+            && !hasSidebarRows
+            && (viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions)
     }
 
     @ViewBuilder

@@ -138,6 +138,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
 
         let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
         #expect(requestedProjects.count == 1)
@@ -240,6 +241,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
 
         #expect(model.sessions.isEmpty)
         #expect(await recorder.snapshot() == ["delete:session-older", "delete:session-newer"])
@@ -272,6 +274,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
         #expect(await projectsLoader.callCount() == 1)
         #expect(await upstreamLoader.callCount() == 1)
 
@@ -393,6 +396,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
 
         #expect(model.upstreamSessions.count == 2)
         #expect(model.upstreamSessions.map(\.summary.id) == ["thread-1", "thread-2"])
@@ -428,6 +432,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
         #expect(model.projects.map(\.id) == ["machine-1|/repo/app"])
 
         await model.removeProject(
