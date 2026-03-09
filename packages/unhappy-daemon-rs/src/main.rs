@@ -6,6 +6,7 @@ mod daemon_state;
 mod data_plane;
 mod helper;
 mod lock;
+mod local_ops;
 mod machine_sync;
 mod provider;
 mod protocol;

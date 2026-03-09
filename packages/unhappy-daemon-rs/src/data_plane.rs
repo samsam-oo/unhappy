@@ -3,6 +3,7 @@ use crate::{
     control_server::SpawnSessionRequest,
     daemon_state::{OpenedProject, SharedDaemonState},
     helper::invoke_daemon_helper,
+    local_ops,
     protocol::{
         MachineDataPlaneCompleteFrame, MachineDataPlaneErrorFrame, MachineDataPlaneHelloAckFrame,
         MachineDataPlaneHelloFrame, MachineDataPlaneKeyExchange, MachineDataPlaneOperation,
@@ -341,7 +342,7 @@ async fn dispatch_request(
             Ok(serde_json::to_value(state.spawn_session(request).await)?)
         }
         MachineDataPlaneOperation::MachineListModels => {
-            invoke_daemon_helper(config, "list-models", &payload).await
+            local_ops::list_models(config, payload.get("agent").and_then(Value::as_str)).await
         }
         MachineDataPlaneOperation::DaemonStop => {
             state.request_shutdown_with_reason("mobile-app").await;
@@ -374,14 +375,7 @@ async fn dispatch_request(
                     .into_iter()
                     .map(|entry| entry.path)
                     .collect::<Vec<_>>();
-                invoke_daemon_helper(
-                    config,
-                    "project-scan",
-                    &json!({
-                        "explicitPaths": explicit_paths
-                    }),
-                )
-                .await
+                local_ops::project_scan(config, &explicit_paths).await
             }
         }
         MachineDataPlaneOperation::ProjectOpen => {
@@ -565,23 +559,23 @@ async fn dispatch_request(
             invoke_daemon_helper(config, "gemini-send-message", &helper_payload).await
         }
         MachineDataPlaneOperation::FsListDirectory => {
-            invoke_daemon_helper(config, "listDirectory", &payload).await
+            local_ops::list_directory(&payload).await
         }
         MachineDataPlaneOperation::FsGetDirectoryTree => {
-            invoke_daemon_helper(config, "getDirectoryTree", &payload).await
+            local_ops::get_directory_tree(&payload).await
         }
         MachineDataPlaneOperation::FsReadFile => {
-            invoke_daemon_helper(config, "readFile", &payload).await
+            local_ops::read_file(&payload).await
         }
         MachineDataPlaneOperation::FsWriteFile => {
-            invoke_daemon_helper(config, "writeFile", &payload).await
+            local_ops::write_file(&payload).await
         }
-        MachineDataPlaneOperation::ExecBash => invoke_daemon_helper(config, "bash", &payload).await,
+        MachineDataPlaneOperation::ExecBash => local_ops::bash(&payload).await,
         MachineDataPlaneOperation::SearchRipgrep => {
-            invoke_daemon_helper(config, "ripgrep", &payload).await
+            local_ops::ripgrep(&payload).await
         }
         MachineDataPlaneOperation::DiffDifftastic => {
-            invoke_daemon_helper(config, "difftastic", &payload).await
+            local_ops::difftastic(config, &payload).await
         }
     }
 }
