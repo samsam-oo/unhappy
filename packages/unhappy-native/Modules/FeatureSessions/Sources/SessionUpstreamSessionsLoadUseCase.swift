@@ -12,9 +12,14 @@ public protocol SessionUpstreamSessionsLoadingAction: Sendable {
 
 public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingAction {
     private let service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching
+    private let upstreamRequestTimeout: Duration
 
-    public init(service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching) {
+    public init(
+        service: any MachinesFetching & MachineCodexThreadsFetching & MachineClaudeSessionsFetching & MachineGeminiSessionsFetching,
+        upstreamRequestTimeout: Duration? = nil
+    ) {
         self.service = service
+        self.upstreamRequestTimeout = upstreamRequestTimeout ?? SessionLoadTimeout.upstreamSessions
     }
 
     public func loadUpstreamSessions(
@@ -41,8 +46,9 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         var rows: [SessionLinkedUpstreamSession] = []
         var seenRowIDs = Set<String>()
         let service = self.service
+        let upstreamRequestTimeout = self.upstreamRequestTimeout
 
-        try await withThrowingTaskGroup(of: [SessionLinkedUpstreamSession].self) { group in
+        await withTaskGroup(of: [SessionLinkedUpstreamSession].self) { group in
             for machine in activeMachines {
                 let machineProjects = projectPathsByMachineID[machine.id] ?? []
                 guard !machineProjects.isEmpty else { continue }
@@ -50,58 +56,64 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                 let machineDisplayName = machineName(for: machine)
                 for projectPath in machineProjects {
                     group.addTask {
-                        async let codexThreads = service.fetchCodexThreads(
-                            serverURL: serverURL,
-                            token: normalizedToken,
-                            machineID: machine.id,
-                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                            limit: 50,
-                            cwd: projectPath
-                        )
-                        async let claudeSessions = service.fetchClaudeSessions(
-                            serverURL: serverURL,
-                            token: normalizedToken,
-                            machineID: machine.id,
-                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                            limit: 50,
-                            cwd: projectPath
-                        )
-                        async let geminiSessions = service.fetchGeminiSessions(
-                            serverURL: serverURL,
-                            token: normalizedToken,
-                            machineID: machine.id,
-                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                            limit: 50,
-                            cwd: projectPath
-                        )
-                        let (threads, sessions, geminiRows) = try await (codexThreads, claudeSessions, geminiSessions)
-                        return threads.map {
-                            SessionLinkedUpstreamSession(
-                                machineID: machine.id,
-                                machineDisplayName: machineDisplayName,
-                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                summary: $0.upstreamSummary
-                            )
-                        } + sessions.map {
-                            SessionLinkedUpstreamSession(
-                                machineID: machine.id,
-                                machineDisplayName: machineDisplayName,
-                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                summary: $0.upstreamSummary
-                            )
-                        } + geminiRows.map {
-                            SessionLinkedUpstreamSession(
-                                machineID: machine.id,
-                                machineDisplayName: machineDisplayName,
-                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                                summary: $0.upstreamSummary
-                            )
+                        do {
+                            return try await withSessionLoadTimeout(upstreamRequestTimeout) {
+                                async let codexThreads = service.fetchCodexThreads(
+                                    serverURL: serverURL,
+                                    token: normalizedToken,
+                                    machineID: machine.id,
+                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                    limit: 50,
+                                    cwd: projectPath
+                                )
+                                async let claudeSessions = service.fetchClaudeSessions(
+                                    serverURL: serverURL,
+                                    token: normalizedToken,
+                                    machineID: machine.id,
+                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                    limit: 50,
+                                    cwd: projectPath
+                                )
+                                async let geminiSessions = service.fetchGeminiSessions(
+                                    serverURL: serverURL,
+                                    token: normalizedToken,
+                                    machineID: machine.id,
+                                    wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                    limit: 50,
+                                    cwd: projectPath
+                                )
+                                let (threads, sessions, geminiRows) = try await (codexThreads, claudeSessions, geminiSessions)
+                                return threads.map {
+                                    SessionLinkedUpstreamSession(
+                                        machineID: machine.id,
+                                        machineDisplayName: machineDisplayName,
+                                        wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                        summary: $0.upstreamSummary
+                                    )
+                                } + sessions.map {
+                                    SessionLinkedUpstreamSession(
+                                        machineID: machine.id,
+                                        machineDisplayName: machineDisplayName,
+                                        wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                        summary: $0.upstreamSummary
+                                    )
+                                } + geminiRows.map {
+                                    SessionLinkedUpstreamSession(
+                                        machineID: machine.id,
+                                        machineDisplayName: machineDisplayName,
+                                        wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                        summary: $0.upstreamSummary
+                                    )
+                                }
+                            }
+                        } catch {
+                            return []
                         }
                     }
                 }
             }
 
-            for try await batch in group {
+            for await batch in group {
                 for row in batch where seenRowIDs.insert(row.id).inserted {
                     rows.append(row)
                 }

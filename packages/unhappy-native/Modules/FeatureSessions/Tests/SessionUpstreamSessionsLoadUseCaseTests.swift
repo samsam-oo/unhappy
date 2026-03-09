@@ -221,6 +221,79 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
         #expect(claudeFetchCount == 1)
         #expect(geminiFetchCount == 1)
     }
+
+    @Test
+    func loadUpstreamSessionsSkipsTimedOutProjects() async throws {
+        let projects = [
+            SessionMachineProject(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIMachineProjectSummary(
+                    path: "/tmp/fast",
+                    latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                    codexThreadCount: 0,
+                    claudeSessionCount: 0,
+                    openedExplicitly: true
+                )
+            ),
+            SessionMachineProject(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIMachineProjectSummary(
+                    path: "/tmp/slow",
+                    latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                    codexThreadCount: 0,
+                    claudeSessionCount: 0,
+                    openedExplicitly: true
+                )
+            ),
+        ]
+        let service = MockUpstreamMachinesService(
+            machines: [
+                APIMachine(
+                    id: "machine-1",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Work Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                )
+            ],
+            codexThreadsByMachineAndPath: [
+                "machine-1|/tmp/fast": [
+                    APICodexThreadSummary(
+                        id: "thread-fast",
+                        name: "Fast Thread",
+                        cwd: "/tmp/fast",
+                        updatedAt: "2026-03-06T06:00:00.000Z",
+                        createdAt: "2026-03-06T05:00:00.000Z",
+                        archived: false
+                    )
+                ]
+            ],
+            claudeSessionsByMachineAndPath: [:],
+            geminiSessionsByMachineAndPath: [:],
+            delayedProjectKeys: ["machine-1|/tmp/slow"],
+            fetchDelay: .milliseconds(200)
+        )
+        let useCase = SessionUpstreamSessionsLoadUseCase(
+            service: service,
+            upstreamRequestTimeout: .milliseconds(30)
+        )
+
+        let rows = try await useCase.loadUpstreamSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            projects: projects
+        )
+
+        #expect(rows.count == 1)
+        #expect(rows.first?.summary.id == "thread-fast")
+    }
 }
 
 private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineGeminiSessionsFetching {
@@ -228,6 +301,8 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
     let codexThreadsByMachineAndPath: [String: [APICodexThreadSummary]]
     let claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]]
     let geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]]
+    let delayedProjectKeys: Set<String>
+    let fetchDelay: Duration?
     private(set) var codexFetchCount = 0
     private(set) var claudeFetchCount = 0
     private(set) var geminiFetchCount = 0
@@ -236,12 +311,16 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         machines: [APIMachine],
         codexThreadsByMachineAndPath: [String: [APICodexThreadSummary]],
         claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]],
-        geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]]
+        geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]],
+        delayedProjectKeys: Set<String> = [],
+        fetchDelay: Duration? = nil
     ) {
         self.machines = machines
         self.codexThreadsByMachineAndPath = codexThreadsByMachineAndPath
         self.claudeSessionsByMachineAndPath = claudeSessionsByMachineAndPath
         self.geminiSessionsByMachineAndPath = geminiSessionsByMachineAndPath
+        self.delayedProjectKeys = delayedProjectKeys
+        self.fetchDelay = fetchDelay
     }
 
     func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -274,7 +353,11 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
         codexFetchCount += 1
-        codexThreadsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
+        let key = "\(machineID)|\(cwd ?? "")"
+        if delayedProjectKeys.contains(key), let fetchDelay {
+            try await Task.sleep(for: fetchDelay)
+        }
+        return codexThreadsByMachineAndPath[key] ?? []
     }
 
     func fetchClaudeSessionsPage(
@@ -303,7 +386,11 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
         claudeFetchCount += 1
-        claudeSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
+        let key = "\(machineID)|\(cwd ?? "")"
+        if delayedProjectKeys.contains(key), let fetchDelay {
+            try await Task.sleep(for: fetchDelay)
+        }
+        return claudeSessionsByMachineAndPath[key] ?? []
     }
 
     func fetchGeminiSessionsPage(
@@ -332,6 +419,10 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         cwd: String?
     ) async throws -> [APIGeminiSessionSummary] {
         geminiFetchCount += 1
-        geminiSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
+        let key = "\(machineID)|\(cwd ?? "")"
+        if delayedProjectKeys.contains(key), let fetchDelay {
+            try await Task.sleep(for: fetchDelay)
+        }
+        return geminiSessionsByMachineAndPath[key] ?? []
     }
 }
