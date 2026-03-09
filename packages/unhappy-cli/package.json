@@ -129,6 +129,7 @@
     "dotenv": "^16.6.1",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
+    "@types/ws": "^8.18.1",
     "pkgroll": "^2.14.2",
     "release-it": "^19.0.6",
     "shx": "^0.3.3",
