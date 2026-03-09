@@ -356,12 +356,29 @@ public final class DirectSessionViewModel: ObservableObject {
                 break
             }
 
+            let shouldRefresh = DirectSessionPollingStrategy.shouldRefreshLatestMessages(
+                hasExistingMessages: messages.isEmpty == false,
+                isSending: isSending,
+                isLoadingOlderMessages: isLoadingOlderMessages,
+                hasPendingPostSendRefresh: postSendRefreshTask != nil,
+                hasActiveMessagesLoad: activeMessagesLoadTask != nil
+            )
+            guard shouldRefresh else { continue }
+
             do {
                 let page = try await loadMessagesShared(
                     serverURLString: serverURLString,
-                    token: token
+                    token: token,
+                    limit: DirectSessionPollingStrategy.refreshLimit(
+                        hasExistingMessages: messages.isEmpty == false,
+                        defaultPageSize: Self.messagePageSize
+                    )
                 )
-                applyLatestPage(page)
+                if messages.isEmpty {
+                    applyLatestPage(page)
+                } else {
+                    applyIncrementalLatestPage(page)
+                }
                 errorMessage = nil
             } catch {
                 errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
