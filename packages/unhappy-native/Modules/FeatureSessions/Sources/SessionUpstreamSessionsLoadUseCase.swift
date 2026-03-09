@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import FeatureNewSession
 
 public protocol SessionUpstreamSessionsLoadingAction: Sendable {
     func loadUpstreamSessions(
@@ -36,19 +37,14 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
 
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
+        let projectPathsByMachineID = groupedProjectPathsByMachineID(from: projects)
         var rows: [SessionLinkedUpstreamSession] = []
         var seenRowIDs = Set<String>()
         let service = self.service
 
         try await withThrowingTaskGroup(of: [SessionLinkedUpstreamSession].self) { group in
             for machine in activeMachines {
-                let machineProjects = Array(
-                    Set(
-                        projects
-                            .filter { $0.machineID == machine.id }
-                            .compactMap { SessionProjectPathCanonicalizer.canonicalPath($0.summary.path) }
-                    )
-                ).sorted()
+                let machineProjects = projectPathsByMachineID[machine.id] ?? []
                 guard !machineProjects.isEmpty else { continue }
 
                 let machineDisplayName = machineName(for: machine)
@@ -113,10 +109,8 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         }
 
         return rows.sorted { lhs, rhs in
-            let lhsDate = timestamp(from: lhs.summary.updatedAt ?? lhs.summary.createdAt)
-            let rhsDate = timestamp(from: rhs.summary.updatedAt ?? rhs.summary.createdAt)
-            if lhsDate != rhsDate {
-                return lhsDate > rhsDate
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
             }
             if lhs.machineDisplayName != rhs.machineDisplayName {
                 return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
@@ -126,34 +120,20 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
     }
 
     private func machineName(for machine: APIMachine) -> String {
-        let payload = machine.metadata.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = payload.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return machine.id
-        }
-        let keys = ["displayName", "name", "host", "hostname"]
-        for key in keys {
-            if let value = object[key] as? String {
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    return trimmed
-                }
-            }
-        }
-        return machine.id
+        NewSessionMachinePresentation.displayName(for: machine)
     }
 
-    private func timestamp(from value: String?) -> TimeInterval {
-        guard let value else { return 0 }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) {
-            return date.timeIntervalSince1970
+    private func groupedProjectPathsByMachineID(
+        from projects: [SessionMachineProject]
+    ) -> [String: [String]] {
+        var grouped: [String: Set<String>] = [:]
+        for project in projects {
+            guard let path = SessionProjectPathCanonicalizer.canonicalPath(project.summary.path) else {
+                continue
+            }
+            grouped[project.machineID, default: []].insert(path)
         }
-        formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: value) {
-            return date.timeIntervalSince1970
-        }
-        return 0
+        return grouped.mapValues { Array($0).sorted() }
     }
+
 }

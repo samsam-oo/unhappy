@@ -1114,8 +1114,38 @@ public actor URLSessionMachinesService:
     MachineProjectsFetching,
     MachineProjectOpening,
     MachineProjectRemoving {
+    struct MachinesCacheKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+    }
+
+    struct MachinesCacheEntry: Sendable {
+        let machines: [APIMachine]
+        let cachedAt: TimeInterval
+    }
+
+    enum MachinesCachePolicy {
+        static let ttl: TimeInterval = 5
+    }
+
+    struct ProjectsCacheKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let machineID: String
+        let explicitOnly: Bool
+    }
+
+    struct ProjectsCacheEntry: Sendable {
+        let projects: [APIMachineProjectSummary]
+        let cachedAt: TimeInterval
+    }
+
     let httpClient: any MachineHTTPClient
     let rpcDirectoryService: any MachineRPCDirectoryListing
+    var machinesCache: [MachinesCacheKey: MachinesCacheEntry] = [:]
+    var inFlightMachineFetches: [MachinesCacheKey: Task<[APIMachine], Error>] = [:]
+    var projectsCache: [ProjectsCacheKey: ProjectsCacheEntry] = [:]
+    var inFlightProjectFetches: [ProjectsCacheKey: Task<[APIMachineProjectSummary], Error>] = [:]
 
     public init(
         httpClient: any MachineHTTPClient = URLSessionMachineHTTPClient(),
