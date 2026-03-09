@@ -1,35 +1,37 @@
 import Foundation
 
 struct MachineSessionSpawnRPCParametersBuilder {
-    func build(from request: MachineSessionSpawnServiceRequest) -> [String: Any] {
-        var parameters: [String: Any] = [
-            "directory": request.directory,
-            "machineId": request.machineID
+    func build(from request: MachineSessionSpawnServiceRequest) -> [String: RPCParameterValue] {
+        var parameters: [String: RPCParameterValue] = [
+            "directory": .string(request.directory),
+            "machineId": .string(request.machineID)
         ]
 
         if let agent = request.agent {
-            parameters["agent"] = agent.rawValue
+            parameters["agent"] = .string(agent.rawValue)
         }
         if let codexResumeThreadID = normalized(request.codexResumeThreadID) {
-            parameters["codexResumeThreadId"] = codexResumeThreadID
+            parameters["codexResumeThreadId"] = .string(codexResumeThreadID)
         }
         if let claudeResumeSessionID = normalized(request.claudeResumeSessionID) {
-            parameters["claudeResumeSessionId"] = claudeResumeSessionID
+            parameters["claudeResumeSessionId"] = .string(claudeResumeSessionID)
         }
         if let approvedNewDirectoryCreation = request.approvedNewDirectoryCreation {
-            parameters["approvedNewDirectoryCreation"] = approvedNewDirectoryCreation
+            parameters["approvedNewDirectoryCreation"] = .bool(approvedNewDirectoryCreation)
         }
         if let sessionToken = normalized(request.sessionToken) {
-            parameters["token"] = sessionToken
+            parameters["token"] = .string(sessionToken)
         }
         if let environmentVariables = request.environmentVariables {
-            parameters["environmentVariables"] = environmentVariables
+            parameters["environmentVariables"] = .object(
+                environmentVariables.mapValues(RPCParameterValue.string)
+            )
         }
         if let model = normalized(request.model) {
-            parameters["model"] = model
+            parameters["model"] = .string(model)
         }
         if let reasoningEffort = request.reasoningEffort {
-            parameters["reasoningEffort"] = reasoningEffort.rawValue
+            parameters["reasoningEffort"] = .string(reasoningEffort.rawValue)
         }
 
         return parameters
@@ -273,7 +275,7 @@ extension URLSessionMachinesService {
             token: token,
             machineID: normalizedMachineID,
             command: "list-models",
-            params: ["agent": agent.rawValue]
+            params: ["agent": .string(agent.rawValue)]
         )
         return try MachinesAPI.decodeAgentCapabilitiesResponse(data)
     }
@@ -398,7 +400,7 @@ extension URLSessionMachinesService {
             token: token,
             machineID: normalizedMachineID,
             command: "readFile",
-            params: ["path": normalizedPath]
+            params: ["path": .string(normalizedPath)]
         )
         let decoder = JSONDecoder()
         return try decoder.decode(APISessionReadFileResult.self, from: responseData)
@@ -431,9 +433,9 @@ extension URLSessionMachinesService {
             machineID: normalizedMachineID,
             command: "bash",
             params: [
-                "command": normalizedCommand,
-                "cwd": normalizedCWD,
-                "timeout": max(timeoutMilliseconds, 1_000),
+                "command": .string(normalizedCommand),
+                "cwd": .string(normalizedCWD),
+                "timeout": .int(max(timeoutMilliseconds, 1_000)),
             ]
         )
         let decoder = JSONDecoder()
