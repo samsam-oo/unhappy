@@ -441,24 +441,7 @@ async fn dispatch_request(
             provider_session_ops::claude_send_message(&payload).await
         }
         MachineDataPlaneOperation::GeminiListSessions => {
-            let cwd_filter = payload
-                .get("cwd")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToOwned::to_owned);
-            let limit = payload
-                .get("limit")
-                .and_then(Value::as_u64)
-                .map(|value| value.clamp(1, 100) as usize)
-                .unwrap_or(20);
-            let cursor = payload
-                .get("cursor")
-                .and_then(Value::as_str)
-                .and_then(|value| value.trim().parse::<usize>().ok())
-                .unwrap_or(0);
-
-            let mut sessions = state
+            let active_sessions = state
                 .list_children()
                 .await
                 .into_iter()
@@ -473,11 +456,6 @@ async fn dispatch_request(
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                         .map(ToOwned::to_owned)?;
-                    if let Some(filter) = cwd_filter.as_ref() {
-                        if filter != &cwd {
-                            return None;
-                        }
-                    }
                     let title = metadata
                         .get("name")
                         .or_else(|| metadata.get("title"))
@@ -512,20 +490,7 @@ async fn dispatch_request(
                     }))
                 })
                 .collect::<Vec<_>>();
-            sessions.sort_by(|left, right| {
-                right["updatedAt"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .cmp(left["updatedAt"].as_str().unwrap_or_default())
-            });
-            let start = cursor.min(sessions.len());
-            let end = (start + limit).min(sessions.len());
-            Ok(json!({
-                "success": true,
-                "sessions": sessions[start..end].to_vec(),
-                "hasNext": end < sessions.len(),
-                "nextCursor": if end < sessions.len() { Some(end.to_string()) } else { None::<String> },
-            }))
+            provider_session_ops::gemini_list_sessions(config, &payload, &active_sessions).await
         }
         MachineDataPlaneOperation::GeminiListMessages => {
             let session_id = payload
@@ -542,13 +507,8 @@ async fn dispatch_request(
                 .and_then(|child| child.metadata)
                 .and_then(|metadata| metadata.get("agentControlPort").cloned())
                 .and_then(|value| value.as_u64())
-                .and_then(|value| u16::try_from(value).ok())
-                .ok_or_else(|| anyhow!("Gemini session is not active on this machine"))?;
-            let mut helper_payload = payload.clone();
-            if let Some(object) = helper_payload.as_object_mut() {
-                object.insert("controlPort".to_string(), json!(control_port));
-            }
-            provider_session_ops::gemini_list_messages(&helper_payload).await
+                .and_then(|value| u16::try_from(value).ok());
+            provider_session_ops::gemini_list_messages(config, &payload, control_port).await
         }
         MachineDataPlaneOperation::GeminiSendMessage => {
             let session_id = payload
