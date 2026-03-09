@@ -22,11 +22,15 @@ public final class HomeServerConnectionStatusViewModel: ObservableObject {
 
         isLoading = true
         status = .connecting
+        defer {
+            if sequence == refreshSequence {
+                isLoading = false
+            }
+        }
 
         let loadedStatus = await loader.loadStatus(serverURLString: serverURLString)
         guard sequence == refreshSequence else { return }
 
         status = loadedStatus
-        isLoading = false
     }
 }

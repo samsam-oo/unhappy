@@ -40,6 +40,7 @@ public struct DirectSessionDetailView: View {
     @State private var customModelDraft = ""
     @State private var selectedPermissionModeOverride: APISessionMessagePermissionMode?
     @State private var showMissingDefaultsAlert = false
+    @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @FocusState private var focusedComposerField: ComposerFocusField?
 
     public init(
@@ -184,6 +185,7 @@ public struct DirectSessionDetailView: View {
             async let messageLoad: Void = viewModel.load(serverURLString: serverURLString, token: token)
             async let capabilitiesLoad: Void = viewModel.loadCapabilities(serverURLString: serverURLString, token: token)
             _ = await (messageLoad, capabilitiesLoad)
+            refreshTranscriptPresentations()
             viewModel.startPolling(serverURLString: serverURLString, token: token)
         }
         .onChange(of: viewModel.selectedModelOverride) { _, value in
@@ -202,6 +204,9 @@ public struct DirectSessionDetailView: View {
             isUsingCustomModelOverride = true
             customModelDraft = trimmed
         }
+        .onChange(of: viewModel.messages) { _, _ in
+            refreshTranscriptPresentations()
+        }
         .onDisappear {
             viewModel.stopPolling()
         }
@@ -212,12 +217,7 @@ public struct DirectSessionDetailView: View {
     }
 
     private var transcriptPresentations: [SessionTranscriptMessagePresentation] {
-        viewModel.messages.map {
-            SessionTranscriptPresentationBuilder.make(
-                from: $0,
-                dataEncryptionKey: nil
-            )
-        }
+        cachedTranscriptPresentations
     }
 
     private var summaryCard: some View {
@@ -635,6 +635,17 @@ public struct DirectSessionDetailView: View {
                 }
             }
         }
+    }
+
+    private func refreshTranscriptPresentations() {
+        let nextPresentations = viewModel.messages.map {
+            SessionTranscriptPresentationBuilder.make(
+                from: $0,
+                dataEncryptionKey: nil
+            )
+        }
+        guard cachedTranscriptPresentations != nextPresentations else { return }
+        cachedTranscriptPresentations = nextPresentations
     }
 }
 
