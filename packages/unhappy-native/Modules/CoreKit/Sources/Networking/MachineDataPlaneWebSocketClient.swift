@@ -2,8 +2,34 @@ import Foundation
 import SecurityKit
 
 public actor MachineDataPlaneWebSocketClient {
+    private struct ConnectionKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let machineID: String
+        let machineDataKeyBase64URL: String
+    }
+
+    private struct QueuedRequest {
+        let operation: MachineDataPlaneOperation
+        let bodyObject: Any
+        let continuation: CheckedContinuation<Data, Error>
+    }
+
+    private struct LiveConnection {
+        let task: URLSessionWebSocketTask
+        let sessionKey: Data
+    }
+
+    private struct ConnectionState {
+        let machineDataKey: Data
+        var liveConnection: LiveConnection?
+        var queuedRequests: [QueuedRequest] = []
+        var isProcessing = false
+    }
+
     private let session: URLSession
     private let requestTimeoutInterval: TimeInterval
+    private var connectionStates: [ConnectionKey: ConnectionState] = [:]
 
     public init(
         session: URLSession = .shared,
@@ -27,83 +53,24 @@ public actor MachineDataPlaneWebSocketClient {
             throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
         }
 
-        let task = try makeTask(serverURL: serverURL, token: token, machineID: machineID)
-        task.resume()
-        defer {
-            task.cancel(with: .goingAway, reason: nil)
-        }
+        let key = ConnectionKey(
+            serverURLString: serverURL.absoluteString,
+            token: token,
+            machineID: machineID,
+            machineDataKeyBase64URL: Base64URLCodec.encode(machineDataKey)
+        )
 
-        do {
-            let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
-            let hello = MachineDataPlaneHelloFrame(
-                connectionID: UUID().uuidString,
-                role: .native,
-                keyExchange: MachineDataPlaneKeyExchange(
-                    publicKey: handshake.publicKeyBase64URL,
-                    nonce: handshake.nonceBase64URL
-                )
-            )
-            try await send(frame: hello, task: task)
-
-            let helloAck = try await receiveHelloAck(task: task)
-            let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
-                machineDataKey: machineDataKey,
-                localPrivateKey: handshake.privateKey,
-                localNonceBase64URL: handshake.nonceBase64URL,
-                peerPublicKeyBase64URL: helloAck.keyExchange.publicKey,
-                peerNonceBase64URL: helloAck.keyExchange.nonce,
-                role: "native"
-            )
-
-            let streamID = UUID().uuidString
-            let requestHeader = MachineDataPlaneRequestFrame(
-                streamID: streamID,
-                op: operation,
-                body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: ""),
-                expectsChunks: false
-            )
-            let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
-                bodyObject,
-                sessionKey: sessionKey,
-                authenticatedData: requestAAD(for: requestHeader)
-            )
-            let requestFrame = MachineDataPlaneRequestFrame(
-                streamID: streamID,
-                op: operation,
-                body: MachineDataPlaneSealedBody(
-                    nonce: sealedBody.nonce,
-                    ciphertext: sealedBody.ciphertext,
-                    tag: sealedBody.tag
+        return try await withCheckedThrowingContinuation { continuation in
+            enqueueRequest(
+                QueuedRequest(
+                    operation: operation,
+                    bodyObject: bodyObject,
+                    continuation: continuation
                 ),
-                expectsChunks: false
+                machineDataKey: machineDataKey,
+                for: key,
+                serverURL: serverURL
             )
-            try await send(frame: requestFrame, task: task)
-
-            while true {
-                let message = try await task.receive()
-                guard case .string(let text) = message else { continue }
-                if let errorFrame = try? JSONDecoder().decode(MachineDataPlaneErrorFrame.self, from: Data(text.utf8)),
-                   errorFrame.streamID == streamID {
-                    throw MachinesAPIError.rpcCallFailed(errorFrame.message)
-                }
-                if let completeFrame = try? JSONDecoder().decode(MachineDataPlaneCompleteFrame.self, from: Data(text.utf8)),
-                   completeFrame.streamID == streamID {
-                    let decrypted = try MachineDataPlaneEncryption.decryptDataPlanePayload(
-                        MachineDataPlaneSealedPayload(
-                            nonce: completeFrame.body.nonce,
-                            ciphertext: completeFrame.body.ciphertext,
-                            tag: completeFrame.body.tag
-                        ),
-                        sessionKey: sessionKey,
-                        authenticatedData: completeAAD(for: completeFrame)
-                    )
-                    return decrypted
-                }
-            }
-        } catch let error as MachinesAPIError {
-            throw error
-        } catch {
-            throw mapTransportError(error)
         }
     }
 
@@ -148,6 +115,202 @@ public actor MachineDataPlaneWebSocketClient {
             throw MachinesAPIError.invalidRPCPayload
         }
         return try JSONDecoder().decode(MachineDataPlaneHelloAckFrame.self, from: Data(text.utf8))
+    }
+
+    private func enqueueRequest(
+        _ request: QueuedRequest,
+        machineDataKey: Data,
+        for key: ConnectionKey,
+        serverURL: URL
+    ) {
+        var state = connectionStates[key] ?? ConnectionState(machineDataKey: machineDataKey)
+        state.queuedRequests.append(request)
+        let shouldStartProcessing = state.isProcessing == false
+        state.isProcessing = true
+        connectionStates[key] = state
+
+        guard shouldStartProcessing else { return }
+        Task { [weak self] in
+            await self?.processQueue(for: key, serverURL: serverURL)
+        }
+    }
+
+    private func processQueue(for key: ConnectionKey, serverURL: URL) async {
+        while true {
+            guard var state = connectionStates[key] else { return }
+            guard state.queuedRequests.isEmpty == false else {
+                state.isProcessing = false
+                connectionStates[key] = state
+                return
+            }
+
+            let request = state.queuedRequests.removeFirst()
+            connectionStates[key] = state
+
+            do {
+                let response = try await performRequest(
+                    request,
+                    for: key,
+                    serverURL: serverURL,
+                    allowReconnectRetry: true
+                )
+                request.continuation.resume(returning: response)
+            } catch {
+                request.continuation.resume(throwing: error)
+            }
+        }
+    }
+
+    private func performRequest(
+        _ request: QueuedRequest,
+        for key: ConnectionKey,
+        serverURL: URL,
+        allowReconnectRetry: Bool
+    ) async throws -> Data {
+        do {
+            let liveConnection = try await liveConnection(for: key, serverURL: serverURL)
+            return try await performRequest(
+                request,
+                using: liveConnection
+            )
+        } catch {
+            let mappedError = mapTransportError(error)
+            if allowReconnectRetry, shouldReconnectAfterTransportError(mappedError) {
+                invalidateConnection(for: key)
+                return try await performRequest(
+                    request,
+                    for: key,
+                    serverURL: serverURL,
+                    allowReconnectRetry: false
+                )
+            }
+            invalidateConnection(for: key)
+            throw mappedError
+        }
+    }
+
+    private func liveConnection(
+        for key: ConnectionKey,
+        serverURL: URL
+    ) async throws -> LiveConnection {
+        if let existingConnection = connectionStates[key]?.liveConnection {
+            return existingConnection
+        }
+
+        guard let machineDataKey = connectionStates[key]?.machineDataKey else {
+            throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
+        }
+
+        let task = try makeTask(
+            serverURL: serverURL,
+            token: key.token,
+            machineID: key.machineID
+        )
+        task.resume()
+
+        do {
+            let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
+            let hello = MachineDataPlaneHelloFrame(
+                connectionID: UUID().uuidString,
+                role: .native,
+                keyExchange: MachineDataPlaneKeyExchange(
+                    publicKey: handshake.publicKeyBase64URL,
+                    nonce: handshake.nonceBase64URL
+                )
+            )
+            try await send(frame: hello, task: task)
+
+            let helloAck = try await receiveHelloAck(task: task)
+            let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
+                machineDataKey: machineDataKey,
+                localPrivateKey: handshake.privateKey,
+                localNonceBase64URL: handshake.nonceBase64URL,
+                peerPublicKeyBase64URL: helloAck.keyExchange.publicKey,
+                peerNonceBase64URL: helloAck.keyExchange.nonce,
+                role: "native"
+            )
+
+            let liveConnection = LiveConnection(task: task, sessionKey: sessionKey)
+            connectionStates[key]?.liveConnection = liveConnection
+            return liveConnection
+        } catch {
+            task.cancel(with: .goingAway, reason: nil)
+            throw error
+        }
+    }
+
+    private func performRequest(
+        _ request: QueuedRequest,
+        using liveConnection: LiveConnection
+    ) async throws -> Data {
+        let streamID = UUID().uuidString
+        let requestHeader = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: request.operation,
+            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: ""),
+            expectsChunks: false
+        )
+        let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
+            request.bodyObject,
+            sessionKey: liveConnection.sessionKey,
+            authenticatedData: requestAAD(for: requestHeader)
+        )
+        let requestFrame = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: request.operation,
+            body: MachineDataPlaneSealedBody(
+                nonce: sealedBody.nonce,
+                ciphertext: sealedBody.ciphertext,
+                tag: sealedBody.tag
+            ),
+            expectsChunks: false
+        )
+        try await send(frame: requestFrame, task: liveConnection.task)
+
+        while true {
+            let message = try await liveConnection.task.receive()
+            guard case .string(let text) = message else { continue }
+
+            if let errorFrame = try? JSONDecoder().decode(
+                MachineDataPlaneErrorFrame.self,
+                from: Data(text.utf8)
+            ), errorFrame.streamID == streamID {
+                throw MachinesAPIError.rpcCallFailed(errorFrame.message)
+            }
+
+            if let completeFrame = try? JSONDecoder().decode(
+                MachineDataPlaneCompleteFrame.self,
+                from: Data(text.utf8)
+            ), completeFrame.streamID == streamID {
+                return try MachineDataPlaneEncryption.decryptDataPlanePayload(
+                    MachineDataPlaneSealedPayload(
+                        nonce: completeFrame.body.nonce,
+                        ciphertext: completeFrame.body.ciphertext,
+                        tag: completeFrame.body.tag
+                    ),
+                    sessionKey: liveConnection.sessionKey,
+                    authenticatedData: completeAAD(for: completeFrame)
+                )
+            }
+        }
+    }
+
+    private func invalidateConnection(for key: ConnectionKey) {
+        guard var state = connectionStates[key] else { return }
+        state.liveConnection?.task.cancel(with: .goingAway, reason: nil)
+        state.liveConnection = nil
+        connectionStates[key] = state
+    }
+
+    private func shouldReconnectAfterTransportError(_ error: MachinesAPIError) -> Bool {
+        switch error {
+        case .rpcTimedOut:
+            return true
+        case .rpcCallFailed(let message):
+            return message == "Machine data-plane socket is not connected"
+        default:
+            return false
+        }
     }
 
     private func send<T: Encodable>(frame: T, task: URLSessionWebSocketTask) async throws {
