@@ -2,9 +2,7 @@ import { type ChildProcess, spawn, type SpawnOptions } from 'child_process';
 import { closeSync, existsSync, openSync } from 'fs';
 import { basename, isAbsolute, join, normalize, resolve } from 'path';
 
-import { encodeBase64 } from '@/api/encryption';
 import { configuration } from '@/configuration';
-import { readCredentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
 
 const DAEMON_EXECUTABLE_ENV = 'UNHAPPY_DAEMON_EXECUTABLE';
@@ -159,28 +157,8 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
 async function buildRustDaemonEnvironment(
   baseEnv: NodeJS.ProcessEnv,
 ): Promise<NodeJS.ProcessEnv> {
-  const credentials = await readCredentials();
-  if (!credentials) {
-    throw new Error('Rust daemon requires credentials. Run unhappy auth first.');
-  }
-  const settings = await readSettings();
-  const machineId = settings.machineId?.trim();
-  if (!machineId) {
-    throw new Error('Rust daemon requires a machineId. Run unhappy connect first.');
-  }
-
   return {
     ...baseEnv,
-    UNHAPPY_TOKEN: credentials.token,
-    UNHAPPY_MACHINE_ID: machineId,
-    UNHAPPY_MACHINE_DATA_KEY: encodeBase64(
-      credentials.encryption.machineKey,
-      'base64url',
-    ),
-    UNHAPPY_ACCOUNT_PUBLIC_KEY: encodeBase64(
-      credentials.encryption.publicKey,
-      'base64url',
-    ),
     UNHAPPY_CLI_VERSION: configuration.currentCliVersion,
     UNHAPPY_HOME_DIR: configuration.unhappyHomeDir,
     UNHAPPY_CLI_ROOT: projectPath(),
