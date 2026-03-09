@@ -1,31 +1,6 @@
 import SwiftUI
 import CoreKit
 
-private struct TranscriptReadableWidthModifier: ViewModifier {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .body) private var compactHorizontalPadding: CGFloat = 6
-    @ScaledMetric(relativeTo: .body) private var regularHorizontalPadding: CGFloat = 18
-
-    func body(content: Content) -> some View {
-        if horizontalSizeClass == .regular {
-            content
-                .frame(maxWidth: 880, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.horizontal, regularHorizontalPadding)
-        } else {
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, compactHorizontalPadding)
-        }
-    }
-}
-
-private extension View {
-    func transcriptReadableWidth() -> some View {
-        modifier(TranscriptReadableWidthModifier())
-    }
-}
-
 struct MessagesSectionRows: View {
     let isLoading: Bool
     let errorMessage: String?
@@ -38,12 +13,6 @@ struct MessagesSectionRows: View {
     let onRetry: () -> Void
 
     var body: some View {
-        SessionListSectionBadgeRow(
-            iconSystemName: "bubble.left.and.bubble.right.fill",
-            title: "Messages"
-        )
-        .sessionListRow(insets: SessionListRowInsets.badge)
-
         if isLoading {
             TranscriptLoadingCard()
                 .sessionListRow(insets: SessionListRowInsets.messageCard)
@@ -56,10 +25,9 @@ struct MessagesSectionRows: View {
                     .font(.footnote)
                     .foregroundStyle(AppPalette.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 20)
                     .padding(.vertical, 14)
             }
-            .transcriptReadableWidth()
             .sessionListRow(insets: SessionListRowInsets.messageCard)
         } else {
             ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
@@ -100,7 +68,6 @@ struct TranscriptLoadingCard: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 4)
-        .transcriptReadableWidth()
     }
 }
 
@@ -132,7 +99,6 @@ struct TranscriptErrorCard: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 4)
-        .transcriptReadableWidth()
     }
 }
 
@@ -163,8 +129,8 @@ struct SessionTranscriptMessageRow: View {
                 }
             }
         }
-        .padding(.vertical, 1)
-        .transcriptReadableWidth()
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
         .contextMenu {
             if let onMessageInspect {
                 Button("Inspect Message") {
@@ -197,7 +163,6 @@ struct SessionTranscriptLiveStatusRow: View {
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .transcriptReadableWidth()
     }
 }
 
