@@ -43,6 +43,10 @@ public struct DirectSessionDetailView: View {
     @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var shouldFollowTranscript = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var regularTranscriptHorizontalPadding: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var transcriptTopSpacing: CGFloat = 18
     @FocusState private var focusedComposerField: ComposerFocusField?
 
     public init(
@@ -58,11 +62,12 @@ public struct DirectSessionDetailView: View {
     public var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     summaryCard
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
 
+                    // Direct chat uses ScrollView, so transcript spacing has to be explicit here.
                     MessagesSectionRows(
                         isLoading: viewModel.isLoading,
                         errorMessage: viewModel.errorMessage,
@@ -88,6 +93,8 @@ public struct DirectSessionDetailView: View {
                             }
                         }
                     )
+                    .padding(.top, transcriptTopSpacing)
+                    .padding(.horizontal, transcriptHorizontalPadding)
                 }
             }
             .simultaneousGesture(
@@ -317,6 +324,12 @@ public struct DirectSessionDetailView: View {
 
     private var canQueueDraft: Bool {
         !viewModel.isSending && !trimmedDraftMessage.isEmpty
+    }
+
+    private var transcriptHorizontalPadding: CGFloat {
+        horizontalSizeClass == .regular
+            ? regularTranscriptHorizontalPadding
+            : compactTranscriptHorizontalPadding
     }
 
     private var canSendDraft: Bool {
