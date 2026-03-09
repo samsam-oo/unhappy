@@ -2,7 +2,7 @@
 
 const { execFileSync } = require("child_process");
 const { join } = require("path");
-const { chmodSync, copyFileSync, existsSync, mkdirSync, rmSync } = require("fs");
+const { chmodSync, existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } = require("fs");
 
 const repoRoot = process.cwd();
 const cliDir = join(repoRoot, "packages", "unhappy-cli");
@@ -57,8 +57,21 @@ function installRustDaemonBinary() {
   const targetBinary = join(targetDir, rustDaemonBinaryName);
 
   mkdirSync(targetDir, { recursive: true });
-  copyFileSync(sourceBinary, targetBinary);
-  chmodSync(targetBinary, 0o755);
+  removeIfExists(targetBinary);
+  symlinkSync(sourceBinary, targetBinary);
+  chmodSync(sourceBinary, 0o755);
+}
+
+function removeIfExists(path) {
+  if (!existsSync(path)) {
+    return;
+  }
+  const stats = lstatSync(path);
+  if (stats.isDirectory() && !stats.isSymbolicLink()) {
+    rmSync(path, { recursive: true, force: true });
+    return;
+  }
+  rmSync(path, { force: true });
 }
 
 main();
