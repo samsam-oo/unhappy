@@ -103,13 +103,44 @@ extension URLSessionMachinesService {
         explicitOnly: Bool = false,
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
-        try await rpcDirectoryService.fetchProjects(
-            serverURL: serverURL,
-            token: token,
-            machineID: machineID,
-            explicitOnly: explicitOnly,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cacheKey = ProjectsCacheKey(
+            serverURLString: serverURL.absoluteString,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            explicitOnly: explicitOnly
         )
+
+        if let cached = projectsCache[cacheKey],
+           Date().timeIntervalSince1970 - cached.cachedAt < MachinesCachePolicy.ttl {
+            return cached.projects
+        }
+
+        if let inFlightTask = inFlightProjectFetches[cacheKey] {
+            return try await inFlightTask.value
+        }
+
+        let rpcDirectoryService = self.rpcDirectoryService
+        let task = Task<[APIMachineProjectSummary], Error> {
+            try await rpcDirectoryService.fetchProjects(
+                serverURL: serverURL,
+                token: normalizedToken,
+                machineID: normalizedMachineID,
+                explicitOnly: explicitOnly,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+            )
+        }
+
+        inFlightProjectFetches[cacheKey] = task
+        defer { inFlightProjectFetches[cacheKey] = nil }
+
+        let projects = try await task.value
+        projectsCache[cacheKey] = ProjectsCacheEntry(
+            projects: projects,
+            cachedAt: Date().timeIntervalSince1970
+        )
+        return projects
     }
 
     public func openProject(
@@ -119,13 +150,19 @@ extension URLSessionMachinesService {
         path: String,
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult {
-        try await rpcDirectoryService.openProject(
+        let result = try await rpcDirectoryService.openProject(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             path: path,
             wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
+        invalidateProjectCaches(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID
+        )
+        return result
     }
 
     public func removeProject(
@@ -135,13 +172,19 @@ extension URLSessionMachinesService {
         path: String,
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult {
-        try await rpcDirectoryService.removeProject(
+        let result = try await rpcDirectoryService.removeProject(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             path: path,
             wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
+        invalidateProjectCaches(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID
+        )
+        return result
     }
 
     public func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -179,6 +222,25 @@ extension URLSessionMachinesService {
             cachedAt: Date().timeIntervalSince1970
         )
         return machines
+    }
+
+    private func invalidateProjectCaches(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) {
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        projectsCache = projectsCache.filter { key, _ in
+            !(key.serverURLString == serverURL.absoluteString &&
+                key.token == normalizedToken &&
+                key.machineID == normalizedMachineID)
+        }
+        inFlightProjectFetches = inFlightProjectFetches.filter { key, _ in
+            !(key.serverURLString == serverURL.absoluteString &&
+                key.token == normalizedToken &&
+                key.machineID == normalizedMachineID)
+        }
     }
 
     public func deleteMachine(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
