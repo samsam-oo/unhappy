@@ -49,6 +49,20 @@ public struct MachinesView: View {
                     } label: {
                         MachineRow(machine: machine)
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: !machine.active) {
+                        if !machine.active {
+                            Button("Delete", role: .destructive) {
+                                Task {
+                                    await viewModel.deleteMachine(
+                                        machineID: machine.id,
+                                        serverURLString: serverURLString,
+                                        token: token
+                                    )
+                                }
+                            }
+                            .disabled(viewModel.isDeleting(machineID: machine.id))
+                        }
+                    }
                 }
             }
         }

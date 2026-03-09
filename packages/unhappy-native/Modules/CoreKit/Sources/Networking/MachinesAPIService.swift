@@ -154,6 +154,25 @@ extension URLSessionMachinesService {
         return try MachinesAPI.decodeListResponse(data)
     }
 
+    public func deleteMachine(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
+        let request = try MachinesAPI.makeDeleteRequest(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID
+        )
+        let (data, http) = try await httpClient.data(for: request)
+        guard (200..<300).contains(http.statusCode) else {
+            let errorMessage = parseServerErrorMessage(from: data)
+            if let errorMessage {
+                throw MachinesAPIError.rpcCallFailed(errorMessage)
+            }
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+
+        let decoder = JSONDecoder()
+        return try decoder.decode(APIMachineCommandResult.self, from: data)
+    }
+
     public func spawnSession(_ request: MachineSessionSpawnServiceRequest) async throws -> APISessionSpawnResult {
         let normalizedMachineID = request.machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {

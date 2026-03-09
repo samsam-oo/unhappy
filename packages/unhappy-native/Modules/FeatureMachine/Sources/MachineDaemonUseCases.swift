@@ -87,7 +87,7 @@ public actor MachineDaemonUpdateUseCase: MachineDaemonUpdateAction {
     }
 }
 
-private func normalizeInputs(
+func normalizeInputs(
     serverURLString: String,
     token: String,
     machineID: String

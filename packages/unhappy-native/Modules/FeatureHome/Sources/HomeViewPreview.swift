@@ -66,7 +66,8 @@ import FeatureSettings
                 loader: MachinesLoadUseCase(service: service),
                 spawner: MachineSpawnUseCase(service: service),
                 updater: MachineDaemonUpdateUseCase(service: service),
-                stopper: MachineDaemonStopUseCase(service: service)
+                stopper: MachineDaemonStopUseCase(service: service),
+                deleter: MachineDeleteUseCase(service: service)
             )
         },
         makeUsageViewModel: {

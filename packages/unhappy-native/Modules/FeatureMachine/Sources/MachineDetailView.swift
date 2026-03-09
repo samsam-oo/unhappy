@@ -11,6 +11,8 @@ public struct MachineDetailView: View {
     @State private var directory: String = "~"
     @State private var selectedAgent: APISessionSpawnAgent = .claude
     @State private var showStopDaemonConfirmation = false
+    @State private var showDeleteMachineConfirmation = false
+    @Environment(\.dismiss) private var dismiss
 
     public init(
         machine: APIMachine,
@@ -55,6 +57,21 @@ public struct MachineDetailView: View {
             },
             message: {
                 Text("This stops the machine daemon process.")
+            }
+        )
+        .alert(
+            "Delete offline machine?",
+            isPresented: $showDeleteMachineConfirmation,
+            actions: {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    Task {
+                        await deleteMachine()
+                    }
+                }
+            },
+            message: {
+                Text("This removes the offline machine record from your account.")
             }
         )
     }
@@ -200,6 +217,13 @@ public struct MachineDetailView: View {
                 showStopDaemonConfirmation = true
             }
             .disabled(viewModel.isStopping(machineID: machine.id))
+
+            if !machine.active {
+                Button("Delete Machine", role: .destructive) {
+                    showDeleteMachineConfirmation = true
+                }
+                .disabled(viewModel.isDeleting(machineID: machine.id))
+            }
         }
     }
 
@@ -243,5 +267,16 @@ public struct MachineDetailView: View {
             serverURLString: serverURLString,
             token: token
         )
+    }
+
+    private func deleteMachine() async {
+        await viewModel.deleteMachine(
+            machineID: machine.id,
+            serverURLString: serverURLString,
+            token: token
+        )
+        if viewModel.error(machineID: machine.id) == nil {
+            dismiss()
+        }
     }
 }

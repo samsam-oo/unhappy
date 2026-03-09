@@ -314,6 +314,63 @@ export function machinesRoutes(app: Fastify) {
         };
     });
 
+    app.delete('/v1/machines/:id', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+
+        const machine = await db.machine.findFirst({
+            where: {
+                accountId: userId,
+                id,
+            },
+            select: {
+                id: true,
+                active: true,
+            }
+        });
+
+        if (!machine) {
+            return reply.code(404).send({
+                success: false,
+                error: 'Machine not found'
+            });
+        }
+
+        if (machine.active) {
+            return reply.code(409).send({
+                success: false,
+                error: 'Only offline machines can be deleted'
+            });
+        }
+
+        await db.$transaction([
+            db.accessKey.deleteMany({
+                where: {
+                    accountId: userId,
+                    machineId: id,
+                }
+            }),
+            db.machine.deleteMany({
+                where: {
+                    accountId: userId,
+                    id,
+                }
+            })
+        ]);
+
+        return reply.send({
+            success: true,
+            message: 'Machine deleted'
+        });
+    });
+
     app.post('/v1/machines/:id/spawn', {
         preHandler: app.authenticate,
         schema: {

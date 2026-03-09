@@ -33,6 +33,21 @@ struct MachineDaemonUseCasesTests {
             )
         }
     }
+
+    @Test
+    func deleteMachineReturnsMessage() async throws {
+        let useCase = MachineDeleteUseCase(
+            service: MachineDeleteService(result: .init(success: true, message: "deleted", error: nil))
+        )
+
+        let result = try await useCase.deleteMachine(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1"
+        )
+
+        #expect(result.message == "deleted")
+    }
 }
 
 private struct DaemonUpdateService: MachineDaemonUpdating {
@@ -47,6 +62,14 @@ private struct DaemonStopService: MachineDaemonStopping {
     let result: APIMachineCommandResult
 
     func stopDaemon(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
+        result
+    }
+}
+
+private struct MachineDeleteService: MachineDeleting {
+    let result: APIMachineCommandResult
+
+    func deleteMachine(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
         result
     }
 }
