@@ -10,6 +10,23 @@ public enum MachinesAPI {
         )
     }
 
+    public static func makeDeleteRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let machineURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)")
+        return try makeRequest(
+            url: machineURL,
+            method: "DELETE",
+            token: token
+        )
+    }
+
     public static func makeSpawnSessionRequest(
         serverURL: URL,
         token: String,
@@ -782,6 +799,10 @@ public protocol MachineDaemonUpdating: Sendable {
     func updateDaemon(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult
 }
 
+public protocol MachineDeleting: Sendable {
+    func deleteMachine(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult
+}
+
 public protocol MachineDirectoryListing: Sendable {
     func listDirectory(
         serverURL: URL,
@@ -1076,6 +1097,7 @@ public actor URLSessionMachinesService:
     MachineSessionSpawning,
     MachineDaemonStopping,
     MachineDaemonUpdating,
+    MachineDeleting,
     MachineDirectoryListing,
     MachineFileReading,
     MachineBashRunning,
