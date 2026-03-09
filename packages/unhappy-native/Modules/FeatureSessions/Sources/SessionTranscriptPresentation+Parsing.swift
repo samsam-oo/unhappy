@@ -289,7 +289,8 @@ extension SessionTranscriptPresentationBuilder {
         }
         if let chunks = value as? [[String: Any]] {
             let texts = chunks.compactMap { chunk -> String? in
-                guard (chunk["type"] as? String) == "text" else { return nil }
+                guard let type = (chunk["type"] as? String)?.lowercased() else { return nil }
+                guard type == "text" || type == "output_text" || type == "input_text" else { return nil }
                 return normalizedText(chunk["text"])
             }
             if !texts.isEmpty {

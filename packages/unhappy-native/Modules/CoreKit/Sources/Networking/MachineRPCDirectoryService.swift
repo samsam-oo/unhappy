@@ -53,6 +53,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
         transcriptPath: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult
 
@@ -72,6 +73,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
         cwd: String,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult
 
@@ -88,6 +90,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
         machineID: String,
         sessionID: String,
         model: String?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }
@@ -350,6 +353,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         transcriptPath: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -380,6 +384,9 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
         if let reasoningEffort {
             params["effort"] = reasoningEffort.rawValue
+        }
+        if let permissionMode {
+            params["permissionMode"] = permissionMode.rawValue
         }
         let normalizedPath = transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedPath, !normalizedPath.isEmpty {
@@ -446,6 +453,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         cwd: String,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -476,6 +484,9 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
         if let reasoningEffort {
             params["effort"] = reasoningEffort.rawValue
+        }
+        if let permissionMode {
+            params["permissionMode"] = permissionMode.rawValue
         }
 
         let responseData = try await invokeCommand(
@@ -530,6 +541,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         machineID: String,
         sessionID: String,
         model: String?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -552,6 +564,9 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedModel, !normalizedModel.isEmpty {
             params["model"] = normalizedModel
+        }
+        if let permissionMode {
+            params["permissionMode"] = permissionMode.rawValue
         }
 
         let responseData = try await invokeCommand(

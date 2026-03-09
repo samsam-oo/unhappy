@@ -8,6 +8,7 @@ public struct DirectSessionDetailView: View {
             case info
             case files
             case review
+            case worktree
             case artifacts
         }
 
@@ -22,13 +23,23 @@ public struct DirectSessionDetailView: View {
         }
     }
 
+    private enum ComposerFocusField: Hashable {
+        case message
+        case customModel
+    }
+
     @StateObject private var viewModel: DirectSessionViewModel
     private let serverURLString: String
     private let token: String
 
     @State private var draftMessage = ""
+    @State private var queuedDraftMessages: [String] = []
     @State private var inspectedMessage: APISessionMessage?
     @State private var presentedQuickSurface: QuickSurface?
+    @State private var isUsingCustomModelOverride = false
+    @State private var customModelDraft = ""
+    @State private var selectedPermissionModeOverride: APISessionMessagePermissionMode?
+    @FocusState private var focusedComposerField: ComposerFocusField?
 
     public init(
         serverURLString: String,
@@ -87,6 +98,9 @@ public struct DirectSessionDetailView: View {
                     Button("Review Diff") {
                         presentedQuickSurface = QuickSurface(kind: .review, filterPath: nil)
                     }
+                    Button("Worktree") {
+                        presentedQuickSurface = QuickSurface(kind: .worktree, filterPath: nil)
+                    }
                     Button("Tool Artifacts") {
                         presentedQuickSurface = QuickSurface(kind: .artifacts, filterPath: nil)
                     }
@@ -96,10 +110,14 @@ public struct DirectSessionDetailView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            composerBar
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                .background(Color.clear)
+            VStack(spacing: 8) {
+                if viewModel.identity.collabInProgressCount > 0 {
+                    SessionSubAgentLiveBar(count: viewModel.identity.collabInProgressCount)
+                }
+                bottomDock
+                    .padding(.horizontal, 12)
+            }
+            .padding(.bottom, 8)
         }
         .sheet(item: $inspectedMessage) { message in
             NavigationStack {
@@ -115,7 +133,8 @@ public struct DirectSessionDetailView: View {
                     DirectSessionInfoView(
                         identity: viewModel.identity,
                         selectedModelLabel: selectedModelLabel,
-                        selectedReasoningLabel: selectedReasoningLabel
+                        selectedReasoningLabel: selectedReasoningLabel,
+                        selectedPermissionModeLabel: selectedPermissionModeLabel
                     )
                 case .files:
                     DirectSessionFileView(
@@ -127,6 +146,12 @@ public struct DirectSessionDetailView: View {
                     )
                 case .review:
                     DirectSessionReviewView(
+                        viewModel: viewModel,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                case .worktree:
+                    DirectSessionWorktreeView(
                         viewModel: viewModel,
                         serverURLString: serverURLString,
                         token: token
@@ -150,6 +175,22 @@ public struct DirectSessionDetailView: View {
             _ = await (messageLoad, capabilitiesLoad)
             viewModel.startPolling(serverURLString: serverURLString, token: token)
         }
+        .onChange(of: viewModel.selectedModelOverride) { _, value in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                isUsingCustomModelOverride = false
+                if customModelDraft == value {
+                    customModelDraft = ""
+                }
+                return
+            }
+            if viewModel.availableModelOptions.contains(where: { $0.id == trimmed }) {
+                isUsingCustomModelOverride = false
+                return
+            }
+            isUsingCustomModelOverride = true
+            customModelDraft = trimmed
+        }
         .onDisappear {
             viewModel.stopPolling()
         }
@@ -157,6 +198,15 @@ public struct DirectSessionDetailView: View {
 
     private var providerLabel: String {
         viewModel.identity.provider.displayName
+    }
+
+    private var transcriptPresentations: [SessionTranscriptMessagePresentation] {
+        viewModel.messages.map {
+            SessionTranscriptPresentationBuilder.make(
+                from: $0,
+                dataEncryptionKey: nil
+            )
+        }
     }
 
     private var summaryCard: some View {
@@ -181,138 +231,422 @@ public struct DirectSessionDetailView: View {
                     }
                 }
 
-                if !viewModel.availableModelOptions.isEmpty || !viewModel.availableReasoningEfforts.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        if !viewModel.availableModelOptions.isEmpty {
-                            Menu {
-                                Button("Use Session Model") {
-                                    viewModel.selectedModelOverride = ""
-                                }
-                                ForEach(viewModel.availableModelOptions) { option in
-                                    Button(option.menuLabel) {
-                                        viewModel.selectedModelOverride = option.id
-                                    }
-                                }
-                            } label: {
-                                HStack {
-                                    Text("Model")
-                                    Spacer()
-                                    Text(selectedModelLabel)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-
-                        if !viewModel.availableReasoningEfforts.isEmpty {
-                            Menu {
-                                Button("Use Session Default") {
-                                    viewModel.selectedReasoningEffortOverride = .auto
-                                }
-                                ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { effort in
-                                    Button(effort.displayName) {
-                                        viewModel.selectedReasoningEffortOverride = effort
-                                    }
-                                }
-                            } label: {
-                                HStack {
-                                    Text("Reasoning")
-                                    Spacer()
-                                    Text(selectedReasoningLabel)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-
-                        if let capabilitiesError = viewModel.capabilitiesErrorMessage, !capabilitiesError.isEmpty {
-                            Text(capabilitiesError)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                if let capabilitiesError = viewModel.capabilitiesErrorMessage, !capabilitiesError.isEmpty {
+                    Text(capabilitiesError)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             .padding(16)
         }
     }
 
-    private var transcriptPresentations: [SessionTranscriptMessagePresentation] {
-        viewModel.messages.map {
-            SessionTranscriptPresentationBuilder.make(
-                from: $0,
-                dataEncryptionKey: nil
-            )
-        }
-    }
-
     private var composerPlaceholder: String {
-        "Message \(providerLabel)…"
+        "Ask for follow-up changes"
     }
 
     private var selectedModelLabel: String {
+        if isUsingCustomModelOverride {
+            let trimmed = customModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Custom" : trimmed
+        }
         if let option = viewModel.selectedModelOption {
             return option.displayName
         }
         if let model = viewModel.identity.model, !model.isEmpty {
             return model
         }
-        return "Session Default"
+        return "Default"
     }
 
     private var selectedReasoningLabel: String {
         if viewModel.selectedReasoningEffortOverride == .auto {
-            return "Session Default"
+            return viewModel.identity.effort?.displayName ?? "Auto"
         }
         return viewModel.selectedReasoningEffortOverride.displayName
     }
 
+    private var selectedPermissionModeLabel: String {
+        if let selectedPermissionModeOverride {
+            return permissionModeLabel(for: selectedPermissionModeOverride)
+        }
+        if let currentMode = viewModel.identity.permissionMode {
+            return permissionModeLabel(for: currentMode)
+        }
+        return "Default"
+    }
+
+    private var availablePermissionModes: [APISessionMessagePermissionMode] {
+        switch viewModel.identity.provider {
+        case .codex:
+            return [.passthrough, .default, .readOnly, .safeYolo, .yolo]
+        case .claude:
+            return [.default, .acceptEdits, .plan, .bypassPermissions]
+        case .gemini:
+            return [.default, .safeYolo, .yolo]
+        }
+    }
+
+    private func permissionModeLabel(for mode: APISessionMessagePermissionMode) -> String {
+        switch mode {
+        case .default:
+            return "Default"
+        case .acceptEdits:
+            return "Accept Edits"
+        case .bypassPermissions:
+            return "Bypass"
+        case .plan:
+            return "Plan"
+        case .passthrough:
+            return "Passthrough"
+        case .readOnly:
+            return "Read Only"
+        case .safeYolo:
+            return "Safe YOLO"
+        case .yolo:
+            return "YOLO"
+        }
+    }
+
+    private var trimmedDraftMessage: String {
+        draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canQueueDraft: Bool {
+        !viewModel.isSending && !trimmedDraftMessage.isEmpty
+    }
+
+    private var canSendDraft: Bool {
+        !viewModel.isSending && (!trimmedDraftMessage.isEmpty || !queuedDraftMessages.isEmpty)
+    }
+
+    private var bottomDock: some View {
+        VStack(spacing: 10) {
+            composerBar
+            quickToolsBar
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(AppPalette.chromeSurfaceStroke.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(
+            color: AppPalette.chromeShadow.opacity(0.14),
+            radius: 10,
+            y: 3
+        )
+    }
+
     private var composerBar: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if !queuedDraftMessages.isEmpty {
+                queuePreviewCard
+            }
+
             if let sendError = viewModel.sendErrorMessage, !sendError.isEmpty {
                 Text(sendError)
                     .font(.footnote)
                     .foregroundStyle(.red)
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField(composerPlaceholder, text: $draftMessage, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...6)
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "terminal.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.accent)
+                    .frame(width: 18, height: 18)
+                    .padding(.top, 2)
 
-                Button {
-                    let text = draftMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { return }
-                    draftMessage = ""
-                    Task {
-                        let sent = await viewModel.sendMessage(
-                            text,
-                            serverURLString: serverURLString,
-                            token: token
+                TextField(composerPlaceholder, text: $draftMessage, axis: .vertical)
+                    .lineLimit(1...4)
+                    .textInputAutocapitalization(.sentences)
+                    .font(.subheadline.weight(.medium))
+                    .focused($focusedComposerField, equals: .message)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AppPalette.composerFieldBackground)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        focusedComposerField == .message
+                            ? AppPalette.accent.opacity(0.55)
+                            : AppPalette.composerFieldStroke.opacity(0.4),
+                        lineWidth: focusedComposerField == .message ? 1.5 : 1
+                    )
+            }
+
+            HStack(spacing: 8) {
+                Button(action: queueCurrentDraft) {
+                    Label("Queue", systemImage: "clock")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppPalette.secondaryText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(AppPalette.controlSurface)
                         )
-                        if !sent {
-                            draftMessage = text
-                        }
-                    }
-                } label: {
-                    if viewModel.isSending {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 24))
-                    }
                 }
-                .disabled(viewModel.isSending || draftMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .buttonStyle(PressableScaleButtonStyle())
+                .disabled(!canQueueDraft)
+
+                Button(action: sendCurrentOrQueuedDraft) {
+                    Label(viewModel.isSending ? "Sending…" : "Send", systemImage: "paperplane.fill")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            AppPalette.sendGradientTop,
+                                            AppPalette.sendGradientBottom,
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .shadow(color: AppPalette.accent.opacity(0.3), radius: 6, y: 2)
+                }
+                .buttonStyle(PressableScaleButtonStyle())
+                .disabled(!canSendDraft)
+            }
+
+            if isUsingCustomModelOverride {
+                TextField("Custom model id", text: $customModelDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.footnote.monospaced())
+                    .focused($focusedComposerField, equals: .customModel)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(AppPalette.controlSurface)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                focusedComposerField == .customModel
+                                    ? AppPalette.accent.opacity(0.55)
+                                    : AppPalette.composerFieldStroke.opacity(0.4),
+                                lineWidth: focusedComposerField == .customModel ? 1.5 : 1
+                            )
+                    }
             }
         }
-        .padding(12)
+    }
+
+    private var queuePreviewCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            let visibleQueuedMessages = Array(queuedDraftMessages.suffix(3))
+            let hiddenCount = max(0, queuedDraftMessages.count - visibleQueuedMessages.count)
+            let visibleStartIndex = max(0, queuedDraftMessages.count - visibleQueuedMessages.count)
+
+            HStack(spacing: 6) {
+                Image(systemName: "square.stack.3d.up")
+                    .font(.caption2)
+                    .foregroundStyle(AppPalette.secondaryText)
+                Text("Steer Stack")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.secondaryText)
+                if hiddenCount > 0 {
+                    Text("+\(hiddenCount)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+                Spacer(minLength: 0)
+                Text(queuedDraftMessages.count == 1 ? "1 queued" : "\(queuedDraftMessages.count) queued")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(AppPalette.secondaryText)
+            }
+
+            ForEach(Array(visibleQueuedMessages.enumerated()), id: \.offset) { index, text in
+                let queueIndex = visibleStartIndex + index
+                HStack(spacing: 8) {
+                    Image(systemName: "clock")
+                        .font(.caption2)
+                        .foregroundStyle(AppPalette.secondaryText)
+                    Text(text)
+                        .font(.footnote)
+                        .lineLimit(1)
+                        .foregroundStyle(AppPalette.primaryText)
+                    Spacer(minLength: 0)
+                    Button("Edit") {
+                        editQueuedDraft(at: queueIndex)
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                }
+
+                if index < visibleQueuedMessages.count - 1 {
+                    Rectangle()
+                        .fill(AppPalette.chromeDivider.opacity(0.7))
+                        .frame(height: 1)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(uiColor: .systemBackground))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppPalette.controlSurface.opacity(0.9))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(AppPalette.chromeSurfaceStroke.opacity(0.45), lineWidth: 1)
-        )
+    }
+
+    private var quickToolsBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                modelMenuButton
+                if !viewModel.availableReasoningEfforts.isEmpty {
+                    reasoningMenuButton
+                }
+                permissionModeMenuButton
+                quickToolButton(title: "Info", systemImage: "info.circle", kind: .info)
+                quickToolButton(title: "Files", systemImage: "doc.text", kind: .files)
+                quickToolButton(title: "Diff", systemImage: "doc.text.magnifyingglass", kind: .review)
+                quickToolButton(title: "Worktree", systemImage: "checkmark.circle", kind: .worktree)
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var modelMenuButton: some View {
+        Menu {
+            Button("Use session model") {
+                viewModel.selectedModelOverride = ""
+                isUsingCustomModelOverride = false
+                customModelDraft = ""
+            }
+            ForEach(viewModel.availableModelOptions) { option in
+                Button(option.menuLabel) {
+                    viewModel.selectedModelOverride = option.id
+                    isUsingCustomModelOverride = false
+                    customModelDraft = option.id
+                }
+            }
+            Button("Custom model…") {
+                isUsingCustomModelOverride = true
+                if customModelDraft.isEmpty {
+                    customModelDraft = viewModel.selectedModelOverride
+                }
+                focusedComposerField = .customModel
+            }
+        } label: {
+            Label(selectedModelLabel, systemImage: "cpu")
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .tint(.primary)
+    }
+
+    private var reasoningMenuButton: some View {
+        Menu {
+            Button("Use session default") {
+                viewModel.selectedReasoningEffortOverride = .auto
+            }
+            ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { effort in
+                Button(effort.displayName) {
+                    viewModel.selectedReasoningEffortOverride = effort
+                }
+            }
+        } label: {
+            Label(selectedReasoningLabel, systemImage: "brain.head.profile")
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .tint(.primary)
+    }
+
+    private var permissionModeMenuButton: some View {
+        Menu {
+            Button("Use current mode") {
+                selectedPermissionModeOverride = nil
+            }
+            ForEach(availablePermissionModes, id: \.rawValue) { mode in
+                Button(permissionModeLabel(for: mode)) {
+                    selectedPermissionModeOverride = mode
+                }
+            }
+        } label: {
+            Label(selectedPermissionModeLabel, systemImage: "doc.badge.gearshape")
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .tint(.primary)
+    }
+
+    private func quickToolButton(title: String, systemImage: String, kind: QuickSurface.Kind) -> some View {
+        Button {
+            focusedComposerField = nil
+            presentedQuickSurface = QuickSurface(kind: kind, filterPath: nil)
+        } label: {
+            Label(title, systemImage: systemImage)
+                .modifier(DockChipModifier(tone: .neutral))
+        }
+        .buttonStyle(PressableScaleButtonStyle())
+    }
+
+    private func queueCurrentDraft() {
+        let text = trimmedDraftMessage
+        guard !text.isEmpty else { return }
+        queuedDraftMessages.append(text)
+        draftMessage = ""
+    }
+
+    private func editQueuedDraft(at index: Int) {
+        guard queuedDraftMessages.indices.contains(index) else { return }
+        draftMessage = queuedDraftMessages.remove(at: index)
+        focusedComposerField = .message
+    }
+
+    private func sendCurrentOrQueuedDraft() {
+        let currentDraft = trimmedDraftMessage
+        let queuedDraft: String?
+        if currentDraft.isEmpty {
+            queuedDraft = queuedDraftMessages.isEmpty ? nil : queuedDraftMessages.removeFirst()
+        } else {
+            queuedDraft = nil
+        }
+
+        let outboundText = currentDraft.isEmpty ? queuedDraft : currentDraft
+        guard let outboundText, !outboundText.isEmpty else { return }
+
+        if !currentDraft.isEmpty {
+            draftMessage = ""
+        }
+        focusedComposerField = nil
+
+        if isUsingCustomModelOverride {
+            viewModel.selectedModelOverride = customModelDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        Task {
+            let sent = await viewModel.sendMessage(
+                outboundText,
+                serverURLString: serverURLString,
+                token: token,
+                permissionMode: selectedPermissionModeOverride
+            )
+            if !sent {
+                if currentDraft.isEmpty {
+                    queuedDraftMessages.insert(outboundText, at: 0)
+                } else {
+                    draftMessage = outboundText
+                }
+            }
+        }
     }
 }
 
@@ -320,6 +654,7 @@ private struct DirectSessionInfoView: View {
     let identity: DirectSessionIdentity
     let selectedModelLabel: String
     let selectedReasoningLabel: String
+    let selectedPermissionModeLabel: String
 
     var body: some View {
         List {
@@ -340,6 +675,9 @@ private struct DirectSessionInfoView: View {
                 }
                 LabeledContent("Reasoning") {
                     Text(selectedReasoningLabel)
+                }
+                LabeledContent("Permission") {
+                    Text(selectedPermissionModeLabel)
                 }
             }
 
@@ -548,6 +886,79 @@ private struct DirectSessionReviewView: View {
                viewModel.reviewErrorMessage == nil,
                !viewModel.isLoadingReview {
                 await viewModel.loadReview(
+                    serverURLString: serverURLString,
+                    token: token
+                )
+            }
+        }
+    }
+}
+
+private struct DirectSessionWorktreeView: View {
+    @ObservedObject var viewModel: DirectSessionViewModel
+    let serverURLString: String
+    let token: String
+
+    var body: some View {
+        List {
+            Section("Actions") {
+                Button(viewModel.isLoadingWorktree ? "Refreshing…" : "Refresh Worktree Status") {
+                    Task {
+                        await viewModel.loadWorktree(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .disabled(viewModel.isLoadingWorktree)
+            }
+
+            if let error = viewModel.worktreeErrorMessage, !error.isEmpty {
+                Section("Error") {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            if let snapshot = viewModel.worktreeSnapshot {
+                Section("Repository") {
+                    LabeledContent("Root") {
+                        Text(snapshot.repositoryRoot)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                    }
+                    LabeledContent("Branch") {
+                        Text(snapshot.currentBranch)
+                            .font(.footnote.monospaced())
+                    }
+                }
+
+                Section("Worktrees") {
+                    Text(snapshot.worktreeListOutput)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                }
+
+                Section("Status") {
+                    Text(snapshot.statusOutput)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                }
+            } else if !viewModel.isLoadingWorktree {
+                Section("Status") {
+                    Text("No worktree details loaded yet.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Worktree")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if viewModel.worktreeSnapshot == nil,
+               viewModel.worktreeErrorMessage == nil,
+               !viewModel.isLoadingWorktree {
+                await viewModel.loadWorktree(
                     serverURLString: serverURLString,
                     token: token
                 )

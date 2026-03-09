@@ -847,6 +847,7 @@ public protocol MachineCodexThreadMessaging: Sendable {
         transcriptPath: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }
@@ -889,6 +890,7 @@ public protocol MachineClaudeSessionMessaging: Sendable {
         cwd: String,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }
@@ -928,6 +930,7 @@ public protocol MachineGeminiSessionMessaging: Sendable {
         machineID: String,
         sessionID: String,
         model: String?,
+        permissionMode: APISessionMessagePermissionMode?,
         text: String
     ) async throws -> APISessionSendMessageResult
 }

@@ -5,6 +5,8 @@ import { join, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 
 import { logger } from '@/ui/logger';
+import type { PermissionMode } from '@/api/types';
+import { mapPermissionModeToCodexOverrides } from '@/utils/permissionModeAdapter';
 
 import { CodexAppServerClient } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
@@ -36,6 +38,7 @@ export type CodexDirectSessionDescriptor = {
   transcriptPath?: string | null;
   model?: string | null;
   effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | null;
+  permissionMode?: PermissionMode | null;
   envOverrides?: Record<string, string>;
 };
 
@@ -310,11 +313,14 @@ export async function sendCodexThreadMessage(
     if (descriptor.threadId && descriptor.threadId.trim()) {
       client.setPreferredResumeThreadId(descriptor.threadId, true);
     }
+    let permissionOverrides = mapPermissionModeToCodexOverrides(
+      descriptor.permissionMode ?? undefined,
+    );
     const config: CodexSessionConfig = {
       prompt: normalizedText,
       cwd: descriptor.cwd,
-      sandbox: 'workspace-write',
-      'approval-policy': 'on-request',
+      sandbox: permissionOverrides.sandbox ?? 'workspace-write',
+      'approval-policy': permissionOverrides.approvalPolicy ?? 'on-request',
       ...(descriptor.model ? { model: descriptor.model } : {}),
       ...(descriptor.effort
         ? { config: { model_reasoning_effort: descriptor.effort } }
