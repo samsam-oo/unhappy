@@ -1,6 +1,12 @@
 use crate::provider::ProviderCommandConfig;
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine as _,
+};
 use anyhow::{Context, Result};
+use serde::Deserialize;
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const CODEX_HOME_DIR_ENV: &str = "UNHAPPY_CODEX_HOME_DIR";
@@ -43,25 +49,44 @@ pub struct Config {
     pub session_webhook_timeout_ms: u64,
 }
 
+#[derive(Debug, Deserialize)]
+struct PersistedCredentialsFile {
+    token: String,
+    encryption: PersistedEncryptionKeys,
+}
+
+#[derive(Debug, Deserialize)]
+struct PersistedEncryptionKeys {
+    #[serde(rename = "publicKey")]
+    public_key: String,
+    #[serde(rename = "machineKey")]
+    machine_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedSettingsFile {
+    machine_id: Option<String>,
+}
+
 impl Config {
     pub fn from_env() -> Result<Self> {
-        let server_url = env::var("UNHAPPY_SERVER_URL")
-            .unwrap_or_else(|_| "https://api.unhappy.im".to_string());
-        let token = env::var("UNHAPPY_TOKEN")
-            .context("UNHAPPY_TOKEN is required for unhappy-daemon-rs bootstrap")?;
-        let machine_id = env::var("UNHAPPY_MACHINE_ID")
-            .context("UNHAPPY_MACHINE_ID is required for unhappy-daemon-rs bootstrap")?;
-        let machine_data_key_base64url = env::var("UNHAPPY_MACHINE_DATA_KEY")
-            .context("UNHAPPY_MACHINE_DATA_KEY is required for unhappy-daemon-rs bootstrap")?;
-        let account_public_key_base64url = env::var("UNHAPPY_ACCOUNT_PUBLIC_KEY")
-            .context("UNHAPPY_ACCOUNT_PUBLIC_KEY is required for unhappy-daemon-rs bootstrap")?;
-        let current_cli_version = env::var(CLI_VERSION_ENV)
-            .context("UNHAPPY_CLI_VERSION is required for unhappy-daemon-rs bootstrap")?;
         let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| {
                 PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string())).join(".unhappy")
             });
+        let server_url = env::var("UNHAPPY_SERVER_URL")
+            .unwrap_or_else(|_| "https://api.unhappy.im".to_string());
+        let bootstrap = BootstrapMaterial::load(&unhappy_home_dir)?;
+        let token = env::var("UNHAPPY_TOKEN").unwrap_or(bootstrap.token);
+        let machine_id = env::var("UNHAPPY_MACHINE_ID").unwrap_or(bootstrap.machine_id);
+        let machine_data_key_base64url = env::var("UNHAPPY_MACHINE_DATA_KEY")
+            .unwrap_or(bootstrap.machine_data_key_base64url);
+        let account_public_key_base64url = env::var("UNHAPPY_ACCOUNT_PUBLIC_KEY")
+            .unwrap_or(bootstrap.account_public_key_base64url);
+        let current_cli_version = env::var(CLI_VERSION_ENV)
+            .context("UNHAPPY_CLI_VERSION is required for unhappy-daemon-rs bootstrap")?;
         let provider_commands = ProviderCommandConfig::from_env()?;
         let session_webhook_timeout_ms = env::var("UNHAPPY_SESSION_WEBHOOK_TIMEOUT_MS")
             .ok()
@@ -342,4 +367,58 @@ mod tests {
         );
         std::env::remove_var(GEMINI_CONFIG_DIR_ENV);
     }
+}
+
+#[derive(Debug)]
+struct BootstrapMaterial {
+    token: String,
+    machine_id: String,
+    machine_data_key_base64url: String,
+    account_public_key_base64url: String,
+}
+
+impl BootstrapMaterial {
+    fn load(unhappy_home_dir: &Path) -> Result<Self> {
+        let credentials_path = unhappy_home_dir.join("access.key");
+        let settings_path = unhappy_home_dir.join("settings.json");
+
+        let credentials = fs::read(&credentials_path)
+            .with_context(|| format!("failed to read {}", credentials_path.display()))
+            .and_then(|bytes| {
+                serde_json::from_slice::<PersistedCredentialsFile>(&bytes)
+                    .with_context(|| format!("failed to decode {}", credentials_path.display()))
+            })?;
+        let settings = fs::read(&settings_path)
+            .with_context(|| format!("failed to read {}", settings_path.display()))
+            .and_then(|bytes| {
+                serde_json::from_slice::<PersistedSettingsFile>(&bytes)
+                    .with_context(|| format!("failed to decode {}", settings_path.display()))
+            })?;
+
+        let machine_id = settings
+            .machine_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .context("settings.json does not contain machineId")?;
+
+        Ok(Self {
+            token: credentials.token,
+            machine_id,
+            machine_data_key_base64url: reencode_base64url(
+                &credentials.encryption.machine_key,
+                "machineKey",
+            )?,
+            account_public_key_base64url: reencode_base64url(
+                &credentials.encryption.public_key,
+                "publicKey",
+            )?,
+        })
+    }
+}
+
+fn reencode_base64url(raw_base64: &str, field_name: &str) -> Result<String> {
+    let decoded = STANDARD
+        .decode(raw_base64)
+        .with_context(|| format!("invalid {field_name} in access.key"))?;
+    Ok(URL_SAFE_NO_PAD.encode(decoded))
 }
