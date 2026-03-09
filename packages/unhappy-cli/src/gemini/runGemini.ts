@@ -17,7 +17,7 @@ import type { ACPMessageData } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
-import { initialMachineMetadata } from '@/daemon/run';
+import { initialMachineMetadata } from '@/daemon/initialMachineMetadata';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { MessageBuffer } from '@/ui/ink/messageBuffer';

@@ -24,7 +24,6 @@ import {
 } from './daemon/controlClient';
 import { killRunawayHappyProcesses } from './daemon/doctor';
 import { install } from './daemon/install';
-import { startDaemon } from './daemon/run';
 import { uninstall } from './daemon/uninstall';
 import { runDaemonUpdate } from './daemon/update';
 import { spawnDaemonExecutable } from './daemon/executable';
@@ -813,8 +812,33 @@ ${chalk.bold('Examples:')}
         process.exit(1);
       }
     } else if (daemonSubcommand === 'start-sync') {
-      await startDaemon();
-      process.exit(0);
+      try {
+        const child = await spawnDaemonExecutable({
+          detached: false,
+          stdio: 'inherit',
+          env: process.env,
+        });
+        child.once('error', (error) => {
+          console.error(
+            chalk.red('Error:'),
+            error instanceof Error ? error.message : 'Unknown error',
+          );
+          process.exit(1);
+        });
+        child.once('close', (code, signal) => {
+          if (signal) {
+            process.exit(1);
+          }
+          process.exit(code ?? 0);
+        });
+        return;
+      } catch (error) {
+        console.error(
+          chalk.red('Error:'),
+          error instanceof Error ? error.message : 'Unknown error',
+        );
+        process.exit(1);
+      }
     } else if (daemonSubcommand === 'stop') {
       await stopDaemon();
       process.exit(0);
