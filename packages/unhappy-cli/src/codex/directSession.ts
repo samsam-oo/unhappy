@@ -12,6 +12,7 @@ import { CodexAppServerClient } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
 
 const MAX_DIRECT_MESSAGES = 1200;
+const MAX_DIRECT_MESSAGES_PAYLOAD_BYTES = 700_000;
 
 type ResumeBackfillMessage = {
   localId: string;
@@ -415,7 +416,26 @@ export async function listCodexThreadMessages(
     reader.close();
   }
 
-  return messages;
+  return trimMessagesToPayloadBudget(messages);
+}
+
+function trimMessagesToPayloadBudget<T extends { content: { payload: string } }>(
+  messages: T[],
+): T[] {
+  let totalBytes = 0;
+  const kept: T[] = [];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index];
+    const candidateBytes = Buffer.byteLength(candidate.content.payload, 'utf8');
+    if (kept.length > 0 && totalBytes + candidateBytes > MAX_DIRECT_MESSAGES_PAYLOAD_BYTES) {
+      break;
+    }
+    kept.push(candidate);
+    totalBytes += candidateBytes;
+  }
+
+  return kept.reverse();
 }
 
 export function resolveCodexHomeFromTranscriptPath(

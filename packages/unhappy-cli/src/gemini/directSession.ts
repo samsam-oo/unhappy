@@ -5,6 +5,7 @@ import { AddressInfo } from 'node:net';
 import type { ACPMessageData } from '@/api/apiSession';
 
 const MAX_DIRECT_MESSAGES = 1200;
+const MAX_DIRECT_MESSAGES_PAYLOAD_BYTES = 700_000;
 
 export type GeminiDirectSessionDescriptor = {
   sessionId: string;
@@ -121,10 +122,11 @@ export class GeminiDirectTranscriptStore {
   }
 
   listMessages(): GeminiDirectSessionMessage[] {
-    return this.messages.map((message) => ({
+    const cloned = this.messages.map((message) => ({
       ...message,
       content: { ...message.content },
     }));
+    return trimMessagesToPayloadBudget(cloned);
   }
 
   private pushMessage(message: GeminiDirectSessionMessage): void {
@@ -139,6 +141,25 @@ export class GeminiDirectTranscriptStore {
       }));
     }
   }
+}
+
+function trimMessagesToPayloadBudget<T extends { content: { payload: string } }>(
+  messages: T[],
+): T[] {
+  let totalBytes = 0;
+  const kept: T[] = [];
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidate = messages[index];
+    const candidateBytes = Buffer.byteLength(candidate.content.payload, 'utf8');
+    if (kept.length > 0 && totalBytes + candidateBytes > MAX_DIRECT_MESSAGES_PAYLOAD_BYTES) {
+      break;
+    }
+    kept.push(candidate);
+    totalBytes += candidateBytes;
+  }
+
+  return kept.reverse();
 }
 
 async function readJSONBody(request: IncomingMessage): Promise<unknown> {

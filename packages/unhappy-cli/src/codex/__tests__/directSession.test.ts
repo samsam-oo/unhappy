@@ -97,4 +97,47 @@ describe('listCodexThreadMessages', () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('keeps the newest messages within the payload budget', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'codex-direct-session-budget-'));
+    const transcriptPath = join(tempDir, 'rollout.jsonl');
+
+    try {
+      const oldText = `old-marker-${'x'.repeat(400_000)}`;
+      const newText = `new-marker-${'y'.repeat(400_000)}`;
+      writeFileSync(
+        transcriptPath,
+        [
+          JSON.stringify({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'assistant',
+              id: 'msg-old',
+              content: [{ type: 'output_text', text: oldText }],
+            },
+          }),
+          JSON.stringify({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'assistant',
+              id: 'msg-new',
+              content: [{ type: 'output_text', text: newText }],
+            },
+          }),
+        ].join('\n'),
+        'utf8',
+      );
+
+      const messages = await listCodexThreadMessages(transcriptPath);
+
+      expect(messages).toHaveLength(1);
+      const payload = JSON.parse(messages[0].content.payload);
+      expect(JSON.stringify(payload)).toContain('new-marker');
+      expect(JSON.stringify(payload)).not.toContain('old-marker');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
