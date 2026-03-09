@@ -2,12 +2,15 @@ import { type ChildProcess, spawn, type SpawnOptions } from 'child_process';
 import { existsSync } from 'fs';
 import { basename, isAbsolute, join, normalize, resolve } from 'path';
 
+import { encodeBase64 } from '@/api/encryption';
+import { configuration } from '@/configuration';
+import { readCredentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 
 const DAEMON_EXECUTABLE_ENV = 'UNHAPPY_DAEMON_EXECUTABLE';
 const DAEMON_EXECUTABLE_ARGS_ENV = 'UNHAPPY_DAEMON_EXECUTABLE_ARGS';
-const DAEMON_PREFER_RUST_ENV = 'UNHAPPY_DAEMON_PREFER_RUST';
+const DAEMON_PREFER_NODE_ENV = 'UNHAPPY_DAEMON_PREFER_NODE';
 
 export interface ResolvedDaemonExecutable {
   kind: 'node-cli' | 'external-binary';
@@ -111,12 +114,12 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
     };
   }
 
-  const shouldPreferRustDaemon = ['1', 'true', 'yes'].includes(
-    process.env[DAEMON_PREFER_RUST_ENV]?.trim().toLowerCase() ?? '',
+  const shouldPreferNodeDaemon = ['1', 'true', 'yes'].includes(
+    process.env[DAEMON_PREFER_NODE_ENV]?.trim().toLowerCase() ?? '',
   );
-  const bundledRustDaemonExecutable = shouldPreferRustDaemon
-    ? findBundledRustDaemonExecutable()
-    : null;
+  const bundledRustDaemonExecutable = shouldPreferNodeDaemon
+    ? null
+    : findBundledRustDaemonExecutable();
   if (bundledRustDaemonExecutable) {
     const args = ['local-control-server'];
     return {
@@ -139,9 +142,47 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
   };
 }
 
-export function spawnDaemonExecutable(
+async function buildRustDaemonEnvironment(
+  baseEnv: NodeJS.ProcessEnv,
+): Promise<NodeJS.ProcessEnv> {
+  const credentials = await readCredentials();
+  if (!credentials) {
+    throw new Error('Rust daemon requires credentials. Run unhappy auth first.');
+  }
+  const settings = await readSettings();
+  const machineId = settings.machineId?.trim();
+  if (!machineId) {
+    throw new Error('Rust daemon requires a machineId. Run unhappy connect first.');
+  }
+
+  return {
+    ...baseEnv,
+    UNHAPPY_TOKEN: credentials.token,
+    UNHAPPY_MACHINE_ID: machineId,
+    UNHAPPY_MACHINE_DATA_KEY: encodeBase64(
+      credentials.encryption.machineKey,
+      'base64url',
+    ),
+    UNHAPPY_CLI_VERSION: configuration.currentCliVersion,
+    UNHAPPY_HOME_DIR: configuration.unhappyHomeDir,
+    UNHAPPY_CLI_ROOT: projectPath(),
+    UNHAPPY_SERVER_URL: baseEnv.UNHAPPY_SERVER_URL || configuration.serverUrl,
+  };
+}
+
+export async function getDaemonLaunchEnvironmentVariables(
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): Promise<NodeJS.ProcessEnv> {
+  const executable = resolveDaemonExecutable();
+  if (executable.kind === 'node-cli') {
+    return { ...baseEnv };
+  }
+  return await buildRustDaemonEnvironment(baseEnv);
+}
+
+export async function spawnDaemonExecutable(
   options: SpawnOptions = {},
-): ChildProcess {
+): Promise<ChildProcess> {
   const executable = resolveDaemonExecutable();
 
   if (executable.kind === 'node-cli') {
@@ -154,7 +195,10 @@ export function spawnDaemonExecutable(
     );
   }
 
-  return spawn(executable.executablePath, executable.args, options);
+  return spawn(executable.executablePath, executable.args, {
+    ...options,
+    env: await buildRustDaemonEnvironment(options.env ?? process.env),
+  });
 }
 
 export function getDaemonLaunchProgramArguments(): string[] {

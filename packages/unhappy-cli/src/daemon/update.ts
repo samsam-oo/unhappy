@@ -56,7 +56,7 @@ export async function runDaemonUpdate(opts?: {
   // This keeps behavior predictable for "update now" requests from mobile.
   await stopDaemon();
 
-  const child = spawnDaemonExecutable({
+  const child = await spawnDaemonExecutable({
     detached: true,
     stdio: 'ignore',
     env: process.env,

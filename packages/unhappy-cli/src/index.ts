@@ -365,7 +365,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
       if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
         logger.debug('Starting Unhappy background service...');
-        const daemonProcess = spawnDaemonExecutable({
+        const daemonProcess = await spawnDaemonExecutable({
           detached: true,
           stdio: 'ignore',
           env: process.env,
@@ -684,7 +684,7 @@ ${chalk.bold('Examples:')}
       );
       if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
         logger.debug('Starting Unhappy background service...');
-        const daemonProcess = spawnDaemonExecutable({
+        const daemonProcess = await spawnDaemonExecutable({
           detached: true,
           stdio: 'ignore',
           env: process.env,
@@ -781,7 +781,7 @@ ${chalk.bold('Examples:')}
     } else if (daemonSubcommand === 'start') {
       try {
         // Spawn detached daemon process
-        const child = spawnDaemonExecutable({
+        const child = await spawnDaemonExecutable({
           detached: true,
           stdio: 'ignore',
           env: process.env,

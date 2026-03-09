@@ -309,17 +309,22 @@ export async function startDaemon(): Promise<void> {
       if (!staleVersionRestartRequested) {
         staleVersionRestartRequested = true;
         try {
-          const child = spawnDaemonExecutable({
+          void spawnDaemonExecutable({
             detached: true,
             stdio: 'ignore',
             env: process.env,
-          });
-          child.unref();
+          })
+            .then((child) => {
+              child.unref();
+            })
+            .catch((error) => {
+              logger.debug(
+                '[DAEMON RUN] Failed to spawn replacement daemon for stale-version guard',
+                error,
+              );
+            });
         } catch (error) {
-          logger.debug(
-            '[DAEMON RUN] Failed to spawn replacement daemon for stale-version guard',
-            error,
-          );
+          logger.debug('[DAEMON RUN] Failed to schedule replacement daemon', error);
         }
 
         requestShutdown(
@@ -1227,7 +1232,7 @@ export async function startDaemon(): Promise<void> {
         // We do not need to clean ourselves up - we will be killed by
         // the replacement process once it takes over.
         try {
-          spawnDaemonExecutable({
+          await spawnDaemonExecutable({
             detached: true,
             stdio: 'ignore',
             env: process.env,

@@ -12,6 +12,7 @@ const GEMINI_AUTH_FILE_ENV: &str = "UNHAPPY_GEMINI_AUTH_FILE";
 const GEMINI_OAUTH_CREDS_FILE_ENV: &str = "UNHAPPY_GEMINI_OAUTH_CREDS_FILE";
 const UNHAPPY_CLI_ROOT_ENV: &str = "UNHAPPY_CLI_ROOT";
 const CLAUDE_HOOK_FORWARDER_SCRIPT_ENV: &str = "UNHAPPY_CLAUDE_HOOK_FORWARDER";
+const CLI_VERSION_ENV: &str = "UNHAPPY_CLI_VERSION";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexRuntimePaths {
@@ -34,6 +35,7 @@ pub struct Config {
     pub token: String,
     pub machine_id: String,
     pub machine_data_key_base64url: String,
+    pub current_cli_version: String,
     pub unhappy_home_dir: PathBuf,
     pub provider_commands: ProviderCommandConfig,
     pub session_webhook_timeout_ms: u64,
@@ -49,6 +51,8 @@ impl Config {
             .context("UNHAPPY_MACHINE_ID is required for unhappy-daemon-rs bootstrap")?;
         let machine_data_key_base64url = env::var("UNHAPPY_MACHINE_DATA_KEY")
             .context("UNHAPPY_MACHINE_DATA_KEY is required for unhappy-daemon-rs bootstrap")?;
+        let current_cli_version = env::var(CLI_VERSION_ENV)
+            .context("UNHAPPY_CLI_VERSION is required for unhappy-daemon-rs bootstrap")?;
         let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| {
@@ -66,6 +70,7 @@ impl Config {
             token,
             machine_id,
             machine_data_key_base64url,
+            current_cli_version,
             unhappy_home_dir,
             provider_commands,
             session_webhook_timeout_ms,
@@ -230,6 +235,7 @@ mod tests {
             token: "token".to_string(),
             machine_id: "machine".to_string(),
             machine_data_key_base64url: "key".to_string(),
+            current_cli_version: "0.14.15".to_string(),
             unhappy_home_dir: PathBuf::from("/tmp/.unhappy-test"),
             provider_commands: ProviderCommandConfig::from_env().expect("provider commands"),
             session_webhook_timeout_ms: 30_000,
