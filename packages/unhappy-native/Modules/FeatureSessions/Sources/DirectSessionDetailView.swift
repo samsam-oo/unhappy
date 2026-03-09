@@ -273,38 +273,41 @@ public struct DirectSessionDetailView: View {
         if let currentMode = viewModel.identity.permissionMode {
             return permissionModeLabel(for: currentMode)
         }
-        return "Mode"
+        if viewModel.identity.provider == .codex {
+            return "Local Config"
+        }
+        return "Session Mode"
     }
 
     private var availablePermissionModes: [APISessionMessagePermissionMode] {
         switch viewModel.identity.provider {
         case .codex:
-            return [.passthrough, .default, .readOnly, .safeYolo, .yolo]
+            return [.passthrough, .readOnly, .safeYolo, .yolo]
         case .claude:
-            return [.default, .acceptEdits, .plan, .bypassPermissions]
+            return [.acceptEdits, .plan, .bypassPermissions]
         case .gemini:
-            return [.default, .safeYolo, .yolo]
+            return [.safeYolo, .yolo]
         }
     }
 
     private func permissionModeLabel(for mode: APISessionMessagePermissionMode) -> String {
         switch mode {
         case .default:
-            return "Default"
+            return "Ask First"
         case .acceptEdits:
-            return "Accept Edits"
+            return "Edit with Approval"
         case .bypassPermissions:
-            return "Bypass"
+            return "Full Access"
         case .plan:
             return "Plan"
         case .passthrough:
-            return "Passthrough"
+            return "Local Config"
         case .readOnly:
             return "Read Only"
         case .safeYolo:
-            return "Safe YOLO"
+            return "Workspace Write"
         case .yolo:
-            return "YOLO"
+            return "Full Access"
         }
     }
 
@@ -567,7 +570,7 @@ public struct DirectSessionDetailView: View {
 
     private var permissionModeMenuButton: some View {
         Menu {
-            Button("Use current mode") {
+            Button("Use current session mode") {
                 selectedPermissionModeOverride = nil
             }
             ForEach(availablePermissionModes, id: \.rawValue) { mode in

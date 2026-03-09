@@ -313,14 +313,18 @@ export async function sendCodexThreadMessage(
     if (descriptor.threadId && descriptor.threadId.trim()) {
       client.setPreferredResumeThreadId(descriptor.threadId, true);
     }
-    let permissionOverrides = mapPermissionModeToCodexOverrides(
+    const permissionOverrides = mapPermissionModeToCodexOverrides(
       descriptor.permissionMode ?? undefined,
     );
     const config: CodexSessionConfig = {
       prompt: normalizedText,
       cwd: descriptor.cwd,
-      sandbox: permissionOverrides.sandbox ?? 'workspace-write',
-      'approval-policy': permissionOverrides.approvalPolicy ?? 'on-request',
+      ...(permissionOverrides.sandbox !== undefined
+        ? { sandbox: permissionOverrides.sandbox }
+        : {}),
+      ...(permissionOverrides.approvalPolicy !== undefined
+        ? { 'approval-policy': permissionOverrides.approvalPolicy }
+        : {}),
       ...(descriptor.model ? { model: descriptor.model } : {}),
       ...(descriptor.effort
         ? { config: { model_reasoning_effort: descriptor.effort } }
