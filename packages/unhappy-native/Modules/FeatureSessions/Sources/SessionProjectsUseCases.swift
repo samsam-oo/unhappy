@@ -59,7 +59,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
         var projects: [SessionMachineProject] = []
         let service = self.service
 
-        try await withThrowingTaskGroup(of: [SessionMachineProject].self) { group in
+        await withTaskGroup(of: [SessionMachineProject].self) { group in
             for machine in activeMachines {
                 let machineDisplayName = machineName(for: machine)
                 group.addTask {
@@ -85,7 +85,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
                 }
             }
 
-            for try await machineProjects in group {
+            for await machineProjects in group {
                 projects.append(contentsOf: machineProjects)
             }
         }
@@ -212,15 +212,22 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
 }
 
 private extension Date {
+    nonisolated(unsafe) static let fractionalISO8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    nonisolated(unsafe) static let internetISO8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     static func parseISO8601(_ value: String) -> Date? {
-        let fractionalFormatter = ISO8601DateFormatter()
-        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractionalFormatter.date(from: value) {
+        if let date = fractionalISO8601Formatter.date(from: value) {
             return date
         }
-
-        let fallbackFormatter = ISO8601DateFormatter()
-        fallbackFormatter.formatOptions = [.withInternetDateTime]
-        return fallbackFormatter.date(from: value)
+        return internetISO8601Formatter.date(from: value)
     }
 }
