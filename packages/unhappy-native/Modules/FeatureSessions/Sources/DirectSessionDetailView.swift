@@ -278,48 +278,11 @@ public struct DirectSessionDetailView: View {
     }
 
     private var selectedPermissionModeLabel: String {
-        if let selectedPermissionModeOverride {
-            return permissionModeLabel(for: selectedPermissionModeOverride)
-        }
-        if let currentMode = viewModel.identity.permissionMode {
-            return permissionModeLabel(for: currentMode)
-        }
-        if viewModel.identity.provider == .codex {
-            return "Local Config"
-        }
-        return "Session Mode"
-    }
-
-    private var availablePermissionModes: [APISessionMessagePermissionMode] {
-        switch viewModel.identity.provider {
-        case .codex:
-            return [.passthrough, .readOnly, .safeYolo, .yolo]
-        case .claude:
-            return [.acceptEdits, .plan, .bypassPermissions]
-        case .gemini:
-            return [.safeYolo, .yolo]
-        }
-    }
-
-    private func permissionModeLabel(for mode: APISessionMessagePermissionMode) -> String {
-        switch mode {
-        case .default:
-            return "Ask First"
-        case .acceptEdits:
-            return "Edit with Approval"
-        case .bypassPermissions:
-            return "Full Access"
-        case .plan:
-            return "Plan"
-        case .passthrough:
-            return "Local Config"
-        case .readOnly:
-            return "Read Only"
-        case .safeYolo:
-            return "Workspace Write"
-        case .yolo:
-            return "Full Access"
-        }
+        DirectSessionPermissionModeAdapter.selectedLabel(
+            provider: viewModel.identity.provider,
+            override: selectedPermissionModeOverride,
+            current: viewModel.identity.permissionMode
+        )
     }
 
     private var trimmedDraftMessage: String {
@@ -594,12 +557,11 @@ public struct DirectSessionDetailView: View {
 
     private var permissionModeMenuButton: some View {
         Menu {
-            Button("Use current session mode") {
-                selectedPermissionModeOverride = nil
-            }
-            ForEach(availablePermissionModes, id: \.rawValue) { mode in
-                Button(permissionModeLabel(for: mode)) {
-                    selectedPermissionModeOverride = mode
+            ForEach(
+                DirectSessionPermissionModeAdapter.options(for: viewModel.identity.provider)
+            ) { option in
+                Button(option.label) {
+                    selectedPermissionModeOverride = option.mode
                 }
             }
         } label: {
