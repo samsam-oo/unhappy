@@ -6,6 +6,8 @@ public struct DirectSessionDetailView: View {
     private struct QuickSurface: Identifiable, Equatable {
         enum Kind: String {
             case info
+            case files
+            case review
             case artifacts
         }
 
@@ -53,7 +55,8 @@ public struct DirectSessionDetailView: View {
                     transcriptBottomAnchorID: "__direct_session_bottom__",
                     onReferenceToggle: {},
                     onFileLinkTap: { path in
-                        presentedQuickSurface = QuickSurface(kind: .artifacts, filterPath: path)
+                        viewModel.prepareFilePath(path)
+                        presentedQuickSurface = QuickSurface(kind: .files, filterPath: path)
                     },
                     onMessageInspect: { messageID in
                         inspectedMessage = viewModel.messages.first(where: { $0.id == messageID })
@@ -77,6 +80,12 @@ public struct DirectSessionDetailView: View {
                 Menu {
                     Button("Session Info") {
                         presentedQuickSurface = QuickSurface(kind: .info, filterPath: nil)
+                    }
+                    Button("Files") {
+                        presentedQuickSurface = QuickSurface(kind: .files, filterPath: nil)
+                    }
+                    Button("Review Diff") {
+                        presentedQuickSurface = QuickSurface(kind: .review, filterPath: nil)
                     }
                     Button("Tool Artifacts") {
                         presentedQuickSurface = QuickSurface(kind: .artifacts, filterPath: nil)
@@ -107,6 +116,20 @@ public struct DirectSessionDetailView: View {
                         identity: viewModel.identity,
                         selectedModelLabel: selectedModelLabel,
                         selectedReasoningLabel: selectedReasoningLabel
+                    )
+                case .files:
+                    DirectSessionFileView(
+                        viewModel: viewModel,
+                        transcriptPresentations: transcriptPresentations,
+                        initialPath: surface.filterPath,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                case .review:
+                    DirectSessionReviewView(
+                        viewModel: viewModel,
+                        serverURLString: serverURLString,
+                        token: token
                     )
                 case .artifacts:
                     DirectSessionArtifactsView(
@@ -360,5 +383,175 @@ private struct DirectSessionArtifactsView: View {
         .listStyle(.plain)
         .navigationTitle(filterPath == nil ? "Artifacts" : "File Artifacts")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct DirectSessionFileView: View {
+    @ObservedObject var viewModel: DirectSessionViewModel
+    let transcriptPresentations: [SessionTranscriptMessagePresentation]
+    let initialPath: String?
+    let serverURLString: String
+    let token: String
+
+    private var relatedEntries: [SessionTranscriptEntry] {
+        let normalizedPath = viewModel.filePathDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else { return [] }
+        return DirectSessionArtifacts.richEntries(
+            from: transcriptPresentations,
+            matchingFilePath: normalizedPath
+        )
+    }
+
+    var body: some View {
+        List {
+            Section("Path") {
+                TextField("Project-relative or absolute path", text: $viewModel.filePathDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Load File") {
+                    Task {
+                        await viewModel.loadFile(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .disabled(
+                    viewModel.isLoadingFile ||
+                        viewModel.filePathDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+            }
+
+            Section("Content") {
+                if viewModel.isLoadingFile {
+                    ProgressView("Loading file…")
+                } else if let error = viewModel.fileErrorMessage, !error.isEmpty {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                } else if viewModel.fileContent.isEmpty {
+                    Text("No file loaded")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ScrollView(.vertical) {
+                        Text(viewModel.fileContent)
+                            .font(.footnote.monospaced())
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                            .textSelection(.enabled)
+                            .padding(.vertical, 4)
+                    }
+                }
+            }
+
+            Section("Related Artifacts") {
+                if relatedEntries.isEmpty {
+                    Text("No tool artifacts reference this file yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(relatedEntries) { entry in
+                        SessionTranscriptToolRichContentView(entry: entry)
+                            .padding(.vertical, 4)
+                            .listRowSeparator(.hidden)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Files")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: initialPath ?? "") {
+            guard let initialPath else { return }
+            viewModel.prepareFilePath(initialPath)
+            await viewModel.loadFile(
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
+    }
+}
+
+private struct DirectSessionReviewView: View {
+    @ObservedObject var viewModel: DirectSessionViewModel
+    let serverURLString: String
+    let token: String
+
+    private var reviewEntry: SessionTranscriptEntry? {
+        let diffText = viewModel.reviewDiffOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !diffText.isEmpty else { return nil }
+        return SessionTranscriptEntry(
+            id: "direct-review-diff",
+            role: .agent,
+            kind: .toolResult,
+            title: "Review Diff",
+            body: diffText,
+            toolUseID: nil,
+            sourceType: nil,
+            toolName: nil,
+            isSidechain: false,
+            threadID: nil
+        )
+    }
+
+    var body: some View {
+        List {
+            Section("Repository") {
+                TextField("Repository path (optional)", text: $viewModel.reviewRepositoryPathDraft)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Text("If empty, the current session directory is used.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button(viewModel.isLoadingReview ? "Loading…" : "Load Review Diff") {
+                    Task {
+                        await viewModel.loadReview(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                .disabled(viewModel.isLoadingReview)
+            }
+
+            if let status = viewModel.reviewStatusMessage, !status.isEmpty {
+                Section("Status") {
+                    Text(status)
+                        .font(.footnote)
+                        .foregroundStyle(.green)
+                }
+            }
+
+            if let error = viewModel.reviewErrorMessage, !error.isEmpty {
+                Section("Error") {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            Section("Diff") {
+                if viewModel.isLoadingReview {
+                    ProgressView("Loading diff…")
+                } else if let reviewEntry {
+                    SessionTranscriptToolRichContentView(entry: reviewEntry)
+                        .padding(.vertical, 4)
+                        .listRowSeparator(.hidden)
+                } else {
+                    Text("No changes")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .navigationTitle("Review")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if viewModel.reviewDiffOutput.isEmpty,
+               viewModel.reviewStatusMessage == nil,
+               viewModel.reviewErrorMessage == nil,
+               !viewModel.isLoadingReview {
+                await viewModel.loadReview(
+                    serverURLString: serverURLString,
+                    token: token
+                )
+            }
+        }
     }
 }

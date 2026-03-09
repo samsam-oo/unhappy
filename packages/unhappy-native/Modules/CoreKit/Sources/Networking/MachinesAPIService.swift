@@ -378,6 +378,68 @@ extension URLSessionMachinesService {
         )
     }
 
+    public func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APISessionReadFileResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await rpcDirectoryService.invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "readFile",
+            params: ["path": normalizedPath]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionReadFileResult.self, from: responseData)
+    }
+
+    public func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCWD.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await rpcDirectoryService.invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            command: "bash",
+            params: [
+                "command": normalizedCommand,
+                "cwd": normalizedCWD,
+                "timeout": max(timeoutMilliseconds, 1_000),
+            ]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionBashResult.self, from: responseData)
+    }
+
     public func fetchCodexThreads(
         serverURL: URL,
         token: String,

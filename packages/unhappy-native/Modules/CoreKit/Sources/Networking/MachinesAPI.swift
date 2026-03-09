@@ -788,6 +788,26 @@ public protocol MachineDirectoryListing: Sendable {
     ) async throws -> APIMachineListDirectoryResult
 }
 
+public protocol MachineFileReading: Sendable {
+    func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String
+    ) async throws -> APISessionReadFileResult
+}
+
+public protocol MachineBashRunning: Sendable {
+    func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult
+}
+
 public protocol MachineCodexThreadsFetching: Sendable {
     func fetchCodexThreadsPage(
         serverURL: URL,
@@ -1027,6 +1047,8 @@ public actor URLSessionMachinesService:
     MachineDaemonStopping,
     MachineDaemonUpdating,
     MachineDirectoryListing,
+    MachineFileReading,
+    MachineBashRunning,
     MachineCodexThreadsFetching,
     MachineCodexThreadMessagesFetching,
     MachineCodexThreadMessaging,
