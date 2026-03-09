@@ -185,8 +185,10 @@ enum SessionTranscriptProcessing {
             let entry = flattenedEntry.entry
 
             if isStreamingReferenceEntry(entry),
-               let toolUseID = normalizedToolUseID(entry.toolUseID),
-               let existingIndex = openCommandIndexByToolUseID[toolUseID],
+               let existingIndex = matchingOpenCommandIndex(
+                    for: entry,
+                    openCommandIndexByToolUseID: openCommandIndexByToolUseID
+               ),
                result.indices.contains(existingIndex),
                let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry) {
                 let mergedPayload = SessionTranscriptCommandExecutionPayload(
@@ -213,8 +215,10 @@ enum SessionTranscriptProcessing {
             }
 
             if entry.kind == .toolResult,
-               let toolUseID = normalizedToolUseID(entry.toolUseID),
-               let existingIndex = openCommandIndexByToolUseID[toolUseID],
+               let existingIndex = matchingOpenCommandIndex(
+                    for: entry,
+                    openCommandIndexByToolUseID: openCommandIndexByToolUseID
+               ),
                result.indices.contains(existingIndex),
                let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry),
                let resultPayload = SessionTranscriptRichContentParser.commandPayload(for: entry) {
@@ -242,8 +246,22 @@ enum SessionTranscriptProcessing {
                         payload: mergedPayload
                     )
                 )
-                openCommandIndexByToolUseID.removeValue(forKey: toolUseID)
+                if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                    openCommandIndexByToolUseID.removeValue(forKey: toolUseID)
+                } else {
+                    removeOpenCommandIndex(existingIndex, openCommandIndexByToolUseID: &openCommandIndexByToolUseID)
+                }
                 continue
+            }
+
+            if isCommandTerminalEvent(entry) {
+                finalizeOpenCommands(
+                    in: &result,
+                    openCommandIndexByToolUseID: &openCommandIndexByToolUseID,
+                    status: entry.sourceType?.lowercased() == "turn_aborted" ? "aborted" : "completed",
+                    success: entry.sourceType?.lowercased() == "turn_aborted" ? false : true,
+                    completedAt: flattenedEntry.createdAt
+                )
             }
 
             if entry.kind == .toolCall,
@@ -322,6 +340,69 @@ enum SessionTranscriptProcessing {
         let delta = max(0, end - start)
         guard delta > 0 else { return nil }
         return Int((delta * 1_000).rounded())
+    }
+
+    private static func matchingOpenCommandIndex(
+        for entry: SessionTranscriptEntry,
+        openCommandIndexByToolUseID: [String: Int]
+    ) -> Int? {
+        if let toolUseID = normalizedToolUseID(entry.toolUseID),
+           let existingIndex = openCommandIndexByToolUseID[toolUseID] {
+            return existingIndex
+        }
+        guard openCommandIndexByToolUseID.count == 1 else { return nil }
+        return openCommandIndexByToolUseID.values.first
+    }
+
+    private static func removeOpenCommandIndex(
+        _ index: Int,
+        openCommandIndexByToolUseID: inout [String: Int]
+    ) {
+        for (key, value) in openCommandIndexByToolUseID where value == index {
+            openCommandIndexByToolUseID.removeValue(forKey: key)
+        }
+    }
+
+    private static func isCommandTerminalEvent(_ entry: SessionTranscriptEntry) -> Bool {
+        guard entry.role == .system || entry.role == .agent else { return false }
+        let sourceType = entry.sourceType?.lowercased()
+        return sourceType == "task_complete" || sourceType == "turn_aborted"
+    }
+
+    private static func finalizeOpenCommands(
+        in result: inout [FlattenedTranscriptEntry],
+        openCommandIndexByToolUseID: inout [String: Int],
+        status: String,
+        success: Bool,
+        completedAt: TimeInterval
+    ) {
+        let indices = Array(Set(openCommandIndexByToolUseID.values)).sorted()
+        for index in indices where result.indices.contains(index) {
+            guard let existingPayload = commandPayloadIfApplicable(for: result[index].entry) else {
+                continue
+            }
+            let mergedPayload = SessionTranscriptCommandExecutionPayload(
+                command: existingPayload.command,
+                cwd: existingPayload.cwd,
+                summary: existingPayload.summary,
+                logs: existingPayload.logs,
+                stdout: existingPayload.stdout,
+                stderr: existingPayload.stderr,
+                success: existingPayload.success ?? success,
+                exitCode: existingPayload.exitCode,
+                status: existingPayload.status ?? status,
+                durationMs: existingPayload.durationMs ?? durationMs(from: result[index].createdAt, to: completedAt)
+            )
+            result[index] = replacingEntry(
+                result[index],
+                makeCommandEntry(
+                    from: result[index].entry,
+                    kind: .toolResult,
+                    payload: mergedPayload
+                )
+            )
+        }
+        openCommandIndexByToolUseID.removeAll()
     }
 
     private static func replacingEntry(
