@@ -54,6 +54,12 @@ public final class DirectSessionViewModel: ObservableObject {
         self.fileLoader = fileLoader
         self.reviewLoader = reviewLoader
         self.worktreeLoader = worktreeLoader
+        if let agent = identity.agent {
+            self.selectedModelOverride = SessionPreferenceDefaults.defaultModel(for: agent) ?? ""
+            self.selectedReasoningEffortOverride =
+                SessionPreferenceDefaults.defaultReasoningRawValue(for: agent)
+                    .flatMap(NewSessionReasoningEffort.fromBackend) ?? .auto
+        }
     }
 
     deinit {

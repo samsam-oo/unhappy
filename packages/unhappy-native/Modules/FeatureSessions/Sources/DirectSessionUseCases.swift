@@ -44,6 +44,17 @@ public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable
     public var id: String {
         "\(machineID)|\(provider.rawValue)|\(upstreamSessionID)"
     }
+
+    public var agent: APISessionSpawnAgent? {
+        switch provider {
+        case .codex:
+            return .codex
+        case .claude:
+            return .claude
+        case .gemini:
+            return .gemini
+        }
+    }
 }
 
 public protocol DirectSessionMessagesLoadingAction: Sendable {
