@@ -88,6 +88,18 @@ impl TrackedSession {
     }
 }
 
+impl From<PersistedTrackedSession> for TrackedSession {
+    fn from(value: PersistedTrackedSession) -> Self {
+        Self {
+            started_by: value.started_by,
+            provider: value.provider,
+            provider_session_id: value.provider_session_id,
+            pid: value.pid,
+            metadata: value.metadata,
+        }
+    }
+}
+
 fn extract_started_by(metadata: &Value) -> Option<String> {
     metadata
         .get("startedBy")

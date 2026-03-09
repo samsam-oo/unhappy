@@ -46,4 +46,8 @@ impl Config {
             session_webhook_timeout_ms,
         })
     }
+    
+    pub fn session_store_path(&self) -> PathBuf {
+        self.unhappy_home_dir.join("daemon.sessions.json")
+    }
 }

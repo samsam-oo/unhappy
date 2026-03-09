@@ -45,8 +45,15 @@ impl Provider {
 
 #[derive(Debug, Clone)]
 pub struct ProviderCommand {
+    mode: ProviderCommandMode,
     executable: String,
     args: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderCommandMode {
+    LegacyWrapper,
+    DirectBinary,
 }
 
 impl ProviderCommand {
@@ -65,9 +72,14 @@ impl ProviderCommand {
             .unwrap_or_default();
 
         if let Some(executable) = configured_executable {
+            let mut args = configured_args;
+            if args.is_empty() {
+                args = default_direct_args(provider);
+            }
             return Ok(Self {
+                mode: ProviderCommandMode::DirectBinary,
                 executable,
-                args: configured_args,
+                args,
             });
         }
 
@@ -78,9 +90,14 @@ impl ProviderCommand {
         args.extend(configured_args);
 
         Ok(Self {
+            mode: ProviderCommandMode::LegacyWrapper,
             executable: shared_cli.to_string(),
             args,
         })
+    }
+
+    pub fn mode(&self) -> ProviderCommandMode {
+        self.mode
     }
 
     pub fn executable(&self) -> &str {
@@ -227,7 +244,11 @@ impl ProviderAdapter for CodexProviderAdapter {
     }
 
     fn build_launch_request(&self, context: ProviderSpawnContext<'_>) -> ProviderLaunchRequest {
-        let mut args = vec!["--started-by".to_string(), "daemon".to_string()];
+        let mut args = if provider_uses_direct_binary(Provider::Codex) {
+            Vec::new()
+        } else {
+            vec!["--started-by".to_string(), "daemon".to_string()]
+        };
         if let Some(thread_id) = normalized_arg(context.codex_resume_thread_id) {
             args.push("--resume-thread-id".to_string());
             args.push(thread_id.to_string());
@@ -246,12 +267,16 @@ impl ProviderAdapter for ClaudeProviderAdapter {
     }
 
     fn build_launch_request(&self, context: ProviderSpawnContext<'_>) -> ProviderLaunchRequest {
-        let mut args = vec![
-            "--unhappy-starting-mode".to_string(),
-            "remote".to_string(),
-            "--started-by".to_string(),
-            "daemon".to_string(),
-        ];
+        let mut args = if provider_uses_direct_binary(Provider::Claude) {
+            Vec::new()
+        } else {
+            vec![
+                "--unhappy-starting-mode".to_string(),
+                "remote".to_string(),
+                "--started-by".to_string(),
+                "daemon".to_string(),
+            ]
+        };
         if let Some(session_id) = normalized_arg(context.claude_resume_session_id) {
             args.push("--resume".to_string());
             args.push(session_id.to_string());
@@ -272,8 +297,27 @@ impl ProviderAdapter for GeminiProviderAdapter {
     fn build_launch_request(&self, context: ProviderSpawnContext<'_>) -> ProviderLaunchRequest {
         ProviderLaunchRequest {
             directory: PathBuf::from(context.directory),
-            args: vec!["--started-by".to_string(), "daemon".to_string()],
+            args: if provider_uses_direct_binary(Provider::Gemini) {
+                Vec::new()
+            } else {
+                vec!["--started-by".to_string(), "daemon".to_string()]
+            },
         }
+    }
+}
+
+fn provider_uses_direct_binary(provider: Provider) -> bool {
+    env::var(provider.executable_env())
+        .ok()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn default_direct_args(provider: Provider) -> Vec<String> {
+    match provider {
+        Provider::Codex => vec!["app-server".to_string()],
+        Provider::Claude => Vec::new(),
+        Provider::Gemini => vec!["--experimental-acp".to_string()],
     }
 }
 
