@@ -9,6 +9,7 @@ public struct MachineSpawnRequest: Sendable, Equatable {
     public let serverURLString: String
     public let token: String
     public let machineID: String
+    public let wrappedMachineDataEncryptionKey: String?
     public let directory: String
     public let agent: APISessionSpawnAgent?
     public let approvedNewDirectoryCreation: Bool
@@ -17,6 +18,7 @@ public struct MachineSpawnRequest: Sendable, Equatable {
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String? = nil,
         directory: String,
         agent: APISessionSpawnAgent?,
         approvedNewDirectoryCreation: Bool
@@ -24,6 +26,7 @@ public struct MachineSpawnRequest: Sendable, Equatable {
         self.serverURLString = serverURLString
         self.token = token
         self.machineID = machineID
+        self.wrappedMachineDataEncryptionKey = wrappedMachineDataEncryptionKey
         self.directory = directory
         self.agent = agent
         self.approvedNewDirectoryCreation = approvedNewDirectoryCreation
@@ -121,6 +124,7 @@ public actor MachineSpawnUseCase: MachineSpawnAction {
                     serverURL: serverURL,
                     token: normalizedToken,
                     machineID: normalizedMachineID,
+                    wrappedMachineDataEncryptionKey: request.wrappedMachineDataEncryptionKey,
                     directory: normalizedDirectory,
                     agent: request.agent,
                     approvedNewDirectoryCreation: request.approvedNewDirectoryCreation

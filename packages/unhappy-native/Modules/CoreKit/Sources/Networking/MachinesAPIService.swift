@@ -1,35 +1,37 @@
 import Foundation
 
 struct MachineSessionSpawnRPCParametersBuilder {
-    func build(from request: MachineSessionSpawnServiceRequest) -> [String: Any] {
-        var parameters: [String: Any] = [
-            "directory": request.directory,
-            "machineId": request.machineID
+    func build(from request: MachineSessionSpawnServiceRequest) -> [String: RPCParameterValue] {
+        var parameters: [String: RPCParameterValue] = [
+            "directory": .string(request.directory),
+            "machineId": .string(request.machineID)
         ]
 
         if let agent = request.agent {
-            parameters["agent"] = agent.rawValue
+            parameters["agent"] = .string(agent.rawValue)
         }
         if let codexResumeThreadID = normalized(request.codexResumeThreadID) {
-            parameters["codexResumeThreadId"] = codexResumeThreadID
+            parameters["codexResumeThreadId"] = .string(codexResumeThreadID)
         }
         if let claudeResumeSessionID = normalized(request.claudeResumeSessionID) {
-            parameters["claudeResumeSessionId"] = claudeResumeSessionID
+            parameters["claudeResumeSessionId"] = .string(claudeResumeSessionID)
         }
         if let approvedNewDirectoryCreation = request.approvedNewDirectoryCreation {
-            parameters["approvedNewDirectoryCreation"] = approvedNewDirectoryCreation
+            parameters["approvedNewDirectoryCreation"] = .bool(approvedNewDirectoryCreation)
         }
         if let sessionToken = normalized(request.sessionToken) {
-            parameters["token"] = sessionToken
+            parameters["token"] = .string(sessionToken)
         }
         if let environmentVariables = request.environmentVariables {
-            parameters["environmentVariables"] = environmentVariables
+            parameters["environmentVariables"] = .object(
+                environmentVariables.mapValues(RPCParameterValue.string)
+            )
         }
         if let model = normalized(request.model) {
-            parameters["model"] = model
+            parameters["model"] = .string(model)
         }
         if let reasoningEffort = request.reasoningEffort {
-            parameters["reasoningEffort"] = reasoningEffort.rawValue
+            parameters["reasoningEffort"] = .string(reasoningEffort.rawValue)
         }
 
         return parameters
@@ -98,57 +100,48 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
-        explicitOnly: Bool = false
+        explicitOnly: Bool = false,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
-        let request = try MachinesAPI.makeListProjectsRequest(
+        try await rpcDirectoryService.fetchProjects(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            explicitOnly: explicitOnly
+            explicitOnly: explicitOnly,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
-        let (data, http) = try await httpClient.data(for: request)
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-        return try MachinesAPI.decodeProjectsResponse(data)
     }
 
     public func openProject(
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult {
-        let request = try MachinesAPI.makeOpenProjectRequest(
+        try await rpcDirectoryService.openProject(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            path: path
+            path: path,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
-        let (data, http) = try await httpClient.data(for: request)
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-        return try MachinesAPI.decodeCommandResponse(data)
     }
 
     public func removeProject(
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult {
-        let request = try MachinesAPI.makeRemoveProjectRequest(
+        try await rpcDirectoryService.removeProject(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            path: path
+            path: path,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
-        let (data, http) = try await httpClient.data(for: request)
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-        return try MachinesAPI.decodeCommandResponse(data)
     }
 
     public func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -174,6 +167,7 @@ extension URLSessionMachinesService {
             serverURL: request.serverURL,
             token: request.token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: request.wrappedMachineDataEncryptionKey,
             directory: normalizedDirectory,
             agent: request.agent,
             codexResumeThreadID: request.codexResumeThreadID,
@@ -185,49 +179,7 @@ extension URLSessionMachinesService {
             reasoningEffort: request.reasoningEffort
         )
 
-        do {
-            let request = try MachinesAPI.makeSpawnSessionRequest(
-                serverURL: normalizedRequest.serverURL,
-                token: normalizedRequest.token,
-                machineID: normalizedMachineID,
-                directory: normalizedDirectory,
-                agent: normalizedRequest.agent,
-                codexResumeThreadID: normalizedRequest.codexResumeThreadID,
-                claudeResumeSessionID: normalizedRequest.claudeResumeSessionID,
-                approvedNewDirectoryCreation: normalizedRequest.approvedNewDirectoryCreation,
-                sessionToken: normalizedRequest.sessionToken,
-                environmentVariables: normalizedRequest.environmentVariables,
-                model: normalizedRequest.model,
-                reasoningEffort: normalizedRequest.reasoningEffort
-            )
-            let (data, http) = try await httpClient.data(for: request)
-            if (200..<300).contains(http.statusCode) || http.statusCode == 409 {
-                return try MachinesAPI.decodeSpawnResponse(data)
-            }
-            if shouldFallbackToRPC(statusCode: http.statusCode) {
-                throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/spawn")
-            }
-            let errorMessage = parseServerErrorMessage(from: data)
-            if let errorMessage {
-                throw MachinesAPIError.rpcCallFailed(errorMessage)
-            }
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        } catch let error as MachinesAPIError {
-            if case .endpointUnavailable = error {
-                // Fallback for older backends that do not yet expose REST machine commands.
-            } else {
-                throw error
-            }
-        }
-
-        let data = try await rpcDirectoryService.invokeCommand(
-            serverURL: normalizedRequest.serverURL,
-            token: normalizedRequest.token,
-            machineID: normalizedMachineID,
-            command: "spawn-provider-session",
-            params: MachineSessionSpawnRPCParametersBuilder().build(from: normalizedRequest)
-        )
-        return try MachineSessionSpawnRPCResponseParser.parse(data)
+        return try await rpcDirectoryService.spawnProviderSession(normalizedRequest)
     }
 
     public func fetchAgentCapabilities(
@@ -273,7 +225,7 @@ extension URLSessionMachinesService {
             token: token,
             machineID: normalizedMachineID,
             command: "list-models",
-            params: ["agent": agent.rawValue]
+            params: ["agent": .string(agent.rawValue)]
         )
         return try MachinesAPI.decodeAgentCapabilitiesResponse(data)
     }
@@ -336,45 +288,15 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineListDirectoryResult {
-        do {
-            let request = try MachinesAPI.makeListDirectoryRequest(
-                serverURL: serverURL,
-                token: token,
-                machineID: machineID,
-                path: path,
-                includeStats: false,
-                types: ["directory"],
-                sort: true,
-                maxEntries: 2_000
-            )
-            let (data, http) = try await httpClient.data(for: request)
-            guard (200..<300).contains(http.statusCode) else {
-                if shouldFallbackToRPC(statusCode: http.statusCode) {
-                    throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/commands/list-directory")
-                }
-                let errorMessage = parseServerErrorMessage(from: data)
-                if let errorMessage {
-                    throw MachinesAPIError.rpcCallFailed(errorMessage)
-                }
-                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-            }
-            return try MachinesAPI.decodeListDirectoryResponse(data)
-        } catch let error as MachinesAPIError {
-            if case .endpointUnavailable = error {
-                // Fallback for servers that do not yet expose list-directory.
-            } else {
-                throw error
-            }
-        }
-
         return try await rpcDirectoryService.listDirectory(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             path: path,
-            machineDataEncryptionKey: nil
+            machineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
     }
 
@@ -382,26 +304,16 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APISessionReadFileResult {
-        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedMachineID.isEmpty else {
-            throw MachinesAPIError.missingMachineID
-        }
-        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedPath.isEmpty else {
-            throw MachinesAPIError.missingPath
-        }
-
-        let responseData = try await rpcDirectoryService.invokeCommand(
+        try await rpcDirectoryService.readFile(
             serverURL: serverURL,
             token: token,
-            machineID: normalizedMachineID,
-            command: "readFile",
-            params: ["path": normalizedPath]
+            machineID: machineID,
+            path: path,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
-        let decoder = JSONDecoder()
-        return try decoder.decode(APISessionReadFileResult.self, from: responseData)
     }
 
     public func runBash(
@@ -410,40 +322,25 @@ extension URLSessionMachinesService {
         machineID: String,
         command: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         timeoutMilliseconds: Int
     ) async throws -> APISessionBashResult {
-        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedMachineID.isEmpty else {
-            throw MachinesAPIError.missingMachineID
-        }
-        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedCommand.isEmpty else {
-            throw MachinesAPIError.missingCommand
-        }
-        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedCWD.isEmpty else {
-            throw MachinesAPIError.missingPath
-        }
-
-        let responseData = try await rpcDirectoryService.invokeCommand(
+        try await rpcDirectoryService.runBash(
             serverURL: serverURL,
             token: token,
-            machineID: normalizedMachineID,
-            command: "bash",
-            params: [
-                "command": normalizedCommand,
-                "cwd": normalizedCWD,
-                "timeout": max(timeoutMilliseconds, 1_000),
-            ]
+            machineID: machineID,
+            command: command,
+            cwd: cwd,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            timeoutMilliseconds: timeoutMilliseconds
         )
-        let decoder = JSONDecoder()
-        return try decoder.decode(APISessionBashResult.self, from: responseData)
     }
 
     public func fetchCodexThreads(
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
@@ -458,6 +355,7 @@ extension URLSessionMachinesService {
                 serverURL: serverURL,
                 token: token,
                 machineID: machineID,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                 limit: boundedLimit,
                 cwd: cwd,
                 cursor: cursor
@@ -483,14 +381,16 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         threadID: String,
-        transcriptPath: String
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         try await rpcDirectoryService.fetchCodexThreadMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             threadID: threadID,
-            transcriptPath: transcriptPath
+            transcriptPath: transcriptPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
     }
 
@@ -501,6 +401,7 @@ extension URLSessionMachinesService {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -513,6 +414,7 @@ extension URLSessionMachinesService {
             threadID: threadID,
             cwd: cwd,
             transcriptPath: transcriptPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             model: model,
             reasoningEffort: reasoningEffort,
             permissionMode: permissionMode,
@@ -525,14 +427,16 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         sessionID: String,
-        cwd: String
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         try await rpcDirectoryService.fetchClaudeSessionMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             sessionID: sessionID,
-            cwd: cwd
+            cwd: cwd,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
     }
 
@@ -542,6 +446,7 @@ extension URLSessionMachinesService {
         machineID: String,
         sessionID: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -553,6 +458,7 @@ extension URLSessionMachinesService {
             machineID: machineID,
             sessionID: sessionID,
             cwd: cwd,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             model: model,
             reasoningEffort: reasoningEffort,
             permissionMode: permissionMode,
@@ -564,45 +470,17 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
     ) async throws -> APICodexThreadsPage {
-        let boundedLimit = min(max(limit, 1), 100)
-        do {
-            let request = try MachinesAPI.makeCodexThreadsRequest(
-                serverURL: serverURL,
-                token: token,
-                machineID: machineID,
-                limit: boundedLimit,
-                cwd: cwd,
-                cursor: cursor
-            )
-            let (data, http) = try await httpClient.data(for: request)
-            guard (200..<300).contains(http.statusCode) else {
-                if shouldFallbackToRPC(statusCode: http.statusCode) {
-                    throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/codex/threads")
-                }
-                let errorMessage = parseServerErrorMessage(from: data)
-                if let errorMessage {
-                    throw MachinesAPIError.rpcCallFailed(errorMessage)
-                }
-                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-            }
-            return try MachinesAPI.decodeCodexThreadsPageResponse(data)
-        } catch let error as MachinesAPIError {
-            if case .endpointUnavailable = error {
-                // Fallback for servers that do not yet expose codex thread listing.
-            } else {
-                throw error
-            }
-        }
-
         return try await rpcDirectoryService.fetchCodexThreadsPage(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            limit: boundedLimit,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            limit: min(max(limit, 1), 100),
             cwd: cwd,
             cursor: cursor
         )
@@ -612,6 +490,7 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
@@ -626,6 +505,7 @@ extension URLSessionMachinesService {
                 serverURL: serverURL,
                 token: token,
                 machineID: machineID,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                 limit: boundedLimit,
                 cwd: cwd,
                 cursor: cursor
@@ -650,45 +530,17 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
     ) async throws -> APIClaudeSessionsPage {
-        let boundedLimit = min(max(limit, 1), 100)
-        do {
-            let request = try MachinesAPI.makeClaudeSessionsRequest(
-                serverURL: serverURL,
-                token: token,
-                machineID: machineID,
-                limit: boundedLimit,
-                cwd: cwd,
-                cursor: cursor
-            )
-            let (data, http) = try await httpClient.data(for: request)
-            guard (200..<300).contains(http.statusCode) else {
-                if shouldFallbackToRPC(statusCode: http.statusCode) {
-                    throw MachinesAPIError.endpointUnavailable("/v1/machines/:id/claude/sessions")
-                }
-                let errorMessage = parseServerErrorMessage(from: data)
-                if let errorMessage {
-                    throw MachinesAPIError.rpcCallFailed(errorMessage)
-                }
-                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-            }
-            return try MachinesAPI.decodeClaudeSessionsPageResponse(data)
-        } catch let error as MachinesAPIError {
-            if case .endpointUnavailable = error {
-                // Fallback for servers that do not yet expose Claude session listing.
-            } else {
-                throw error
-            }
-        }
-
         return try await rpcDirectoryService.fetchClaudeSessionsPage(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            limit: boundedLimit,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            limit: min(max(limit, 1), 100),
             cwd: cwd,
             cursor: cursor
         )
@@ -698,6 +550,7 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APIGeminiSessionSummary] {
@@ -712,6 +565,7 @@ extension URLSessionMachinesService {
                 serverURL: serverURL,
                 token: token,
                 machineID: machineID,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                 limit: boundedLimit,
                 cwd: cwd,
                 cursor: cursor
@@ -736,41 +590,35 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
     ) async throws -> APIGeminiSessionsPage {
-        let boundedLimit = min(max(limit, 1), 100)
-        let request = try MachinesAPI.makeGeminiSessionsRequest(
+        return try await rpcDirectoryService.fetchGeminiSessionsPage(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            limit: boundedLimit,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            limit: min(max(limit, 1), 100),
             cwd: cwd,
             cursor: cursor
         )
-        let (data, http) = try await httpClient.data(for: request)
-        guard (200..<300).contains(http.statusCode) else {
-            let errorMessage = parseServerErrorMessage(from: data)
-            if let errorMessage {
-                throw MachinesAPIError.rpcCallFailed(errorMessage)
-            }
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
-        }
-        return try MachinesAPI.decodeGeminiSessionsPageResponse(data)
     }
 
     public func fetchGeminiSessionMessages(
         serverURL: URL,
         token: String,
         machineID: String,
-        sessionID: String
+        sessionID: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         try await rpcDirectoryService.fetchGeminiSessionMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            sessionID: sessionID
+            sessionID: sessionID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
     }
 
@@ -779,6 +627,7 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         sessionID: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         permissionMode: APISessionMessagePermissionMode?,
         text: String
@@ -788,6 +637,7 @@ extension URLSessionMachinesService {
             token: token,
             machineID: machineID,
             sessionID: sessionID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             model: model,
             permissionMode: permissionMode,
             text: text

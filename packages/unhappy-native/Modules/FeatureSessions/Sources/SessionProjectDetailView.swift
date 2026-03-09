@@ -163,6 +163,7 @@ public struct SessionProjectDetailView: View {
                         spawnedDirectSessionIdentity = DirectSessionIdentity(
                             machineID: resolvedMachineID,
                             machineDisplayName: group.machineDisplayName,
+                            wrappedMachineDataEncryptionKey: group.wrappedMachineDataEncryptionKey,
                             provider: fallbackProvider,
                             upstreamSessionID: sessionID,
                             title: "Session",
@@ -217,6 +218,7 @@ public struct SessionProjectDetailView: View {
                             let didRemove = await viewModel.removeProject(
                                 machineID: group.machineID,
                                 projectPath: group.projectPath,
+                                wrappedMachineDataEncryptionKey: group.wrappedMachineDataEncryptionKey,
                                 serverURLString: serverURLString,
                                 token: token
                             )

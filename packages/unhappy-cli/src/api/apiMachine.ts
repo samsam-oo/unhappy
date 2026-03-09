@@ -1406,30 +1406,9 @@ export class ApiMachineClient {
           return;
         }
         const supportedCommands = new Set([
-          'spawn-provider-session',
-          'open-project',
-          'close-project',
-          'list-projects',
           'list-models',
           'stop-daemon',
           'update-daemon',
-          'bash',
-          'readFile',
-          'writeFile',
-          'listDirectory',
-          'getDirectoryTree',
-          'ripgrep',
-          'codex-list-threads',
-          'codex-open-thread',
-          'codex-list-messages',
-          'codex-send-message',
-          'codex-set-thread-name',
-          'claude-list-sessions',
-          'claude-list-messages',
-          'claude-send-message',
-          'gemini-list-sessions',
-          'gemini-list-messages',
-          'gemini-send-message',
         ]);
         if (!supportedCommands.has(command)) {
           callback({ success: false, error: `Unsupported command: ${command}` });

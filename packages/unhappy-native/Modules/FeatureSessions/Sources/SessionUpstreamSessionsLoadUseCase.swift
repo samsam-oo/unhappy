@@ -58,6 +58,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             serverURL: serverURL,
                             token: normalizedToken,
                             machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             limit: 50,
                             cwd: projectPath
                         )
@@ -65,6 +66,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             serverURL: serverURL,
                             token: normalizedToken,
                             machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             limit: 50,
                             cwd: projectPath
                         )
@@ -72,6 +74,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             serverURL: serverURL,
                             token: normalizedToken,
                             machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             limit: 50,
                             cwd: projectPath
                         )
@@ -80,18 +83,21 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
                                 machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                                 summary: $0.upstreamSummary
                             )
                         } + sessions.map {
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
                                 machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                                 summary: $0.upstreamSummary
                             )
                         } + geminiRows.map {
                             SessionLinkedUpstreamSession(
                                 machineID: machine.id,
                                 machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                                 summary: $0.upstreamSummary
                             )
                         }

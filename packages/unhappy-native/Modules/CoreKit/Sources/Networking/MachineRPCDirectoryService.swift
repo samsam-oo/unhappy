@@ -1,14 +1,75 @@
 import Foundation
 import SocketIO
 
+public enum RPCParameterValue: Sendable, Equatable, ExpressibleByNilLiteral, ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral, ExpressibleByFloatLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
+    case string(String)
+    case bool(Bool)
+    case int(Int)
+    case double(Double)
+    case array([RPCParameterValue])
+    case object([String: RPCParameterValue])
+    case null
+
+    public init(nilLiteral: ()) {
+        self = .null
+    }
+
+    public init(stringLiteral value: String) {
+        self = .string(value)
+    }
+
+    public init(booleanLiteral value: Bool) {
+        self = .bool(value)
+    }
+
+    public init(integerLiteral value: Int) {
+        self = .int(value)
+    }
+
+    public init(floatLiteral value: Double) {
+        self = .double(value)
+    }
+
+    public init(arrayLiteral elements: RPCParameterValue...) {
+        self = .array(elements)
+    }
+
+    public init(dictionaryLiteral elements: (String, RPCParameterValue)...) {
+        self = .object(Dictionary(uniqueKeysWithValues: elements))
+    }
+
+    fileprivate var socketValue: Any {
+        switch self {
+        case .string(let value):
+            return value
+        case .bool(let value):
+            return value
+        case .int(let value):
+            return value
+        case .double(let value):
+            return value
+        case .array(let values):
+            return values.map(\.socketValue)
+        case .object(let values):
+            return values.mapValues(\.socketValue)
+        case .null:
+            return NSNull()
+        }
+    }
+}
+
 public protocol MachineRPCDirectoryListing: Sendable {
     func invokeCommand(
         serverURL: URL,
         token: String,
         machineID: String,
         command: String,
-        params: [String: Any]
+        params: [String: RPCParameterValue]
     ) async throws -> Data
+
+    func spawnProviderSession(
+        _ request: MachineSessionSpawnServiceRequest
+    ) async throws -> APISessionSpawnResult
 
     func listDirectory(
         serverURL: URL,
@@ -18,10 +79,29 @@ public protocol MachineRPCDirectoryListing: Sendable {
         machineDataEncryptionKey: String?
     ) async throws -> APIMachineListDirectoryResult
 
+    func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APISessionReadFileResult
+
+    func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult
+
     func fetchCodexThreadsPage(
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -31,17 +111,53 @@ public protocol MachineRPCDirectoryListing: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
     ) async throws -> APIClaudeSessionsPage
+
+    func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage
+
+    func fetchProjects(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        explicitOnly: Bool,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> [APIMachineProjectSummary]
+
+    func openProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult
+
+    func removeProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult
 
     func fetchCodexThreadMessages(
         serverURL: URL,
         token: String,
         machineID: String,
         threadID: String,
-        transcriptPath: String
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage]
 
     func sendCodexThreadMessage(
@@ -51,6 +167,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -62,7 +179,8 @@ public protocol MachineRPCDirectoryListing: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
-        cwd: String
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage]
 
     func sendClaudeSessionMessage(
@@ -71,6 +189,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
         machineID: String,
         sessionID: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -81,7 +200,8 @@ public protocol MachineRPCDirectoryListing: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
-        sessionID: String
+        sessionID: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage]
 
     func sendGeminiSessionMessage(
@@ -89,6 +209,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         permissionMode: APISessionMessagePermissionMode?,
         text: String
@@ -112,6 +233,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         let socket: SocketIOClient
     }
 
+    private enum SocketAckPayload: Sendable, Equatable {
+        case noAck
+        case json(Data)
+    }
+
     public init(
         connectTimeoutSeconds: Double = 8,
         ackTimeoutSeconds: Double = 30
@@ -125,7 +251,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         token: String,
         machineID: String,
         path: String,
-        machineDataEncryptionKey _: String?
+        machineDataEncryptionKey: String?
     ) async throws -> APIMachineListDirectoryResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -137,17 +263,18 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingPath
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: machineDataEncryptionKey,
             command: "listDirectory",
             params: [
-                "path": normalizedPath,
-                "includeStats": false,
-                "types": ["directory"],
-                "sort": true,
-                "maxEntries": 2_000,
+                "path": .string(normalizedPath),
+                "includeStats": .bool(false),
+                "types": .array([.string("directory")]),
+                "sort": .bool(true),
+                "maxEntries": .int(2_000),
             ]
         )
         let decoded = try MachinesAPI.decodeListDirectoryResponse(responseData)
@@ -161,10 +288,30 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         )
     }
 
+    public func spawnProviderSession(
+        _ request: MachineSessionSpawnServiceRequest
+    ) async throws -> APISessionSpawnResult {
+        let normalizedMachineID = request.machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: request.serverURL,
+            token: request.token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: request.wrappedMachineDataEncryptionKey,
+            command: "spawn-provider-session",
+            params: MachineSessionSpawnRPCParametersBuilder().build(from: request)
+        )
+        return try MachineSessionSpawnRPCResponseParser.parse(responseData)
+    }
+
     public func fetchCodexThreadsPage(
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -175,22 +322,23 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
 
         let boundedLimit = min(max(limit, 1), 100)
-        var params: [String: Any] = [
-            "limit": boundedLimit,
+        var params: [String: RPCParameterValue] = [
+            "limit": .int(boundedLimit),
         ]
         let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCWD, !normalizedCWD.isEmpty {
-            params["cwd"] = normalizedCWD
+            params["cwd"] = .string(normalizedCWD)
         }
         let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCursor, !normalizedCursor.isEmpty {
-            params["cursor"] = normalizedCursor
+            params["cursor"] = .string(normalizedCursor)
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "codex-list-threads",
             params: params
         )
@@ -208,6 +356,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -218,22 +367,23 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
 
         let boundedLimit = min(max(limit, 1), 100)
-        var params: [String: Any] = [
-            "limit": boundedLimit,
+        var params: [String: RPCParameterValue] = [
+            "limit": .int(boundedLimit),
         ]
         let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCWD, !normalizedCWD.isEmpty {
-            params["cwd"] = normalizedCWD
+            params["cwd"] = .string(normalizedCWD)
         }
         let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedCursor, !normalizedCursor.isEmpty {
-            params["cursor"] = normalizedCursor
+            params["cursor"] = .string(normalizedCursor)
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "claude-list-sessions",
             params: params
         )
@@ -247,12 +397,133 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         return try MachinesAPI.decodeClaudeSessionsPageResponse(responseData)
     }
 
+    public func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let boundedLimit = min(max(limit, 1), 100)
+        var params: [String: RPCParameterValue] = [
+            "limit": .int(boundedLimit),
+        ]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            params["cwd"] = .string(normalizedCWD)
+        }
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            params["cursor"] = .string(normalizedCursor)
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "gemini-list-sessions",
+            params: params
+        )
+        return try MachinesAPI.decodeGeminiSessionsPageResponse(responseData)
+    }
+
+    public func fetchProjects(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        explicitOnly: Bool,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> [APIMachineProjectSummary] {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "list-projects",
+            params: [
+                "explicitOnly": .bool(explicitOnly),
+            ]
+        )
+        return try MachinesAPI.decodeProjectsResponse(responseData)
+    }
+
+    public func openProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "open-project",
+            params: [
+                "path": .string(normalizedPath),
+            ]
+        )
+        return try JSONDecoder().decode(APIMachineCommandResult.self, from: responseData)
+    }
+
+    public func removeProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "close-project",
+            params: [
+                "path": .string(normalizedPath),
+            ]
+        )
+        return try JSONDecoder().decode(APIMachineCommandResult.self, from: responseData)
+    }
+
     public func invokeCommand(
         serverURL: URL,
         token: String,
         machineID: String,
         command: String,
-        params: [String: Any]
+        params: [String: RPCParameterValue]
     ) async throws -> Data {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -272,7 +543,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         let requestPayload: [String: Any] = [
             "machineId": normalizedMachineID,
             "command": normalizedCommand,
-            "params": params,
+            "params": params.mapValues(\.socketValue),
         ]
 
         let maxAttempts = retryableMessageLoadCommands.contains(normalizedCommand) ? 2 : 1
@@ -285,22 +556,19 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             )
 
             do {
-                let ackItems = try await emitWithAck(
+                let ackPayload = try await emitWithAck(
                     socket: socket,
                     event: "machine-public-command",
                     payload: requestPayload
                 )
 
-                if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
+                if ackPayload == .noAck {
                     teardownLiveConnection()
                     throw MachinesAPIError.rpcTimedOut
                 }
 
-                guard let responseObject = ackItems.first as? [String: Any] else {
-                    teardownLiveConnection()
-                    throw MachinesAPIError.invalidRPCPayload
-                }
-                guard JSONSerialization.isValidJSONObject(responseObject) else {
+                guard case .json(let responseData) = ackPayload,
+                      let responseObject = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] else {
                     teardownLiveConnection()
                     throw MachinesAPIError.invalidRPCPayload
                 }
@@ -337,12 +605,102 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         throw lastError ?? MachinesAPIError.rpcTimedOut
     }
 
+    private func invokeSensitiveCommand(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
+        command: String,
+        params: [String: RPCParameterValue]
+    ) async throws -> Data {
+        guard let dataKey = MachineDataPlaneEncryption.resolveMachineDataKey(
+            rawWrappedKey: wrappedMachineDataEncryptionKey
+        ) else {
+            throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
+        }
+
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedToken.isEmpty else {
+            throw MachinesAPIError.missingToken
+        }
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+
+        let socket = try await getOrCreateConnectedSocket(
+            serverURL: serverURL,
+            token: normalizedToken
+        )
+
+        let encryptedParams = try MachineDataPlaneEncryption.encryptJSONPayload(
+            params.mapValues(\.socketValue),
+            dataKey: dataKey
+        )
+
+        let ackPayload = try await emitWithAck(
+            socket: socket,
+            event: "rpc-call",
+            payload: [
+                "method": "\(normalizedMachineID):\(normalizedCommand)",
+                "params": encryptedParams,
+            ]
+        )
+
+        if ackPayload == .noAck {
+            teardownLiveConnection()
+            throw MachinesAPIError.rpcTimedOut
+        }
+
+        guard case .json(let ackData) = ackPayload,
+              let responseObject = try? JSONSerialization.jsonObject(with: ackData) as? [String: Any] else {
+            teardownLiveConnection()
+            throw MachinesAPIError.invalidRPCPayload
+        }
+
+        guard let ok = responseObject["ok"] as? Bool else {
+            teardownLiveConnection()
+            throw MachinesAPIError.invalidRPCPayload
+        }
+
+        if !ok {
+            let message = (responseObject["error"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (message?.isEmpty == false ? message : nil) ?? "Encrypted RPC call failed"
+            )
+        }
+
+        guard let encryptedResult = responseObject["result"] as? String else {
+            throw MachinesAPIError.invalidRPCPayload
+        }
+
+        let decryptedData = try MachineDataPlaneEncryption.decryptJSONPayload(
+            encryptedResult,
+            dataKey: dataKey
+        )
+
+        if let object = try? JSONSerialization.jsonObject(with: decryptedData) as? [String: Any],
+           let errorMessage = (object["error"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !errorMessage.isEmpty {
+            throw MachinesAPIError.rpcCallFailed(errorMessage)
+        }
+
+        return decryptedData
+    }
+
     public func fetchCodexThreadMessages(
         serverURL: URL,
         token: String,
         machineID: String,
         threadID: String,
-        transcriptPath: String
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -357,14 +715,15 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingPath
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "codex-list-messages",
             params: [
-                "threadId": normalizedThreadID,
-                "path": normalizedPath,
+                "threadId": .string(normalizedThreadID),
+                "path": .string(normalizedPath),
             ]
         )
         let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
@@ -378,6 +737,74 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
     }
 
+    public func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APISessionReadFileResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "readFile",
+            params: [
+                "path": .string(normalizedPath),
+            ]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionReadFileResult.self, from: responseData)
+    }
+
+    public func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCWD.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "bash",
+            params: [
+                "command": .string(normalizedCommand),
+                "cwd": .string(normalizedCWD),
+                "timeout": .int(max(timeoutMilliseconds, 1_000)),
+            ]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionBashResult.self, from: responseData)
+    }
+
     public func sendCodexThreadMessage(
         serverURL: URL,
         token: String,
@@ -385,6 +812,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -407,30 +835,31 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
-        var params: [String: Any] = [
-            "threadId": normalizedThreadID,
-            "cwd": normalizedCWD,
-            "text": normalizedText,
+        var params: [String: RPCParameterValue] = [
+            "threadId": .string(normalizedThreadID),
+            "cwd": .string(normalizedCWD),
+            "text": .string(normalizedText),
         ]
         let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedModel, !normalizedModel.isEmpty {
-            params["model"] = normalizedModel
+            params["model"] = .string(normalizedModel)
         }
         if let reasoningEffort {
-            params["effort"] = reasoningEffort.rawValue
+            params["effort"] = .string(reasoningEffort.rawValue)
         }
         if let permissionMode {
-            params["permissionMode"] = permissionMode.rawValue
+            params["permissionMode"] = .string(permissionMode.rawValue)
         }
         let normalizedPath = transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedPath, !normalizedPath.isEmpty {
-            params["path"] = normalizedPath
+            params["path"] = .string(normalizedPath)
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "codex-send-message",
             params: params
         )
@@ -443,7 +872,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         token: String,
         machineID: String,
         sessionID: String,
-        cwd: String
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -458,14 +888,15 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingPath
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "claude-list-messages",
             params: [
-                "sessionId": normalizedSessionID,
-                "cwd": normalizedCWD,
+                "sessionId": .string(normalizedSessionID),
+                "cwd": .string(normalizedCWD),
             ]
         )
         let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
@@ -485,6 +916,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         machineID: String,
         sessionID: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -507,26 +939,27 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
-        var params: [String: Any] = [
-            "sessionId": normalizedSessionID,
-            "cwd": normalizedCWD,
-            "text": normalizedText,
+        var params: [String: RPCParameterValue] = [
+            "sessionId": .string(normalizedSessionID),
+            "cwd": .string(normalizedCWD),
+            "text": .string(normalizedText),
         ]
         let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedModel, !normalizedModel.isEmpty {
-            params["model"] = normalizedModel
+            params["model"] = .string(normalizedModel)
         }
         if let reasoningEffort {
-            params["effort"] = reasoningEffort.rawValue
+            params["effort"] = .string(reasoningEffort.rawValue)
         }
         if let permissionMode {
-            params["permissionMode"] = permissionMode.rawValue
+            params["permissionMode"] = .string(permissionMode.rawValue)
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "claude-send-message",
             params: params
         )
@@ -538,7 +971,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         serverURL: URL,
         token: String,
         machineID: String,
-        sessionID: String
+        sessionID: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -549,13 +983,14 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.rpcCallFailed("Session ID is required")
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "gemini-list-messages",
             params: [
-                "sessionId": normalizedSessionID,
+                "sessionId": .string(normalizedSessionID),
             ]
         )
         let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
@@ -574,6 +1009,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         token: String,
         machineID: String,
         sessionID: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         permissionMode: APISessionMessagePermissionMode?,
         text: String
@@ -591,22 +1027,23 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingCommand
         }
 
-        var params: [String: Any] = [
-            "sessionId": normalizedSessionID,
-            "text": normalizedText,
+        var params: [String: RPCParameterValue] = [
+            "sessionId": .string(normalizedSessionID),
+            "text": .string(normalizedText),
         ]
         let normalizedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalizedModel, !normalizedModel.isEmpty {
-            params["model"] = normalizedModel
+            params["model"] = .string(normalizedModel)
         }
         if let permissionMode {
-            params["permissionMode"] = permissionMode.rawValue
+            params["permissionMode"] = .string(permissionMode.rawValue)
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "gemini-send-message",
             params: params
         )
@@ -724,12 +1161,23 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         socket: SocketIOClient,
         event: String,
         payload: [String: Any]
-    ) async throws -> [Any] {
+    ) async throws -> SocketAckPayload {
         try await withCheckedThrowingContinuation { continuation in
             socket.rawEmitView
                 .emitWithAck(event, with: [payload])
                 .timingOut(after: ackTimeoutSeconds) { items in
-                    continuation.resume(returning: items)
+                    if let first = items.first as? String,
+                       first == SocketAckStatus.noAck.rawValue {
+                        continuation.resume(returning: .noAck)
+                        return
+                    }
+                    guard let first = items.first,
+                          JSONSerialization.isValidJSONObject(first),
+                          let data = try? JSONSerialization.data(withJSONObject: first) else {
+                        continuation.resume(throwing: MachinesAPIError.invalidRPCPayload)
+                        return
+                    }
+                    continuation.resume(returning: .json(data))
                 }
         }
     }

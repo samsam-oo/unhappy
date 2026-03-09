@@ -5,6 +5,7 @@ import FeatureNewSession
 public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable {
     public let machineID: String
     public let machineDisplayName: String
+    public let wrappedMachineDataEncryptionKey: String?
     public let provider: APIUpstreamSessionProvider
     public let upstreamSessionID: String
     public let title: String
@@ -18,6 +19,7 @@ public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable
     public init(
         machineID: String,
         machineDisplayName: String,
+        wrappedMachineDataEncryptionKey: String? = nil,
         provider: APIUpstreamSessionProvider,
         upstreamSessionID: String,
         title: String,
@@ -30,6 +32,7 @@ public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable
     ) {
         self.machineID = machineID
         self.machineDisplayName = machineDisplayName
+        self.wrappedMachineDataEncryptionKey = wrappedMachineDataEncryptionKey
         self.provider = provider
         self.upstreamSessionID = upstreamSessionID
         self.title = title
@@ -231,7 +234,8 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
                 token: normalizedToken,
                 machineID: normalizedMachineID,
                 threadID: normalizedUpstreamSessionID,
-                transcriptPath: normalizedTranscriptPath
+                transcriptPath: normalizedTranscriptPath,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
             )
 
         case .claude:
@@ -240,7 +244,8 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
                 token: normalizedToken,
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
-                cwd: normalizedCWD
+                cwd: normalizedCWD,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
             )
 
         case .gemini:
@@ -248,7 +253,8 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
                 serverURL: serverURL,
                 token: normalizedToken,
                 machineID: normalizedMachineID,
-                sessionID: normalizedUpstreamSessionID
+                sessionID: normalizedUpstreamSessionID,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
             )
         }
     }
@@ -324,6 +330,7 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 threadID: normalizedUpstreamSessionID,
                 cwd: normalizedCWD,
                 transcriptPath: normalizedTranscriptPath?.isEmpty == true ? nil : normalizedTranscriptPath,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
                 model: model,
                 reasoningEffort: reasoningEffort,
                 permissionMode: permissionMode,
@@ -337,6 +344,7 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
                 cwd: normalizedCWD,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
                 model: model,
                 reasoningEffort: reasoningEffort,
                 permissionMode: permissionMode,
@@ -349,6 +357,7 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
                 token: normalizedToken,
                 machineID: normalizedMachineID,
                 sessionID: normalizedUpstreamSessionID,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
                 model: model,
                 permissionMode: permissionMode,
                 text: normalizedText
@@ -409,7 +418,8 @@ public actor DirectSessionFileLoadUseCase: DirectSessionFileLoadingAction {
                 serverURL: serverURL,
                 token: normalizedToken,
                 machineID: normalizedMachineID,
-                path: normalizedPath
+                path: normalizedPath,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
             )
 
             guard result.success else {
@@ -473,6 +483,7 @@ public actor DirectSessionReviewLoadUseCase: DirectSessionReviewLoadingAction {
             machineID: normalizedMachineID,
             command: reviewCommand,
             cwd: workingDirectory,
+            wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
             timeoutMilliseconds: Self.defaultTimeoutMilliseconds
         )
 
@@ -543,6 +554,7 @@ public actor DirectSessionWorktreeLoadUseCase: DirectSessionWorktreeLoadingActio
             machineID: normalizedMachineID,
             command: worktreeCommand,
             cwd: normalizedCWD,
+            wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
             timeoutMilliseconds: Self.defaultTimeoutMilliseconds
         )
 

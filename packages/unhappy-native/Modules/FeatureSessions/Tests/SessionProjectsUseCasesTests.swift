@@ -58,7 +58,8 @@ struct SessionProjectsUseCasesTests {
             token: "token",
             machineID: "machine-1",
             machineDisplayName: "Work Mac",
-            path: "/repo/app"
+            path: "/repo/app",
+            wrappedMachineDataEncryptionKey: nil
         )
 
         #expect(project.machineID == "machine-1")
@@ -89,7 +90,8 @@ private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
         serverURL: URL,
         token: String,
         machineID: String,
-        explicitOnly: Bool
+        explicitOnly: Bool,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
         requestedExplicitOnlyValues.append(explicitOnly)
         return projectsByMachineID[machineID] ?? []
@@ -101,7 +103,8 @@ private actor MockProjectOpener: MachineProjectOpening {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult {
         APIMachineCommandResult(
             success: true,

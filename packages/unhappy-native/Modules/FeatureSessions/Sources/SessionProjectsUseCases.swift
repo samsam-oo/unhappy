@@ -15,7 +15,8 @@ public protocol SessionProjectOpeningAction: Sendable {
         token: String,
         machineID: String,
         machineDisplayName: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject
 }
 
@@ -24,7 +25,8 @@ public protocol SessionProjectRemovingAction: Sendable {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject
 }
 
@@ -65,12 +67,14 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
                         serverURL: serverURL,
                         token: normalizedToken,
                         machineID: machine.id,
-                        explicitOnly: true
+                        explicitOnly: true,
+                        wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
                     )
                     return machineProjects.map {
                         SessionMachineProject(
                             machineID: machine.id,
                             machineDisplayName: machineDisplayName,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             summary: $0
                         )
                     }
@@ -112,7 +116,8 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
         token: String,
         machineID: String,
         machineDisplayName: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -128,7 +133,8 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
             serverURL: serverURL,
             token: normalizedToken,
             machineID: machineID,
-            path: path
+            path: path,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
         if result.success == false {
             throw MachinesAPIError.rpcCallFailed(result.error ?? result.message)
@@ -136,6 +142,7 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
         return SessionMachineProject(
             machineID: machineID,
             machineDisplayName: machineDisplayName,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             summary: APIMachineProjectSummary(
                 path: path,
                 latestUpdatedAt: Date().ISO8601Format(),
@@ -158,7 +165,8 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -178,7 +186,8 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
             serverURL: serverURL,
             token: normalizedToken,
             machineID: machineID,
-            path: normalizedPath
+            path: normalizedPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
         if result.success == false {
             throw MachinesAPIError.rpcCallFailed(result.error ?? result.message)
@@ -186,6 +195,7 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
         return SessionMachineProject(
             machineID: machineID,
             machineDisplayName: machineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             summary: APIMachineProjectSummary(
                 path: normalizedPath,
                 latestUpdatedAt: Date().ISO8601Format(),
@@ -199,21 +209,14 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
 
 private extension Date {
     static func parseISO8601(_ value: String) -> Date? {
-        ISO8601DateFormatter.withFractional.date(from: value)
-            ?? ISO8601DateFormatter.withInternet.date(from: value)
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: value) {
+            return date
+        }
+
+        let fallbackFormatter = ISO8601DateFormatter()
+        fallbackFormatter.formatOptions = [.withInternetDateTime]
+        return fallbackFormatter.date(from: value)
     }
-}
-
-private extension ISO8601DateFormatter {
-    static let withFractional: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    static let withInternet: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
 }

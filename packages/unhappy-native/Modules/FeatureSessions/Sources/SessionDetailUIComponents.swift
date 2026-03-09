@@ -121,17 +121,6 @@ struct DockChipModifier: ViewModifier {
 }
 
 struct CodexThreadRow: View {
-    private static let formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let fallbackFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
     let thread: APICodexThreadSummary
     let isResuming: Bool
 
@@ -175,7 +164,7 @@ struct CodexThreadRow: View {
     private var dateText: String? {
         let candidate = thread.updatedAt ?? thread.createdAt
         guard let candidate else { return nil }
-        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
+        guard let date = parseISO8601(candidate) else {
             return candidate
         }
         return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
@@ -183,17 +172,6 @@ struct CodexThreadRow: View {
 }
 
 struct ClaudeSessionRow: View {
-    private static let formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let fallbackFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
     let session: APIClaudeSessionSummary
     let isResuming: Bool
 
@@ -231,7 +209,7 @@ struct ClaudeSessionRow: View {
     private var dateText: String? {
         let candidate = session.updatedAt ?? session.createdAt
         guard let candidate else { return nil }
-        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
+        guard let date = parseISO8601(candidate) else {
             return candidate
         }
         return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
@@ -239,17 +217,6 @@ struct ClaudeSessionRow: View {
 }
 
 struct UpstreamSessionRow: View {
-    private static let formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let fallbackFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
-
     let summary: APIUpstreamSessionSummary
     let isLinking: Bool
 
@@ -294,9 +261,21 @@ struct UpstreamSessionRow: View {
     private var dateText: String? {
         let candidate = summary.updatedAt ?? summary.createdAt
         guard let candidate else { return nil }
-        guard let date = Self.formatter.date(from: candidate) ?? Self.fallbackFormatter.date(from: candidate) else {
+        guard let date = parseISO8601(candidate) else {
             return candidate
         }
         return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
+}
+
+private func parseISO8601(_ raw: String) -> Date? {
+    let fractionalFormatter = ISO8601DateFormatter()
+    fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = fractionalFormatter.date(from: raw) {
+        return date
+    }
+
+    let fallbackFormatter = ISO8601DateFormatter()
+    fallbackFormatter.formatOptions = [.withInternetDateTime]
+    return fallbackFormatter.date(from: raw)
 }

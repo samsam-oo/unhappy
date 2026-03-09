@@ -123,349 +123,7 @@ describe('ApiMachineClient public command handling', () => {
     mockSendGeminiSessionMessage.mockResolvedValue(undefined);
   });
 
-  it('allows close-project over public-command and removes the tracked path', async () => {
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => []),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-
-    expect(publicCommandHandler).toBeTypeOf('function');
-
-    const callback = vi.fn();
-    await publicCommandHandler(
-      {
-        command: 'close-project',
-        params: { path: '/repo/app' },
-      },
-      callback,
-    );
-
-    expect(callback).toHaveBeenCalledWith({
-      success: true,
-      message: 'Project removed',
-      path: '/repo/app',
-    });
-    expect(machine.daemonState?.openedProjects ?? []).toEqual([]);
-    expect(mockSocket.emitWithAck).toHaveBeenCalledWith(
-      'machine-update-state',
-      expect.objectContaining({
-        machineId: 'machine-1',
-        expectedVersion: 7,
-      }),
-    );
-  });
-
-  it('routes codex-list-messages over machine public-command', async () => {
-    mockListCodexThreadMessages.mockResolvedValue([
-      {
-        id: 'msg-1',
-        seq: 1,
-        localId: 'msg-1',
-        content: { type: 'text', payload: '{}' },
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    ]);
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => []),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-    const callback = vi.fn();
-
-    await publicCommandHandler(
-      {
-        command: 'codex-list-messages',
-        params: { threadId: 'thread-1', path: '/home/test/.codex/sessions/thread-1.jsonl' },
-      },
-      callback,
-    );
-
-    expect(mockListCodexThreadMessages).toHaveBeenCalledWith(
-      '/home/test/.codex/sessions/thread-1.jsonl',
-    );
-    expect(callback).toHaveBeenCalledWith({
-      success: true,
-      messages: [
-        {
-          id: 'msg-1',
-          seq: 1,
-          localId: 'msg-1',
-          content: { type: 'text', payload: '{}' },
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ],
-    });
-  });
-
-  it('routes codex-open-thread over machine public-command', async () => {
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => []),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-    const callback = vi.fn();
-
-    await publicCommandHandler(
-      {
-        command: 'codex-open-thread',
-        params: {
-          threadId: 'thread-1',
-          cwd: '/repo/app',
-          path: '/home/test/.codex/sessions/thread-1.jsonl',
-        },
-      },
-      callback,
-    );
-
-    expect(mockOpenCodexThread).toHaveBeenCalledWith({
-      threadId: 'thread-1',
-      cwd: '/repo/app',
-      transcriptPath: '/home/test/.codex/sessions/thread-1.jsonl',
-      model: null,
-    });
-    expect(callback).toHaveBeenCalledWith({
-      success: true,
-      threadId: 'thread-1',
-    });
-  });
-
-  it('routes codex-send-message over machine public-command', async () => {
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => []),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-    const callback = vi.fn();
-
-    await publicCommandHandler(
-      {
-        command: 'codex-send-message',
-        params: {
-          threadId: 'thread-1',
-          cwd: '/repo/app',
-          path: '/home/test/.codex/sessions/thread-1.jsonl',
-          text: 'hello',
-        },
-      },
-      callback,
-    );
-
-    expect(mockSendCodexThreadMessage).toHaveBeenCalledWith(
-      {
-        threadId: 'thread-1',
-        cwd: '/repo/app',
-        transcriptPath: '/home/test/.codex/sessions/thread-1.jsonl',
-        model: null,
-        effort: null,
-      },
-      'hello',
-    );
-    expect(callback).toHaveBeenCalledWith({ success: true });
-  });
-
-  it('routes claude-list-messages over machine public-command', async () => {
-    mockListClaudeSessionMessages.mockResolvedValue([
-      {
-        id: 'claude-msg-1',
-        seq: 1,
-        localId: null,
-        content: { type: 'text', payload: '{}' },
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    ]);
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => []),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-    const callback = vi.fn();
-
-    await publicCommandHandler(
-      {
-        command: 'claude-list-messages',
-        params: {
-          sessionId: 'claude-1',
-          cwd: '/repo/app',
-        },
-      },
-      callback,
-    );
-
-    expect(mockListClaudeSessionMessages).toHaveBeenCalledWith({
-      sessionId: 'claude-1',
-      cwd: '/repo/app',
-    });
-    expect(callback).toHaveBeenCalledWith({
-      success: true,
-      messages: [
-        {
-          id: 'claude-msg-1',
-          seq: 1,
-          localId: null,
-          content: { type: 'text', payload: '{}' },
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ],
-    });
-  });
-
-  it('routes claude-send-message over machine public-command', async () => {
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => []),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-    const callback = vi.fn();
-
-    await publicCommandHandler(
-      {
-        command: 'claude-send-message',
-        params: {
-          sessionId: 'claude-1',
-          cwd: '/repo/app',
-          text: 'hello claude',
-        },
-      },
-      callback,
-    );
-
-    expect(mockSendClaudeSessionMessage).toHaveBeenCalledWith(
-      {
-        sessionId: 'claude-1',
-        cwd: '/repo/app',
-        model: null,
-        effort: null,
-      },
-      'hello claude',
-    );
-    expect(callback).toHaveBeenCalledWith({ success: true });
-  });
-
-  it('lists active gemini sessions over machine public-command', async () => {
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => [
-        {
-          provider: 'gemini' as const,
-          providerSessionId: 'gemini-session-1',
-          providerSessionMetadata: {
-            path: '/repo/app',
-            host: 'test-host',
-            homeDir: '/home/test',
-            unhappyHomeDir: '/home/test/.unhappy',
-            unhappyLibDir: '/home/test/.unhappy/lib',
-            unhappyToolsDir: '/home/test/.unhappy/tools',
-            name: 'Gemini Pairing',
-            model: 'gemini-3-flash-preview',
-            agentControlPort: 40123,
-            lifecycleStateSince: 1_741_000_000_000,
-            summary: {
-              text: 'Gemini Pairing',
-              updatedAt: 1_741_000_005_000,
-            },
-          } as any,
-        },
-      ]),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-    const callback = vi.fn();
-
-    await publicCommandHandler(
-      {
-        command: 'gemini-list-sessions',
-        params: { cwd: '/repo/app' },
-      },
-      callback,
-    );
-
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: true,
-        sessions: [
-          expect.objectContaining({
-            id: 'gemini-session-1',
-            cwd: '/repo/app',
-            title: 'Gemini Pairing',
-            model: 'gemini-3-flash-preview',
-          }),
-        ],
-      }),
-    );
-  });
-
-  it('routes gemini-list-messages over machine public-command', async () => {
-    mockListGeminiSessionMessages.mockResolvedValue([
-      {
-        id: 'gemini-msg-1',
-        seq: 1,
-        localId: null,
-        content: { type: 'text', payload: '{}' },
-        createdAt: 1,
-        updatedAt: 1,
-      },
-    ]);
-
+  it('rejects sensitive commands over machine public-command', async () => {
     const client = new ApiMachineClient('token', machine);
     client.setRPCHandlers({
       spawnSession: vi.fn(),
@@ -495,80 +153,44 @@ describe('ApiMachineClient public command handling', () => {
     )?.[1];
     const callback = vi.fn();
 
-    await publicCommandHandler(
-      {
-        command: 'gemini-list-messages',
-        params: { sessionId: 'gemini-session-1' },
-      },
-      callback,
-    );
-
-    expect(mockListGeminiSessionMessages).toHaveBeenCalledWith({
-      sessionId: 'gemini-session-1',
-      controlPort: 40123,
-    });
-    expect(callback).toHaveBeenCalledWith({
-      success: true,
-      messages: [
+    for (const command of [
+      'close-project',
+      'codex-list-messages',
+      'codex-open-thread',
+      'codex-send-message',
+      'claude-list-messages',
+      'claude-send-message',
+      'gemini-list-sessions',
+      'gemini-list-messages',
+      'gemini-send-message',
+      'bash',
+      'readFile',
+      'listDirectory',
+      'ripgrep',
+      'spawn-provider-session',
+    ]) {
+      await publicCommandHandler(
         {
-          id: 'gemini-msg-1',
-          seq: 1,
-          localId: null,
-          content: { type: 'text', payload: '{}' },
-          createdAt: 1,
-          updatedAt: 1,
+          command,
+          params: {},
         },
-      ],
-    });
-  });
+        callback,
+      );
+    }
 
-  it('routes gemini-send-message over machine public-command', async () => {
-    const client = new ApiMachineClient('token', machine);
-    client.setRPCHandlers({
-      spawnSession: vi.fn(),
-      stopSession: vi.fn(() => true),
-      requestShutdown: vi.fn(),
-      requestUpdate: vi.fn(() => ({ message: 'ok' })),
-      listTrackedSessions: vi.fn(() => [
-        {
-          provider: 'gemini' as const,
-          providerSessionId: 'gemini-session-1',
-          providerSessionMetadata: {
-            path: '/repo/app',
-            agentControlPort: 40123,
-            host: 'test-host',
-            homeDir: '/home/test',
-            unhappyHomeDir: '/home/test/.unhappy',
-            unhappyLibDir: '/home/test/.unhappy/lib',
-            unhappyToolsDir: '/home/test/.unhappy/tools',
-          } as any,
-        },
-      ]),
-    });
-    client.connect();
-
-    const publicCommandHandler = mockSocket.on.mock.calls.find(
-      ([event]: [string, Function]) => event === 'public-command',
-    )?.[1];
-    const callback = vi.fn();
-
-    await publicCommandHandler(
-      {
-        command: 'gemini-send-message',
-        params: { sessionId: 'gemini-session-1', text: 'hello gemini' },
-      },
-      callback,
-    );
-
-    expect(mockSendGeminiSessionMessage).toHaveBeenCalledWith(
-      {
-        sessionId: 'gemini-session-1',
-        controlPort: 40123,
-      },
-      'hello gemini',
-      { model: null },
-    );
-    expect(callback).toHaveBeenCalledWith({ success: true });
+    expect(mockOpenCodexThread).not.toHaveBeenCalled();
+    expect(mockListCodexThreadMessages).not.toHaveBeenCalled();
+    expect(mockSendCodexThreadMessage).not.toHaveBeenCalled();
+    expect(mockListClaudeSessionMessages).not.toHaveBeenCalled();
+    expect(mockSendClaudeSessionMessage).not.toHaveBeenCalled();
+    expect(mockListGeminiSessionMessages).not.toHaveBeenCalled();
+    expect(mockSendGeminiSessionMessage).not.toHaveBeenCalled();
+    for (const call of callback.mock.calls) {
+      expect(call[0]).toEqual({
+        success: false,
+        error: expect.stringContaining('Unsupported command'),
+      });
+    }
   });
 });
 

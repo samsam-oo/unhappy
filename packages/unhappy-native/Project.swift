@@ -6,6 +6,8 @@ let projectBaseSettings: SettingsDictionary = {
     var base: SettingsDictionary = [
         "IPHONEOS_DEPLOYMENT_TARGET": "18.0",
         "DEVELOPMENT_TEAM": .string(defaultDevelopmentTeam),
+        "SWIFT_STRICT_CONCURRENCY": "complete",
+        "SWIFT_VERSION": "6.0",
     ]
 
     if let developmentTeam = ProcessInfo.processInfo.environment["UNHAPPY_DEVELOPMENT_TEAM"],

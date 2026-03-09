@@ -265,6 +265,9 @@ public final class NewSessionViewModel: ObservableObject {
             directoryEntries = []
             return
         }
+        let wrappedMachineDataEncryptionKey = machines
+            .first(where: { $0.id == machineID })?
+            .dataEncryptionKey
 
         let path = NewSessionDirectoryPathResolver.normalizedPath(directoryPath)
         directoryPath = path
@@ -277,7 +280,8 @@ public final class NewSessionViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
-                path: path
+                path: path,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
             )
             errorMessage = nil
         } catch let apiError as MachinesAPIError {
@@ -328,6 +332,9 @@ public final class NewSessionViewModel: ObservableObject {
             codexThreadsErrorMessage = NewSessionError.missingMachineID.errorDescription
             return
         }
+        let wrappedMachineDataEncryptionKey = machines
+            .first(where: { $0.id == machineID })?
+            .dataEncryptionKey
 
         isLoadingCodexThreads = true
         isLoadingMoreCodexThreads = false
@@ -347,6 +354,7 @@ public final class NewSessionViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                 limit: limit,
                 cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: nil
@@ -372,6 +380,9 @@ public final class NewSessionViewModel: ObservableObject {
             claudeSessionsErrorMessage = NewSessionError.missingMachineID.errorDescription
             return
         }
+        let wrappedMachineDataEncryptionKey = machines
+            .first(where: { $0.id == machineID })?
+            .dataEncryptionKey
 
         isLoadingClaudeSessions = true
         isLoadingMoreClaudeSessions = false
@@ -391,6 +402,7 @@ public final class NewSessionViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                 limit: limit,
                 cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: nil
@@ -415,6 +427,9 @@ public final class NewSessionViewModel: ObservableObject {
             codexThreadsErrorMessage = NewSessionError.missingMachineID.errorDescription
             return
         }
+        let wrappedMachineDataEncryptionKey = machines
+            .first(where: { $0.id == machineID })?
+            .dataEncryptionKey
         guard codexThreadsHasNext, let cursor = codexThreadsNextCursor else {
             codexThreadsHasNext = false
             codexThreadsNextCursor = nil
@@ -433,6 +448,7 @@ public final class NewSessionViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                 limit: limit,
                 cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: cursor
@@ -454,6 +470,9 @@ public final class NewSessionViewModel: ObservableObject {
             claudeSessionsErrorMessage = NewSessionError.missingMachineID.errorDescription
             return
         }
+        let wrappedMachineDataEncryptionKey = machines
+            .first(where: { $0.id == machineID })?
+            .dataEncryptionKey
         guard claudeSessionsHasNext, let cursor = claudeSessionsNextCursor else {
             claudeSessionsHasNext = false
             claudeSessionsNextCursor = nil
@@ -472,6 +491,7 @@ public final class NewSessionViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                 limit: limit,
                 cwd: NewSessionDirectoryPathResolver.normalizedPath(directoryPath),
                 cursor: cursor
@@ -701,6 +721,9 @@ public final class NewSessionViewModel: ObservableObject {
             errorMessage = NewSessionError.missingMachineID.errorDescription
             return false
         }
+        let wrappedMachineDataEncryptionKey = machines
+            .first(where: { $0.id == machineID })?
+            .dataEncryptionKey
 
         isSpawning = true
         errorMessage = nil
@@ -719,6 +742,7 @@ public final class NewSessionViewModel: ObservableObject {
                     serverURLString: serverURLString,
                     token: token,
                     machineID: machineID,
+                    wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                     directory: directory,
                     agent: selectedAgent,
                     approvedNewDirectoryCreation: approvedNewDirectoryCreation,

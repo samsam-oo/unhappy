@@ -10,7 +10,8 @@ public protocol NewSessionDirectoryListingAction: Sendable {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineDirectoryEntry]
 }
 
@@ -22,6 +23,7 @@ public struct NewSessionSpawnRequest: Sendable, Equatable {
     public let serverURLString: String
     public let token: String
     public let machineID: String
+    public let wrappedMachineDataEncryptionKey: String?
     public let directory: String
     public let agent: APISessionSpawnAgent
     public let approvedNewDirectoryCreation: Bool
@@ -36,6 +38,7 @@ public struct NewSessionSpawnRequest: Sendable, Equatable {
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String? = nil,
         directory: String,
         agent: APISessionSpawnAgent,
         approvedNewDirectoryCreation: Bool,
@@ -49,6 +52,7 @@ public struct NewSessionSpawnRequest: Sendable, Equatable {
         self.serverURLString = serverURLString
         self.token = token
         self.machineID = machineID
+        self.wrappedMachineDataEncryptionKey = wrappedMachineDataEncryptionKey
         self.directory = directory
         self.agent = agent
         self.approvedNewDirectoryCreation = approvedNewDirectoryCreation
@@ -75,6 +79,7 @@ public protocol NewSessionCodexThreadsLoadingAction: Sendable {
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -86,6 +91,7 @@ public protocol NewSessionClaudeSessionsLoadingAction: Sendable {
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -184,7 +190,8 @@ public actor NewSessionDirectoryListUseCase: NewSessionDirectoryListingAction {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineDirectoryEntry] {
         let normalizedInputs = try normalizeInputs(
             serverURLString: serverURLString,
@@ -196,7 +203,8 @@ public actor NewSessionDirectoryListUseCase: NewSessionDirectoryListingAction {
             serverURL: normalizedInputs.serverURL,
             token: normalizedInputs.token,
             machineID: normalizedInputs.machineID,
-            path: normalizedInputs.directory
+            path: normalizedInputs.directory,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
         if !result.success {
             let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -230,11 +238,12 @@ public actor NewSessionSpawnUseCase: NewSessionSpawningAction {
         )
 
         let response = try await service.spawnSession(
-            MachineSessionSpawnServiceRequest(
-                serverURL: normalizedInputs.serverURL,
-                token: normalizedInputs.token,
-                machineID: normalizedInputs.machineID,
-                directory: normalizedInputs.directory,
+                MachineSessionSpawnServiceRequest(
+                    serverURL: normalizedInputs.serverURL,
+                    token: normalizedInputs.token,
+                    machineID: normalizedInputs.machineID,
+                    wrappedMachineDataEncryptionKey: request.wrappedMachineDataEncryptionKey,
+                    directory: normalizedInputs.directory,
                 agent: request.agent,
                 codexResumeThreadID: normalizedOptional(request.codexResumeThreadID),
                 claudeResumeSessionID: normalizedOptional(request.claudeResumeSessionID),
@@ -297,6 +306,7 @@ public actor NewSessionCodexThreadsLoadUseCase: NewSessionCodexThreadsLoadingAct
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -312,6 +322,7 @@ public actor NewSessionCodexThreadsLoadUseCase: NewSessionCodexThreadsLoadingAct
             serverURL: normalizedInputs.serverURL,
             token: normalizedInputs.token,
             machineID: normalizedInputs.machineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             limit: limit,
             cwd: normalizedOptional(cwd),
             cursor: normalizedOptional(cursor)
@@ -330,6 +341,7 @@ public actor NewSessionClaudeSessionsLoadUseCase: NewSessionClaudeSessionsLoadin
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -345,6 +357,7 @@ public actor NewSessionClaudeSessionsLoadUseCase: NewSessionClaudeSessionsLoadin
             serverURL: normalizedInputs.serverURL,
             token: normalizedInputs.token,
             machineID: normalizedInputs.machineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             limit: limit,
             cwd: normalizedOptional(cwd),
             cursor: normalizedOptional(cursor)

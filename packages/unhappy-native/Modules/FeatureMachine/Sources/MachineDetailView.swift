@@ -228,6 +228,7 @@ public struct MachineDetailView: View {
     private func spawnSession(directory: String, approvedNewDirectoryCreation: Bool) async {
         await viewModel.spawnSession(
             machineID: machine.id,
+            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
             directory: directory,
             serverURLString: serverURLString,
             token: token,

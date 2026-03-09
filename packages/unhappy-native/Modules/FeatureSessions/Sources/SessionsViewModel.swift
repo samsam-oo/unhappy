@@ -336,6 +336,7 @@ public final class SessionsViewModel: ObservableObject {
         machineID: String,
         machineDisplayName: String,
         projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
         serverURLString: String,
         token: String
     ) async {
@@ -358,7 +359,8 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 machineID: machineID,
                 machineDisplayName: machineDisplayName,
-                path: projectPath
+                path: projectPath,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
             )
             if !projects.contains(where: { $0.id == openedProject.id }) {
                 projects.insert(openedProject, at: 0)
@@ -377,6 +379,7 @@ public final class SessionsViewModel: ObservableObject {
     public func removeProject(
         machineID: String,
         projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
         serverURLString: String,
         token: String
     ) async -> Bool {
@@ -398,7 +401,8 @@ public final class SessionsViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
-                path: projectPath
+                path: projectPath,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
             )
             if projects.contains(where: { $0.id == projectID }) {
                 projects.removeAll { $0.id == projectID }

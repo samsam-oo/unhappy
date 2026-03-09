@@ -272,7 +272,8 @@ struct MockProjectRemover: SessionProjectRemovingAction {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject {
         switch result {
         case .success(let project):
