@@ -256,12 +256,12 @@ public struct DirectSessionDetailView: View {
         if let model = viewModel.identity.model, !model.isEmpty {
             return model
         }
-        return "Default"
+        return "Model"
     }
 
     private var selectedReasoningLabel: String {
         if viewModel.selectedReasoningEffortOverride == .auto {
-            return viewModel.identity.effort?.displayName ?? "Auto"
+            return viewModel.identity.effort?.displayName ?? "Reasoning"
         }
         return viewModel.selectedReasoningEffortOverride.displayName
     }
@@ -273,7 +273,7 @@ public struct DirectSessionDetailView: View {
         if let currentMode = viewModel.identity.permissionMode {
             return permissionModeLabel(for: currentMode)
         }
-        return "Default"
+        return "Mode"
     }
 
     private var availablePermissionModes: [APISessionMessagePermissionMode] {
@@ -527,11 +527,6 @@ public struct DirectSessionDetailView: View {
 
     private var modelMenuButton: some View {
         Menu {
-            Button("Use session model") {
-                viewModel.selectedModelOverride = ""
-                isUsingCustomModelOverride = false
-                customModelDraft = ""
-            }
             ForEach(viewModel.availableModelOptions) { option in
                 Button(option.menuLabel) {
                     viewModel.selectedModelOverride = option.id
@@ -555,10 +550,10 @@ public struct DirectSessionDetailView: View {
 
     private var reasoningMenuButton: some View {
         Menu {
-            Button("Use session default") {
-                viewModel.selectedReasoningEffortOverride = .auto
-            }
-            ForEach(viewModel.availableReasoningEfforts, id: \.rawValue) { effort in
+            ForEach(
+                viewModel.availableReasoningEfforts.filter { $0 != .auto },
+                id: \.rawValue
+            ) { effort in
                 Button(effort.displayName) {
                     viewModel.selectedReasoningEffortOverride = effort
                 }
