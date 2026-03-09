@@ -143,6 +143,10 @@ async function buildRustDaemonEnvironment(
       credentials.encryption.machineKey,
       'base64url',
     ),
+    UNHAPPY_ACCOUNT_PUBLIC_KEY: encodeBase64(
+      credentials.encryption.publicKey,
+      'base64url',
+    ),
     UNHAPPY_CLI_VERSION: configuration.currentCliVersion,
     UNHAPPY_HOME_DIR: configuration.unhappyHomeDir,
     UNHAPPY_CLI_ROOT: projectPath(),

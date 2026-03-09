@@ -711,6 +711,7 @@ mod tests {
             token: "token".to_string(),
             machine_id: "machine-id".to_string(),
             machine_data_key_base64url: "key".to_string(),
+            account_public_key_base64url: "public-key".to_string(),
             current_cli_version: "0.14.15".to_string(),
             unhappy_home_dir: home_dir.to_path_buf(),
             provider_commands: ProviderCommandConfig::from_env().unwrap(),
