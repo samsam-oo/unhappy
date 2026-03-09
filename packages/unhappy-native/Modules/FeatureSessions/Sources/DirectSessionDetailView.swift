@@ -68,6 +68,12 @@ public struct DirectSessionDetailView: View {
                         .padding(.horizontal, 12)
                         .padding(.top, 12)
 
+                    if viewModel.hasOlderMessages || viewModel.isLoadingOlderMessages {
+                        topPagingRow(proxy: proxy)
+                            .padding(.horizontal, transcriptHorizontalPadding)
+                            .padding(.top, 8)
+                    }
+
                     // Direct chat uses ScrollView, so transcript spacing has to be explicit here.
                     MessagesSectionRows(
                         isLoading: viewModel.isLoading,
@@ -252,6 +258,33 @@ public struct DirectSessionDetailView: View {
 
     private var transcriptPresentations: [SessionTranscriptMessagePresentation] {
         cachedTranscriptPresentations
+    }
+
+    @ViewBuilder
+    private func topPagingRow(proxy: ScrollViewProxy) -> some View {
+        HStack {
+            Spacer()
+            if viewModel.isLoadingOlderMessages {
+                ProgressView("Loading earlier messages…")
+                    .font(.footnote)
+            } else {
+                Color.clear
+                    .frame(height: 1)
+                    .onAppear {
+                        guard !shouldFollowTranscript else { return }
+                        let anchorMessageID = transcriptPresentations.first?.messageID
+                        Task {
+                            await viewModel.loadOlderMessages(
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                            guard let anchorMessageID else { return }
+                            scrollToMessage(anchorMessageID, using: proxy)
+                        }
+                    }
+            }
+            Spacer()
+        }
     }
 
     private var summaryCard: some View {
@@ -702,6 +735,14 @@ public struct DirectSessionDetailView: View {
             withTransaction(transaction) {
                 action()
             }
+        }
+    }
+
+    private func scrollToMessage(_ messageID: String, using proxy: ScrollViewProxy) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            proxy.scrollTo(messageID, anchor: .top)
         }
     }
 }

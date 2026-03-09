@@ -172,6 +172,31 @@ public struct APISessionMessage: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
+public struct APISessionMessagesPage: Decodable, Equatable, Sendable {
+    public let messages: [APISessionMessage]
+    public let nextCursor: String?
+    public let hasNext: Bool
+
+    public init(messages: [APISessionMessage], nextCursor: String?, hasNext: Bool) {
+        self.messages = messages
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case messages
+        case nextCursor
+        case hasNext
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        messages = (try? container.decode([APISessionMessage].self, forKey: .messages)) ?? []
+        nextCursor = try? container.decodeIfPresent(String.self, forKey: .nextCursor)
+        hasNext = (try? container.decode(Bool.self, forKey: .hasNext)) ?? (nextCursor != nil)
+    }
+}
+
 public struct APIEncryptedMessageContent: Decodable, Equatable, Sendable {
     public let type: String
     public let payload: String

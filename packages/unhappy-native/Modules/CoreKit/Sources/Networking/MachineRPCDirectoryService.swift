@@ -158,8 +158,10 @@ public protocol MachineRPCDirectoryListing: Sendable {
         machineID: String,
         threadID: String,
         transcriptPath: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage]
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage
 
     func sendCodexThreadMessage(
         serverURL: URL,
@@ -181,8 +183,10 @@ public protocol MachineRPCDirectoryListing: Sendable {
         machineID: String,
         sessionID: String,
         cwd: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage]
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage
 
     func sendClaudeSessionMessage(
         serverURL: URL,
@@ -202,8 +206,10 @@ public protocol MachineRPCDirectoryListing: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage]
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage
 
     func sendGeminiSessionMessage(
         serverURL: URL,
@@ -701,8 +707,10 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         machineID: String,
         threadID: String,
         transcriptPath: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
             throw MachinesAPIError.missingMachineID
@@ -725,17 +733,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             params: [
                 "threadId": .string(normalizedThreadID),
                 "path": .string(normalizedPath),
+                "limit": .int(limit),
+                "cursor": cursor.map(RPCParameterValue.string) ?? .null,
             ]
         )
-        let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
-        if raw?["success"] as? Bool == false {
-            let normalizedError = (raw?["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw MachinesAPIError.rpcCallFailed(
-                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "RPC call failed"
-            )
-        }
-        let decoder = JSONDecoder()
-        return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
+        return try decodeSessionMessagesPage(responseData)
     }
 
     public func readFile(
@@ -874,8 +876,10 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         machineID: String,
         sessionID: String,
         cwd: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
             throw MachinesAPIError.missingMachineID
@@ -898,17 +902,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             params: [
                 "sessionId": .string(normalizedSessionID),
                 "cwd": .string(normalizedCWD),
+                "limit": .int(limit),
+                "cursor": cursor.map(RPCParameterValue.string) ?? .null,
             ]
         )
-        let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
-        if raw?["success"] as? Bool == false {
-            let normalizedError = (raw?["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw MachinesAPIError.rpcCallFailed(
-                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "RPC call failed"
-            )
-        }
-        let decoder = JSONDecoder()
-        return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
+        return try decodeSessionMessagesPage(responseData)
     }
 
     public func sendClaudeSessionMessage(
@@ -973,8 +971,10 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         token: String,
         machineID: String,
         sessionID: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
             throw MachinesAPIError.missingMachineID
@@ -992,17 +992,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             command: "gemini-list-messages",
             params: [
                 "sessionId": .string(normalizedSessionID),
+                "limit": .int(limit),
+                "cursor": cursor.map(RPCParameterValue.string) ?? .null,
             ]
         )
-        let raw = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
-        if raw?["success"] as? Bool == false {
-            let normalizedError = (raw?["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw MachinesAPIError.rpcCallFailed(
-                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "RPC call failed"
-            )
-        }
-        let decoder = JSONDecoder()
-        return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
+        return try decodeSessionMessagesPage(responseData)
     }
 
     public func sendGeminiSessionMessage(
@@ -1194,9 +1188,45 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             return false
         }
     }
+
+    private func decodeSessionMessagesPage(_ data: Data) throws -> APISessionMessagesPage {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(SessionMessagesPageEnvelope.self, from: data)
+        guard response.success else {
+            let normalizedError = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil) ?? "RPC call failed"
+            )
+        }
+        return APISessionMessagesPage(
+            messages: response.messages,
+            nextCursor: response.nextCursor,
+            hasNext: response.hasNext
+        )
+    }
 }
 
-private struct CodexThreadMessagesEnvelope: Decodable {
+private struct SessionMessagesPageEnvelope: Decodable {
     let success: Bool
     let messages: [APISessionMessage]
+    let nextCursor: String?
+    let hasNext: Bool
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case success
+        case messages
+        case nextCursor
+        case hasNext
+        case error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = (try? container.decode(Bool.self, forKey: .success)) ?? false
+        messages = (try? container.decode([APISessionMessage].self, forKey: .messages)) ?? []
+        nextCursor = try? container.decodeIfPresent(String.self, forKey: .nextCursor)
+        hasNext = (try? container.decode(Bool.self, forKey: .hasNext)) ?? (nextCursor != nil)
+        error = try? container.decodeIfPresent(String.self, forKey: .error)
+    }
 }

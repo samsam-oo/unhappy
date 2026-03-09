@@ -12,6 +12,13 @@ import { CodexAppServerClient } from './codexAppServerClient';
 import type { CodexSessionConfig } from './types';
 
 const MAX_DIRECT_MESSAGES = 1200;
+const MAX_DIRECT_MESSAGES_PAYLOAD_BYTES = 700_000;
+
+export type DirectMessagesPage<TMessage> = {
+  messages: TMessage[];
+  nextCursor?: string;
+  hasNext: boolean;
+};
 
 type ResumeBackfillMessage = {
   localId: string;
@@ -340,10 +347,11 @@ function makeResumeBackfillLocalID(
 
 export async function listCodexThreadMessages(
   transcriptPath: string,
-): Promise<CodexDirectSessionMessage[]> {
+  options?: { limit?: number; cursor?: string | null },
+): Promise<DirectMessagesPage<CodexDirectSessionMessage>> {
   const messages: CodexDirectSessionMessage[] = [];
   if (!transcriptPath || !fs.existsSync(transcriptPath)) {
-    return messages;
+    return { messages, nextCursor: undefined, hasNext: false };
   }
 
   const reader = createInterface({
@@ -415,7 +423,47 @@ export async function listCodexThreadMessages(
     reader.close();
   }
 
-  return messages;
+  return paginateMessages(messages, options);
+}
+
+function paginateMessages<T extends { content: { payload: string } }>(
+  messages: T[],
+  options?: { limit?: number; cursor?: string | null },
+): DirectMessagesPage<T> {
+  const total = messages.length;
+  const requestedLimit =
+    typeof options?.limit === 'number' && Number.isFinite(options.limit)
+      ? Math.max(1, Math.floor(options.limit))
+      : 120;
+  const cursorValue =
+    typeof options?.cursor === 'string' && options.cursor.trim().length > 0
+      ? Number.parseInt(options.cursor, 10)
+      : Number.NaN;
+  const end = Number.isFinite(cursorValue)
+    ? Math.max(0, Math.min(total, cursorValue))
+    : total;
+  const boundedStart = Math.max(0, end - requestedLimit);
+  let totalBytes = 0;
+  const kept: T[] = [];
+  let start = end;
+
+  for (let index = end - 1; index >= boundedStart; index -= 1) {
+    const candidate = messages[index];
+    const candidateBytes = Buffer.byteLength(candidate.content.payload, 'utf8');
+    if (kept.length > 0 && totalBytes + candidateBytes > MAX_DIRECT_MESSAGES_PAYLOAD_BYTES) {
+      break;
+    }
+    kept.push(candidate);
+    totalBytes += candidateBytes;
+    start = index;
+  }
+
+  const pageMessages = kept.reverse();
+  return {
+    messages: pageMessages,
+    nextCursor: start > 0 ? String(start) : undefined,
+    hasNext: start > 0,
+  };
 }
 
 export function resolveCodexHomeFromTranscriptPath(

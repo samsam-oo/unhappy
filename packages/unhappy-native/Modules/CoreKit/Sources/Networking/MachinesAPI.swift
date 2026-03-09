@@ -842,8 +842,10 @@ public protocol MachineCodexThreadMessagesFetching: Sendable {
         machineID: String,
         threadID: String,
         transcriptPath: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage]
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage
 }
 
 public protocol MachineCodexThreadMessaging: Sendable {
@@ -890,8 +892,10 @@ public protocol MachineClaudeSessionMessagesFetching: Sendable {
         machineID: String,
         sessionID: String,
         cwd: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage]
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage
 }
 
 public protocol MachineClaudeSessionMessaging: Sendable {
@@ -936,8 +940,10 @@ public protocol MachineGeminiSessionMessagesFetching: Sendable {
         token: String,
         machineID: String,
         sessionID: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage]
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage
 }
 
 public protocol MachineGeminiSessionMessaging: Sendable {

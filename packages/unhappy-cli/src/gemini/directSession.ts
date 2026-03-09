@@ -5,6 +5,7 @@ import { AddressInfo } from 'node:net';
 import type { ACPMessageData } from '@/api/apiSession';
 
 const MAX_DIRECT_MESSAGES = 1200;
+const MAX_DIRECT_MESSAGES_PAYLOAD_BYTES = 700_000;
 
 export type GeminiDirectSessionDescriptor = {
   sessionId: string;
@@ -170,9 +171,25 @@ export async function startGeminiDirectSessionControlServer(
       }
 
       if (request.url === '/messages/list') {
+        const body = await readJSONBody(request);
+        const payload =
+          body && typeof body === 'object'
+            ? body as { limit?: unknown; cursor?: unknown }
+            : {};
+        const limit =
+          typeof payload.limit === 'number' && Number.isFinite(payload.limit)
+            ? Math.max(1, Math.floor(payload.limit))
+            : 120;
+        const cursor =
+          typeof payload.cursor === 'string' && payload.cursor.trim().length > 0
+            ? payload.cursor.trim()
+            : null;
+        const page = paginateMessages(options.listMessages(), { limit, cursor });
         sendJSON(response, 200, {
           success: true,
-          messages: options.listMessages(),
+          messages: page.messages,
+          nextCursor: page.nextCursor,
+          hasNext: page.hasNext,
         });
         return;
       }
@@ -249,12 +266,61 @@ async function callGeminiDirectControl<TResponse>(
 
 export async function listGeminiSessionMessages(
   descriptor: GeminiDirectSessionDescriptor,
-): Promise<GeminiDirectSessionMessage[]> {
+  options?: { limit?: number; cursor?: string | null },
+): Promise<import('../codex/directSession').DirectMessagesPage<GeminiDirectSessionMessage>> {
   const result = await callGeminiDirectControl<{
     success: true;
     messages: GeminiDirectSessionMessage[];
-  }>(descriptor.controlPort, '/messages/list');
-  return result.messages ?? [];
+    nextCursor?: string;
+    hasNext?: boolean;
+  }>(descriptor.controlPort, '/messages/list', {
+    limit: options?.limit ?? 120,
+    cursor: options?.cursor ?? null,
+  });
+  return {
+    messages: result.messages ?? [],
+    nextCursor: result.nextCursor,
+    hasNext: result.hasNext === true,
+  };
+}
+
+function paginateMessages<T extends { content: { payload: string } }>(
+  messages: T[],
+  options?: { limit?: number; cursor?: string | null },
+) {
+  const total = messages.length;
+  const requestedLimit =
+    typeof options?.limit === 'number' && Number.isFinite(options.limit)
+      ? Math.max(1, Math.floor(options.limit))
+      : 120;
+  const cursorValue =
+    typeof options?.cursor === 'string' && options.cursor.trim().length > 0
+      ? Number.parseInt(options.cursor, 10)
+      : Number.NaN;
+  const end = Number.isFinite(cursorValue)
+    ? Math.max(0, Math.min(total, cursorValue))
+    : total;
+  const boundedStart = Math.max(0, end - requestedLimit);
+  let totalBytes = 0;
+  const kept: T[] = [];
+  let start = end;
+
+  for (let index = end - 1; index >= boundedStart; index -= 1) {
+    const candidate = messages[index];
+    const candidateBytes = Buffer.byteLength(candidate.content.payload, 'utf8');
+    if (kept.length > 0 && totalBytes + candidateBytes > MAX_DIRECT_MESSAGES_PAYLOAD_BYTES) {
+      break;
+    }
+    kept.push(candidate);
+    totalBytes += candidateBytes;
+    start = index;
+  }
+
+  return {
+    messages: kept.reverse(),
+    nextCursor: start > 0 ? String(start) : undefined,
+    hasNext: start > 0,
+  };
 }
 
 export async function sendGeminiSessionMessage(
