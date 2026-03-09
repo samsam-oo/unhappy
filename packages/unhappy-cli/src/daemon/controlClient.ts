@@ -114,6 +114,16 @@ export async function spawnDaemonSession(
   options?: {
     claudeResumeSessionId?: string;
     agent: 'claude' | 'codex' | 'gemini';
+    providerRuntime?: {
+      codexHomeDir?: string;
+      codexTranscriptPath?: string;
+      claudeHookPort?: number;
+      geminiControlPort?: number;
+    };
+    token?: string;
+    environmentVariables?: Record<string, string>;
+    model?: string;
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh';
   },
 ): Promise<any> {
   if (!options?.agent) {
@@ -123,6 +133,11 @@ export async function spawnDaemonSession(
     directory,
     codexResumeThreadId,
     claudeResumeSessionId: options?.claudeResumeSessionId,
+    providerRuntime: options?.providerRuntime,
+    token: options?.token,
+    environmentVariables: options?.environmentVariables,
+    model: options?.model,
+    reasoningEffort: options?.reasoningEffort,
     agent: options.agent,
   });
   return result;
