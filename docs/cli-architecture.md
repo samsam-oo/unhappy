@@ -169,6 +169,13 @@ graph LR
 - Updates machine metadata/daemon state with optimistic concurrency.
 - Receives machine updates and merges them locally.
 
+Current state:
+- control plane and encrypted machine RPC both still ride over Socket.IO
+
+Target state:
+- control plane remains on HTTP + small Socket.IO events
+- sensitive machine data plane moves to a standard WebSocket protocol documented in [machine-data-plane-protocol-v1.md](/Users/skyline23/Downloads/unhappy/docs/machine-data-plane-protocol-v1.md)
+
 ### Encryption
 
 ```mermaid

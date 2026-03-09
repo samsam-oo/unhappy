@@ -226,6 +226,7 @@ public protocol MachineRPCDirectoryListing: Sendable {
 public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
     private let connectTimeoutSeconds: Double
     private let ackTimeoutSeconds: Double
+    private let dataPlaneClient: MachineDataPlaneWebSocketClient
     private var liveConnection: LiveConnection?
     private let retryableMessageLoadCommands: Set<String> = [
         "codex-list-messages",
@@ -247,10 +248,12 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
 
     public init(
         connectTimeoutSeconds: Double = 8,
-        ackTimeoutSeconds: Double = 30
+        ackTimeoutSeconds: Double = 30,
+        dataPlaneClient: MachineDataPlaneWebSocketClient = MachineDataPlaneWebSocketClient()
     ) {
         self.connectTimeoutSeconds = connectTimeoutSeconds
         self.ackTimeoutSeconds = ackTimeoutSeconds
+        self.dataPlaneClient = dataPlaneClient
     }
 
     public func listDirectory(
@@ -724,18 +727,20 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingPath
         }
 
-        let responseData = try await invokeSensitiveCommand(
+        let requestBody: [String: Any] = [
+            "threadId": normalizedThreadID,
+            "path": normalizedPath,
+            "limit": limit,
+            "cursor": cursor ?? NSNull(),
+        ]
+
+        let responseData = try await dataPlaneClient.requestJSON(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
             wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
-            command: "codex-list-messages",
-            params: [
-                "threadId": .string(normalizedThreadID),
-                "path": .string(normalizedPath),
-                "limit": .int(limit),
-                "cursor": cursor.map(RPCParameterValue.string) ?? .null,
-            ]
+            operation: .codexListMessages,
+            bodyObject: requestBody
         )
         return try decodeSessionMessagesPage(responseData)
     }

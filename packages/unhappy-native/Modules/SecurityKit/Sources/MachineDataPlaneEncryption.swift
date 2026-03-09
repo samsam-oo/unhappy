@@ -1,8 +1,41 @@
-import Foundation
 import CryptoKit
+import Foundation
+import Security
 
 public enum SecurityKitError: Error {
     case invalidPayload
+    case invalidKeyExchange
+}
+
+public struct MachineDataPlaneSessionHandshakeMaterial: Sendable {
+    public let privateKey: Data
+    public let publicKeyBase64URL: String
+    public let nonceBase64URL: String
+
+    public init(privateKey: Data, publicKeyBase64URL: String, nonceBase64URL: String) {
+        self.privateKey = privateKey
+        self.publicKeyBase64URL = publicKeyBase64URL
+        self.nonceBase64URL = nonceBase64URL
+    }
+}
+
+public struct MachineDataPlaneSealedPayload: Sendable, Equatable {
+    public let algorithm: String
+    public let nonce: String
+    public let ciphertext: String
+    public let tag: String
+
+    public init(
+        algorithm: String = "aes-256-gcm",
+        nonce: String,
+        ciphertext: String,
+        tag: String
+    ) {
+        self.algorithm = algorithm
+        self.nonce = nonce
+        self.ciphertext = ciphertext
+        self.tag = tag
+    }
 }
 
 public enum MachineDataPlaneEncryption {
@@ -19,6 +52,8 @@ public enum MachineDataPlaneEncryption {
         Data("unhappy.data.encryption-key.wrap.salt.v2".utf8)
     private static let wrappedDataKeyKDFInfo =
         Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
+    private static let sessionKeyInfo =
+        Data("unhappy.machine-data-plane.session.v1".utf8)
 
     public static func resolveMachineDataKey(rawWrappedKey: String?) -> Data? {
         guard let rawWrappedKey else { return nil }
@@ -77,6 +112,110 @@ public enum MachineDataPlaneEncryption {
             tag: Data(tagData)
         )
         return try AES.GCM.open(sealed, using: SymmetricKey(data: dataKey))
+    }
+
+    public static func generateSessionHandshakeMaterial() throws -> MachineDataPlaneSessionHandshakeMaterial {
+        let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        let nonceData = try randomBytes(count: 32)
+        return MachineDataPlaneSessionHandshakeMaterial(
+            privateKey: privateKey.rawRepresentation,
+            publicKeyBase64URL: Base64URLCodec.encode(privateKey.publicKey.rawRepresentation),
+            nonceBase64URL: Base64URLCodec.encode(nonceData)
+        )
+    }
+
+    public static func deriveSessionKey(
+        machineDataKey: Data,
+        localPrivateKey: Data,
+        localNonceBase64URL: String,
+        peerPublicKeyBase64URL: String,
+        peerNonceBase64URL: String,
+        role: String
+    ) throws -> Data {
+        guard machineDataKey.count == 32 else {
+            throw SecurityKitError.invalidKeyExchange
+        }
+        guard let localNonce = Base64URLCodec.decode(localNonceBase64URL),
+              let peerPublicKey = Base64URLCodec.decode(peerPublicKeyBase64URL),
+              let peerNonce = Base64URLCodec.decode(peerNonceBase64URL),
+              localNonce.count == 32,
+              peerPublicKey.count == 32,
+              peerNonce.count == 32 else {
+            throw SecurityKitError.invalidKeyExchange
+        }
+
+        let localKey = try Curve25519.KeyAgreement.PrivateKey(rawRepresentation: localPrivateKey)
+        let remoteKey = try Curve25519.KeyAgreement.PublicKey(rawRepresentation: peerPublicKey)
+        let sharedSecret = try localKey.sharedSecretFromKeyAgreement(with: remoteKey)
+
+        var inputKeyMaterial = Data()
+        sharedSecret.withUnsafeBytes { buffer in
+            inputKeyMaterial.append(contentsOf: buffer)
+        }
+        inputKeyMaterial.append(machineDataKey)
+
+        let salt: Data
+        if role == "native" {
+            salt = localNonce + peerNonce
+        } else {
+            salt = peerNonce + localNonce
+        }
+
+        return hkdfSHA256(
+            inputKeyMaterial: inputKeyMaterial,
+            salt: salt,
+            info: sessionKeyInfo,
+            outputByteCount: 32
+        )
+    }
+
+    public static func encryptDataPlaneJSONObject(
+        _ object: Any,
+        sessionKey: Data,
+        authenticatedData: Data
+    ) throws -> MachineDataPlaneSealedPayload {
+        guard JSONSerialization.isValidJSONObject(object) else {
+            throw SecurityKitError.invalidPayload
+        }
+        let plaintext = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        let nonceData = try randomBytes(count: aesGCMNonceLength)
+        let nonce = try AES.GCM.Nonce(data: nonceData)
+        let sealed = try AES.GCM.seal(
+            plaintext,
+            using: SymmetricKey(data: sessionKey),
+            nonce: nonce,
+            authenticating: authenticatedData
+        )
+        return MachineDataPlaneSealedPayload(
+            nonce: Base64URLCodec.encode(nonceData),
+            ciphertext: Base64URLCodec.encode(sealed.ciphertext),
+            tag: Base64URLCodec.encode(sealed.tag)
+        )
+    }
+
+    public static func decryptDataPlanePayload(
+        _ sealedPayload: MachineDataPlaneSealedPayload,
+        sessionKey: Data,
+        authenticatedData: Data
+    ) throws -> Data {
+        guard let nonceData = Base64URLCodec.decode(sealedPayload.nonce),
+              let ciphertext = Base64URLCodec.decode(sealedPayload.ciphertext),
+              let tag = Base64URLCodec.decode(sealedPayload.tag),
+              nonceData.count == aesGCMNonceLength,
+              tag.count == aesGCMTagLength else {
+            throw SecurityKitError.invalidPayload
+        }
+        let nonce = try AES.GCM.Nonce(data: nonceData)
+        let sealed = try AES.GCM.SealedBox(
+            nonce: nonce,
+            ciphertext: ciphertext,
+            tag: tag
+        )
+        return try AES.GCM.open(
+            sealed,
+            using: SymmetricKey(data: sessionKey),
+            authenticating: authenticatedData
+        )
     }
 
     private static func decryptWrappedDataKey(bundle: Data, secretKey: Data) -> Data? {
@@ -181,6 +320,38 @@ public enum MachineDataPlaneEncryption {
         return Data(mac)
     }
 
+    private static func hmacSHA256(key: Data, data: Data) -> Data {
+        let mac = HMAC<SHA256>.authenticationCode(
+            for: data,
+            using: SymmetricKey(data: key)
+        )
+        return Data(mac)
+    }
+
+    private static func hkdfSHA256(
+        inputKeyMaterial: Data,
+        salt: Data,
+        info: Data,
+        outputByteCount: Int
+    ) -> Data {
+        let pseudoRandomKey = hmacSHA256(key: salt, data: inputKeyMaterial)
+        var output = Data()
+        var previous = Data()
+        var counter: UInt8 = 1
+
+        while output.count < outputByteCount {
+            var blockInput = Data()
+            blockInput.append(previous)
+            blockInput.append(info)
+            blockInput.append(counter)
+            previous = hmacSHA256(key: pseudoRandomKey, data: blockInput)
+            output.append(previous)
+            counter &+= 1
+        }
+
+        return output.prefix(outputByteCount)
+    }
+
     private static func deriveCurve25519SecretKey(fromSeed seed: Data) -> Data? {
         guard seed.count == 32 else { return nil }
         let digest = SHA512.hash(data: seed)
@@ -203,5 +374,14 @@ public enum MachineDataPlaneEncryption {
         let paddingCount = (4 - (replaced.count % 4)) % 4
         let padded = replaced + String(repeating: "=", count: paddingCount)
         return Data(base64Encoded: padded)
+    }
+
+    private static func randomBytes(count: Int) throws -> Data {
+        var bytes = [UInt8](repeating: 0, count: count)
+        let status = SecRandomCopyBytes(kSecRandomDefault, count, &bytes)
+        guard status == errSecSuccess else {
+            throw SecurityKitError.invalidPayload
+        }
+        return Data(bytes)
     }
 }
