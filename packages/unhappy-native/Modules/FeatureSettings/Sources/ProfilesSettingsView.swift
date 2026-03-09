@@ -4,6 +4,7 @@ import CoreKit
 @MainActor
 public struct ProfilesSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
+    @StateObject private var defaultsViewModel = SessionDefaultsSettingsViewModel()
     @AppStorage(SessionPreferenceDefaults.codexModelKey) private var codexDefaultModel = ""
     @AppStorage(SessionPreferenceDefaults.claudeModelKey) private var claudeDefaultModel = ""
     @AppStorage(SessionPreferenceDefaults.geminiModelKey) private var geminiDefaultModel = ""
@@ -33,6 +34,7 @@ public struct ProfilesSettingsView: View {
             Section("Direct Session Defaults") {
                 sessionDefaultsBlock(
                     title: "Codex",
+                    agent: .codex,
                     model: $codexDefaultModel,
                     reasoning: $codexDefaultReasoning,
                     reasoningOptions: ["", "low", "medium", "high", "xhigh"]
@@ -40,6 +42,7 @@ public struct ProfilesSettingsView: View {
 
                 sessionDefaultsBlock(
                     title: "Claude",
+                    agent: .claude,
                     model: $claudeDefaultModel,
                     reasoning: $claudeDefaultReasoning,
                     reasoningOptions: ["", "low", "medium", "high", "max"]
@@ -47,6 +50,7 @@ public struct ProfilesSettingsView: View {
 
                 sessionDefaultsBlock(
                     title: "Gemini",
+                    agent: .gemini,
                     model: $geminiDefaultModel,
                     reasoning: .constant(""),
                     reasoningOptions: []
@@ -61,11 +65,18 @@ public struct ProfilesSettingsView: View {
         }
         .navigationTitle("Profiles")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: "\(viewModel.serverURLString)|\(viewModel.apiToken)") {
+            await defaultsViewModel.load(
+                serverURLString: viewModel.serverURLString,
+                token: viewModel.apiToken
+            )
+        }
     }
 
     @ViewBuilder
     private func sessionDefaultsBlock(
         title: String,
+        agent: APISessionSpawnAgent,
         model: Binding<String>,
         reasoning: Binding<String>,
         reasoningOptions: [String]
@@ -74,9 +85,28 @@ public struct ProfilesSettingsView: View {
             Text(title)
                 .font(.headline)
 
-            TextField("\(title) default model", text: model)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            if defaultsViewModel.isLoading && defaultsViewModel.modelOptions(for: agent).isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Loading model options…")
+                        .foregroundStyle(.secondary)
+                }
+            } else if !defaultsViewModel.modelOptions(for: agent).isEmpty {
+                Picker("\(title) model", selection: model) {
+                    Text("Not Set").tag("")
+                    ForEach(defaultsViewModel.modelOptions(for: agent), id: \.self) { option in
+                        Text(option).tag(option)
+                    }
+                }
+            } else {
+                Text("No model options loaded")
+                    .foregroundStyle(.secondary)
+                if let errorMessage = defaultsViewModel.errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             if !reasoningOptions.isEmpty {
                 Picker("\(title) reasoning", selection: reasoning) {
