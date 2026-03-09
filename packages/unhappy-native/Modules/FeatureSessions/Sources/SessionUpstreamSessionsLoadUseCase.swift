@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import FeatureNewSession
 
 public protocol SessionUpstreamSessionsLoadingAction: Sendable {
     func loadUpstreamSessions(
@@ -108,10 +109,8 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         }
 
         return rows.sorted { lhs, rhs in
-            let lhsDate = timestamp(from: lhs.summary.updatedAt ?? lhs.summary.createdAt)
-            let rhsDate = timestamp(from: rhs.summary.updatedAt ?? rhs.summary.createdAt)
-            if lhsDate != rhsDate {
-                return lhsDate > rhsDate
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
             }
             if lhs.machineDisplayName != rhs.machineDisplayName {
                 return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
@@ -121,21 +120,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
     }
 
     private func machineName(for machine: APIMachine) -> String {
-        let payload = machine.metadata.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = payload.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return machine.id
-        }
-        let keys = ["displayName", "name", "host", "hostname"]
-        for key in keys {
-            if let value = object[key] as? String {
-                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    return trimmed
-                }
-            }
-        }
-        return machine.id
+        NewSessionMachinePresentation.displayName(for: machine)
     }
 
     private func groupedProjectPathsByMachineID(
@@ -151,28 +136,4 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         return grouped.mapValues { Array($0).sorted() }
     }
 
-    private func timestamp(from value: String?) -> TimeInterval {
-        guard let value else { return 0 }
-        if let date = ISO8601DateFormatter.withFractionalSeconds.date(from: value) {
-            return date.timeIntervalSince1970
-        }
-        if let date = ISO8601DateFormatter.withInternetDateTime.date(from: value) {
-            return date.timeIntervalSince1970
-        }
-        return 0
-    }
-}
-
-private extension ISO8601DateFormatter {
-    nonisolated(unsafe) static let withFractionalSeconds: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-
-    nonisolated(unsafe) static let withInternetDateTime: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
 }
