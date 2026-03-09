@@ -37,6 +37,7 @@ struct UnhappyNativeApp: App {
         let machineSpawner = MachineSpawnUseCase(service: machinesService)
         let machineUpdater = MachineDaemonUpdateUseCase(service: machinesService)
         let machineStopper = MachineDaemonStopUseCase(service: machinesService)
+        let machineDeleter = MachineDeleteUseCase(service: machinesService)
         let newSessionMachinesLoader = NewSessionMachinesLoadUseCase(service: machinesService)
         let newSessionDirectoryLister = NewSessionDirectoryListUseCase(service: machinesService)
         let newSessionSpawner = NewSessionSpawnUseCase(service: machinesService)
@@ -153,7 +154,8 @@ struct UnhappyNativeApp: App {
                 loader: machinesLoader,
                 spawner: machineSpawner,
                 updater: machineUpdater,
-                stopper: machineStopper
+                stopper: machineStopper,
+                deleter: machineDeleter
             )
         }
         self.makeUsageViewModel = {

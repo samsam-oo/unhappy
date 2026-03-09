@@ -23,6 +23,20 @@ struct MachinesAPITests {
     }
 
     @Test
+    func deleteRequestUsesExpectedPathAndMethod() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeDeleteRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            machineID: "machine-1"
+        )
+
+        #expect(request.httpMethod == "DELETE")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/machines/machine-1")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
     func spawnRequestUsesExpectedPathBodyAndMethod() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try MachinesAPI.makeSpawnSessionRequest(
