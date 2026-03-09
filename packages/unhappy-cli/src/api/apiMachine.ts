@@ -39,6 +39,7 @@ import {
   sendCodexThreadMessage,
   setCodexThreadName,
 } from '@/codex/directSession';
+import { MachineDataPlaneClient } from './machineDataPlaneClient';
 import type { Metadata, PermissionMode } from './types';
 import { isPermissionMode } from '@/utils/permissionModeAdapter';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
@@ -224,6 +225,7 @@ export class ApiMachineClient {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
   private keepAliveInterval: NodeJS.Timeout | null = null;
   private rpcHandlerManager: RpcHandlerManager;
+  private dataPlaneClient: MachineDataPlaneClient;
 
   constructor(
     private token: string,
@@ -234,6 +236,12 @@ export class ApiMachineClient {
       scopePrefix: this.machine.id,
       encryptionKey: this.machine.encryptionKey,
       logger: (msg, data) => logger.debug(msg, data),
+    });
+    this.dataPlaneClient = new MachineDataPlaneClient({
+      token: this.token,
+      machineId: this.machine.id,
+      machineDataKey: this.machine.encryptionKey,
+      invokeLocal: (method, params) => this.rpcHandlerManager.invokeLocal(method, params),
     });
 
     // For machine-scoped RPCs, default to the user's home dir so clients can browse/select directories
@@ -1401,6 +1409,7 @@ export class ApiMachineClient {
 
       // Register all handlers
       this.rpcHandlerManager.onSocketConnect(this.socket);
+      this.dataPlaneClient.connect();
 
       // Start keep-alive
       this.startKeepAlive();
@@ -1410,6 +1419,7 @@ export class ApiMachineClient {
       logger.debug('[API MACHINE] Disconnected from server');
       this.rpcHandlerManager.onSocketDisconnect();
       this.stopKeepAlive();
+      this.dataPlaneClient.shutdown();
     });
 
     // Single consolidated RPC handler
@@ -1538,6 +1548,7 @@ export class ApiMachineClient {
   shutdown() {
     logger.debug('[API MACHINE] Shutting down');
     this.stopKeepAlive();
+    this.dataPlaneClient.shutdown();
     if (this.socket) {
       this.socket.close();
       logger.debug('[API MACHINE] Socket closed');
