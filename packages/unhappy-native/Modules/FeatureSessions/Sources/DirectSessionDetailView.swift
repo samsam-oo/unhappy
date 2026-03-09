@@ -44,8 +44,8 @@ public struct DirectSessionDetailView: View {
     @State private var shouldFollowTranscript = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 20
-    @ScaledMetric(relativeTo: .body) private var regularTranscriptHorizontalPadding: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
+    @ScaledMetric(relativeTo: .body) private var regularTranscriptHorizontalPadding: CGFloat = 14
     @ScaledMetric(relativeTo: .body) private var transcriptTopSpacing: CGFloat = 18
     @FocusState private var focusedComposerField: ComposerFocusField?
 
