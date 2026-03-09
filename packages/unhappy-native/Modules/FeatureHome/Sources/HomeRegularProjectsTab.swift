@@ -112,6 +112,9 @@ struct HomeRegularProjectsTab: View {
             if shouldShowFullScreenLoading {
                 ProgressView("Loading sessions…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isPreparingProjectsFromLoadedSessions {
+                ProgressView("Preparing projects…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -342,11 +345,13 @@ struct HomeRegularProjectsTab: View {
     private var shouldShowFullScreenLoading: Bool {
         isRefreshingProjectContent
             && !showsSessionSidebarList
-            && (
-                viewModel.sessions.isEmpty
-                    || viewModel.isLoadingProjects
-                    || viewModel.isLoadingUpstreamSessions
-            )
+            && viewModel.sessions.isEmpty
+    }
+
+    private var isPreparingProjectsFromLoadedSessions: Bool {
+        !viewModel.sessions.isEmpty
+            && !showsSessionSidebarList
+            && (viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions)
     }
 
     private var projectGroups: [SessionProjectGroup] {

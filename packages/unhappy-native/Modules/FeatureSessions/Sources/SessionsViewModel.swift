@@ -5,6 +5,7 @@ import CoreKit
 public final class SessionsViewModel: ObservableObject {
     private enum SyncPolicy {
         static let supportingDataRefreshInterval: TimeInterval = 15
+        static let initialPollingGraceInterval: Duration = .seconds(2)
     }
 
     @Published public private(set) var sessions: [APISession] = []
@@ -36,6 +37,8 @@ public final class SessionsViewModel: ObservableObject {
     private var multiAgentInProgressCountCache = 0
     private var activeUpstreamScopeIDs: Set<String> = []
     private var activeUpstreamLoadCount = 0
+    private var supportingDataTask: Task<Void, Never>?
+    private var lastPrimarySessionLoadAt: TimeInterval?
 
     public init(
         loader: any SessionsLoading,
@@ -69,6 +72,10 @@ public final class SessionsViewModel: ObservableObject {
         )
     }
 
+    deinit {
+        supportingDataTask?.cancel()
+    }
+
     public func isRemoving(projectID: String) -> Bool {
         removingProjectID == projectID
     }
@@ -91,7 +98,6 @@ public final class SessionsViewModel: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
 
         do {
             let firstPage = try await pageLoader.loadPage(
@@ -101,24 +107,19 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             setSessionsIfChanged(firstPage.sessions)
-            await cleanupProviderBackedSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
-            await cleanupMirroredDuplicateSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
             nextCursor = firstPage.nextCursor
             hasMoreSessions = firstPage.hasNext
+            lastPrimarySessionLoadAt = Date().timeIntervalSince1970
             errorMessage = nil
-            await refreshSupportingProjectContent(
+            isLoading = false
+            scheduleSupportingDataRefresh(
                 serverURLString: serverURLString,
                 token: token,
                 force: true
             )
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            isLoading = false
         }
     }
 
@@ -127,10 +128,15 @@ public final class SessionsViewModel: ObservableObject {
         token: String,
         interval: Duration = .seconds(15)
     ) async {
-        isLoading = true
+        if sessions.isEmpty {
+            isLoading = true
+        }
         errorMessage = nil
 
         do {
+            if shouldDelayInitialPolling {
+                try await Task.sleep(for: SyncPolicy.initialPollingGraceInterval)
+            }
             let stream = await poller.makePollingStream(
                 serverURLString: serverURLString,
                 token: token,
@@ -138,15 +144,8 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 setSessionsIfChanged(mergeLatestRows(rows, into: sessions))
-                await cleanupProviderBackedSessions(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                await cleanupMirroredDuplicateSessions(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                await refreshSupportingProjectContent(
+                lastPrimarySessionLoadAt = Date().timeIntervalSince1970
+                scheduleSupportingDataRefresh(
                     serverURLString: serverURLString,
                     token: token,
                     force: false
@@ -775,5 +774,46 @@ public final class SessionsViewModel: ObservableObject {
     private func setUpstreamSessionsIfChanged(_ nextRows: [SessionLinkedUpstreamSession]) {
         guard upstreamSessions != nextRows else { return }
         upstreamSessions = nextRows
+    }
+
+    private var shouldDelayInitialPolling: Bool {
+        guard !sessions.isEmpty else { return false }
+        guard let lastPrimarySessionLoadAt else { return false }
+        return Date().timeIntervalSince1970 - lastPrimarySessionLoadAt < 5
+    }
+
+    func waitForPendingSupportingDataRefresh() async {
+        await supportingDataTask?.value
+    }
+
+    private func scheduleSupportingDataRefresh(
+        serverURLString: String,
+        token: String,
+        force: Bool
+    ) {
+        if force {
+            supportingDataTask?.cancel()
+        } else if supportingDataTask != nil {
+            return
+        }
+
+        supportingDataTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.supportingDataTask = nil }
+            await self.cleanupProviderBackedSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            await self.cleanupMirroredDuplicateSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            guard !Task.isCancelled else { return }
+            await self.refreshSupportingProjectContent(
+                serverURLString: serverURLString,
+                token: token,
+                force: force
+            )
+        }
     }
 }
