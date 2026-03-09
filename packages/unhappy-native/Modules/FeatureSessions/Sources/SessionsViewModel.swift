@@ -34,6 +34,8 @@ public final class SessionsViewModel: ObservableObject {
     private var lastSupportingDataSyncAt: TimeInterval?
     private var lastSupportingDataFingerprint: String?
     private var multiAgentInProgressCountCache = 0
+    private var activeUpstreamScopeIDs: Set<String> = []
+    private var activeUpstreamLoadCount = 0
 
     public init(
         loader: any SessionsLoading,
@@ -257,16 +259,15 @@ public final class SessionsViewModel: ObservableObject {
             upstreamSessionsErrorMessage = nil
             return
         }
-        guard !isLoadingUpstreamSessions else { return }
-
-        isLoadingUpstreamSessions = true
-        defer { isLoadingUpstreamSessions = false }
+        let acceptedProjects = beginUpstreamLoad(for: projectsToSync)
+        guard !acceptedProjects.isEmpty else { return }
+        defer { endUpstreamLoad(for: acceptedProjects) }
 
         if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
             for await snapshot in await streamingLoader.loadUpstreamSessionsStream(
                 serverURLString: serverURLString,
                 token: token,
-                projects: projectsToSync
+                projects: acceptedProjects
             ) {
                 if let machineID = snapshot.machineID,
                    let projectPath = snapshot.projectPath {
@@ -292,7 +293,7 @@ public final class SessionsViewModel: ObservableObject {
             let rows = try await upstreamSessionsLoader.loadUpstreamSessions(
                 serverURLString: serverURLString,
                 token: token,
-                projects: projectsToSync
+                projects: acceptedProjects
             )
             setUpstreamSessionsIfChanged(rows)
             upstreamSessionsErrorMessage = nil
@@ -320,14 +321,22 @@ public final class SessionsViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token
             ) {
+                let refreshedProjects = snapshot.projects.filter(\.summary.openedExplicitly)
                 if let machineID = snapshot.machineID {
                     setProjectsIfChanged(
                         mergeMachineScopedProjects(
                             existing: projects,
-                            refreshed: snapshot.projects.filter(\.summary.openedExplicitly),
+                            refreshed: refreshedProjects,
                             machineID: machineID
                         )
                     )
+                    if !refreshedProjects.isEmpty {
+                        scheduleIncrementalUpstreamLoad(
+                            projects: refreshedProjects,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
                 }
                 if snapshot.errorMessage?.isEmpty == false {
                     projectsErrorMessage = snapshot.errorMessage
@@ -368,15 +377,21 @@ public final class SessionsViewModel: ObservableObject {
             return
         }
 
+        let usesIncrementalSupportingStreams =
+            (projectsLoader as? any SessionProjectsStreamingAction) != nil &&
+            (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
+
         await loadProjects(
             serverURLString: serverURLString,
             token: token
         )
-        await loadUpstreamSessions(
-            serverURLString: serverURLString,
-            token: token,
-            projectsToSync: projectsForUpstreamSync()
-        )
+        if !usesIncrementalSupportingStreams {
+            await loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token,
+                projectsToSync: projectsForUpstreamSync()
+            )
+        }
         lastSupportingDataFingerprint = fingerprint
         lastSupportingDataSyncAt = Date().timeIntervalSince1970
     }
@@ -471,6 +486,21 @@ public final class SessionsViewModel: ObservableObject {
 
     private func mergeLatestRows(_ latestRows: [APISession], into existingRows: [APISession]) -> [APISession] {
         sessionsMergeLatestRows(latestRows, into: existingRows)
+    }
+
+    private func scheduleIncrementalUpstreamLoad(
+        projects: [SessionMachineProject],
+        serverURLString: String,
+        token: String
+    ) {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token,
+                projectsToSync: projects
+            )
+        }
     }
 
     private func projectsForUpstreamSync() -> [SessionMachineProject] {
@@ -645,6 +675,45 @@ public final class SessionsViewModel: ObservableObject {
             }
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
+    }
+
+    private func beginUpstreamLoad(
+        for projects: [SessionMachineProject]
+    ) -> [SessionMachineProject] {
+        var acceptedProjects: [SessionMachineProject] = []
+        for project in projects {
+            guard let scopeID = canonicalProjectID(
+                machineID: project.machineID,
+                projectPath: project.summary.path
+            ) else {
+                continue
+            }
+            guard activeUpstreamScopeIDs.insert(scopeID).inserted else {
+                continue
+            }
+            acceptedProjects.append(project)
+        }
+        if !acceptedProjects.isEmpty {
+            activeUpstreamLoadCount += 1
+            isLoadingUpstreamSessions = true
+        }
+        return acceptedProjects
+    }
+
+    private func endUpstreamLoad(
+        for projects: [SessionMachineProject]
+    ) {
+        guard !projects.isEmpty else { return }
+        for project in projects {
+            if let scopeID = canonicalProjectID(
+                machineID: project.machineID,
+                projectPath: project.summary.path
+            ) {
+                activeUpstreamScopeIDs.remove(scopeID)
+            }
+        }
+        activeUpstreamLoadCount = max(0, activeUpstreamLoadCount - 1)
+        isLoadingUpstreamSessions = activeUpstreamLoadCount > 0
     }
 
     private func mergeMachineScopedProjects(
