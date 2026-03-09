@@ -106,13 +106,14 @@ export async function appendClaudeSessionSummary(
 
 export async function listClaudeSessionMessages(
   descriptor: ClaudeDirectSessionDescriptor,
-): Promise<ClaudeDirectSessionMessage[]> {
+  options?: { limit?: number; cursor?: string | null },
+): Promise<import('../codex/directSession').DirectMessagesPage<ClaudeDirectSessionMessage>> {
   const transcriptPath = resolveClaudeSessionTranscriptPath(
     descriptor.cwd,
     descriptor.sessionId,
   );
   if (!existsSync(transcriptPath)) {
-    return [];
+    return { messages: [], nextCursor: undefined, hasNext: false };
   }
 
   const lines = readFileSync(transcriptPath, 'utf8').split('\n');
@@ -157,16 +158,31 @@ export async function listClaudeSessionMessages(
     }
   }
 
-  return trimMessagesToPayloadBudget(messages);
+  return paginateMessages(messages, options);
 }
 
-function trimMessagesToPayloadBudget<T extends { content: { payload: string } }>(
+function paginateMessages<T extends { content: { payload: string } }>(
   messages: T[],
-): T[] {
+  options?: { limit?: number; cursor?: string | null },
+) {
+  const total = messages.length;
+  const requestedLimit =
+    typeof options?.limit === 'number' && Number.isFinite(options.limit)
+      ? Math.max(1, Math.floor(options.limit))
+      : 120;
+  const cursorValue =
+    typeof options?.cursor === 'string' && options.cursor.trim().length > 0
+      ? Number.parseInt(options.cursor, 10)
+      : Number.NaN;
+  const end = Number.isFinite(cursorValue)
+    ? Math.max(0, Math.min(total, cursorValue))
+    : total;
+  const boundedStart = Math.max(0, end - requestedLimit);
   let totalBytes = 0;
   const kept: T[] = [];
+  let start = end;
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+  for (let index = end - 1; index >= boundedStart; index -= 1) {
     const candidate = messages[index];
     const candidateBytes = Buffer.byteLength(candidate.content.payload, 'utf8');
     if (kept.length > 0 && totalBytes + candidateBytes > MAX_DIRECT_MESSAGES_PAYLOAD_BYTES) {
@@ -174,9 +190,14 @@ function trimMessagesToPayloadBudget<T extends { content: { payload: string } }>
     }
     kept.push(candidate);
     totalBytes += candidateBytes;
+    start = index;
   }
 
-  return kept.reverse();
+  return {
+    messages: kept.reverse(),
+    nextCursor: start > 0 ? String(start) : undefined,
+    hasNext: start > 0,
+  };
 }
 
 async function resolveClaudeDirectEnvironment(): Promise<Record<string, string>> {

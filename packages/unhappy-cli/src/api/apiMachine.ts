@@ -883,11 +883,21 @@ export class ApiMachineClient {
         if (!transcriptPath) {
           return { success: false, error: 'path is required' };
         }
+        const limit =
+          typeof params?.limit === 'number' && Number.isFinite(params.limit)
+            ? Math.max(1, Math.floor(params.limit))
+            : 120;
+        const cursor =
+          typeof params?.cursor === 'string' && params.cursor.trim().length > 0
+            ? params.cursor.trim()
+            : null;
 
-        const messages = await listCodexThreadMessages(transcriptPath);
+        const page = await listCodexThreadMessages(transcriptPath, { limit, cursor });
         return {
           success: true as const,
-          messages,
+          messages: page.messages,
+          nextCursor: page.nextCursor,
+          hasNext: page.hasNext,
         };
       },
     );
@@ -1002,15 +1012,25 @@ export class ApiMachineClient {
         if (!cwdRaw) {
           return { success: false, error: 'cwd is required' };
         }
+        const limit =
+          typeof params?.limit === 'number' && Number.isFinite(params.limit)
+            ? Math.max(1, Math.floor(params.limit))
+            : 120;
+        const cursor =
+          typeof params?.cursor === 'string' && params.cursor.trim().length > 0
+            ? params.cursor.trim()
+            : null;
 
         const cwd = normalizeMachinePath(cwdRaw, currentHomeDir());
-        const messages = await listClaudeSessionMessages({
+        const page = await listClaudeSessionMessages({
           sessionId,
           cwd,
-        });
+        }, { limit, cursor });
         return {
           success: true as const,
-          messages,
+          messages: page.messages,
+          nextCursor: page.nextCursor,
+          hasNext: page.hasNext,
         };
       },
     );
@@ -1125,14 +1145,24 @@ export class ApiMachineClient {
         if (!tracked) {
           return { success: false, error: 'Gemini session is not active on this machine' };
         }
+        const limit =
+          typeof params?.limit === 'number' && Number.isFinite(params.limit)
+            ? Math.max(1, Math.floor(params.limit))
+            : 120;
+        const cursor =
+          typeof params?.cursor === 'string' && params.cursor.trim().length > 0
+            ? params.cursor.trim()
+            : null;
 
-        const messages = await listGeminiSessionMessages({
+        const page = await listGeminiSessionMessages({
           sessionId,
           controlPort: tracked.controlPort,
-        });
+        }, { limit, cursor });
         return {
           success: true as const,
-          messages,
+          messages: page.messages,
+          nextCursor: page.nextCursor,
+          hasNext: page.hasNext,
         };
       },
     );

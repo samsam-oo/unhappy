@@ -24,7 +24,7 @@ struct DirectSessionUseCasesTests {
             geminiService: service
         )
 
-        let messages = try await useCase.loadMessages(
+        let page = try await useCase.loadMessages(
             serverURLString: "https://api.unhappy.im",
             token: "token",
             identity: DirectSessionIdentity(
@@ -40,10 +40,12 @@ struct DirectSessionUseCasesTests {
                 effort: nil,
                 permissionMode: nil,
                 collabInProgressCount: 0
-            )
+            ),
+            limit: 120,
+            cursor: nil
         )
 
-        #expect(messages.count == 1)
+        #expect(page.messages.count == 1)
         let recordedSessionID = await service.recordedSessionID
         #expect(recordedSessionID == "gemini-session-1")
     }
@@ -221,10 +223,12 @@ private actor GeminiMessagesService: MachineGeminiSessionMessagesFetching {
         token: String,
         machineID: String,
         sessionID: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         recordedSessionID = sessionID
-        return messages
+        return APISessionMessagesPage(messages: messages, nextCursor: cursor, hasNext: false)
     }
 }
 
@@ -263,10 +267,12 @@ private actor FailingCodexMessagesService: MachineCodexThreadMessagesFetching {
         machineID: String,
         threadID: String,
         transcriptPath: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         Issue.record("Codex service should not be used")
-        return []
+        return APISessionMessagesPage(messages: [], nextCursor: cursor, hasNext: false)
     }
 }
 
@@ -277,10 +283,12 @@ private actor FailingClaudeMessagesService: MachineClaudeSessionMessagesFetching
         machineID: String,
         sessionID: String,
         cwd: String,
-        wrappedMachineDataEncryptionKey: String?
-    ) async throws -> [APISessionMessage] {
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
         Issue.record("Claude service should not be used")
-        return []
+        return APISessionMessagesPage(messages: [], nextCursor: cursor, hasNext: false)
     }
 }
 

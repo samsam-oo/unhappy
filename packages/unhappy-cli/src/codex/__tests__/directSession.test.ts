@@ -42,11 +42,11 @@ describe('listCodexThreadMessages', () => {
         'utf8',
       );
 
-      const messages = await listCodexThreadMessages(transcriptPath);
+      const page = await listCodexThreadMessages(transcriptPath);
 
-      expect(messages).toHaveLength(2);
+      expect(page.messages).toHaveLength(2);
 
-      const toolCallPayload = JSON.parse(messages[0].content.payload);
+      const toolCallPayload = JSON.parse(page.messages[0].content.payload);
       expect(toolCallPayload).toMatchObject({
         role: 'agent',
         content: {
@@ -71,7 +71,7 @@ describe('listCodexThreadMessages', () => {
         },
       });
 
-      const toolResultPayload = JSON.parse(messages[1].content.payload);
+      const toolResultPayload = JSON.parse(page.messages[1].content.payload);
       expect(toolResultPayload).toMatchObject({
         role: 'agent',
         content: {
@@ -130,12 +130,70 @@ describe('listCodexThreadMessages', () => {
         'utf8',
       );
 
-      const messages = await listCodexThreadMessages(transcriptPath);
+      const page = await listCodexThreadMessages(transcriptPath);
 
-      expect(messages).toHaveLength(1);
-      const payload = JSON.parse(messages[0].content.payload);
+      expect(page.messages).toHaveLength(1);
+      const payload = JSON.parse(page.messages[0].content.payload);
       expect(JSON.stringify(payload)).toContain('new-marker');
       expect(JSON.stringify(payload)).not.toContain('old-marker');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it('loads older pages when a cursor is provided', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'codex-direct-session-pages-'));
+    const transcriptPath = join(tempDir, 'rollout.jsonl');
+
+    try {
+      writeFileSync(
+        transcriptPath,
+        [
+          JSON.stringify({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'assistant',
+              id: 'msg-1',
+              content: [{ type: 'output_text', text: 'first' }],
+            },
+          }),
+          JSON.stringify({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'assistant',
+              id: 'msg-2',
+              content: [{ type: 'output_text', text: 'second' }],
+            },
+          }),
+          JSON.stringify({
+            type: 'response_item',
+            payload: {
+              type: 'message',
+              role: 'assistant',
+              id: 'msg-3',
+              content: [{ type: 'output_text', text: 'third' }],
+            },
+          }),
+        ].join('\n'),
+        'utf8',
+      );
+
+      const latestPage = await listCodexThreadMessages(transcriptPath, { limit: 1 });
+      expect(latestPage.messages).toHaveLength(1);
+      expect(JSON.stringify(JSON.parse(latestPage.messages[0].content.payload))).toContain('third');
+      expect(latestPage.nextCursor).toBe('2');
+      expect(latestPage.hasNext).toBe(true);
+
+      const olderPage = await listCodexThreadMessages(transcriptPath, {
+        limit: 1,
+        cursor: latestPage.nextCursor,
+      });
+      expect(olderPage.messages).toHaveLength(1);
+      expect(JSON.stringify(JSON.parse(olderPage.messages[0].content.payload))).toContain('second');
+      expect(olderPage.nextCursor).toBe('1');
+      expect(olderPage.hasNext).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

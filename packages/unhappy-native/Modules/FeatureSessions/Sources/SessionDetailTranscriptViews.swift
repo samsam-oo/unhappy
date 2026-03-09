@@ -40,6 +40,7 @@ struct MessagesSectionRows: View {
                         onMessageInspect(presentation.messageID)
                     }
                 )
+                .id(presentation.messageID)
                 .sessionListRow(insets: SessionListRowInsets.messageEntry)
             }
         }
