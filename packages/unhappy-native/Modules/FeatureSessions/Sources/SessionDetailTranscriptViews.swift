@@ -1,6 +1,26 @@
 import SwiftUI
 import CoreKit
 
+private struct TranscriptReadableWidthModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        if horizontalSizeClass == .regular {
+            content
+                .frame(maxWidth: 920, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .center)
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func transcriptReadableWidth() -> some View {
+        modifier(TranscriptReadableWidthModifier())
+    }
+}
+
 struct MessagesSectionRows: View {
     let isLoading: Bool
     let errorMessage: String?
@@ -34,6 +54,7 @@ struct MessagesSectionRows: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 14)
             }
+            .transcriptReadableWidth()
             .sessionListRow(insets: SessionListRowInsets.messageCard)
         } else {
             ForEach(visibleTranscriptPresentations, id: \.messageID) { presentation in
@@ -74,6 +95,7 @@ struct TranscriptLoadingCard: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 4)
+        .transcriptReadableWidth()
     }
 }
 
@@ -105,6 +127,7 @@ struct TranscriptErrorCard: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 4)
+        .transcriptReadableWidth()
     }
 }
 
@@ -136,6 +159,7 @@ struct SessionTranscriptMessageRow: View {
             }
         }
         .padding(.vertical, 1)
+        .transcriptReadableWidth()
         .contextMenu {
             if let onMessageInspect {
                 Button("Inspect Message") {
@@ -168,6 +192,7 @@ struct SessionTranscriptLiveStatusRow: View {
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .transcriptReadableWidth()
     }
 }
 

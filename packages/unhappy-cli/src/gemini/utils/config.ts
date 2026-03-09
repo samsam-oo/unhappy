@@ -37,6 +37,8 @@ export function readGeminiLocalConfig(): GeminiLocalConfig {
   // Gemini CLI stores OAuth tokens in ~/.gemini/oauth_creds.json after 'gemini auth'
   const possiblePaths = [
     join(homedir(), '.gemini', 'oauth_creds.json'), // Main OAuth credentials file
+    join(homedir(), '.gemini', 'settings.json'),
+    join(homedir(), '.config', 'gemini', 'settings.json'),
     join(homedir(), '.gemini', 'config.json'),
     join(homedir(), '.config', 'gemini', 'config.json'),
     join(homedir(), '.gemini', 'auth.json'),
@@ -159,7 +161,7 @@ export function determineGeminiModel(
 export function saveGeminiModelToConfig(model: string): void {
   try {
     const configDir = join(homedir(), '.gemini');
-    const configPath = join(configDir, 'config.json');
+    const configPath = join(configDir, 'settings.json');
     
     // Create directory if it doesn't exist
     if (!existsSync(configDir)) {
@@ -198,7 +200,7 @@ export function saveGeminiModelToConfig(model: string): void {
 export function saveGoogleCloudProjectToConfig(projectId: string, email?: string): void {
   try {
     const configDir = join(homedir(), '.gemini');
-    const configPath = join(configDir, 'config.json');
+    const configPath = join(configDir, 'settings.json');
     
     // Create directory if it doesn't exist
     if (!existsSync(configDir)) {
@@ -264,4 +266,3 @@ export function getGeminiModelSource(
     return 'default';
   }
 }
-
