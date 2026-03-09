@@ -36,6 +36,7 @@ pub struct Config {
     pub token: String,
     pub machine_id: String,
     pub machine_data_key_base64url: String,
+    pub account_public_key_base64url: String,
     pub current_cli_version: String,
     pub unhappy_home_dir: PathBuf,
     pub provider_commands: ProviderCommandConfig,
@@ -52,6 +53,8 @@ impl Config {
             .context("UNHAPPY_MACHINE_ID is required for unhappy-daemon-rs bootstrap")?;
         let machine_data_key_base64url = env::var("UNHAPPY_MACHINE_DATA_KEY")
             .context("UNHAPPY_MACHINE_DATA_KEY is required for unhappy-daemon-rs bootstrap")?;
+        let account_public_key_base64url = env::var("UNHAPPY_ACCOUNT_PUBLIC_KEY")
+            .context("UNHAPPY_ACCOUNT_PUBLIC_KEY is required for unhappy-daemon-rs bootstrap")?;
         let current_cli_version = env::var(CLI_VERSION_ENV)
             .context("UNHAPPY_CLI_VERSION is required for unhappy-daemon-rs bootstrap")?;
         let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
@@ -71,6 +74,7 @@ impl Config {
             token,
             machine_id,
             machine_data_key_base64url,
+            account_public_key_base64url,
             current_cli_version,
             unhappy_home_dir,
             provider_commands,
@@ -258,6 +262,7 @@ mod tests {
             token: "token".to_string(),
             machine_id: "machine".to_string(),
             machine_data_key_base64url: "key".to_string(),
+            account_public_key_base64url: "public-key".to_string(),
             current_cli_version: "0.14.15".to_string(),
             unhappy_home_dir: PathBuf::from("/tmp/.unhappy-test"),
             provider_commands: ProviderCommandConfig::from_env().expect("provider commands"),
