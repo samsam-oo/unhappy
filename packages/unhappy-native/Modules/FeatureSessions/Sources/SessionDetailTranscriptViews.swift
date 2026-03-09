@@ -109,7 +109,7 @@ struct SessionTranscriptMessageRow: View {
     let onMessageInspect: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: showsTimestamp ? 8 : 3) {
+        VStack(alignment: .leading, spacing: showsTimestamp ? 6 : 2) {
             if showsTimestamp {
                 HStack {
                     Spacer()
@@ -119,7 +119,7 @@ struct SessionTranscriptMessageRow: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 ForEach(presentation.entries) { entry in
                     SessionTranscriptLogLine(
                         entry: entry,
@@ -130,7 +130,7 @@ struct SessionTranscriptMessageRow: View {
             }
         }
         .padding(.horizontal, 6)
-        .padding(.vertical, 2)
+        .padding(.vertical, 0)
         .contextMenu {
             if let onMessageInspect {
                 Button("Inspect Message") {
@@ -248,7 +248,7 @@ struct SessionTranscriptLogLine: View {
         } else if isCommandExecutionEntry {
             SessionTranscriptToolRichContentView(entry: entry)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 2)
+                .padding(.vertical, 1)
         } else if isCollapsibleReferenceLogEntry {
             VStack(alignment: .leading, spacing: 4) {
                 Button {
@@ -290,7 +290,7 @@ struct SessionTranscriptLogLine: View {
                 }
             }
             .padding(.horizontal, 2)
-            .padding(.vertical, 1)
+            .padding(.vertical, 0)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if isMainMessageEntry {
             VStack(alignment: .leading, spacing: 6) {
@@ -318,7 +318,7 @@ struct SessionTranscriptLogLine: View {
                 )
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .leading) {
                 Rectangle()
@@ -339,7 +339,7 @@ struct SessionTranscriptLogLine: View {
                     .lineSpacing(1.5)
             }
             .padding(.horizontal, 2)
-            .padding(.vertical, 1)
+            .padding(.vertical, 0)
             .frame(
                 maxWidth: .infinity,
                 alignment: .leading
