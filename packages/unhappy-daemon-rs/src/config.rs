@@ -1,7 +1,7 @@
 use crate::provider::ProviderCommandConfig;
 use anyhow::{Context, Result};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -49,5 +49,21 @@ impl Config {
     
     pub fn session_store_path(&self) -> PathBuf {
         self.unhappy_home_dir.join("daemon.sessions.json")
+    }
+
+    pub fn codex_home_dir(&self) -> PathBuf {
+        self.unhappy_home_dir.join("codex-home")
+    }
+
+    pub fn codex_auth_file_path(&self) -> PathBuf {
+        self.codex_home_dir().join("auth.json")
+    }
+
+    pub fn codex_sessions_dir(&self) -> PathBuf {
+        self.codex_home_dir().join("sessions")
+    }
+
+    pub fn codex_home_dir_for_path(home_dir: &Path) -> PathBuf {
+        home_dir.join("codex-home")
     }
 }

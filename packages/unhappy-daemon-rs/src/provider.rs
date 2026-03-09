@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     env,
     io::{Error, ErrorKind},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use tokio::process::{Child, Command};
 
@@ -56,6 +56,16 @@ pub enum ProviderCommandMode {
     DirectBinary,
 }
 
+#[derive(Debug, Clone)]
+pub struct CodexDirectRuntimeContract {
+    pub executable: String,
+    pub startup_args: Vec<String>,
+    pub codex_home_dir: PathBuf,
+    pub auth_file_path: PathBuf,
+    pub sessions_dir: PathBuf,
+    pub resume_thread_id: Option<String>,
+}
+
 impl ProviderCommand {
     fn from_env(provider: Provider, legacy_cli: Option<&str>) -> Result<Self> {
         let executable_env = provider.executable_env();
@@ -79,6 +89,18 @@ impl ProviderCommand {
             return Ok(Self {
                 mode: ProviderCommandMode::DirectBinary,
                 executable,
+                args,
+            });
+        }
+
+        if provider == Provider::Codex {
+            let mut args = configured_args;
+            if args.is_empty() {
+                args = default_direct_args(provider);
+            }
+            return Ok(Self {
+                mode: ProviderCommandMode::DirectBinary,
+                executable: provider.command_name().to_string(),
                 args,
             });
         }
@@ -132,6 +154,23 @@ impl ProviderCommandConfig {
             Provider::Codex => &self.codex,
             Provider::Claude => &self.claude,
             Provider::Gemini => &self.gemini,
+        }
+    }
+
+    pub fn codex_direct_contract(
+        &self,
+        unhappy_home_dir: &Path,
+        resume_thread_id: Option<&str>,
+    ) -> CodexDirectRuntimeContract {
+        let command = self.resolve(Provider::Codex);
+        let codex_home_dir = unhappy_home_dir.join("codex-home");
+        CodexDirectRuntimeContract {
+            executable: command.executable().to_string(),
+            startup_args: command.args().to_vec(),
+            auth_file_path: codex_home_dir.join("auth.json"),
+            sessions_dir: codex_home_dir.join("sessions"),
+            codex_home_dir,
+            resume_thread_id: normalized_arg(resume_thread_id).map(ToOwned::to_owned),
         }
     }
 }
@@ -244,14 +283,18 @@ impl ProviderAdapter for CodexProviderAdapter {
     }
 
     fn build_launch_request(&self, context: ProviderSpawnContext<'_>) -> ProviderLaunchRequest {
-        let mut args = if provider_uses_direct_binary(Provider::Codex) {
-            Vec::new()
-        } else {
-            vec!["--started-by".to_string(), "daemon".to_string()]
-        };
-        if let Some(thread_id) = normalized_arg(context.codex_resume_thread_id) {
-            args.push("--resume-thread-id".to_string());
-            args.push(thread_id.to_string());
+        let mut args = Vec::new();
+        if !provider_uses_direct_binary(Provider::Codex) {
+            args.push("--started-by".to_string());
+            args.push("daemon".to_string());
+        }
+        if !provider_uses_direct_binary(Provider::Codex) {
+            if let Some(thread_id) = normalized_arg(context.codex_resume_thread_id) {
+                args.push("--resume-thread-id".to_string());
+                args.push(thread_id.to_string());
+            }
+        } else if let Some(_thread_id) = normalized_arg(context.codex_resume_thread_id) {
+            // Direct Codex runtime consumes resume metadata outside the child argv contract.
         }
 
         ProviderLaunchRequest {
@@ -307,6 +350,9 @@ impl ProviderAdapter for GeminiProviderAdapter {
 }
 
 fn provider_uses_direct_binary(provider: Provider) -> bool {
+    if provider == Provider::Codex {
+        return true;
+    }
     env::var(provider.executable_env())
         .ok()
         .map(|value| !value.trim().is_empty())
