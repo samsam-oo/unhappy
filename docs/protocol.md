@@ -7,6 +7,8 @@ This document describes the Unhappy wire protocol as implemented in `packages/un
 - WebSocket: Socket.IO server at path `/v1/updates` (transports: websocket, polling).
 - CORS: `*` (server-side).
 
+Machine-sensitive operations are being migrated to a dedicated standard WebSocket data plane. The target frame protocol is documented in [machine-data-plane-protocol-v1.md](/Users/skyline23/Downloads/unhappy/docs/machine-data-plane-protocol-v1.md).
+
 ## Protocol design motivations
 The protocol is designed to stay minimal, explicit, and resilient under intermittent connectivity. A few guiding principles shape naming, payloads, and versioning:
 
