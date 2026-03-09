@@ -99,6 +99,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
     private let connectTimeoutSeconds: Double
     private let ackTimeoutSeconds: Double
     private var liveConnection: LiveConnection?
+    private let retryableMessageLoadCommands: Set<String> = [
+        "codex-list-messages",
+        "claude-list-messages",
+        "gemini-list-messages",
+    ]
 
     private struct LiveConnection {
         let serverURLString: String
@@ -270,37 +275,66 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             "params": params,
         ]
 
-        let socket = try await getOrCreateConnectedSocket(
-            serverURL: serverURL,
-            token: normalizedToken
-        )
+        let maxAttempts = retryableMessageLoadCommands.contains(normalizedCommand) ? 2 : 1
+        var lastError: Error?
 
-        do {
-            let ackItems = try await emitWithAck(
-                socket: socket,
-                event: "machine-public-command",
-                payload: requestPayload
+        for attempt in 0..<maxAttempts {
+            let socket = try await getOrCreateConnectedSocket(
+                serverURL: serverURL,
+                token: normalizedToken
             )
 
-            if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
-                teardownLiveConnection()
-                throw MachinesAPIError.rpcTimedOut
-            }
+            do {
+                let ackItems = try await emitWithAck(
+                    socket: socket,
+                    event: "machine-public-command",
+                    payload: requestPayload
+                )
 
-            guard let responseObject = ackItems.first as? [String: Any] else {
-                teardownLiveConnection()
-                throw MachinesAPIError.invalidRPCPayload
-            }
-            guard JSONSerialization.isValidJSONObject(responseObject) else {
-                teardownLiveConnection()
-                throw MachinesAPIError.invalidRPCPayload
-            }
+                if let first = ackItems.first as? String, first == SocketAckStatus.noAck.rawValue {
+                    teardownLiveConnection()
+                    throw MachinesAPIError.rpcTimedOut
+                }
 
-            return try JSONSerialization.data(withJSONObject: responseObject)
-        } catch {
-            teardownLiveConnection()
-            throw error
+                guard let responseObject = ackItems.first as? [String: Any] else {
+                    teardownLiveConnection()
+                    throw MachinesAPIError.invalidRPCPayload
+                }
+                guard JSONSerialization.isValidJSONObject(responseObject) else {
+                    teardownLiveConnection()
+                    throw MachinesAPIError.invalidRPCPayload
+                }
+
+                if responseObject["success"] as? Bool == false,
+                   retryableMessageLoadCommands.contains(normalizedCommand),
+                   let errorMessage = (responseObject["error"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased(),
+                   errorMessage.contains("timed out") {
+                    teardownLiveConnection()
+                    lastError = MachinesAPIError.rpcCallFailed(errorMessage)
+                    let shouldRetry = attempt < maxAttempts - 1
+                    if shouldRetry {
+                        try? await Task.sleep(nanoseconds: 750_000_000)
+                        continue
+                    }
+                }
+
+                return try JSONSerialization.data(withJSONObject: responseObject)
+            } catch {
+                teardownLiveConnection()
+                lastError = error
+
+                let shouldRetry = attempt < maxAttempts - 1 && shouldRetryMessageLoad(error)
+                if shouldRetry {
+                    try? await Task.sleep(nanoseconds: 750_000_000)
+                    continue
+                }
+                throw error
+            }
         }
+
+        throw lastError ?? MachinesAPIError.rpcTimedOut
     }
 
     public func fetchCodexThreadMessages(
@@ -697,6 +731,18 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
                 .timingOut(after: ackTimeoutSeconds) { items in
                     continuation.resume(returning: items)
                 }
+        }
+    }
+
+    private func shouldRetryMessageLoad(_ error: Error) -> Bool {
+        guard let apiError = error as? MachinesAPIError else {
+            return false
+        }
+        switch apiError {
+        case .rpcTimedOut, .rpcSocketConnectionFailed:
+            return true
+        default:
+            return false
         }
     }
 }
