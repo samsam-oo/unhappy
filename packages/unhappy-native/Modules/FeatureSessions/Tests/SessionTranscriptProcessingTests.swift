@@ -29,6 +29,106 @@ struct SessionTranscriptProcessingTests {
         #expect(command.durationText == "11s")
     }
 
+    @Test
+    func coalescesCommandEntriesWithoutMatchingToolUseIDWhenOnlyOneCommandIsOpen() {
+        let commandBody = """
+        {"command":"swift test","cwd":"/tmp/project"}
+        """
+        let callEntry = makeEntry(
+            id: "call-single",
+            kind: .toolCall,
+            title: "Command Execution",
+            body: commandBody,
+            sourceType: "item_started"
+        )
+        let outputEntry = SessionTranscriptEntry(
+            id: "output-single",
+            role: .agent,
+            kind: .raw,
+            title: "Streaming output",
+            body: "collecting logs\n",
+            toolUseID: nil,
+            sourceType: "terminal-output",
+            toolName: nil,
+            isSidechain: false,
+            threadID: nil
+        )
+        let resultEntry = SessionTranscriptEntry(
+            id: "result-single",
+            role: .agent,
+            kind: .toolResult,
+            title: "Command Result",
+            body: #"{"success":true,"exitCode":0}"#,
+            toolUseID: nil,
+            sourceType: "item_completed",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: callEntry),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: outputEntry),
+            makePresentation(messageID: "msg-3", sequenceText: "3", createdAt: 102, createdAtText: "10:02", entry: resultEntry),
+        ])
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected a command execution card")
+            return
+        }
+
+        #expect(command.logs == "collecting logs")
+        #expect(command.status == .succeeded)
+    }
+
+    @Test
+    func taskCompleteFinalizesOpenCommandWithoutExplicitToolResult() {
+        let callEntry = makeEntry(
+            id: "call-open",
+            kind: .toolCall,
+            title: "Command Execution",
+            body: #"{"command":"npm test","cwd":"/tmp/project"}"#,
+            sourceType: "item_started"
+        )
+        let outputEntry = makeEntry(
+            id: "output-open",
+            kind: .raw,
+            title: "Streaming output",
+            body: "running\n",
+            sourceType: "terminal-output",
+            toolName: nil
+        )
+        let completeEntry = SessionTranscriptEntry(
+            id: "task-complete",
+            role: .system,
+            kind: .event,
+            title: "Task Complete",
+            body: "done",
+            toolUseID: nil,
+            sourceType: "task_complete",
+            toolName: nil,
+            isSidechain: false,
+            threadID: nil
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: callEntry),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 104, createdAtText: "10:04", entry: outputEntry),
+            makePresentation(messageID: "msg-3", sequenceText: "3", createdAt: 111, createdAtText: "10:11", entry: completeEntry),
+        ])
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected a command execution card")
+            return
+        }
+
+        #expect(command.status == .succeeded)
+        #expect(command.logs == "running")
+        #expect(command.durationText == "11s")
+    }
+
     private func makeCommandPresentations() -> [SessionTranscriptMessagePresentation] {
         let commandBody = """
         {"command":"corepack yarn test","cwd":"/tmp/project","commandActions":[{"type":"read","path":"README.md"},{"type":"search","query":"TODO"}]}
