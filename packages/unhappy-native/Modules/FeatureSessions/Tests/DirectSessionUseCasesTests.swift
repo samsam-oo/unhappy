@@ -164,7 +164,8 @@ private actor FileReadingService: MachineFileReading {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APISessionReadFileResult {
         recordedPath = path
         return APISessionReadFileResult(
@@ -195,6 +196,7 @@ private actor BashRunningService: MachineBashRunning {
         machineID: String,
         command: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         timeoutMilliseconds: Int
     ) async throws -> APISessionBashResult {
         recordedCall = RecordedCall(

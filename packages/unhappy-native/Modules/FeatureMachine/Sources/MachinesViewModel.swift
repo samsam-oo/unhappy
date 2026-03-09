@@ -52,6 +52,7 @@ public final class MachinesViewModel: ObservableObject {
 
     public func spawnSession(
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         directory: String,
         serverURLString: String,
         token: String,
@@ -72,6 +73,7 @@ public final class MachinesViewModel: ObservableObject {
                     serverURLString: serverURLString,
                     token: token,
                     machineID: machineID,
+                    wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                     directory: directory,
                     agent: agent,
                     approvedNewDirectoryCreation: approvedNewDirectoryCreation

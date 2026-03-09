@@ -728,6 +728,7 @@ public struct MachineSessionSpawnServiceRequest: Sendable, Equatable {
     public let serverURL: URL
     public let token: String
     public let machineID: String
+    public let wrappedMachineDataEncryptionKey: String?
     public let directory: String
     public let agent: APISessionSpawnAgent?
     public let codexResumeThreadID: String?
@@ -742,6 +743,7 @@ public struct MachineSessionSpawnServiceRequest: Sendable, Equatable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String? = nil,
         directory: String,
         agent: APISessionSpawnAgent?,
         codexResumeThreadID: String? = nil,
@@ -755,6 +757,7 @@ public struct MachineSessionSpawnServiceRequest: Sendable, Equatable {
         self.serverURL = serverURL
         self.token = token
         self.machineID = machineID
+        self.wrappedMachineDataEncryptionKey = wrappedMachineDataEncryptionKey
         self.directory = directory
         self.agent = agent
         self.codexResumeThreadID = codexResumeThreadID
@@ -784,7 +787,8 @@ public protocol MachineDirectoryListing: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineListDirectoryResult
 }
 
@@ -793,7 +797,8 @@ public protocol MachineFileReading: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APISessionReadFileResult
 }
 
@@ -804,6 +809,7 @@ public protocol MachineBashRunning: Sendable {
         machineID: String,
         command: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         timeoutMilliseconds: Int
     ) async throws -> APISessionBashResult
 }
@@ -813,6 +819,7 @@ public protocol MachineCodexThreadsFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -822,6 +829,7 @@ public protocol MachineCodexThreadsFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary]
@@ -859,6 +867,7 @@ public protocol MachineClaudeSessionsFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -868,6 +877,7 @@ public protocol MachineClaudeSessionsFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary]
@@ -904,6 +914,7 @@ public protocol MachineGeminiSessionsFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -913,6 +924,7 @@ public protocol MachineGeminiSessionsFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APIGeminiSessionSummary]
@@ -955,7 +967,8 @@ public protocol MachineProjectsFetching: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
-        explicitOnly: Bool
+        explicitOnly: Bool,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary]
 }
 
@@ -964,7 +977,8 @@ public protocol MachineProjectOpening: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult
 }
 
@@ -973,7 +987,8 @@ public protocol MachineProjectRemoving: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult
 }
 

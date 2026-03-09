@@ -372,6 +372,7 @@ struct SessionsViewModelTests {
         await model.removeProject(
             machineID: "machine-1",
             projectPath: "/repo/app",
+            wrappedMachineDataEncryptionKey: nil,
             serverURLString: "https://api.unhappy.im",
             token: "token"
         )

@@ -533,7 +533,8 @@ private struct ViewModelDirectoryLister: NewSessionDirectoryListingAction {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineDirectoryEntry] {
         []
     }
@@ -563,7 +564,8 @@ private actor SequenceDirectoryLister: NewSessionDirectoryListingAction {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineDirectoryEntry] {
         guard !results.isEmpty else { return [] }
         let next = results.removeFirst()
@@ -585,7 +587,8 @@ private actor SuspendingDirectoryLister: NewSessionDirectoryListingAction {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineDirectoryEntry] {
         hasStarted = true
         startedContinuation?.resume()
@@ -637,6 +640,7 @@ private actor SequenceCodexThreadsLoader: NewSessionCodexThreadsLoadingAction {
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -661,6 +665,7 @@ private actor SequenceClaudeSessionsLoader: NewSessionClaudeSessionsLoadingActio
         serverURLString: String,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
