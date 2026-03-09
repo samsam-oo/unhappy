@@ -160,6 +160,67 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
         #expect(rows.first?.machineID == "machine-active")
         #expect(rows.first?.summary.id == "thread-active")
     }
+
+    @Test
+    func loadUpstreamSessionsDeduplicatesProjectPathsPerMachineBeforeFetching() async throws {
+        let duplicateProjects = [
+            SessionMachineProject(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIMachineProjectSummary(
+                    path: "/tmp/project",
+                    latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                    codexThreadCount: 0,
+                    claudeSessionCount: 0,
+                    openedExplicitly: true
+                )
+            ),
+            SessionMachineProject(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIMachineProjectSummary(
+                    path: "/tmp/project",
+                    latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                    codexThreadCount: 0,
+                    claudeSessionCount: 0,
+                    openedExplicitly: true
+                )
+            )
+        ]
+        let service = MockUpstreamMachinesService(
+            machines: [
+                APIMachine(
+                    id: "machine-1",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Work Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                )
+            ],
+            codexThreadsByMachineAndPath: [:],
+            claudeSessionsByMachineAndPath: [:],
+            geminiSessionsByMachineAndPath: [:]
+        )
+        let useCase = SessionUpstreamSessionsLoadUseCase(service: service)
+
+        _ = try await useCase.loadUpstreamSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            projects: duplicateProjects
+        )
+
+        let codexFetchCount = await service.codexFetchCount
+        let claudeFetchCount = await service.claudeFetchCount
+        let geminiFetchCount = await service.geminiFetchCount
+        #expect(codexFetchCount == 1)
+        #expect(claudeFetchCount == 1)
+        #expect(geminiFetchCount == 1)
+    }
 }
 
 private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineGeminiSessionsFetching {
@@ -167,6 +228,9 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
     let codexThreadsByMachineAndPath: [String: [APICodexThreadSummary]]
     let claudeSessionsByMachineAndPath: [String: [APIClaudeSessionSummary]]
     let geminiSessionsByMachineAndPath: [String: [APIGeminiSessionSummary]]
+    private(set) var codexFetchCount = 0
+    private(set) var claudeFetchCount = 0
+    private(set) var geminiFetchCount = 0
 
     init(
         machines: [APIMachine],
@@ -209,6 +273,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
+        codexFetchCount += 1
         codexThreadsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
     }
 
@@ -237,6 +302,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
+        claudeFetchCount += 1
         claudeSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
     }
 
@@ -265,6 +331,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         limit: Int,
         cwd: String?
     ) async throws -> [APIGeminiSessionSummary] {
+        geminiFetchCount += 1
         geminiSessionsByMachineAndPath["\(machineID)|\(cwd ?? "")"] ?? []
     }
 }

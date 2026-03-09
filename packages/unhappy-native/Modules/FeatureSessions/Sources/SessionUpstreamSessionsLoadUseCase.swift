@@ -36,19 +36,14 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
 
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
+        let projectPathsByMachineID = groupedProjectPathsByMachineID(from: projects)
         var rows: [SessionLinkedUpstreamSession] = []
         var seenRowIDs = Set<String>()
         let service = self.service
 
         try await withThrowingTaskGroup(of: [SessionLinkedUpstreamSession].self) { group in
             for machine in activeMachines {
-                let machineProjects = Array(
-                    Set(
-                        projects
-                            .filter { $0.machineID == machine.id }
-                            .compactMap { SessionProjectPathCanonicalizer.canonicalPath($0.summary.path) }
-                    )
-                ).sorted()
+                let machineProjects = projectPathsByMachineID[machine.id] ?? []
                 guard !machineProjects.isEmpty else { continue }
 
                 let machineDisplayName = machineName(for: machine)
@@ -143,17 +138,41 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         return machine.id
     }
 
+    private func groupedProjectPathsByMachineID(
+        from projects: [SessionMachineProject]
+    ) -> [String: [String]] {
+        var grouped: [String: Set<String>] = [:]
+        for project in projects {
+            guard let path = SessionProjectPathCanonicalizer.canonicalPath(project.summary.path) else {
+                continue
+            }
+            grouped[project.machineID, default: []].insert(path)
+        }
+        return grouped.mapValues { Array($0).sorted() }
+    }
+
     private func timestamp(from value: String?) -> TimeInterval {
         guard let value else { return 0 }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) {
+        if let date = ISO8601DateFormatter.withFractionalSeconds.date(from: value) {
             return date.timeIntervalSince1970
         }
-        formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: value) {
+        if let date = ISO8601DateFormatter.withInternetDateTime.date(from: value) {
             return date.timeIntervalSince1970
         }
         return 0
     }
+}
+
+private extension ISO8601DateFormatter {
+    nonisolated(unsafe) static let withFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    nonisolated(unsafe) static let withInternetDateTime: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 }
