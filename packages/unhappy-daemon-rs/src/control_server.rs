@@ -51,7 +51,9 @@ pub struct SpawnSessionRequest {
     pub reasoning_effort: Option<String>,
     pub codex_home_dir: Option<String>,
     pub agent_session_id: Option<String>,
+    pub agent_conversation_id: Option<String>,
     pub agent_transcript_path: Option<String>,
+    pub agent_control_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
