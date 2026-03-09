@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 const CODEX_HOME_DIR_ENV: &str = "UNHAPPY_CODEX_HOME_DIR";
 const CODEX_AUTH_FILE_ENV: &str = "UNHAPPY_CODEX_AUTH_FILE";
 const CODEX_SESSIONS_DIR_ENV: &str = "UNHAPPY_CODEX_SESSIONS_DIR";
+const UNHAPPY_CLI_ROOT_ENV: &str = "UNHAPPY_CLI_ROOT";
+const CLAUDE_HOOK_FORWARDER_SCRIPT_ENV: &str = "UNHAPPY_CLAUDE_HOOK_FORWARDER";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexRuntimePaths {
@@ -120,6 +122,43 @@ impl Config {
             sessions_dir,
         }
     }
+
+    pub fn claude_hook_settings_dir(&self) -> PathBuf {
+        self.unhappy_home_dir.join("tmp").join("hooks")
+    }
+
+    pub fn claude_hook_settings_path_for_pid(&self, pid: u32) -> PathBuf {
+        self.claude_hook_settings_dir()
+            .join(format!("session-hook-{pid}.json"))
+    }
+
+    pub fn claude_hook_forwarder_script(&self) -> PathBuf {
+        if let Ok(path) = env::var(CLAUDE_HOOK_FORWARDER_SCRIPT_ENV) {
+            let trimmed = path.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
+        }
+
+        if let Ok(cli_root) = env::var(UNHAPPY_CLI_ROOT_ENV) {
+            let trimmed = cli_root.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed).join("scripts").join("session_hook_forwarder.cjs");
+            }
+        }
+
+        self.unhappy_home_dir
+            .join("scripts")
+            .join("session_hook_forwarder.cjs")
+    }
+
+    pub fn claude_hook_command(&self, port: u16) -> String {
+        format!(
+            "node \"{}\" {}",
+            self.claude_hook_forwarder_script().display(),
+            port,
+        )
+    }
 }
 
 #[cfg(test)]
@@ -155,5 +194,26 @@ mod tests {
         assert_eq!(paths.home_dir, PathBuf::from("/tmp/custom-codex-home"));
         assert_eq!(paths.auth_file, PathBuf::from("/tmp/custom-codex-home/auth.json"));
         assert_eq!(paths.sessions_dir, PathBuf::from("/tmp/custom-codex-home/sessions"));
+    }
+
+    #[test]
+    fn claude_hook_artifact_paths_default_under_unhappy_home() {
+        let config = sample_config();
+        assert_eq!(
+            config.claude_hook_settings_dir(),
+            PathBuf::from("/tmp/.unhappy-test/tmp/hooks"),
+        );
+        assert_eq!(
+            config.claude_hook_settings_path_for_pid(42),
+            PathBuf::from("/tmp/.unhappy-test/tmp/hooks/session-hook-42.json"),
+        );
+        assert_eq!(
+            config.claude_hook_forwarder_script(),
+            PathBuf::from("/tmp/.unhappy-test/scripts/session_hook_forwarder.cjs"),
+        );
+        assert_eq!(
+            config.claude_hook_command(3344),
+            "node \"/tmp/.unhappy-test/scripts/session_hook_forwarder.cjs\" 3344",
+        );
     }
 }
