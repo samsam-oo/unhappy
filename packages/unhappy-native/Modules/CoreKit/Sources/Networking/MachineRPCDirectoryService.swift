@@ -1,5 +1,6 @@
 import Foundation
 import SocketIO
+import SecurityKit
 
 public enum RPCParameterValue: Sendable, Equatable, ExpressibleByNilLiteral, ExpressibleByStringLiteral, ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral, ExpressibleByFloatLiteral, ExpressibleByArrayLiteral, ExpressibleByDictionaryLiteral {
     case string(String)

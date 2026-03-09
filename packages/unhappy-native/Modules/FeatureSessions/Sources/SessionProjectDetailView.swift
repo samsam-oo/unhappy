@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreKit
 import FeatureNewSession
+import UIFoundation
 
 @MainActor
 public struct SessionProjectDetailView: View {

@@ -81,6 +81,34 @@ let project = Project(
             ])
         ),
         .target(
+            name: "UIFoundation",
+            destinations: .iOS,
+            product: .staticFramework,
+            bundleId: "im.unhappy.app.ui-foundation",
+            buildableFolders: [
+                "Modules/UIFoundation/Sources",
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:ui-foundation",
+                "tag:layer:kit",
+            ])
+        ),
+        .target(
+            name: "SecurityKit",
+            destinations: .iOS,
+            product: .staticFramework,
+            bundleId: "im.unhappy.app.security-kit",
+            buildableFolders: [
+                "Modules/SecurityKit/Sources",
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:security-kit",
+                "tag:layer:kit",
+            ])
+        ),
+        .target(
             name: "FeatureHome",
             destinations: .iOS,
             product: .staticFramework,
@@ -112,6 +140,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "UIFoundation"),
                 .target(name: "FeatureNewSession"),
             ],
             metadata: .metadata(tags: [
@@ -130,6 +159,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "SecurityKit"),
                 .target(name: "FeatureMachine"),
             ],
             metadata: .metadata(tags: [
@@ -198,6 +228,7 @@ let project = Project(
                 "Modules/CoreKit/Sources",
             ],
             dependencies: [
+                .target(name: "SecurityKit"),
                 .external(name: "SocketIO"),
             ],
             metadata: .metadata(tags: [
@@ -253,6 +284,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "FeatureSettings"),
+                .target(name: "SecurityKit"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
@@ -325,6 +357,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "UIFoundation"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",

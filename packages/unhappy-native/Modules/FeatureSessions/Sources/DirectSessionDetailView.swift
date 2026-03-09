@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import UIFoundation
 
 @MainActor
 public struct DirectSessionDetailView: View {

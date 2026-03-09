@@ -1,14 +1,14 @@
 import Foundation
 
-enum Base64URLCodec {
-    static func encode(_ data: Data) -> String {
+public enum Base64URLCodec {
+    public static func encode(_ data: Data) -> String {
         data.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
     }
 
-    static func decode(_ raw: String) -> Data? {
+    public static func decode(_ raw: String) -> Data? {
         let normalized = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "-", with: "+")

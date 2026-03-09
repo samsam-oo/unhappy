@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import CoreKit
+import UIFoundation
 
 struct SessionMarkdownListItem: Equatable, Sendable {
     let depth: Int

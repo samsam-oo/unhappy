@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import SecurityKit
 
 public enum AccountRestoreError: LocalizedError, Equatable {
     case missingAccountSecret

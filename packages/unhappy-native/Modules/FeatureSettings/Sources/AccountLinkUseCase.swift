@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import SecurityKit
 
 public enum AccountLinkError: LocalizedError, Equatable {
     case missingToken

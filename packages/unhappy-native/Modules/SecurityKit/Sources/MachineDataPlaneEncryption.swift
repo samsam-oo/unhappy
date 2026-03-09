@@ -1,7 +1,11 @@
 import Foundation
 import CryptoKit
 
-enum MachineDataPlaneEncryption {
+public enum SecurityKitError: Error {
+    case invalidPayload
+}
+
+public enum MachineDataPlaneEncryption {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
     private static let payloadBundleVersion: UInt8 = 2
     private static let wrappedDataKeyBundleVersion: UInt8 = 2
@@ -16,7 +20,7 @@ enum MachineDataPlaneEncryption {
     private static let wrappedDataKeyKDFInfo =
         Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
 
-    static func resolveMachineDataKey(rawWrappedKey: String?) -> Data? {
+    public static func resolveMachineDataKey(rawWrappedKey: String?) -> Data? {
         guard let rawWrappedKey else { return nil }
         guard let wrappedKey = decodeBase64(rawWrappedKey) else { return nil }
         guard
@@ -28,9 +32,9 @@ enum MachineDataPlaneEncryption {
         return decryptWrappedDataKey(bundle: wrappedKey, secretKey: contentSecret)
     }
 
-    static func encryptJSONPayload(_ object: Any, dataKey: Data) throws -> String {
+    public static func encryptJSONPayload(_ object: Any, dataKey: Data) throws -> String {
         guard JSONSerialization.isValidJSONObject(object) else {
-            throw MachinesAPIError.invalidRPCPayload
+            throw SecurityKitError.invalidPayload
         }
 
         let plaintext = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
@@ -45,15 +49,15 @@ enum MachineDataPlaneEncryption {
         return bundle.base64EncodedString()
     }
 
-    static func decryptJSONPayload(_ base64Bundle: String, dataKey: Data) throws -> Data {
+    public static func decryptJSONPayload(_ base64Bundle: String, dataKey: Data) throws -> Data {
         guard let bundle = decodeBase64(base64Bundle) else {
-            throw MachinesAPIError.invalidRPCPayload
+            throw SecurityKitError.invalidPayload
         }
         guard
             bundle.count >= minimumPayloadBundleLength,
             bundle.first == payloadBundleVersion
         else {
-            throw MachinesAPIError.invalidRPCPayload
+            throw SecurityKitError.invalidPayload
         }
 
         let nonceStart = 1
@@ -61,7 +65,7 @@ enum MachineDataPlaneEncryption {
         let nonceData = bundle.subdata(in: nonceStart..<nonceEnd)
         let encryptedAndTag = bundle.suffix(from: nonceEnd)
         guard encryptedAndTag.count >= aesGCMTagLength else {
-            throw MachinesAPIError.invalidRPCPayload
+            throw SecurityKitError.invalidPayload
         }
 
         let ciphertextData = encryptedAndTag.dropLast(aesGCMTagLength)
