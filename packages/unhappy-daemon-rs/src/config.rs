@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::env;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -7,6 +8,9 @@ pub struct Config {
     pub token: String,
     pub machine_id: String,
     pub machine_data_key_base64url: String,
+    pub unhappy_home_dir: PathBuf,
+    pub provider_cli: String,
+    pub session_webhook_timeout_ms: u64,
 }
 
 impl Config {
@@ -19,12 +23,27 @@ impl Config {
             .context("UNHAPPY_MACHINE_ID is required for unhappy-daemon-rs bootstrap")?;
         let machine_data_key_base64url = env::var("UNHAPPY_MACHINE_DATA_KEY")
             .context("UNHAPPY_MACHINE_DATA_KEY is required for unhappy-daemon-rs bootstrap")?;
+        let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string())).join(".unhappy")
+            });
+        let provider_cli = env::var("UNHAPPY_PROVIDER_CLI")
+            .unwrap_or_else(|_| "unhappy".to_string());
+        let session_webhook_timeout_ms = env::var("UNHAPPY_SESSION_WEBHOOK_TIMEOUT_MS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(30_000);
 
         Ok(Self {
             server_url,
             token,
             machine_id,
             machine_data_key_base64url,
+            unhappy_home_dir,
+            provider_cli,
+            session_webhook_timeout_ms,
         })
     }
 }

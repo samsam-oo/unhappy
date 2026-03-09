@@ -17,6 +17,7 @@ import { execSync } from 'child_process';
 import { logger } from '@/ui/logger';
 import { trimIdent } from '@/utils/trimIdent';
 import os from 'os';
+import { getDaemonLaunchProgramArguments } from '../executable';
 
 const PLIST_LABEL = 'com.unhappy-cli.daemon';
 const PLIST_FILE = `/Library/LaunchDaemons/${PLIST_LABEL}.plist`;
@@ -31,9 +32,10 @@ export async function install(): Promise<void> {
             execSync(`launchctl unload ${PLIST_FILE}`, { stdio: 'inherit' });
         }
 
-        // Get the path to the unhappy CLI executable
-        const happyPath = process.argv[0]; // Node.js executable
-        const scriptPath = process.argv[1]; // Script path
+        const daemonProgramArguments = getDaemonLaunchProgramArguments();
+        const plistProgramArguments = daemonProgramArguments
+            .map((argument) => `                    <string>${argument}</string>`)
+            .join('\n');
 
         // Create plist content
         const plistContent = trimIdent(`
@@ -46,9 +48,7 @@ export async function install(): Promise<void> {
                 
                 <key>ProgramArguments</key>
                 <array>
-                    <string>${happyPath}</string>
-                    <string>${scriptPath}</string>
-                    <string>unhappy-daemon</string>
+${plistProgramArguments}
                 </array>
                 
                 <key>EnvironmentVariables</key>
