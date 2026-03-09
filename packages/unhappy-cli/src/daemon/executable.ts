@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, type SpawnOptions } from 'child_process';
-import { existsSync } from 'fs';
+import { closeSync, existsSync, openSync } from 'fs';
 import { basename, isAbsolute, join, normalize, resolve } from 'path';
 
 import { encodeBase64 } from '@/api/encryption';
@@ -89,6 +89,40 @@ function findBundledRustDaemonExecutable(): string | null {
   return null;
 }
 
+function createTimestampForFilename(date: Date = new Date()): string {
+  return date
+    .toLocaleString('sv-SE', {
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+    .replace(/[: ]/g, '-')
+    .replace(/,/g, '')
+    + '-pid-' + process.pid;
+}
+
+function createDaemonLogFilePath(): string {
+  return join(configuration.logsDir, `${createTimestampForFilename()}-daemon.log`);
+}
+
+function resolveDaemonSpawnStdio(
+  stdio: SpawnOptions['stdio'],
+): { stdio: SpawnOptions['stdio']; logFd: number | null } {
+  if (stdio !== 'ignore') {
+    return { stdio, logFd: null };
+  }
+
+  const logFd = openSync(createDaemonLogFilePath(), 'a');
+  return {
+    stdio: ['ignore', logFd, logFd],
+    logFd,
+  };
+}
+
 export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
   const configuredExecutable = process.env[DAEMON_EXECUTABLE_ENV]?.trim();
   if (configuredExecutable) {
@@ -172,10 +206,16 @@ export async function spawnDaemonExecutable(
     );
   }
 
-  return spawn(executable.executablePath, executable.args, {
+  const { stdio, logFd } = resolveDaemonSpawnStdio(options.stdio);
+  const child = spawn(executable.executablePath, executable.args, {
     ...options,
+    stdio,
     env: await buildRustDaemonEnvironment(options.env ?? process.env),
   });
+  if (logFd !== null) {
+    closeSync(logFd);
+  }
+  return child;
 }
 
 export function getDaemonLaunchProgramArguments(): string[] {

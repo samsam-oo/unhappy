@@ -25,6 +25,7 @@ use hkdf::Hkdf;
 use rand::RngCore;
 use serde_json::{json, Value};
 use sha2::Sha256;
+use std::time::Instant;
 use tokio::{
     process::Command,
     task::JoinHandle,
@@ -41,6 +42,50 @@ use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 pub type DataPlaneStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+struct RequestTrace {
+    operation: MachineDataPlaneOperation,
+    stream_id: String,
+    started_at: Instant,
+}
+
+impl RequestTrace {
+    fn start(operation: MachineDataPlaneOperation, stream_id: &str, payload: &Value) -> Self {
+        eprintln!(
+            "[{}] [daemon-rs] category=data-plane op={} stream_id={} phase=start {}",
+            trace_timestamp(),
+            operation_name(operation),
+            stream_id,
+            operation_log_fields(operation, payload)
+        );
+        Self {
+            operation,
+            stream_id: stream_id.to_string(),
+            started_at: Instant::now(),
+        }
+    }
+
+    fn finish_ok(&self) {
+        eprintln!(
+            "[{}] [daemon-rs] category=data-plane op={} stream_id={} phase=end status=ok elapsed_ms={}",
+            trace_timestamp(),
+            operation_name(self.operation),
+            self.stream_id,
+            self.started_at.elapsed().as_millis()
+        );
+    }
+
+    fn finish_error(&self, error: &anyhow::Error) {
+        eprintln!(
+            "[{}] [daemon-rs] category=data-plane op={} stream_id={} phase=end status=error elapsed_ms={} error={}",
+            trace_timestamp(),
+            operation_name(self.operation),
+            self.stream_id,
+            self.started_at.elapsed().as_millis(),
+            error
+        );
+    }
+}
 
 pub struct SessionCryptoContext {
     machine_data_key: [u8; 32],
@@ -202,6 +247,7 @@ async fn connect_and_serve_once(config: &Config, state: SharedDaemonState) -> Re
 }
 
 async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
+    let started_at = Instant::now();
     let mut url = Url::parse(&config.server_url).context("invalid server url")?;
     match url.scheme() {
         "https" => url.set_scheme("wss").ok(),
@@ -217,6 +263,12 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
     let (mut socket, _) = connect_async(request)
         .await
         .context("failed to connect to machine data plane websocket")?;
+    eprintln!(
+        "[{}] [daemon-rs] category=handshake phase=socket-connected elapsed_ms={} machine_id={}",
+        trace_timestamp(),
+        started_at.elapsed().as_millis(),
+        config.machine_id
+    );
 
     let crypto = SessionCryptoContext::new(
         MachineDataPlaneRole::Daemon,
@@ -242,6 +294,12 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
     let session_key = crypto
         .derive_session_key(&ack.key_exchange)
         .context("failed to derive session key from hello-ack")?;
+    eprintln!(
+        "[{}] [daemon-rs] category=handshake phase=ready elapsed_ms={} machine_id={}",
+        trace_timestamp(),
+        started_at.elapsed().as_millis(),
+        config.machine_id
+    );
 
     if ack.max_chunk_bytes != MACHINE_DATA_PLANE_DEFAULT_MAX_CHUNK_BYTES
         || ack.max_in_flight_streams != MACHINE_DATA_PLANE_DEFAULT_MAX_IN_FLIGHT_STREAMS
@@ -288,6 +346,7 @@ async fn handle_request_frame(
         .context("failed to decrypt machine data-plane request")?;
     let request_json: Value =
         serde_json::from_slice(&request_payload).context("request payload was not valid JSON")?;
+    let trace = RequestTrace::start(frame.op, &frame.stream_id, &request_json);
 
     let result = dispatch_request(config, state, frame.op, request_json).await;
     match result {
@@ -325,8 +384,10 @@ async fn handle_request_frame(
                 .send(Message::Text(serde_json::to_string(&response)?.into()))
                 .await
                 .context("failed to send data-plane complete frame")?;
+            trace.finish_ok();
         }
         Err(error) => {
+            trace.finish_error(&error);
             let response = MachineDataPlaneErrorFrame {
                 v: MACHINE_DATA_PLANE_PROTOCOL_VERSION,
                 t: "error".to_string(),
@@ -342,6 +403,75 @@ async fn handle_request_frame(
         }
     }
     Ok(())
+}
+
+fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
+    match operation {
+        MachineDataPlaneOperation::MachineListModels => "machine.listModels",
+        MachineDataPlaneOperation::DaemonStop => "daemon.stop",
+        MachineDataPlaneOperation::DaemonUpdate => "daemon.update",
+        MachineDataPlaneOperation::ProviderSpawn => "provider.spawn",
+        MachineDataPlaneOperation::ProjectList => "project.list",
+        MachineDataPlaneOperation::ProjectOpen => "project.open",
+        MachineDataPlaneOperation::ProjectRemove => "project.remove",
+        MachineDataPlaneOperation::CodexListThreads => "codex.listThreads",
+        MachineDataPlaneOperation::CodexOpenThread => "codex.openThread",
+        MachineDataPlaneOperation::CodexListMessages => "codex.listMessages",
+        MachineDataPlaneOperation::CodexSendMessage => "codex.sendMessage",
+        MachineDataPlaneOperation::ClaudeListSessions => "claude.listSessions",
+        MachineDataPlaneOperation::ClaudeListMessages => "claude.listMessages",
+        MachineDataPlaneOperation::ClaudeSendMessage => "claude.sendMessage",
+        MachineDataPlaneOperation::GeminiListSessions => "gemini.listSessions",
+        MachineDataPlaneOperation::GeminiListMessages => "gemini.listMessages",
+        MachineDataPlaneOperation::GeminiSendMessage => "gemini.sendMessage",
+        MachineDataPlaneOperation::FsListDirectory => "fs.listDirectory",
+        MachineDataPlaneOperation::FsGetDirectoryTree => "fs.getDirectoryTree",
+        MachineDataPlaneOperation::FsReadFile => "fs.readFile",
+        MachineDataPlaneOperation::FsWriteFile => "fs.writeFile",
+        MachineDataPlaneOperation::ExecBash => "exec.bash",
+        MachineDataPlaneOperation::SearchRipgrep => "search.ripgrep",
+        MachineDataPlaneOperation::DiffDifftastic => "diff.difftastic",
+    }
+}
+
+fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -> String {
+    let mut fields: Vec<String> = Vec::new();
+    match operation {
+        MachineDataPlaneOperation::ProjectList => {
+            if let Some(explicit_only) = payload.get("explicitOnly").and_then(Value::as_bool) {
+                fields.push(format!("explicit_only={explicit_only}"));
+            }
+        }
+        MachineDataPlaneOperation::ProjectOpen | MachineDataPlaneOperation::ProjectRemove => {
+            if let Some(path) = payload.get("path").and_then(Value::as_str) {
+                fields.push(format!("path={}", path.replace('\n', "\\n")));
+            }
+        }
+        MachineDataPlaneOperation::CodexListThreads
+        | MachineDataPlaneOperation::ClaudeListSessions
+        | MachineDataPlaneOperation::GeminiListSessions
+        | MachineDataPlaneOperation::FsListDirectory
+        | MachineDataPlaneOperation::FsGetDirectoryTree
+        | MachineDataPlaneOperation::FsReadFile
+        | MachineDataPlaneOperation::FsWriteFile
+        | MachineDataPlaneOperation::ExecBash
+        | MachineDataPlaneOperation::DiffDifftastic => {
+            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+                fields.push(format!("cwd={}", cwd.replace('\n', "\\n")));
+            }
+            if let Some(path) = payload.get("path").and_then(Value::as_str) {
+                fields.push(format!("path={}", path.replace('\n', "\\n")));
+            }
+        }
+        _ => {}
+    }
+    fields.join(" ")
+}
+
+fn trace_timestamp() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "unknown-time".to_string())
 }
 
 async fn dispatch_request(
