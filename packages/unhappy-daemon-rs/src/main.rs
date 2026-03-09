@@ -20,7 +20,10 @@ use config::Config;
 use control_server::start_control_server;
 use data_plane::spawn_data_plane_service;
 use daemon_state::DaemonState;
-use launcher::{print_status, start_detached_daemon, stop_daemon_from_state};
+use launcher::{
+    list_sessions, print_status, provider_session_started, spawn_session, start_detached_daemon,
+    stop_daemon_from_state, stop_session,
+};
 use lock::DaemonLockGuard;
 use machine_sync::spawn_machine_sync;
 use std::env;
@@ -42,6 +45,19 @@ enum Command {
     Status {
         #[arg(long)]
         json: bool,
+    },
+    ListSessions,
+    StopSession {
+        #[arg(long)]
+        session_id: String,
+    },
+    SpawnSession {
+        #[arg(long)]
+        request_json: String,
+    },
+    ProviderSessionStarted {
+        #[arg(long)]
+        request_json: String,
     },
     LocalControlServer {
         #[arg(long)]
@@ -82,6 +98,64 @@ async fn main() -> Result<()> {
                     .join(".unhappy")
                 });
             print_status(&unhappy_home_dir, json)?;
+        }
+        Command::ListSessions => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&list_sessions(&unhappy_home_dir).await?)?
+            );
+        }
+        Command::StopSession { session_id } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&stop_session(&unhappy_home_dir, &session_id).await?)?
+            );
+        }
+        Command::SpawnSession { request_json } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&spawn_session(&unhappy_home_dir, &request_json).await?)?
+            );
+        }
+        Command::ProviderSessionStarted { request_json } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &provider_session_started(&unhappy_home_dir, &request_json).await?
+                )?
+            );
         }
         Command::LocalControlServer { bind } => {
             let config = Config::from_env()?;
