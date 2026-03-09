@@ -75,12 +75,13 @@ public struct SessionsView: View {
                 defaultAgent: defaultNewSessionAgent,
                 mode: .selectProject,
                 makeViewModel: makeNewSessionViewModel,
-                onProjectSelected: { machineID, directoryPath, machineDisplayName in
+                onProjectSelected: { machineID, directoryPath, machineDisplayName, wrappedMachineDataEncryptionKey in
                     Task {
                         await viewModel.openProject(
                             machineID: machineID ?? "",
                             machineDisplayName: machineDisplayName ?? machineID ?? "",
                             projectPath: directoryPath,
+                            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
                             serverURLString: serverURLString,
                             token: token
                         )
@@ -191,6 +192,7 @@ public struct SessionsView: View {
                                         await viewModel.removeProject(
                                             machineID: group.machineID,
                                             projectPath: group.projectPath,
+                                            wrappedMachineDataEncryptionKey: group.wrappedMachineDataEncryptionKey,
                                             serverURLString: serverURLString,
                                             token: token
                                         )

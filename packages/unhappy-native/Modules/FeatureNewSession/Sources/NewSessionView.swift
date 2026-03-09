@@ -23,7 +23,7 @@ public struct NewSessionView: View {
     private let initialDirectoryPath: String?
     private let mode: Mode
     private let onSessionSpawned: @MainActor (SpawnedContext) -> Void
-    private let onProjectSelected: @MainActor (String?, String, String?) -> Void
+    private let onProjectSelected: @MainActor (String?, String, String?, String?) -> Void
 
     @StateObject private var viewModel: NewSessionViewModel
     @Environment(\.dismiss) private var dismiss
@@ -46,7 +46,7 @@ public struct NewSessionView: View {
         mode: Mode = .startSession,
         makeViewModel: @escaping @MainActor () -> NewSessionViewModel,
         onSessionSpawned: @escaping @MainActor (SpawnedContext) -> Void = { _ in },
-        onProjectSelected: @escaping @MainActor (String?, String, String?) -> Void = { _, _, _ in }
+        onProjectSelected: @escaping @MainActor (String?, String, String?, String?) -> Void = { _, _, _, _ in }
     ) {
         self.serverURLString = serverURLString
         self.token = token
@@ -113,7 +113,8 @@ public struct NewSessionView: View {
                             onProjectSelected(
                                 viewModel.selectedMachineID,
                                 viewModel.directoryPath,
-                                selectedMachineDisplayName
+                                selectedMachineDisplayName,
+                                selectedMachineWrappedDataEncryptionKey
                             )
                             dismiss()
                         }
@@ -217,6 +218,14 @@ public struct NewSessionView: View {
             return nil
         }
         return NewSessionMachinePresentation.displayName(for: machine)
+    }
+
+    private var selectedMachineWrappedDataEncryptionKey: String? {
+        guard let selectedMachineID = viewModel.selectedMachineID,
+              let machine = viewModel.machines.first(where: { $0.id == selectedMachineID }) else {
+            return nil
+        }
+        return machine.dataEncryptionKey
     }
 
     private var directorySection: some View {

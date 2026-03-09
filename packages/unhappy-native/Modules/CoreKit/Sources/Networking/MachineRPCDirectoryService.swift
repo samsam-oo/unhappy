@@ -67,6 +67,10 @@ public protocol MachineRPCDirectoryListing: Sendable {
         params: [String: RPCParameterValue]
     ) async throws -> Data
 
+    func spawnProviderSession(
+        _ request: MachineSessionSpawnServiceRequest
+    ) async throws -> APISessionSpawnResult
+
     func listDirectory(
         serverURL: URL,
         token: String,
@@ -75,10 +79,29 @@ public protocol MachineRPCDirectoryListing: Sendable {
         machineDataEncryptionKey: String?
     ) async throws -> APIMachineListDirectoryResult
 
+    func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APISessionReadFileResult
+
+    func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult
+
     func fetchCodexThreadsPage(
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -88,10 +111,45 @@ public protocol MachineRPCDirectoryListing: Sendable {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
     ) async throws -> APIClaudeSessionsPage
+
+    func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage
+
+    func fetchProjects(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        explicitOnly: Bool,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> [APIMachineProjectSummary]
+
+    func openProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult
+
+    func removeProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult
 
     func fetchCodexThreadMessages(
         serverURL: URL,
@@ -193,7 +251,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         token: String,
         machineID: String,
         path: String,
-        machineDataEncryptionKey _: String?
+        machineDataEncryptionKey: String?
     ) async throws -> APIMachineListDirectoryResult {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
@@ -205,10 +263,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.missingPath
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: machineDataEncryptionKey,
             command: "listDirectory",
             params: [
                 "path": .string(normalizedPath),
@@ -229,10 +288,30 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         )
     }
 
+    public func spawnProviderSession(
+        _ request: MachineSessionSpawnServiceRequest
+    ) async throws -> APISessionSpawnResult {
+        let normalizedMachineID = request.machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: request.serverURL,
+            token: request.token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: request.wrappedMachineDataEncryptionKey,
+            command: "spawn-provider-session",
+            params: MachineSessionSpawnRPCParametersBuilder().build(from: request)
+        )
+        return try MachineSessionSpawnRPCResponseParser.parse(responseData)
+    }
+
     public func fetchCodexThreadsPage(
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -255,10 +334,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             params["cursor"] = .string(normalizedCursor)
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "codex-list-threads",
             params: params
         )
@@ -276,6 +356,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -298,10 +379,11 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             params["cursor"] = .string(normalizedCursor)
         }
 
-        let responseData = try await invokeCommand(
+        let responseData = try await invokeSensitiveCommand(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             command: "claude-list-sessions",
             params: params
         )
@@ -313,6 +395,127 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             )
         }
         return try MachinesAPI.decodeClaudeSessionsPageResponse(responseData)
+    }
+
+    public func fetchGeminiSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cwd: String?,
+        cursor: String?
+    ) async throws -> APIGeminiSessionsPage {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let boundedLimit = min(max(limit, 1), 100)
+        var params: [String: RPCParameterValue] = [
+            "limit": .int(boundedLimit),
+        ]
+        let normalizedCWD = cwd?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCWD, !normalizedCWD.isEmpty {
+            params["cwd"] = .string(normalizedCWD)
+        }
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            params["cursor"] = .string(normalizedCursor)
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "gemini-list-sessions",
+            params: params
+        )
+        return try MachinesAPI.decodeGeminiSessionsPageResponse(responseData)
+    }
+
+    public func fetchProjects(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        explicitOnly: Bool,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> [APIMachineProjectSummary] {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "list-projects",
+            params: [
+                "explicitOnly": .bool(explicitOnly),
+            ]
+        )
+        return try MachinesAPI.decodeProjectsResponse(responseData)
+    }
+
+    public func openProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "open-project",
+            params: [
+                "path": .string(normalizedPath),
+            ]
+        )
+        return try JSONDecoder().decode(APIMachineCommandResult.self, from: responseData)
+    }
+
+    public func removeProject(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "close-project",
+            params: [
+                "path": .string(normalizedPath),
+            ]
+        )
+        return try JSONDecoder().decode(APIMachineCommandResult.self, from: responseData)
     }
 
     public func invokeCommand(
@@ -439,14 +642,14 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             dataKey: dataKey
         )
 
-                let ackPayload = try await emitWithAck(
-                    socket: socket,
-                    event: "rpc-call",
-                    payload: [
-                        "method": "\(normalizedMachineID):\(normalizedCommand)",
-                        "params": encryptedParams,
-                    ]
-                )
+        let ackPayload = try await emitWithAck(
+            socket: socket,
+            event: "rpc-call",
+            payload: [
+                "method": "\(normalizedMachineID):\(normalizedCommand)",
+                "params": encryptedParams,
+            ]
+        )
 
         if ackPayload == .noAck {
             teardownLiveConnection()
@@ -532,6 +735,74 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         }
         let decoder = JSONDecoder()
         return try decoder.decode(CodexThreadMessagesEnvelope.self, from: responseData).messages
+    }
+
+    public func readFile(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APISessionReadFileResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "readFile",
+            params: [
+                "path": .string(normalizedPath),
+            ]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionReadFileResult.self, from: responseData)
+    }
+
+    public func runBash(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        command: String,
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
+        timeoutMilliseconds: Int
+    ) async throws -> APISessionBashResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCommand.isEmpty else {
+            throw MachinesAPIError.missingCommand
+        }
+        let normalizedCWD = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedCWD.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let responseData = try await invokeSensitiveCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            command: "bash",
+            params: [
+                "command": .string(normalizedCommand),
+                "cwd": .string(normalizedCWD),
+                "timeout": .int(max(timeoutMilliseconds, 1_000)),
+            ]
+        )
+        let decoder = JSONDecoder()
+        return try decoder.decode(APISessionBashResult.self, from: responseData)
     }
 
     public func sendCodexThreadMessage(

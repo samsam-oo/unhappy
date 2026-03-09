@@ -59,7 +59,8 @@ struct NewSessionUseCasesTests {
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
-            path: "/repo"
+            path: "/repo",
+            wrappedMachineDataEncryptionKey: nil
         )
 
         #expect(loaded.map(\.name) == ["App", "Sources", "z.swift"])
@@ -88,6 +89,7 @@ struct NewSessionUseCasesTests {
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
+            wrappedMachineDataEncryptionKey: nil,
             limit: 20,
             cwd: "/repo",
             cursor: nil
@@ -121,6 +123,7 @@ struct NewSessionUseCasesTests {
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
+            wrappedMachineDataEncryptionKey: nil,
             limit: 20,
             cwd: "/repo",
             cursor: nil
@@ -144,6 +147,7 @@ struct NewSessionUseCasesTests {
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
+            wrappedMachineDataEncryptionKey: nil,
             limit: 20,
             cwd: "/repo",
             cursor: "cursor-20"
@@ -164,6 +168,7 @@ struct NewSessionUseCasesTests {
             serverURLString: "https://api.unhappy.im",
             token: "token",
             machineID: "machine-1",
+            wrappedMachineDataEncryptionKey: nil,
             limit: 20,
             cwd: "/repo",
             cursor: "cursor-12"
@@ -453,7 +458,8 @@ private struct DirectoryService: MachineDirectoryListing {
         serverURL: URL,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineListDirectoryResult {
         result
     }
@@ -479,6 +485,7 @@ private actor CodexThreadsService: MachineCodexThreadsFetching {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -496,6 +503,7 @@ private actor CodexThreadsService: MachineCodexThreadsFetching {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
@@ -516,6 +524,7 @@ private actor ClaudeSessionsService: MachineClaudeSessionsFetching {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -533,6 +542,7 @@ private actor ClaudeSessionsService: MachineClaudeSessionsFetching {
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {

@@ -418,7 +418,8 @@ public actor DirectSessionFileLoadUseCase: DirectSessionFileLoadingAction {
                 serverURL: serverURL,
                 token: normalizedToken,
                 machineID: normalizedMachineID,
-                path: normalizedPath
+                path: normalizedPath,
+                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
             )
 
             guard result.success else {
@@ -482,6 +483,7 @@ public actor DirectSessionReviewLoadUseCase: DirectSessionReviewLoadingAction {
             machineID: normalizedMachineID,
             command: reviewCommand,
             cwd: workingDirectory,
+            wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
             timeoutMilliseconds: Self.defaultTimeoutMilliseconds
         )
 
@@ -552,6 +554,7 @@ public actor DirectSessionWorktreeLoadUseCase: DirectSessionWorktreeLoadingActio
             machineID: normalizedMachineID,
             command: worktreeCommand,
             cwd: normalizedCWD,
+            wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
             timeoutMilliseconds: Self.defaultTimeoutMilliseconds
         )
 

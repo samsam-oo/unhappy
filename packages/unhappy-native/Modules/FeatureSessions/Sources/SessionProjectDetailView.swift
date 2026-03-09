@@ -218,6 +218,7 @@ public struct SessionProjectDetailView: View {
                             let didRemove = await viewModel.removeProject(
                                 machineID: group.machineID,
                                 projectPath: group.projectPath,
+                                wrappedMachineDataEncryptionKey: group.wrappedMachineDataEncryptionKey,
                                 serverURLString: serverURLString,
                                 token: token
                             )

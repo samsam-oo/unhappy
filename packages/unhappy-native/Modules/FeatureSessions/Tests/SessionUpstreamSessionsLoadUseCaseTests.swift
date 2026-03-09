@@ -188,6 +188,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -204,6 +205,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APICodexThreadSummary] {
@@ -214,6 +216,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -230,6 +233,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APIClaudeSessionSummary] {
@@ -240,6 +244,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?,
         cursor: String?
@@ -256,6 +261,7 @@ private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreads
         serverURL: URL,
         token: String,
         machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
         limit: Int,
         cwd: String?
     ) async throws -> [APIGeminiSessionSummary] {

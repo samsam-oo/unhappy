@@ -58,6 +58,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             serverURL: serverURL,
                             token: normalizedToken,
                             machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             limit: 50,
                             cwd: projectPath
                         )
@@ -65,6 +66,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             serverURL: serverURL,
                             token: normalizedToken,
                             machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             limit: 50,
                             cwd: projectPath
                         )
@@ -72,6 +74,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                             serverURL: serverURL,
                             token: normalizedToken,
                             machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
                             limit: 50,
                             cwd: projectPath
                         )

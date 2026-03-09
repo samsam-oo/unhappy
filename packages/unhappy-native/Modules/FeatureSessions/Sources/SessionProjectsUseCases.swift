@@ -15,7 +15,8 @@ public protocol SessionProjectOpeningAction: Sendable {
         token: String,
         machineID: String,
         machineDisplayName: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject
 }
 
@@ -24,7 +25,8 @@ public protocol SessionProjectRemovingAction: Sendable {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject
 }
 
@@ -65,7 +67,8 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
                         serverURL: serverURL,
                         token: normalizedToken,
                         machineID: machine.id,
-                        explicitOnly: true
+                        explicitOnly: true,
+                        wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
                     )
                     return machineProjects.map {
                         SessionMachineProject(
@@ -113,7 +116,8 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
         token: String,
         machineID: String,
         machineDisplayName: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -129,7 +133,8 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
             serverURL: serverURL,
             token: normalizedToken,
             machineID: machineID,
-            path: path
+            path: path,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
         if result.success == false {
             throw MachinesAPIError.rpcCallFailed(result.error ?? result.message)
@@ -137,6 +142,7 @@ public actor SessionProjectOpenUseCase: SessionProjectOpeningAction {
         return SessionMachineProject(
             machineID: machineID,
             machineDisplayName: machineDisplayName,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             summary: APIMachineProjectSummary(
                 path: path,
                 latestUpdatedAt: Date().ISO8601Format(),
@@ -159,7 +165,8 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
         serverURLString: String,
         token: String,
         machineID: String,
-        path: String
+        path: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> SessionMachineProject {
         let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty else {
@@ -179,7 +186,8 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
             serverURL: serverURL,
             token: normalizedToken,
             machineID: machineID,
-            path: normalizedPath
+            path: normalizedPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
         if result.success == false {
             throw MachinesAPIError.rpcCallFailed(result.error ?? result.message)
@@ -187,6 +195,7 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
         return SessionMachineProject(
             machineID: machineID,
             machineDisplayName: machineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             summary: APIMachineProjectSummary(
                 path: normalizedPath,
                 latestUpdatedAt: Date().ISO8601Format(),
