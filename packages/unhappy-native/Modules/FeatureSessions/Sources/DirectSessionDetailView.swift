@@ -41,6 +41,8 @@ public struct DirectSessionDetailView: View {
     @State private var selectedPermissionModeOverride: APISessionMessagePermissionMode?
     @State private var showMissingDefaultsAlert = false
     @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
+    @State private var shouldFollowTranscript = true
+    @State private var transcriptBottomAnchorID = UUID().uuidString
     @FocusState private var focusedComposerField: ComposerFocusField?
 
     public init(
@@ -54,35 +56,59 @@ public struct DirectSessionDetailView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                summaryCard
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    summaryCard
+                        .padding(.horizontal, 12)
+                        .padding(.top, 12)
 
-                MessagesSectionRows(
-                    isLoading: viewModel.isLoading,
-                    errorMessage: viewModel.errorMessage,
-                    visibleTranscriptPresentations: transcriptPresentations,
-                    liveStatusText: nil,
-                    transcriptBottomAnchorID: "__direct_session_bottom__",
-                    onReferenceToggle: {},
-                    onFileLinkTap: { path in
-                        viewModel.prepareFilePath(path)
-                        presentedQuickSurface = QuickSurface(kind: .files, filterPath: path)
-                    },
-                    onMessageInspect: { messageID in
-                        inspectedMessage = viewModel.messages.first(where: { $0.id == messageID })
-                    },
-                    onRetry: {
-                        Task {
-                            await viewModel.load(
-                                serverURLString: serverURLString,
-                                token: token
-                            )
+                    MessagesSectionRows(
+                        isLoading: viewModel.isLoading,
+                        errorMessage: viewModel.errorMessage,
+                        visibleTranscriptPresentations: transcriptPresentations,
+                        liveStatusText: nil,
+                        transcriptBottomAnchorID: transcriptBottomAnchorID,
+                        onReferenceToggle: {
+                            shouldFollowTranscript = false
+                        },
+                        onFileLinkTap: { path in
+                            viewModel.prepareFilePath(path)
+                            presentedQuickSurface = QuickSurface(kind: .files, filterPath: path)
+                        },
+                        onMessageInspect: { messageID in
+                            inspectedMessage = viewModel.messages.first(where: { $0.id == messageID })
+                        },
+                        onRetry: {
+                            Task {
+                                await viewModel.load(
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                            }
                         }
+                    )
+                }
+            }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8).onChanged { value in
+                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
+                    if value.translation.height > 0 {
+                        shouldFollowTranscript = false
                     }
-                )
+                }
+            )
+            .onChange(of: transcriptPresentations.map(\.messageID)) { _, _ in
+                guard shouldFollowTranscript else { return }
+                scrollTranscriptToBottom(using: proxy, animated: true)
+            }
+            .onChange(of: viewModel.isLoading) { wasLoading, isLoading in
+                guard wasLoading && !isLoading else { return }
+                shouldFollowTranscript = true
+                scrollTranscriptToBottom(using: proxy, animated: false)
+            }
+            .onAppear {
+                scrollTranscriptToBottom(using: proxy, animated: false)
             }
         }
         .background(Color(uiColor: .systemGroupedBackground))
@@ -646,6 +672,23 @@ public struct DirectSessionDetailView: View {
         }
         guard cachedTranscriptPresentations != nextPresentations else { return }
         cachedTranscriptPresentations = nextPresentations
+    }
+
+    private func scrollTranscriptToBottom(using proxy: ScrollViewProxy, animated: Bool) {
+        let action = {
+            proxy.scrollTo(transcriptBottomAnchorID, anchor: .bottom)
+        }
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                action()
+            }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                action()
+            }
+        }
     }
 }
 
