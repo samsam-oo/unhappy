@@ -262,6 +262,32 @@ public final class SessionsViewModel: ObservableObject {
         isLoadingUpstreamSessions = true
         defer { isLoadingUpstreamSessions = false }
 
+        if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
+            for await snapshot in await streamingLoader.loadUpstreamSessionsStream(
+                serverURLString: serverURLString,
+                token: token,
+                projects: projectsToSync
+            ) {
+                if let machineID = snapshot.machineID,
+                   let projectPath = snapshot.projectPath {
+                    setUpstreamSessionsIfChanged(
+                        mergeProjectScopedUpstreamRows(
+                            existing: upstreamSessions,
+                            refreshed: snapshot.rows,
+                            machineID: machineID,
+                            projectPath: projectPath
+                        )
+                    )
+                }
+                if snapshot.errorMessage?.isEmpty == false {
+                    upstreamSessionsErrorMessage = snapshot.errorMessage
+                } else if snapshot.machineID != nil || snapshot.isFinal {
+                    upstreamSessionsErrorMessage = nil
+                }
+            }
+            return
+        }
+
         do {
             let rows = try await upstreamSessionsLoader.loadUpstreamSessions(
                 serverURLString: serverURLString,
@@ -294,10 +320,18 @@ public final class SessionsViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token
             ) {
-                setProjectsIfChanged(snapshot.projects.filter(\.summary.openedExplicitly))
+                if let machineID = snapshot.machineID {
+                    setProjectsIfChanged(
+                        mergeMachineScopedProjects(
+                            existing: projects,
+                            refreshed: snapshot.projects.filter(\.summary.openedExplicitly),
+                            machineID: machineID
+                        )
+                    )
+                }
                 if snapshot.errorMessage?.isEmpty == false {
                     projectsErrorMessage = snapshot.errorMessage
-                } else if snapshot.projects.isEmpty == false || snapshot.isFinal {
+                } else if snapshot.machineID != nil || snapshot.isFinal {
                     projectsErrorMessage = nil
                 }
             }
@@ -610,6 +644,26 @@ public final class SessionsViewModel: ObservableObject {
                 return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
             }
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    private func mergeMachineScopedProjects(
+        existing: [SessionMachineProject],
+        refreshed: [SessionMachineProject],
+        machineID: String
+    ) -> [SessionMachineProject] {
+        let retained = existing.filter { $0.machineID != machineID }
+        let merged = retained + refreshed
+        return merged.sorted { lhs, rhs in
+            let lhsDate = Date.parseISO8601(lhs.summary.latestUpdatedAt) ?? .distantPast
+            let rhsDate = Date.parseISO8601(rhs.summary.latestUpdatedAt) ?? .distantPast
+            if lhsDate != rhsDate {
+                return lhsDate > rhsDate
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.summary.path.localizedCaseInsensitiveCompare(rhs.summary.path) == .orderedAscending
         }
     }
 

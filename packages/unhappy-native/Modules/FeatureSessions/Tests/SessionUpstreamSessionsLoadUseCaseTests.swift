@@ -294,6 +294,87 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
         #expect(rows.count == 1)
         #expect(rows.first?.summary.id == "thread-fast")
     }
+
+    @Test
+    func loadUpstreamSessionsStreamYieldsFastProjectBeforeSlowProjectTimesOut() async throws {
+        let projects = [
+            SessionMachineProject(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIMachineProjectSummary(
+                    path: "/tmp/fast",
+                    latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                    codexThreadCount: 0,
+                    claudeSessionCount: 0,
+                    openedExplicitly: true
+                )
+            ),
+            SessionMachineProject(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIMachineProjectSummary(
+                    path: "/tmp/slow",
+                    latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                    codexThreadCount: 0,
+                    claudeSessionCount: 0,
+                    openedExplicitly: true
+                )
+            ),
+        ]
+        let service = MockUpstreamMachinesService(
+            machines: [
+                APIMachine(
+                    id: "machine-1",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Work Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                )
+            ],
+            codexThreadsByMachineAndPath: [
+                "machine-1|/tmp/fast": [
+                    APICodexThreadSummary(
+                        id: "thread-fast",
+                        name: "Fast Thread",
+                        cwd: "/tmp/fast",
+                        updatedAt: "2026-03-06T06:00:00.000Z",
+                        createdAt: "2026-03-06T05:00:00.000Z",
+                        archived: false
+                    )
+                ]
+            ],
+            claudeSessionsByMachineAndPath: [:],
+            geminiSessionsByMachineAndPath: [:],
+            delayedProjectKeys: ["machine-1|/tmp/slow"],
+            fetchDelay: .milliseconds(200)
+        )
+        let useCase = SessionUpstreamSessionsLoadUseCase(
+            service: service,
+            upstreamRequestTimeout: .milliseconds(30)
+        )
+        var iterator = await useCase.loadUpstreamSessionsStream(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            projects: projects
+        ).makeAsyncIterator()
+
+        let firstSnapshot = await iterator.next()
+        let finalSnapshot = await iterator.next()
+
+        #expect(firstSnapshot?.isFinal == false)
+        #expect(firstSnapshot?.machineID == "machine-1")
+        #expect(firstSnapshot?.projectPath == "/tmp/fast")
+        #expect(firstSnapshot?.rows.count == 1)
+        #expect(firstSnapshot?.rows.first?.summary.id == "thread-fast")
+        #expect(finalSnapshot?.isFinal == true)
+        #expect(finalSnapshot?.machineID == nil)
+        #expect(finalSnapshot?.rows.isEmpty == true)
+    }
 }
 
 private actor MockUpstreamMachinesService: MachinesFetching, MachineCodexThreadsFetching, MachineClaudeSessionsFetching, MachineGeminiSessionsFetching {
