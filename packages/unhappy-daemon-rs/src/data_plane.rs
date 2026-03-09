@@ -13,9 +13,7 @@ use http::{header, Request};
 use rand::RngCore;
 use sha2::Sha256;
 use tokio_tungstenite::{
-    connect_async,
-    tungstenite::protocol::Message,
-    MaybeTlsStream, WebSocketStream,
+    connect_async, tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
 use uuid::Uuid;
@@ -109,7 +107,7 @@ impl SessionCryptoContext {
         let hk = Hkdf::<Sha256>::new(Some(&salt), &ikm);
         let mut output = [0_u8; 32];
         hk.expand(b"unhappy.machine-data-plane.session.v1", &mut output)
-            .context("failed to derive session key")?;
+            .map_err(|_| anyhow::anyhow!("failed to derive session key"))?;
         Ok(output)
     }
 }
@@ -129,7 +127,10 @@ pub async fn connect_and_handshake(config: &Config) -> Result<()> {
         .method("GET")
         .uri(url.as_str())
         .header(header::AUTHORIZATION, format!("Bearer {}", config.token))
-        .header(header::SEC_WEBSOCKET_PROTOCOL, MACHINE_DATA_PLANE_SUBPROTOCOL)
+        .header(
+            header::SEC_WEBSOCKET_PROTOCOL,
+            MACHINE_DATA_PLANE_SUBPROTOCOL,
+        )
         .body(())
         .context("failed to build websocket request")?;
 

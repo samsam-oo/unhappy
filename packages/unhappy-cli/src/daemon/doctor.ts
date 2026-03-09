@@ -8,6 +8,8 @@
 import spawn from 'cross-spawn';
 import psList from 'ps-list';
 
+import { isConfiguredDaemonProcessCommand } from './executable';
+
 /**
  * Find all Unhappy CLI processes (including current process)
  */
@@ -22,9 +24,11 @@ export async function findAllUnhappyProcesses(): Promise<
     for (const proc of processes) {
       const cmd = proc.cmd || '';
       const name = proc.name || '';
+      const isConfiguredDaemon = isConfiguredDaemonProcessCommand(cmd, name);
 
       // Check if it's an Unhappy process
       const isUnhappy =
+        isConfiguredDaemon ||
         name.includes('unhappy') ||
         (name === 'node' && cmd.includes('dist/index.mjs')) ||
         cmd.includes('unhappy.mjs') ||
@@ -43,6 +47,8 @@ export async function findAllUnhappyProcesses(): Promise<
         type = cmd.includes('tsx')
           ? 'dev-daemon-version-check'
           : 'daemon-version-check';
+      } else if (isConfiguredDaemon) {
+        type = 'daemon';
       } else if (
         cmd.includes('daemon start-sync') ||
         cmd.includes('daemon start')
