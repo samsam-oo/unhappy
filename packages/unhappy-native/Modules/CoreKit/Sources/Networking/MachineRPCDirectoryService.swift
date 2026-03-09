@@ -60,6 +60,13 @@ public enum RPCParameterValue: Sendable, Equatable, ExpressibleByNilLiteral, Exp
 }
 
 public protocol MachineRPCDirectoryListing: Sendable {
+    func prewarmMachineDataPlane(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async
+
     func invokeCommand(
         serverURL: URL,
         token: String,
@@ -254,6 +261,20 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         self.connectTimeoutSeconds = connectTimeoutSeconds
         self.ackTimeoutSeconds = ackTimeoutSeconds
         self.dataPlaneClient = dataPlaneClient
+    }
+
+    public func prewarmMachineDataPlane(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async {
+        _ = try? await dataPlaneClient.prewarmConnection(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+        )
     }
 
     public func listDirectory(
@@ -1215,6 +1236,15 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             hasNext: response.hasNext
         )
     }
+}
+
+public extension MachineRPCDirectoryListing {
+    func prewarmMachineDataPlane(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async {}
 }
 
 private struct SessionMessagesPageEnvelope: Decodable {

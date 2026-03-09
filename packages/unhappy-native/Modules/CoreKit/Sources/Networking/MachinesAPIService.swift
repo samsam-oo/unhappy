@@ -221,6 +221,11 @@ extension URLSessionMachinesService {
             machines: machines,
             cachedAt: Date().timeIntervalSince1970
         )
+        scheduleMachineDataPlanePrewarm(
+            machines: machines,
+            serverURL: serverURL,
+            token: normalizedToken
+        )
         return machines
     }
 
@@ -240,6 +245,31 @@ extension URLSessionMachinesService {
             !(key.serverURLString == serverURL.absoluteString &&
                 key.token == normalizedToken &&
                 key.machineID == normalizedMachineID)
+        }
+    }
+
+    private func scheduleMachineDataPlanePrewarm(
+        machines: [APIMachine],
+        serverURL: URL,
+        token: String
+    ) {
+        let rpcDirectoryService = self.rpcDirectoryService
+        let activeMachines = machines.filter(\.active)
+        guard !activeMachines.isEmpty else { return }
+
+        Task(priority: .utility) {
+            await withTaskGroup(of: Void.self) { group in
+                for machine in activeMachines where machine.dataEncryptionKey?.isEmpty == false {
+                    group.addTask {
+                        await rpcDirectoryService.prewarmMachineDataPlane(
+                            serverURL: serverURL,
+                            token: token,
+                            machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
+                        )
+                    }
+                }
+            }
         }
     }
 
