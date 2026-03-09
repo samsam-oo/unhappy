@@ -43,12 +43,6 @@ import { MachineDataPlaneClient } from './machineDataPlaneClient';
 import type { Metadata, PermissionMode } from './types';
 import { isPermissionMode } from '@/utils/permissionModeAdapter';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
-import {
-  defaultClaudeConfigDir,
-  listClaudeProjectsFromConfigDir,
-  listCodexProjectsFromCodexHome,
-  mergeProjectSummaries,
-} from './projectSync';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import {
   DaemonState,
@@ -697,7 +691,6 @@ export class ApiMachineClient {
 
     this.rpcHandlerManager.registerHandler('list-projects', async (params: any) => {
       const homeDir = currentHomeDir();
-      const explicitOnly = params?.explicitOnly === true;
       const openedProjects = normalizedProjectEntries(
         this.machine.daemonState?.openedProjects,
         homeDir,
@@ -706,31 +699,9 @@ export class ApiMachineClient {
         openedAt,
       }));
 
-      if (explicitOnly) {
-        return {
-          success: true as const,
-          projects: explicitProjectSummaries(openedProjects),
-        };
-      }
-
-      const codexHomeCandidates = buildCodexHomeCandidates(this.machine, homeDir);
-      const codexProjects = (
-        await Promise.all(
-          codexHomeCandidates.map((codexHomeDir) =>
-            listCodexProjectsFromCodexHome(codexHomeDir),
-          ),
-        )
-      ).flat();
-      const claudeProjects = await listClaudeProjectsFromConfigDir(
-        defaultClaudeConfigDir(),
-      );
-      const projects = mergeProjectSummaries(
-        [...codexProjects, ...claudeProjects],
-        openedProjects.map((entry) => entry.path),
-      );
       return {
         success: true as const,
-        projects,
+        projects: explicitProjectSummaries(openedProjects),
       };
     });
 

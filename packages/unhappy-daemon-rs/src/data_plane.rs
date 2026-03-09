@@ -374,24 +374,10 @@ async fn dispatch_request(
             }))
         }
         MachineDataPlaneOperation::ProjectList => {
-            let explicit_only = payload
-                .get("explicitOnly")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            if explicit_only {
-                Ok(json!({
-                    "success": true,
-                    "projects": explicit_project_summaries(state.list_opened_projects().await)
-                }))
-            } else {
-                let explicit_paths = state
-                    .list_opened_projects()
-                    .await
-                    .into_iter()
-                    .map(|entry| entry.path)
-                    .collect::<Vec<_>>();
-                local_ops::project_scan(config, &explicit_paths).await
-            }
+            Ok(json!({
+                "success": true,
+                "projects": explicit_project_summaries(state.list_opened_projects().await)
+            }))
         }
         MachineDataPlaneOperation::ProjectOpen => {
             let path = payload
