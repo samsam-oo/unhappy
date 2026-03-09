@@ -241,16 +241,6 @@ impl Config {
         self.unhappy_home_dir.join("cli").join("dist").join("index.mjs")
     }
 
-    pub fn daemon_helper_command(&self) -> (PathBuf, Vec<String>) {
-        (
-            self.node_executable(),
-            vec![
-                self.cli_entrypoint().to_string_lossy().to_string(),
-                "internal".to_string(),
-                "daemon-helper".to_string(),
-            ],
-        )
-    }
 }
 
 fn home_dir() -> PathBuf {

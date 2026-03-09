@@ -2,8 +2,8 @@ use crate::{
     config::Config,
     control_server::SpawnSessionRequest,
     daemon_state::{OpenedProject, SharedDaemonState},
-    helper::invoke_daemon_helper,
     local_ops,
+    provider_session_ops,
     protocol::{
         MachineDataPlaneCompleteFrame, MachineDataPlaneErrorFrame, MachineDataPlaneHelloAckFrame,
         MachineDataPlaneHelloFrame, MachineDataPlaneKeyExchange, MachineDataPlaneOperation,
@@ -405,25 +405,25 @@ async fn dispatch_request(
             }))
         }
         MachineDataPlaneOperation::CodexListThreads => {
-            invoke_daemon_helper(config, "codex-list-threads", &payload).await
+            provider_session_ops::codex_list_threads(config, &payload).await
         }
         MachineDataPlaneOperation::CodexOpenThread => {
-            invoke_daemon_helper(config, "codex-open-thread", &payload).await
+            provider_session_ops::codex_open_thread(config, &payload).await
         }
         MachineDataPlaneOperation::CodexListMessages => {
-            invoke_daemon_helper(config, "codex-list-messages", &payload).await
+            provider_session_ops::codex_list_messages(&payload).await
         }
         MachineDataPlaneOperation::CodexSendMessage => {
-            invoke_daemon_helper(config, "codex-send-message", &payload).await
+            provider_session_ops::codex_send_message(&payload).await
         }
         MachineDataPlaneOperation::ClaudeListSessions => {
-            invoke_daemon_helper(config, "claude-list-sessions", &payload).await
+            provider_session_ops::claude_list_sessions(&payload).await
         }
         MachineDataPlaneOperation::ClaudeListMessages => {
-            invoke_daemon_helper(config, "claude-list-messages", &payload).await
+            provider_session_ops::claude_list_messages(&payload).await
         }
         MachineDataPlaneOperation::ClaudeSendMessage => {
-            invoke_daemon_helper(config, "claude-send-message", &payload).await
+            provider_session_ops::claude_send_message(&payload).await
         }
         MachineDataPlaneOperation::GeminiListSessions => {
             let cwd_filter = payload
@@ -533,7 +533,7 @@ async fn dispatch_request(
             if let Some(object) = helper_payload.as_object_mut() {
                 object.insert("controlPort".to_string(), json!(control_port));
             }
-            invoke_daemon_helper(config, "gemini-list-messages", &helper_payload).await
+            provider_session_ops::gemini_list_messages(&helper_payload).await
         }
         MachineDataPlaneOperation::GeminiSendMessage => {
             let session_id = payload
@@ -556,7 +556,7 @@ async fn dispatch_request(
             if let Some(object) = helper_payload.as_object_mut() {
                 object.insert("controlPort".to_string(), json!(control_port));
             }
-            invoke_daemon_helper(config, "gemini-send-message", &helper_payload).await
+            provider_session_ops::gemini_send_message(&helper_payload).await
         }
         MachineDataPlaneOperation::FsListDirectory => {
             local_ops::list_directory(&payload).await
