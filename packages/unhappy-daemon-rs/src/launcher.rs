@@ -1,6 +1,9 @@
-use crate::config::Config;
+use crate::{
+    config::Config,
+};
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -98,6 +101,29 @@ pub async fn stop_daemon_from_state(unhappy_home_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+pub async fn list_sessions(unhappy_home_dir: &Path) -> Result<Value> {
+    control_post(unhappy_home_dir, "/list", json!({})).await
+}
+
+pub async fn stop_session(unhappy_home_dir: &Path, session_id: &str) -> Result<Value> {
+    control_post(unhappy_home_dir, "/stop-session", json!({ "sessionId": session_id })).await
+}
+
+pub async fn spawn_session(unhappy_home_dir: &Path, request_json: &str) -> Result<Value> {
+    let request = serde_json::from_str::<Value>(request_json)
+        .context("failed to decode spawn-session request JSON")?;
+    control_post(unhappy_home_dir, "/spawn-session", request).await
+}
+
+pub async fn provider_session_started(
+    unhappy_home_dir: &Path,
+    request_json: &str,
+) -> Result<Value> {
+    let request = serde_json::from_str::<Value>(request_json)
+        .context("failed to decode provider-session-started request JSON")?;
+    control_post(unhappy_home_dir, "/provider-session-started", request).await
+}
+
 pub fn print_status(unhappy_home_dir: &Path, as_json: bool) -> Result<()> {
     let status = read_launcher_status(unhappy_home_dir)?;
     if as_json {
@@ -135,6 +161,34 @@ pub fn read_launcher_status(unhappy_home_dir: &Path) -> Result<LauncherStatus> {
         stale,
         state,
     })
+}
+
+async fn control_post(unhappy_home_dir: &Path, path: &str, body: Value) -> Result<Value> {
+    let status = read_launcher_status(unhappy_home_dir)?;
+    let Some(state) = status.state else {
+        return Err(anyhow!("daemon is not running"));
+    };
+    if !status.running {
+        return Err(anyhow!("daemon is not running"));
+    }
+    let Some(http_port) = state.http_port else {
+        return Err(anyhow!("daemon control port is unavailable"));
+    };
+
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{http_port}{path}"))
+        .timeout(Duration::from_secs(10))
+        .json(&body)
+        .send()
+        .await
+        .with_context(|| format!("failed to POST daemon control request {path}"))?
+        .error_for_status()
+        .with_context(|| format!("daemon control request failed for {path}"))?;
+
+    response
+        .json::<Value>()
+        .await
+        .with_context(|| format!("failed to decode daemon control response for {path}"))
 }
 
 async fn request_http_stop(http_port: u16) -> Result<()> {
