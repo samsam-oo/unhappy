@@ -17,8 +17,7 @@ public actor MachineDataPlaneWebSocketClient {
         bodyObject: Any
     ) async throws -> Data {
         guard let machineDataKey = MachineDataPlaneEncryption.resolveMachineDataKey(
-            rawWrappedKey: wrappedMachineDataEncryptionKey,
-            machineID: machineID
+            rawWrappedKey: wrappedMachineDataEncryptionKey
         ) else {
             throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
         }

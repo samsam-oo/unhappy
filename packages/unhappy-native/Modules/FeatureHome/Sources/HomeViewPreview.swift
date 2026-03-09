@@ -108,12 +108,19 @@ import FeatureSettings
             HomeServerConnectionStatusViewModel(
                 loader: HomeServerConnectionStatusLoadUseCase()
             )
-        }
+        },
+        accountSecretPresenceChecker: PreviewAccountSecretPresenceChecker()
     )
 }
 
 private actor PreviewHomeAccountOnboarding: HomeAccountOnboardingAction {
     func createAccount(serverURLString: String) async throws -> String {
         "preview-token"
+    }
+}
+
+private actor PreviewAccountSecretPresenceChecker: AccountSecretPresenceCheckingAction {
+    func hasStoredSecret() async -> Bool {
+        true
     }
 }
