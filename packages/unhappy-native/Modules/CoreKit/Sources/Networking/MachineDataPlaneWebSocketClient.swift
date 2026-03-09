@@ -64,6 +64,7 @@ public actor MachineDataPlaneWebSocketClient {
     private let session: URLSession
     private let requestTimeoutInterval: TimeInterval
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
+    private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
 
     public init(
         session: URLSession = .shared,
@@ -107,6 +108,32 @@ public actor MachineDataPlaneWebSocketClient {
                 serverURL: serverURL
             )
         }
+    }
+
+    public func prewarmConnection(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws {
+        guard let machineDataKey = MachineDataPlaneEncryption.resolveMachineDataKey(
+            rawWrappedKey: wrappedMachineDataEncryptionKey
+        ) else {
+            throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
+        }
+
+        let key = ConnectionKey(
+            serverURLString: serverURL.absoluteString,
+            token: token,
+            machineID: machineID,
+            machineDataKeyBase64URL: Base64URLCodec.encode(machineDataKey)
+        )
+
+        if connectionStates[key] == nil {
+            connectionStates[key] = ConnectionState(machineDataKey: machineDataKey)
+        }
+
+        _ = try await liveConnection(for: key, serverURL: serverURL)
     }
 
     nonisolated func mapTransportError(_ error: Error) -> MachinesAPIError {
@@ -235,46 +262,57 @@ public actor MachineDataPlaneWebSocketClient {
             return existingConnection
         }
 
+        if let inFlightConnection = inFlightConnections[key] {
+            return try await inFlightConnection.value
+        }
+
         guard let machineDataKey = connectionStates[key]?.machineDataKey else {
             throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
         }
 
-        let task = try makeTask(
-            serverURL: serverURL,
-            token: key.token,
-            machineID: key.machineID
-        )
-        task.resume()
+        let connectTask = Task<LiveConnection, Error> {
+            let task = try makeTask(
+                serverURL: serverURL,
+                token: key.token,
+                machineID: key.machineID
+            )
+            task.resume()
 
-        do {
-            let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
-            let hello = MachineDataPlaneHelloFrame(
-                connectionID: UUID().uuidString,
-                role: .native,
-                keyExchange: MachineDataPlaneKeyExchange(
-                    publicKey: handshake.publicKeyBase64URL,
-                    nonce: handshake.nonceBase64URL
+            do {
+                let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
+                let hello = MachineDataPlaneHelloFrame(
+                    connectionID: UUID().uuidString,
+                    role: .native,
+                    keyExchange: MachineDataPlaneKeyExchange(
+                        publicKey: handshake.publicKeyBase64URL,
+                        nonce: handshake.nonceBase64URL
+                    )
                 )
-            )
-            try await send(frame: hello, task: task)
+                try await send(frame: hello, task: task)
 
-            let helloAck = try await receiveHelloAck(task: task)
-            let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
-                machineDataKey: machineDataKey,
-                localPrivateKey: handshake.privateKey,
-                localNonceBase64URL: handshake.nonceBase64URL,
-                peerPublicKeyBase64URL: helloAck.keyExchange.publicKey,
-                peerNonceBase64URL: helloAck.keyExchange.nonce,
-                role: "native"
-            )
+                let helloAck = try await receiveHelloAck(task: task)
+                let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
+                    machineDataKey: machineDataKey,
+                    localPrivateKey: handshake.privateKey,
+                    localNonceBase64URL: handshake.nonceBase64URL,
+                    peerPublicKeyBase64URL: helloAck.keyExchange.publicKey,
+                    peerNonceBase64URL: helloAck.keyExchange.nonce,
+                    role: "native"
+                )
 
-            let liveConnection = LiveConnection(task: task, sessionKey: sessionKey)
-            connectionStates[key]?.liveConnection = liveConnection
-            return liveConnection
-        } catch {
-            task.cancel(with: .goingAway, reason: nil)
-            throw error
+                return LiveConnection(task: task, sessionKey: sessionKey)
+            } catch {
+                task.cancel(with: .goingAway, reason: nil)
+                throw error
+            }
         }
+
+        inFlightConnections[key] = connectTask
+        defer { inFlightConnections[key] = nil }
+
+        let liveConnection = try await connectTask.value
+        connectionStates[key]?.liveConnection = liveConnection
+        return liveConnection
     }
 
     private func performRequest(
@@ -338,6 +376,8 @@ public actor MachineDataPlaneWebSocketClient {
         state.liveConnection?.task.cancel(with: .goingAway, reason: nil)
         state.liveConnection = nil
         connectionStates[key] = state
+        inFlightConnections[key]?.cancel()
+        inFlightConnections[key] = nil
     }
 
     private func shouldReconnectAfterTransportError(_ error: MachinesAPIError) -> Bool {
