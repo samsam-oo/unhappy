@@ -1,4 +1,4 @@
-use crate::daemon_state::SharedDaemonState;
+use crate::{config::Config, daemon_state::SharedDaemonState};
 use crate::provider::Provider;
 use anyhow::{Context, Result};
 use axum::{
@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::fs;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::{net::TcpListener, task::JoinHandle};
@@ -28,6 +29,51 @@ impl ControlServer {
     pub async fn wait(self) -> Result<()> {
         self.task.await.context("control server task join failed")?
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaudeHookSettingsArtifact {
+    pub settings_path: std::path::PathBuf,
+    pub hook_command: String,
+    pub forwarder_script: std::path::PathBuf,
+}
+
+pub fn create_claude_hook_settings_artifact(
+    config: &Config,
+    pid: u32,
+    control_port: u16,
+) -> Result<ClaudeHookSettingsArtifact> {
+    let settings_path = config.claude_hook_settings_path_for_pid(pid);
+    let hook_command = config.claude_hook_command(control_port);
+    let forwarder_script = config.claude_hook_forwarder_script();
+
+    if let Some(parent) = settings_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create Claude hook settings dir {}", parent.display()))?;
+    }
+
+    let settings = json!({
+        "hooks": {
+            "SessionStart": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": hook_command
+                }]
+            }]
+        }
+    });
+    fs::write(
+        &settings_path,
+        serde_json::to_vec_pretty(&settings)
+            .context("failed to encode Claude hook settings JSON")?,
+    )
+    .with_context(|| format!("failed to write Claude hook settings {}", settings_path.display()))?;
+
+    Ok(ClaudeHookSettingsArtifact {
+        settings_path,
+        hook_command,
+        forwarder_script,
+    })
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -278,4 +324,93 @@ async fn stop_daemon(State(state): State<SharedDaemonState>) -> Json<StatusOkRes
 
 fn default_bind_addr() -> SocketAddr {
     SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+}
+
+pub fn generate_claude_hook_settings_file(
+    config: &Config,
+    port: u16,
+    pid: u32,
+) -> Result<ClaudeHookSettingsArtifact> {
+    let settings_path = config.claude_hook_settings_path_for_pid(pid);
+    let hooks_dir = config.claude_hook_settings_dir();
+    fs::create_dir_all(&hooks_dir)
+        .with_context(|| format!("failed to create Claude hook settings dir {}", hooks_dir.display()))?;
+
+    let forwarder_script = config.claude_hook_forwarder_script();
+    let hook_command = config.claude_hook_command(port);
+    let settings = json!({
+        "hooks": {
+            "SessionStart": [
+                {
+                    "matcher": "*",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": hook_command,
+                        }
+                    ]
+                }
+            ]
+        }
+    });
+
+    let bytes = serde_json::to_vec_pretty(&settings)?;
+    fs::write(&settings_path, bytes)
+        .with_context(|| format!("failed to write Claude hook settings {}", settings_path.display()))?;
+
+    Ok(ClaudeHookSettingsArtifact {
+        settings_path,
+        hook_command,
+        forwarder_script,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::ProviderCommandConfig;
+    use tempfile::tempdir;
+
+    fn sample_config(root: &std::path::Path) -> Config {
+        Config {
+            server_url: "https://example.com".to_string(),
+            token: "token".to_string(),
+            machine_id: "machine".to_string(),
+            machine_data_key_base64url: "key".to_string(),
+            unhappy_home_dir: root.join(".unhappy"),
+            provider_commands: ProviderCommandConfig::from_env().expect("provider commands"),
+            session_webhook_timeout_ms: 30_000,
+        }
+    }
+
+    #[test]
+    fn writes_claude_hook_settings_file_with_session_start_command() {
+        let temp_dir = tempdir().expect("tempdir");
+        let config = sample_config(temp_dir.path());
+        let artifact = generate_claude_hook_settings_file(&config, 4312, 99).expect("artifact");
+        let contents = fs::read_to_string(&artifact.settings_path).expect("settings file");
+        assert!(contents.contains("\"SessionStart\""));
+        assert!(contents.contains("session_hook_forwarder.cjs"));
+        assert!(contents.contains("4312"));
+        assert_eq!(
+            artifact.settings_path,
+            config.claude_hook_settings_path_for_pid(99),
+        );
+    }
+
+    #[test]
+    fn creates_claude_hook_settings_file_under_unhappy_home() {
+        let temp_dir = tempdir().expect("tempdir");
+        let config = sample_config(temp_dir.path());
+
+        let artifact = create_claude_hook_settings_artifact(&config, 42, 3344)
+            .expect("create artifact");
+        let file_contents = fs::read_to_string(&artifact.settings_path)
+            .expect("read hook settings");
+
+        assert!(artifact.settings_path.ends_with("session-hook-42.json"));
+        assert!(file_contents.contains("SessionStart"));
+        assert!(file_contents.contains("session_hook_forwarder.cjs"));
+        assert!(file_contents.contains("3344"));
+    }
 }
