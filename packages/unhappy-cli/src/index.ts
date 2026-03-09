@@ -24,6 +24,11 @@ import {
 } from './daemon/controlClient';
 import { killRunawayHappyProcesses } from './daemon/doctor';
 import { install } from './daemon/install';
+import {
+  printDaemonStatusViaRustLauncher,
+  startDaemonViaRustLauncher,
+  stopDaemonViaRustLauncher,
+} from './daemon/rustLauncher';
 import { uninstall } from './daemon/uninstall';
 import { runDaemonUpdate } from './daemon/update';
 import { spawnDaemonExecutable } from './daemon/executable';
@@ -779,29 +784,12 @@ ${chalk.bold('Examples:')}
       return;
     } else if (daemonSubcommand === 'start') {
       try {
-        // Spawn detached daemon process
-        const child = await spawnDaemonExecutable({
+        const output = await startDaemonViaRustLauncher({
           detached: true,
-          stdio: 'ignore',
           env: process.env,
         });
-        child.unref();
-
-        // Wait for daemon to write state file (up to 5 seconds)
-        let started = false;
-        for (let i = 0; i < 50; i++) {
-          if (await checkIfDaemonRunningAndCleanupStaleState()) {
-            started = true;
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-
-        if (started) {
-          console.log('Daemon started successfully');
-        } else {
-          console.error('Failed to start daemon');
-          process.exit(1);
+        if (output) {
+          console.log(output);
         }
         process.exit(0);
       } catch (error) {
@@ -813,24 +801,8 @@ ${chalk.bold('Examples:')}
       }
     } else if (daemonSubcommand === 'start-sync') {
       try {
-        const child = await spawnDaemonExecutable({
-          detached: false,
-          stdio: 'inherit',
-          env: process.env,
-        });
-        child.once('error', (error) => {
-          console.error(
-            chalk.red('Error:'),
-            error instanceof Error ? error.message : 'Unknown error',
-          );
-          process.exit(1);
-        });
-        child.once('close', (code, signal) => {
-          if (signal) {
-            process.exit(1);
-          }
-          process.exit(code ?? 0);
-        });
+        await startDaemonViaRustLauncher({ detached: false, env: process.env });
+        process.exit(0);
         return;
       } catch (error) {
         console.error(
@@ -840,11 +812,10 @@ ${chalk.bold('Examples:')}
         process.exit(1);
       }
     } else if (daemonSubcommand === 'stop') {
-      await stopDaemon();
+      await stopDaemonViaRustLauncher({ env: process.env });
       process.exit(0);
     } else if (daemonSubcommand === 'status') {
-      // Show daemon-specific doctor output
-      await runDoctorCommand('daemon');
+      await printDaemonStatusViaRustLauncher({ env: process.env });
       process.exit(0);
     } else if (daemonSubcommand === 'logs') {
       // Simply print the path to the latest daemon log file

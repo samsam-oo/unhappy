@@ -1,9 +1,11 @@
 import { configuration } from '@/configuration';
 import {
   checkIfDaemonRunningAndCleanupStaleState,
-  stopDaemon,
 } from '@/daemon/controlClient';
-import { spawnDaemonExecutable } from '@/daemon/executable';
+import {
+  startDaemonViaRustLauncher,
+  stopDaemonViaRustLauncher,
+} from '@/daemon/rustLauncher';
 import {
   clearCredentials,
   clearMachineId,
@@ -81,7 +83,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     // Stop daemon if running
     try {
       logger.debug('Stopping daemon for force auth...');
-      await stopDaemon();
+      await stopDaemonViaRustLauncher();
       console.log(chalk.gray('✓ Stopped daemon'));
     } catch (error) {
       logger.debug('Daemon was not running or failed to stop:', error);
@@ -190,21 +192,7 @@ async function promptDaemonRegistrationAfterLogin(): Promise<void> {
   }
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      void spawnDaemonExecutable({
-        stdio: 'inherit',
-        env: process.env,
-      }).then((daemonProcess) => {
-        daemonProcess.once('error', reject);
-        daemonProcess.once('close', (code) => {
-          if (code === 0) {
-            resolve();
-            return;
-          }
-          reject(new Error(`daemon start exited with code ${code}`));
-        });
-      }).catch(reject);
-    });
+    await startDaemonViaRustLauncher({ detached: true, env: process.env });
     console.log(chalk.green('  ✓ Background daemon enabled'));
   } catch (error) {
     logger.debug('Failed to start daemon after login prompt:', error);
@@ -248,7 +236,7 @@ async function handleAuthLogout(): Promise<void> {
     try {
       // Stop daemon if running
       try {
-        await stopDaemon();
+        await stopDaemonViaRustLauncher();
         console.log(chalk.gray('Stopped daemon'));
       } catch {}
 

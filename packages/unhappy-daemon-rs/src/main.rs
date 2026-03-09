@@ -5,6 +5,7 @@ mod control_server;
 mod daemon_state;
 mod data_plane;
 mod lock;
+mod launcher;
 mod local_ops;
 mod machine_sync;
 mod provider;
@@ -19,8 +20,10 @@ use config::Config;
 use control_server::start_control_server;
 use data_plane::spawn_data_plane_service;
 use daemon_state::DaemonState;
+use launcher::{print_status, start_detached_daemon, stop_daemon_from_state};
 use lock::DaemonLockGuard;
 use machine_sync::spawn_machine_sync;
+use std::env;
 use std::net::SocketAddr;
 
 #[derive(Debug, Parser)]
@@ -34,6 +37,12 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     DataPlaneHandshake,
+    Start,
+    Stop,
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
     LocalControlServer {
         #[arg(long)]
         bind: Option<SocketAddr>,
@@ -47,6 +56,32 @@ async fn main() -> Result<()> {
         Command::DataPlaneHandshake => {
             let config = Config::from_env()?;
             data_plane::connect_and_handshake(&config).await?;
+        }
+        Command::Start => {
+            let config = Config::from_env()?;
+            start_detached_daemon(&config).await?;
+        }
+        Command::Stop => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            stop_daemon_from_state(&unhappy_home_dir).await?;
+        }
+        Command::Status { json } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            print_status(&unhappy_home_dir, json)?;
         }
         Command::LocalControlServer { bind } => {
             let config = Config::from_env()?;
