@@ -78,6 +78,10 @@ impl TrackedSession {
         self.provider_session_id.as_deref()
     }
 
+    pub fn pid(&self) -> u32 {
+        self.pid
+    }
+
     pub fn to_persisted(&self) -> PersistedTrackedSession {
         PersistedTrackedSession {
             started_by: self.started_by.clone(),

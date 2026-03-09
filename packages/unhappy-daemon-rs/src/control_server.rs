@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::{net::TcpListener, task::JoinHandle};
 
@@ -44,6 +45,13 @@ pub struct SpawnSessionRequest {
     pub codex_resume_thread_id: Option<String>,
     pub claude_resume_session_id: Option<String>,
     pub agent: Provider,
+    pub token: Option<String>,
+    pub environment_variables: Option<HashMap<String, String>>,
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub codex_home_dir: Option<String>,
+    pub agent_session_id: Option<String>,
+    pub agent_transcript_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

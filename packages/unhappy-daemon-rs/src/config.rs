@@ -66,4 +66,16 @@ impl Config {
     pub fn codex_home_dir_for_path(home_dir: &Path) -> PathBuf {
         home_dir.join("codex-home")
     }
+
+    pub fn codex_auth_file_path_for_home(home_dir: &Path) -> PathBuf {
+        Self::codex_home_dir_for_path(home_dir).join("auth.json")
+    }
+
+    pub fn normalize_codex_home_dir(&self, requested: Option<&str>) -> PathBuf {
+        requested
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.codex_home_dir())
+    }
 }
