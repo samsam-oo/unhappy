@@ -163,6 +163,7 @@ public struct SessionProjectDetailView: View {
                         spawnedDirectSessionIdentity = DirectSessionIdentity(
                             machineID: resolvedMachineID,
                             machineDisplayName: group.machineDisplayName,
+                            wrappedMachineDataEncryptionKey: group.wrappedMachineDataEncryptionKey,
                             provider: fallbackProvider,
                             upstreamSessionID: sessionID,
                             title: "Session",

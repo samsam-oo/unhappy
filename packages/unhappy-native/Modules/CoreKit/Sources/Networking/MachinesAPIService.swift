@@ -485,14 +485,16 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         threadID: String,
-        transcriptPath: String
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         try await rpcDirectoryService.fetchCodexThreadMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             threadID: threadID,
-            transcriptPath: transcriptPath
+            transcriptPath: transcriptPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
     }
 
@@ -503,6 +505,7 @@ extension URLSessionMachinesService {
         threadID: String,
         cwd: String,
         transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -515,6 +518,7 @@ extension URLSessionMachinesService {
             threadID: threadID,
             cwd: cwd,
             transcriptPath: transcriptPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             model: model,
             reasoningEffort: reasoningEffort,
             permissionMode: permissionMode,
@@ -527,14 +531,16 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         sessionID: String,
-        cwd: String
+        cwd: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         try await rpcDirectoryService.fetchClaudeSessionMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             sessionID: sessionID,
-            cwd: cwd
+            cwd: cwd,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
     }
 
@@ -544,6 +550,7 @@ extension URLSessionMachinesService {
         machineID: String,
         sessionID: String,
         cwd: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?,
@@ -555,6 +562,7 @@ extension URLSessionMachinesService {
             machineID: machineID,
             sessionID: sessionID,
             cwd: cwd,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             model: model,
             reasoningEffort: reasoningEffort,
             permissionMode: permissionMode,
@@ -766,13 +774,15 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String,
         machineID: String,
-        sessionID: String
+        sessionID: String,
+        wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APISessionMessage] {
         try await rpcDirectoryService.fetchGeminiSessionMessages(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            sessionID: sessionID
+            sessionID: sessionID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
     }
 
@@ -781,6 +791,7 @@ extension URLSessionMachinesService {
         token: String,
         machineID: String,
         sessionID: String,
+        wrappedMachineDataEncryptionKey: String?,
         model: String?,
         permissionMode: APISessionMessagePermissionMode?,
         text: String
@@ -790,6 +801,7 @@ extension URLSessionMachinesService {
             token: token,
             machineID: machineID,
             sessionID: sessionID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
             model: model,
             permissionMode: permissionMode,
             text: text
