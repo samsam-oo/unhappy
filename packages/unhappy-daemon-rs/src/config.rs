@@ -90,7 +90,7 @@ impl Config {
         env::var(CODEX_HOME_DIR_ENV)
             .ok()
             .map(PathBuf::from)
-            .unwrap_or_else(|| self.unhappy_home_dir.join("codex-home"))
+            .unwrap_or_else(|| home_dir().join(".codex"))
     }
 
     pub fn codex_auth_file_path(&self) -> PathBuf {
@@ -108,7 +108,7 @@ impl Config {
     }
 
     pub fn codex_home_dir_for_path(home_dir: &Path) -> PathBuf {
-        home_dir.join("codex-home")
+        home_dir.join(".codex")
     }
 
     pub fn codex_auth_file_path_for_home(home_dir: &Path) -> PathBuf {
@@ -266,12 +266,16 @@ mod tests {
     }
 
     #[test]
-    fn codex_runtime_paths_default_to_unhappy_home_layout() {
+    fn codex_runtime_paths_default_to_codex_home_layout() {
         let config = sample_config();
         let paths = config.codex_runtime_paths(None);
-        assert_eq!(paths.home_dir, PathBuf::from("/tmp/.unhappy-test/codex-home"));
-        assert_eq!(paths.auth_file, PathBuf::from("/tmp/.unhappy-test/codex-home/auth.json"));
-        assert_eq!(paths.sessions_dir, PathBuf::from("/tmp/.unhappy-test/codex-home/sessions"));
+        let expected_home = std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".codex");
+        assert_eq!(paths.home_dir, expected_home);
+        assert_eq!(paths.auth_file, paths.home_dir.join("auth.json"));
+        assert_eq!(paths.sessions_dir, paths.home_dir.join("sessions"));
     }
 
     #[test]

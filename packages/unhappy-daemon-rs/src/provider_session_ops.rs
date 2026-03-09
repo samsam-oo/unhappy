@@ -19,33 +19,20 @@ pub async fn codex_list_threads(config: &Config, payload: &Value) -> Result<Valu
     let limit = payload.get("limit").and_then(Value::as_u64).map(|value| value.clamp(1, 100) as usize).unwrap_or(20);
     let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
 
-    let mut rows = Vec::<Value>::new();
-    let mut seen = std::collections::HashSet::<String>::new();
-    for path in collect_jsonl_files(&config.codex_sessions_dir()).await? {
-        let Some(meta) = read_codex_session_meta(&path).await? else { continue };
-        if let Some(filter) = normalized_cwd.as_ref() {
-            if &meta.cwd != filter {
-                continue;
+    let mut merged_rows = std::collections::HashMap::<String, Value>::new();
+    for codex_home in codex_home_candidates(config) {
+        if let Some(filter) = normalized_cwd.as_deref() {
+            for row in list_codex_threads_via_app_server(filter, limit, &codex_home).await? {
+                merge_codex_thread_row(&mut merged_rows, row);
             }
         }
-        if !seen.insert(meta.id.clone()) {
-            continue;
+
+        for row in list_codex_threads_from_local_sessions(&codex_home, normalized_cwd.as_deref()).await? {
+            merge_codex_thread_row(&mut merged_rows, row);
         }
-        let updated_at = fs::metadata(&path).await.ok().and_then(|value| value.modified().ok()).and_then(system_time_to_rfc3339);
-        rows.push(json!({
-            "id": meta.id,
-            "name": meta.name,
-            "cwd": meta.cwd,
-            "path": path.to_string_lossy().to_string(),
-            "updatedAt": updated_at,
-            "createdAt": updated_at,
-            "archived": false,
-            "model": meta.model,
-            "effort": meta.effort,
-            "preview": meta.preview
-        }));
     }
 
+    let mut rows = merged_rows.into_values().collect::<Vec<_>>();
     rows.sort_by(|lhs, rhs| rhs.get("updatedAt").and_then(Value::as_str).cmp(&lhs.get("updatedAt").and_then(Value::as_str)));
     let start = cursor.min(rows.len());
     let end = (start + limit).min(rows.len());
@@ -545,6 +532,190 @@ async fn collect_jsonl_files(root: &Path) -> Result<Vec<PathBuf>> {
         }
     }
     Ok(files)
+}
+
+fn codex_home_candidates(config: &Config) -> Vec<PathBuf> {
+    let mut candidates = Vec::<PathBuf>::new();
+
+    if let Ok(value) = std::env::var("CODEX_HOME") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            candidates.push(PathBuf::from(trimmed));
+        }
+    }
+
+    candidates.push(config.codex_home_dir());
+    candidates.push(home_dir().join(".codex"));
+
+    let mut seen = std::collections::HashSet::<String>::new();
+    candidates
+        .into_iter()
+        .filter(|path| path.exists())
+        .filter(|path| seen.insert(path.to_string_lossy().to_string()))
+        .collect()
+}
+
+async fn list_codex_threads_via_app_server(
+    cwd: &str,
+    limit: usize,
+    codex_home: &Path,
+) -> Result<Vec<Value>> {
+    let mut child = Command::new("codex")
+        .arg("app-server")
+        .env("CODEX_HOME", codex_home)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("failed to spawn codex app-server")?;
+
+    let mut stdin = child.stdin.take().context("missing codex app-server stdin")?;
+    let stdout = child.stdout.take().context("missing codex app-server stdout")?;
+    let mut reader = BufReader::new(stdout).lines();
+
+    let _ = call_rpc(
+        &mut stdin,
+        &mut reader,
+        1,
+        "initialize",
+        json!({
+            "clientInfo": { "name": "unhappy-daemon-rs", "version": "1.0.0" },
+            "capabilities": { "experimentalApi": true }
+        }),
+    )
+        .await
+        .context("codex app-server initialize failed")?;
+
+    let response = call_rpc(
+        &mut stdin,
+        &mut reader,
+        2,
+        "thread/list",
+        json!({
+            "cwd": cwd,
+            "limit": limit.clamp(1, 100),
+            "sortKey": "updated_at"
+        }),
+    )
+        .await
+        .context("codex thread/list failed")?;
+
+    let _ = child.start_kill();
+    Ok(extract_codex_thread_summaries_from_list_response(&response))
+}
+
+async fn list_codex_threads_from_local_sessions(
+    codex_home: &Path,
+    cwd_filter: Option<&str>,
+) -> Result<Vec<Value>> {
+    let mut files = collect_jsonl_files(&codex_home.join("sessions")).await?;
+    files.extend(collect_jsonl_files(&codex_home.join("archived_sessions")).await?);
+
+    let mut rows = Vec::<Value>::new();
+    let mut seen = std::collections::HashSet::<String>::new();
+    for path in files {
+        let Some(meta) = read_codex_session_meta(&path).await? else { continue };
+        if let Some(filter) = cwd_filter {
+            if meta.cwd.trim() != filter {
+                continue;
+            }
+        }
+        if !seen.insert(meta.id.clone()) {
+            continue;
+        }
+        let updated_at = fs::metadata(&path).await.ok().and_then(|value| value.modified().ok()).and_then(system_time_to_rfc3339);
+        rows.push(json!({
+            "id": meta.id,
+            "name": meta.name,
+            "cwd": meta.cwd,
+            "path": path.to_string_lossy().to_string(),
+            "updatedAt": updated_at,
+            "createdAt": updated_at,
+            "archived": path.to_string_lossy().contains("/archived_sessions/"),
+            "model": meta.model,
+            "effort": meta.effort,
+            "preview": meta.preview
+        }));
+    }
+    Ok(rows)
+}
+
+fn merge_codex_thread_row(
+    rows: &mut std::collections::HashMap<String, Value>,
+    row: Value,
+) {
+    let id = row.get("id").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+    let Some(id) = id else { return };
+
+    match rows.get(id) {
+        Some(existing) => {
+            let existing_updated = existing.get("updatedAt").and_then(Value::as_str).unwrap_or_default();
+            let next_updated = row.get("updatedAt").and_then(Value::as_str).unwrap_or_default();
+            if next_updated > existing_updated {
+                rows.insert(id.to_string(), row);
+            }
+        }
+        None => {
+            rows.insert(id.to_string(), row);
+        }
+    }
+}
+
+fn extract_codex_thread_summaries_from_list_response(response: &Value) -> Vec<Value> {
+    let rows = response
+        .get("data")
+        .and_then(Value::as_array)
+        .or_else(|| response.get("items").and_then(Value::as_array))
+        .cloned()
+        .unwrap_or_default();
+
+    let mut summaries = Vec::<Value>::new();
+    let mut seen = std::collections::HashSet::<String>::new();
+    for row in rows {
+        let Some(object) = row.as_object() else { continue };
+        let nested_thread = object.get("thread").and_then(Value::as_object);
+        let id = object
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| nested_thread.and_then(|thread| thread.get("id")).and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()));
+        let Some(id) = id else { continue };
+        if !seen.insert(id.to_string()) {
+            continue;
+        }
+
+        let cwd = object
+            .get("cwd")
+            .and_then(Value::as_str)
+            .or_else(|| nested_thread.and_then(|thread| thread.get("cwd")).and_then(Value::as_str));
+        let updated_at = object
+            .get("updatedAt")
+            .or_else(|| object.get("updated_at"))
+            .and_then(Value::as_str)
+            .or_else(|| nested_thread.and_then(|thread| thread.get("updatedAt")).and_then(Value::as_str))
+            .or_else(|| nested_thread.and_then(|thread| thread.get("updated_at")).and_then(Value::as_str));
+        let created_at = object
+            .get("createdAt")
+            .or_else(|| object.get("created_at"))
+            .and_then(Value::as_str)
+            .or_else(|| nested_thread.and_then(|thread| thread.get("createdAt")).and_then(Value::as_str))
+            .or_else(|| nested_thread.and_then(|thread| thread.get("created_at")).and_then(Value::as_str));
+
+        summaries.push(json!({
+            "id": id,
+            "name": object.get("name").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("name")).and_then(Value::as_str)),
+            "cwd": cwd,
+            "path": object.get("path").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("path")).and_then(Value::as_str)),
+            "updatedAt": updated_at,
+            "createdAt": created_at,
+            "archived": object.get("archived").and_then(Value::as_bool).or_else(|| nested_thread.and_then(|thread| thread.get("archived")).and_then(Value::as_bool)).unwrap_or(false),
+            "model": object.get("model").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("model")).and_then(Value::as_str)),
+            "effort": object.get("effort").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("effort")).and_then(Value::as_str)),
+            "preview": object.get("preview").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("preview")).and_then(Value::as_str)),
+        }));
+    }
+    summaries
 }
 
 fn resolve_cwd(raw: &str) -> String {
