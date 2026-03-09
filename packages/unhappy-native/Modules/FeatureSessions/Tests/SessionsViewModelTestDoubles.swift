@@ -272,6 +272,52 @@ actor StreamingRecordingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAc
     }
 }
 
+actor DelayedStreamingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction, SessionUpstreamSessionsStreamingAction {
+    private var requestedProjects: [[SessionMachineProject]] = []
+    let delay: Duration
+
+    init(delay: Duration) {
+        self.delay = delay
+    }
+
+    func loadUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async throws -> [SessionLinkedUpstreamSession] {
+        requestedProjects.append(projects)
+        try await Task.sleep(for: delay)
+        return []
+    }
+
+    func loadUpstreamSessionsStream(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async -> AsyncStream<SessionUpstreamSessionsLoadSnapshot> {
+        requestedProjects.append(projects)
+        return AsyncStream { continuation in
+            Task {
+                try? await Task.sleep(for: delay)
+                continuation.yield(
+                    SessionUpstreamSessionsLoadSnapshot(
+                        machineID: projects.first?.machineID,
+                        projectPath: projects.first?.summary.path,
+                        rows: [],
+                        errorMessage: nil,
+                        isFinal: true
+                    )
+                )
+                continuation.finish()
+            }
+        }
+    }
+
+    func requestedProjectSnapshots() -> [[SessionMachineProject]] {
+        requestedProjects
+    }
+}
+
 enum MockProjectsLoaderError: Error, Sendable {
     case failed
 }

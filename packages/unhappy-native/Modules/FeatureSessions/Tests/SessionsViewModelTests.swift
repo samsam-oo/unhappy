@@ -492,6 +492,64 @@ struct SessionsViewModelTests {
         #expect(requestedProjects.first?.map(\.id) == [projectTwo.id])
     }
 
+    @Test
+    func refreshProjectIsNotBlockedByAnotherActiveUpstreamScope() async throws {
+        let projectOne = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let projectTwo = SessionMachineProject(
+            machineID: "machine-2",
+            machineDisplayName: "Home Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/two",
+                latestUpdatedAt: "2026-03-06T01:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamLoader = DelayedStreamingUpstreamSessionsLoader(delay: .milliseconds(200))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([projectOne, projectTwo])),
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+
+        let firstRefresh = Task {
+            await model.refreshProject(
+                machineID: "machine-1",
+                projectPath: "/repo/one",
+                serverURLString: "https://api.unhappy.im",
+                token: "token"
+            )
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        await model.refreshProject(
+            machineID: "machine-2",
+            projectPath: "/repo/two",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        _ = await firstRefresh.value
+
+        let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
+        #expect(requestedProjects.count == 2)
+        #expect(requestedProjects.map { $0.map(\.id) } == [[projectOne.id], [projectTwo.id]])
+    }
+
 
     @Test
     func loadMoreAppendsNextPageRows() async throws {
