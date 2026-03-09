@@ -132,23 +132,42 @@ public struct SessionsView: View {
     private var emptySidebarState: some View {
         ScrollView {
             VStack(spacing: 14) {
-                Image(systemName: "sparkles.rectangle.stack")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text("No projects yet")
-                    .font(.headline)
-                Text("Add a project to start syncing its sessions.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                Button {
-                    isPresentingProjectPicker = true
-                } label: {
-                    Label("Add Project", systemImage: "plus.circle.fill")
-                        .font(.subheadline.weight(.semibold))
+                if let projectsErrorMessage = viewModel.projectsErrorMessage,
+                   !projectsErrorMessage.isEmpty {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(.orange)
+                    Text("Unable to load projects")
+                        .font(.headline)
+                    Text(projectsErrorMessage)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button("Retry") {
+                        Task {
+                            await reloadSessions()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Image(systemName: "sparkles.rectangle.stack")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text("No projects yet")
+                        .font(.headline)
+                    Text("Add a project to start syncing its sessions.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button {
+                        isPresentingProjectPicker = true
+                    } label: {
+                        Label("Add Project", systemImage: "plus.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 2)
                 }
-                .buttonStyle(.borderedProminent)
-                .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .top)
             .padding(.top, 24)
