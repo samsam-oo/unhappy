@@ -145,6 +145,67 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadProjectsStreamingStartsUpstreamSyncForVisibleProjectScopes() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Thread",
+                cwd: "/repo/app",
+                updatedAt: "2026-03-06T05:00:00.000Z",
+                createdAt: "2026-03-06T04:00:00.000Z",
+                archived: false
+            )
+        )
+        let projectsLoader = StreamingProjectsLoader(
+            snapshots: [
+                SessionProjectsLoadSnapshot(
+                    machineID: "machine-1",
+                    projects: [project],
+                    errorMessage: nil,
+                    isFinal: false
+                ),
+                SessionProjectsLoadSnapshot(
+                    machineID: nil,
+                    projects: [],
+                    errorMessage: nil,
+                    isFinal: true
+                ),
+            ]
+        )
+        let upstreamLoader = StreamingRecordingUpstreamSessionsLoader(rows: [upstreamRow])
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: projectsLoader,
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        try await Task.sleep(for: .milliseconds(50))
+
+        let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
+        #expect(requestedProjects.count == 1)
+        #expect(requestedProjects.first?.map(\.summary.path) == ["/repo/app"])
+        #expect(model.upstreamSessions.map(\.summary.id) == ["thread-1"])
+    }
+
+    @Test
     func loadRemovesDuplicateMirroredSessionsBoundToSameUpstreamIdentity() async throws {
         let olderSession = APISession(
             id: "session-older",
