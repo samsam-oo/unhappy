@@ -63,20 +63,24 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
             for machine in activeMachines {
                 let machineDisplayName = machineName(for: machine)
                 group.addTask {
-                    let machineProjects = try await service.fetchProjects(
-                        serverURL: serverURL,
-                        token: normalizedToken,
-                        machineID: machine.id,
-                        explicitOnly: true,
-                        wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
-                    )
-                    return machineProjects.map {
-                        SessionMachineProject(
+                    do {
+                        let machineProjects = try await service.fetchProjects(
+                            serverURL: serverURL,
+                            token: normalizedToken,
                             machineID: machine.id,
-                            machineDisplayName: machineDisplayName,
-                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
-                            summary: $0
+                            explicitOnly: true,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
                         )
+                        return machineProjects.map {
+                            SessionMachineProject(
+                                machineID: machine.id,
+                                machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey,
+                                summary: $0
+                            )
+                        }
+                    } catch {
+                        return []
                     }
                 }
             }
