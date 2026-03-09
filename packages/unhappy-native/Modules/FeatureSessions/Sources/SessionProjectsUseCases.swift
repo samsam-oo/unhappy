@@ -33,13 +33,18 @@ public protocol SessionProjectRemovingAction: Sendable {
 public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
     private struct MachineProjectsBatch: Sendable {
         let projects: [SessionMachineProject]
-        let errorMessage: String?
+        let error: Error?
     }
 
     private let service: any MachinesFetching & MachineProjectsFetching
+    private let machineRequestTimeout: Duration
 
-    public init(service: any MachinesFetching & MachineProjectsFetching) {
+    public init(
+        service: any MachinesFetching & MachineProjectsFetching,
+        machineRequestTimeout: Duration? = nil
+    ) {
         self.service = service
+        self.machineRequestTimeout = machineRequestTimeout ?? SessionLoadTimeout.projects
     }
 
     public func loadProjects(
@@ -62,21 +67,24 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
         let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
         let activeMachines = machines.filter(\.active)
         var projects: [SessionMachineProject] = []
-        var firstErrorMessage: String?
+        var firstError: Error?
         let service = self.service
+        let machineRequestTimeout = self.machineRequestTimeout
 
         await withTaskGroup(of: MachineProjectsBatch.self) { group in
             for machine in activeMachines {
                 let machineDisplayName = machineName(for: machine)
                 group.addTask {
                     do {
-                        let machineProjects = try await service.fetchProjects(
-                            serverURL: serverURL,
-                            token: normalizedToken,
-                            machineID: machine.id,
-                            explicitOnly: true,
-                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
-                        )
+                        let machineProjects = try await withSessionLoadTimeout(machineRequestTimeout) {
+                            try await service.fetchProjects(
+                                serverURL: serverURL,
+                                token: normalizedToken,
+                                machineID: machine.id,
+                                explicitOnly: true,
+                                wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
+                            )
+                        }
                         return MachineProjectsBatch(
                             projects: machineProjects.map {
                                 SessionMachineProject(
@@ -86,12 +94,12 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
                                     summary: $0
                                 )
                             },
-                            errorMessage: nil
+                            error: nil
                         )
                     } catch {
                         return MachineProjectsBatch(
                             projects: [],
-                            errorMessage: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                            error: error
                         )
                     }
                 }
@@ -99,16 +107,21 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction {
 
             for await batch in group {
                 projects.append(contentsOf: batch.projects)
-                if firstErrorMessage == nil {
-                    firstErrorMessage = batch.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
+                if firstError == nil {
+                    firstError = batch.error
                 }
             }
         }
 
-        if projects.isEmpty,
-           let firstErrorMessage,
-           !firstErrorMessage.isEmpty {
-            throw MachinesAPIError.rpcCallFailed(firstErrorMessage)
+        if projects.isEmpty, let firstError {
+            if let machinesError = firstError as? MachinesAPIError {
+                throw machinesError
+            }
+            let message = (firstError as? LocalizedError)?.errorDescription ?? firstError.localizedDescription
+            let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalizedMessage.isEmpty {
+                throw MachinesAPIError.rpcCallFailed(normalizedMessage)
+            }
         }
 
         return projects.sorted { lhs, rhs in

@@ -97,22 +97,85 @@ struct SessionProjectsUseCasesTests {
             )
         }
     }
+
+    @Test
+    func loadProjectsTimesOutPerMachineWithoutBlockingSuccessfulMachines() async throws {
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-fast",
+                    active: true,
+                    activeAt: 20,
+                    createdAt: 1,
+                    updatedAt: 20,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Fast Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+                APIMachine(
+                    id: "machine-slow",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Slow Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+            ],
+            projectsByMachineID: [
+                "machine-fast": [
+                    APIMachineProjectSummary(
+                        path: "/repo/app",
+                        latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                ]
+            ],
+            delayedMachineIDs: ["machine-slow"],
+            fetchDelay: .milliseconds(200)
+        )
+        let useCase = SessionProjectsLoadUseCase(
+            service: service,
+            machineRequestTimeout: .milliseconds(30)
+        )
+
+        let projects = try await useCase.loadProjects(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(projects.count == 1)
+        #expect(projects.first?.machineID == "machine-fast")
+    }
 }
 
 private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
     let machines: [APIMachine]
     let projectsByMachineID: [String: [APIMachineProjectSummary]]
     let fetchProjectsError: Error?
+    let delayedMachineIDs: Set<String>
+    let fetchDelay: Duration?
     private(set) var requestedExplicitOnlyValues: [Bool] = []
 
     init(
         machines: [APIMachine],
         projectsByMachineID: [String: [APIMachineProjectSummary]],
-        fetchProjectsError: Error? = nil
+        fetchProjectsError: Error? = nil,
+        delayedMachineIDs: Set<String> = [],
+        fetchDelay: Duration? = nil
     ) {
         self.machines = machines
         self.projectsByMachineID = projectsByMachineID
         self.fetchProjectsError = fetchProjectsError
+        self.delayedMachineIDs = delayedMachineIDs
+        self.fetchDelay = fetchDelay
     }
 
     func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -127,6 +190,9 @@ private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
         requestedExplicitOnlyValues.append(explicitOnly)
+        if delayedMachineIDs.contains(machineID), let fetchDelay {
+            try await Task.sleep(for: fetchDelay)
+        }
         if let fetchProjectsError {
             throw fetchProjectsError
         }
