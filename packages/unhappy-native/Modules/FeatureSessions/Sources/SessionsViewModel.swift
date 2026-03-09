@@ -33,6 +33,7 @@ public final class SessionsViewModel: ObservableObject {
     private var nextCursor: String?
     private var lastSupportingDataSyncAt: TimeInterval?
     private var lastSupportingDataFingerprint: String?
+    private var multiAgentInProgressCountCache = 0
 
     public init(
         loader: any SessionsLoading,
@@ -81,9 +82,7 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     public var multiAgentInProgressCount: Int {
-        sessions.reduce(0) { partialResult, session in
-            partialResult + SessionRuntimeContext(session: session).collabInProgressCount
-        }
+        multiAgentInProgressCountCache
     }
 
     public func load(serverURLString: String, token: String) async {
@@ -99,7 +98,7 @@ public final class SessionsViewModel: ObservableObject {
                 cursor: nil,
                 limit: 50
             )
-            sessions = firstPage.sessions
+            setSessionsIfChanged(firstPage.sessions)
             await cleanupProviderBackedSessions(
                 serverURLString: serverURLString,
                 token: token
@@ -136,7 +135,7 @@ public final class SessionsViewModel: ObservableObject {
                 interval: interval
             )
             for try await rows in stream {
-                sessions = mergeLatestRows(rows, into: sessions)
+                setSessionsIfChanged(mergeLatestRows(rows, into: sessions))
                 await cleanupProviderBackedSessions(
                     serverURLString: serverURLString,
                     token: token
@@ -179,7 +178,7 @@ public final class SessionsViewModel: ObservableObject {
                 cursor: nextCursor,
                 limit: 50
             )
-            sessions = mergeLatestRows(page.sessions, into: sessions)
+            setSessionsIfChanged(mergeLatestRows(page.sessions, into: sessions))
             await cleanupProviderBackedSessions(
                 serverURLString: serverURLString,
                 token: token
@@ -236,12 +235,12 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 projects: [targetProject]
             )
-            upstreamSessions = mergeProjectScopedUpstreamRows(
+            setUpstreamSessionsIfChanged(mergeProjectScopedUpstreamRows(
                 existing: upstreamSessions,
                 refreshed: refreshedRows,
                 machineID: targetProject.machineID,
                 projectPath: targetProject.summary.path
-            )
+            ))
             upstreamSessionsErrorMessage = nil
         } catch {
             upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -269,7 +268,7 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 projects: projectsToSync
             )
-            upstreamSessions = rows
+            setUpstreamSessionsIfChanged(rows)
             upstreamSessionsErrorMessage = nil
         } catch {
             upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -291,10 +290,11 @@ public final class SessionsViewModel: ObservableObject {
         defer { isLoadingProjects = false }
 
         do {
-            projects = try await projectsLoader.loadProjects(
+            let loadedProjects = try await projectsLoader.loadProjects(
                 serverURLString: serverURLString,
                 token: token
             ).filter(\.summary.openedExplicitly)
+            setProjectsIfChanged(loadedProjects)
             projectsErrorMessage = nil
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -328,7 +328,7 @@ public final class SessionsViewModel: ObservableObject {
             token: token,
             projectsToSync: projectsForUpstreamSync()
         )
-        lastSupportingDataFingerprint = supportingDataFingerprint()
+        lastSupportingDataFingerprint = fingerprint
         lastSupportingDataSyncAt = Date().timeIntervalSince1970
     }
 
@@ -363,11 +363,11 @@ public final class SessionsViewModel: ObservableObject {
             if !projects.contains(where: { $0.id == openedProject.id }) {
                 projects.insert(openedProject, at: 0)
             }
-            await refreshSupportingProjectContent(
-                serverURLString: serverURLString,
-                token: token,
-                force: true
-            )
+                await refreshSupportingProjectContent(
+                    serverURLString: serverURLString,
+                    token: token,
+                    force: true
+                )
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -400,7 +400,9 @@ public final class SessionsViewModel: ObservableObject {
                 machineID: machineID,
                 path: projectPath
             )
-            projects.removeAll { $0.id == projectID }
+            if projects.contains(where: { $0.id == projectID }) {
+                projects.removeAll { $0.id == projectID }
+            }
             projectsErrorMessage = nil
             await refreshSupportingProjectContent(
                 serverURLString: serverURLString,
@@ -542,7 +544,10 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 sessionID: sessionID
             )
-            sessions.removeAll { $0.id == sessionID }
+            if sessions.contains(where: { $0.id == sessionID }) {
+                sessions.removeAll { $0.id == sessionID }
+                multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(sessions)
+            }
         } catch {
             // Ignore best-effort cleanup failures to avoid blocking the main session list.
         }
@@ -552,7 +557,7 @@ public final class SessionsViewModel: ObservableObject {
         guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
         var nextSessions = sessions
         nextSessions[index] = session
-        sessions = nextSessions
+        setSessionsIfChanged(nextSessions)
     }
 
     private func mergeProjectScopedUpstreamRows(
@@ -587,5 +592,21 @@ public final class SessionsViewModel: ObservableObject {
             }
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
+    }
+
+    private func setSessionsIfChanged(_ nextSessions: [APISession]) {
+        guard sessions != nextSessions else { return }
+        sessions = nextSessions
+        multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(nextSessions)
+    }
+
+    private func setProjectsIfChanged(_ nextProjects: [SessionMachineProject]) {
+        guard projects != nextProjects else { return }
+        projects = nextProjects
+    }
+
+    private func setUpstreamSessionsIfChanged(_ nextRows: [SessionLinkedUpstreamSession]) {
+        guard upstreamSessions != nextRows else { return }
+        upstreamSessions = nextRows
     }
 }

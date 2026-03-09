@@ -100,3 +100,9 @@ func sessionsMergeLatestRows(_ latestRows: [APISession], into existingRows: [API
         return lhs.updatedAt > rhs.updatedAt
     }
 }
+
+func sessionsMultiAgentInProgressCount(_ rows: [APISession]) -> Int {
+    rows.reduce(0) { partialResult, session in
+        partialResult + SessionRuntimeContext(session: session).collabInProgressCount
+    }
+}
