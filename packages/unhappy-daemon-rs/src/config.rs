@@ -1,3 +1,4 @@
+use crate::provider::ProviderCommandConfig;
 use anyhow::{Context, Result};
 use std::env;
 use std::path::PathBuf;
@@ -9,7 +10,7 @@ pub struct Config {
     pub machine_id: String,
     pub machine_data_key_base64url: String,
     pub unhappy_home_dir: PathBuf,
-    pub provider_cli: String,
+    pub provider_commands: ProviderCommandConfig,
     pub session_webhook_timeout_ms: u64,
 }
 
@@ -28,8 +29,7 @@ impl Config {
             .unwrap_or_else(|_| {
                 PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string())).join(".unhappy")
             });
-        let provider_cli = env::var("UNHAPPY_PROVIDER_CLI")
-            .unwrap_or_else(|_| "unhappy".to_string());
+        let provider_commands = ProviderCommandConfig::from_env()?;
         let session_webhook_timeout_ms = env::var("UNHAPPY_SESSION_WEBHOOK_TIMEOUT_MS")
             .ok()
             .and_then(|value| value.parse::<u64>().ok())
@@ -42,7 +42,7 @@ impl Config {
             machine_id,
             machine_data_key_base64url,
             unhappy_home_dir,
-            provider_cli,
+            provider_commands,
             session_webhook_timeout_ms,
         })
     }

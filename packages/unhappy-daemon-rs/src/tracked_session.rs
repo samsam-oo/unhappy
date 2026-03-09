@@ -1,0 +1,96 @@
+use crate::{
+    control_server::{
+        ListChild, ProviderSessionStartedRequest, SpawnSessionRequest,
+    },
+    provider::Provider,
+    session_store::PersistedTrackedSession,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackedSession {
+    started_by: String,
+    provider: Option<Provider>,
+    provider_session_id: Option<String>,
+    pid: u32,
+    metadata: Option<Value>,
+}
+
+impl TrackedSession {
+    pub fn pending_spawn(pid: u32, request: &SpawnSessionRequest) -> Self {
+        Self {
+            started_by: "daemon".to_string(),
+            provider: Some(request.agent),
+            provider_session_id: None,
+            pid,
+            metadata: Some(json!({
+                "directory": request.directory,
+                "agent": request.agent,
+                "codexResumeThreadId": request.codex_resume_thread_id,
+                "claudeResumeSessionId": request.claude_resume_session_id,
+            })),
+        }
+    }
+
+    pub fn from_provider_session_started(
+        pid: u32,
+        request: &ProviderSessionStartedRequest,
+    ) -> Self {
+        Self {
+            started_by: extract_started_by(&request.metadata)
+                .unwrap_or_else(|| "provider directly".to_string()),
+            provider: Some(request.provider),
+            provider_session_id: Some(request.provider_session_id.clone()),
+            pid,
+            metadata: Some(request.metadata.clone()),
+        }
+    }
+
+    pub fn with_provider_session_started(
+        self,
+        pid: u32,
+        request: &ProviderSessionStartedRequest,
+    ) -> Self {
+        Self {
+            started_by: self.started_by,
+            provider: Some(request.provider),
+            provider_session_id: Some(request.provider_session_id.clone()),
+            pid,
+            metadata: Some(request.metadata.clone()),
+        }
+    }
+
+    pub fn to_list_child(&self) -> Option<ListChild> {
+        self.provider_session_id
+            .as_ref()
+            .map(|provider_session_id| ListChild {
+                started_by: self.started_by.clone(),
+                provider: self.provider,
+                provider_session_id: provider_session_id.clone(),
+                pid: self.pid,
+                metadata: self.metadata.clone(),
+            })
+    }
+
+    pub fn provider_session_id(&self) -> Option<&str> {
+        self.provider_session_id.as_deref()
+    }
+
+    pub fn to_persisted(&self) -> PersistedTrackedSession {
+        PersistedTrackedSession {
+            started_by: self.started_by.clone(),
+            provider: self.provider,
+            provider_session_id: self.provider_session_id.clone(),
+            pid: self.pid,
+            metadata: self.metadata.clone(),
+        }
+    }
+}
+
+fn extract_started_by(metadata: &Value) -> Option<String> {
+    metadata
+        .get("startedBy")
+        .and_then(Value::as_str)
+        .map(ToOwned::to_owned)
+}

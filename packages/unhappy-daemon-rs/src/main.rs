@@ -2,7 +2,10 @@ mod config;
 mod control_server;
 mod daemon_state;
 mod data_plane;
+mod provider;
 mod protocol;
+mod session_store;
+mod tracked_session;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -38,19 +41,16 @@ async fn main() -> Result<()> {
         }
         Command::LocalControlServer { bind } => {
             let config = Config::from_env()?;
-            let state = DaemonState::new_shared(config.clone());
+            let state = DaemonState::new_shared(config);
+            state.restore_persisted_sessions().await?;
             let server = start_control_server(state.clone(), bind).await?;
-            let daemon_state_path = config.unhappy_home_dir.join("daemon.state.json");
-            tokio::fs::create_dir_all(&config.unhappy_home_dir).await?;
-            tokio::fs::write(
-                &daemon_state_path,
-                serde_json::to_vec_pretty(&serde_json::json!({
-                    "pid": std::process::id(),
-                    "httpPort": server.local_addr().port(),
-                    "startTime": format!("{:?}", std::time::SystemTime::now()),
-                    "startedWithCliVersion": env!("CARGO_PKG_VERSION"),
-                }))?,
-            ).await?;
+            if let Err(error) = state.initialize_persistence(server.local_addr().port()).await {
+                state
+                    .request_shutdown_with_reason("state-file-initialization-failed")
+                    .await;
+                let _ = server.wait().await;
+                return Err(error);
+            }
             println!(
                 "local control server listening on {} ({})",
                 server.local_addr(),
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
             tokio::select! {
                 signal = tokio::signal::ctrl_c() => {
                     signal?;
-                    state.request_shutdown().await;
+                    state.request_shutdown_with_reason("os-signal").await;
                 }
                 _ = async {
                     let mut shutdown_rx = state.subscribe_shutdown();
@@ -70,8 +70,16 @@ async fn main() -> Result<()> {
                 } => {}
             }
 
-            server.wait().await?;
-            let _ = tokio::fs::remove_file(&daemon_state_path).await;
+            let wait_result = server.wait().await;
+            let offline_reason = if wait_result.is_ok() {
+                "control-server-stopped"
+            } else {
+                "control-server-exited-with-error"
+            };
+            if let Err(error) = state.mark_offline(offline_reason).await {
+                eprintln!("warning: failed to finalize daemon state file: {error:#}");
+            }
+            wait_result?;
         }
     }
     Ok(())

@@ -1,4 +1,5 @@
 use crate::daemon_state::SharedDaemonState;
+use crate::provider::Provider;
 use anyhow::{Context, Result};
 use axum::{
     extract::State,
@@ -8,7 +9,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::{net::TcpListener, task::JoinHandle};
 
@@ -26,14 +27,6 @@ impl ControlServer {
     pub async fn wait(self) -> Result<()> {
         self.task.await.context("control server task join failed")?
     }
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Provider {
-    Codex,
-    Claude,
-    Gemini,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -164,6 +157,7 @@ pub async fn start_control_server(
 
     let app = Router::new()
         .route("/provider-session-started", post(provider_session_started))
+        .route("/hook/session-start", post(claude_session_hook))
         .route("/list", post(list_sessions))
         .route("/stop-session", post(stop_session))
         .route("/spawn-session", post(spawn_session))
@@ -197,6 +191,45 @@ async fn provider_session_started(
     Json(StatusOkResponse::ok())
 }
 
+async fn claude_session_hook(
+    State(state): State<SharedDaemonState>,
+    Json(payload): Json<Value>,
+) -> Json<StatusOkResponse> {
+    let session_id = payload
+        .get("session_id")
+        .or_else(|| payload.get("sessionId"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    if let Some(session_id) = session_id {
+        let metadata = match payload {
+            Value::Object(mut object) => {
+                if let Some(transcript_path) = object
+                    .get("transcript_path")
+                    .or_else(|| object.get("transcriptPath"))
+                    .cloned()
+                {
+                    object.insert("agentTranscriptPath".to_string(), transcript_path);
+                }
+                Value::Object(object)
+            }
+            other => json!({ "raw": other }),
+        };
+
+        state
+            .provider_session_started(ProviderSessionStartedRequest {
+                provider: Provider::Claude,
+                provider_session_id: session_id,
+                metadata,
+            })
+            .await;
+    }
+
+    Json(StatusOkResponse::ok())
+}
+
 async fn list_sessions(State(state): State<SharedDaemonState>) -> Json<ListResponse> {
     let children = state.list_children().await;
     Json(ListResponse { children })
@@ -225,7 +258,7 @@ async fn spawn_session(
 }
 
 async fn stop_daemon(State(state): State<SharedDaemonState>) -> Json<StatusOkResponse> {
-    state.request_shutdown().await;
+    state.request_shutdown_with_reason("http-stop-request").await;
     Json(StatusOkResponse::stopping())
 }
 
