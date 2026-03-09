@@ -5,6 +5,8 @@ import FeatureNewSession
 @MainActor
 public final class DirectSessionViewModel: ObservableObject {
     private static let messagePageSize = 120
+    private static let incrementalRefreshPageSize = 40
+    private static let postSendRefreshDelay: Duration = .milliseconds(250)
 
     @Published public private(set) var messages: [APISessionMessage] = []
     @Published public private(set) var hasOlderMessages = false
@@ -41,6 +43,7 @@ public final class DirectSessionViewModel: ObservableObject {
     private let reviewLoader: (any DirectSessionReviewLoadingAction)?
     private let worktreeLoader: (any DirectSessionWorktreeLoadingAction)?
     private var pollingTask: Task<Void, Never>?
+    private var postSendRefreshTask: Task<Void, Never>?
     private var activeMessagesLoadTask: Task<APISessionMessagesPage, Error>?
     private var olderMessagesCursor: String?
     private var hasPrependedOlderPages = false
@@ -71,6 +74,7 @@ public final class DirectSessionViewModel: ObservableObject {
 
     deinit {
         pollingTask?.cancel()
+        postSendRefreshTask?.cancel()
     }
 
     public func load(serverURLString: String, token: String) async {
@@ -165,7 +169,10 @@ public final class DirectSessionViewModel: ObservableObject {
                 reasoningEffort: selectedReasoningEffortOverride.apiValue,
                 permissionMode: permissionMode
             )
-            await load(serverURLString: serverURLString, token: token)
+            schedulePostSendRefresh(
+                serverURLString: serverURLString,
+                token: token
+            )
             return true
         } catch {
             sendErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -364,6 +371,32 @@ public final class DirectSessionViewModel: ObservableObject {
         pollingTask = nil
     }
 
+    private func schedulePostSendRefresh(
+        serverURLString: String,
+        token: String
+    ) {
+        postSendRefreshTask?.cancel()
+        let refreshLimit = messages.isEmpty
+            ? Self.messagePageSize
+            : min(Self.incrementalRefreshPageSize, Self.messagePageSize)
+        postSendRefreshTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.postSendRefreshDelay)
+            } catch is CancellationError {
+                return
+            } catch {
+                return
+            }
+
+            guard let self else { return }
+            await self.refreshLatestMessages(
+                serverURLString: serverURLString,
+                token: token,
+                limit: refreshLimit
+            )
+        }
+    }
+
     private func setMessagesIfChanged(_ nextMessages: [APISessionMessage]) {
         guard messages != nextMessages else { return }
         messages = nextMessages
@@ -387,20 +420,56 @@ public final class DirectSessionViewModel: ObservableObject {
         hasOlderMessages = page.hasNext
     }
 
+    private func applyIncrementalLatestPage(_ page: APISessionMessagesPage) {
+        guard !messages.isEmpty else {
+            applyLatestPage(page)
+            return
+        }
+
+        let latestMessages = sessionsNormalizeMessageOrder(page.messages)
+        let latestIDs = Set(latestMessages.map(\.id))
+        let preservedMessages = messages.filter { !latestIDs.contains($0.id) }
+        setMessagesIfChanged(
+            sessionsNormalizeMessageOrder(preservedMessages + latestMessages)
+        )
+    }
+
+    private func refreshLatestMessages(
+        serverURLString: String,
+        token: String,
+        limit: Int
+    ) async {
+        do {
+            let page = try await loadMessagesShared(
+                serverURLString: serverURLString,
+                token: token,
+                limit: limit
+            )
+            applyIncrementalLatestPage(page)
+            errorMessage = nil
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+
+        postSendRefreshTask = nil
+    }
+
     private func loadMessagesShared(
         serverURLString: String,
-        token: String
+        token: String,
+        limit: Int? = nil
     ) async throws -> APISessionMessagesPage {
         if let activeMessagesLoadTask {
             return try await activeMessagesLoadTask.value
         }
 
+        let boundedLimit = max(1, limit ?? Self.messagePageSize)
         let task = Task {
             try await loader.loadMessages(
                 serverURLString: serverURLString,
                 token: token,
                 identity: identity,
-                limit: Self.messagePageSize,
+                limit: boundedLimit,
                 cursor: nil
             )
         }
