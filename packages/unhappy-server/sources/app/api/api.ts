@@ -21,6 +21,7 @@ import { userRoutes } from './routes/userRoutes';
 import { versionRoutes } from './routes/versionRoutes';
 import { voiceRoutes } from './routes/voiceRoutes';
 import { startSocket } from './socket';
+import { startMachineDataPlaneSocket } from './socket/machineDataPlaneSocket';
 import { Fastify } from './types';
 import { enableAuthentication } from './utils/enableAuthentication';
 import { enableErrorHandlers } from './utils/enableErrorHandlers';
@@ -79,6 +80,7 @@ export async function startApi() {
 
   // Start Socket
   startSocket(typed);
+  startMachineDataPlaneSocket(typed);
 
   // End
   log('API ready on port http://localhost:' + port);
