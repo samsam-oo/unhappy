@@ -206,6 +206,111 @@ struct SessionTranscriptProcessingTests {
         #expect(command.status == .running)
     }
 
+    @Test
+    func writeStdinEventsMatchInteractiveCommandBySessionID() {
+        let firstCommandCall = SessionTranscriptEntry(
+            id: "call-1",
+            role: .agent,
+            kind: .toolCall,
+            title: "Ran command",
+            body: #"{"command":"npm test","cwd":"/tmp/project-a"}"#,
+            toolUseID: "cmd-a",
+            sourceType: "tool-call",
+            toolName: "exec_command",
+            isSidechain: false,
+            threadID: nil
+        )
+        let firstCommandResult = SessionTranscriptEntry(
+            id: "result-1",
+            role: .agent,
+            kind: .toolResult,
+            title: "Ran command Result",
+            body: #"{"session_id":"tty-a"}"#,
+            toolUseID: "cmd-a",
+            sourceType: "tool_result",
+            toolName: "exec_command",
+            isSidechain: false,
+            threadID: nil
+        )
+        let secondCommandCall = SessionTranscriptEntry(
+            id: "call-2",
+            role: .agent,
+            kind: .toolCall,
+            title: "Ran command",
+            body: #"{"command":"npm run dev","cwd":"/tmp/project-b"}"#,
+            toolUseID: "cmd-b",
+            sourceType: "tool-call",
+            toolName: "exec_command",
+            isSidechain: false,
+            threadID: nil
+        )
+        let secondCommandResult = SessionTranscriptEntry(
+            id: "result-2",
+            role: .agent,
+            kind: .toolResult,
+            title: "Ran command Result",
+            body: #"{"session_id":"tty-b"}"#,
+            toolUseID: "cmd-b",
+            sourceType: "tool_result",
+            toolName: "exec_command",
+            isSidechain: false,
+            threadID: nil
+        )
+        let stdinEntry = SessionTranscriptEntry(
+            id: "stdin-call",
+            role: .agent,
+            kind: .toolCall,
+            title: "write_stdin",
+            body: #"{"session_id":"tty-b","chars":"q"}"#,
+            toolUseID: "stdin-b",
+            sourceType: "tool-call",
+            toolName: "write_stdin",
+            isSidechain: false,
+            threadID: nil
+        )
+        let stdinResult = SessionTranscriptEntry(
+            id: "stdin-result",
+            role: .agent,
+            kind: .toolResult,
+            title: "write_stdin Result",
+            body: "polling",
+            toolUseID: "stdin-b",
+            sourceType: "tool_result",
+            toolName: "write_stdin",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: firstCommandCall),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: firstCommandResult),
+            makePresentation(messageID: "msg-3", sequenceText: "3", createdAt: 102, createdAtText: "10:02", entry: secondCommandCall),
+            makePresentation(messageID: "msg-4", sequenceText: "4", createdAt: 103, createdAtText: "10:03", entry: secondCommandResult),
+            makePresentation(messageID: "msg-5", sequenceText: "5", createdAt: 104, createdAtText: "10:04", entry: stdinEntry),
+            makePresentation(messageID: "msg-6", sequenceText: "6", createdAt: 105, createdAtText: "10:05", entry: stdinResult),
+        ])
+
+        #expect(coalesced.count == 2)
+
+        guard case .commandExecution(let firstCommand)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected first command execution card")
+            return
+        }
+        guard case .commandExecution(let secondCommand)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[1].entries[0]) else {
+            Issue.record("Expected second command execution card")
+            return
+        }
+
+        #expect(firstCommand.command == "npm test")
+        #expect(firstCommand.supplementalEntries.isEmpty)
+        #expect(firstCommand.status == .running)
+        #expect(secondCommand.command == "npm run dev")
+        #expect(secondCommand.supplementalEntries.map(\.kind) == [.stdin, .toolResult])
+        #expect(secondCommand.status == .running)
+    }
+
     private func makeCommandPresentations() -> [SessionTranscriptMessagePresentation] {
         let commandBody = """
         {"command":"corepack yarn test","cwd":"/tmp/project","commandActions":[{"type":"read","path":"README.md"},{"type":"search","query":"TODO"}]}

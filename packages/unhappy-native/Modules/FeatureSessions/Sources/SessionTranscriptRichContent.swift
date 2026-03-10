@@ -126,11 +126,40 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
     let logs: String?
     let stdout: String?
     let stderr: String?
+    let sessionID: String?
     let success: Bool?
     let exitCode: Int?
     let status: String?
     let durationMs: Int?
     let supplementalEntries: [SupplementalEntry]
+
+    init(
+        command: String?,
+        cwd: String?,
+        summary: String?,
+        logs: String?,
+        stdout: String?,
+        stderr: String?,
+        sessionID: String? = nil,
+        success: Bool?,
+        exitCode: Int?,
+        status: String?,
+        durationMs: Int?,
+        supplementalEntries: [SupplementalEntry]
+    ) {
+        self.command = command
+        self.cwd = cwd
+        self.summary = summary
+        self.logs = logs
+        self.stdout = stdout
+        self.stderr = stderr
+        self.sessionID = sessionID
+        self.success = success
+        self.exitCode = exitCode
+        self.status = status
+        self.durationMs = durationMs
+        self.supplementalEntries = supplementalEntries
+    }
 
     var displayedLogs: String? {
         let normalizedLogs = logs?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -362,6 +391,9 @@ enum SessionTranscriptRichContentParser {
         if let stderr = payload.stderr, !stderr.isEmpty {
             object["stderr"] = stderr
         }
+        if let sessionID = payload.sessionID, !sessionID.isEmpty {
+            object["sessionId"] = sessionID
+        }
         if let success = payload.success {
             object["success"] = success
         }
@@ -478,6 +510,8 @@ enum SessionTranscriptRichContentParser {
             normalizeString(object["output"])
         let stderr = normalizeString(object["stderr"]) ??
             normalizeString(object["error"])
+        let sessionID = normalizeString(object["sessionId"]) ??
+            normalizeString(object["session_id"])
         let success = normalizeBool(object["success"])
         let exitCode = normalizeInt(object["exitCode"]) ??
             normalizeInt(object["exit_code"]) ??
@@ -501,7 +535,7 @@ enum SessionTranscriptRichContentParser {
             return .init(id: id, kind: kind, title: title, body: body)
         }
 
-        guard [command, summary, logs, stdout, stderr].contains(where: { $0?.isEmpty == false }) ||
+        guard [command, summary, logs, stdout, stderr, sessionID].contains(where: { $0?.isEmpty == false }) ||
                 success != nil ||
                 exitCode != nil ||
                 status != nil ||
@@ -517,6 +551,7 @@ enum SessionTranscriptRichContentParser {
             logs: logs,
             stdout: stdout,
             stderr: stderr,
+            sessionID: sessionID,
             success: success,
             exitCode: exitCode,
             status: status,
@@ -1239,65 +1274,74 @@ struct SessionTranscriptToolRichContentView: View {
                             .foregroundStyle(AppPalette.secondaryText)
                     }
                 }
-                ScrollView(.vertical) {
-                    VStack(alignment: .leading, spacing: 10) {
+                SessionTranscriptMonospaceBlock(
+                    text: "$ " + command.command,
+                    language: "shell",
+                    accentColor: commandStatusTint(command.status)
+                )
+
+                if let cwd = command.cwd {
+                    LabeledContent {
+                        Text(cwd)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    } label: {
+                        Text("Shell")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+                }
+
+                if let summary = command.summary {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                } else if command.logs?.isEmpty != false {
+                    Text(command.waitingDescription)
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+
+                if let logs = command.logs, !logs.isEmpty {
+                    ScrollView(.vertical) {
                         SessionTranscriptMonospaceBlock(
-                            text: "$ " + command.command,
-                            language: "shell",
+                            text: logs,
+                            language: nil,
                             accentColor: commandStatusTint(command.status)
                         )
+                    }
+                    .frame(maxHeight: 240)
+                }
 
-                        if let cwd = command.cwd {
-                            LabeledContent {
-                                Text(cwd)
-                                    .font(.caption.monospaced())
+                if !command.supplementalEntries.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(command.supplementalEntries) { item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(item.title)
+                                    .font(.caption2.monospaced().weight(.semibold))
                                     .foregroundStyle(AppPalette.secondaryText)
-                                    .textSelection(.enabled)
-                                    .lineLimit(2)
-                            } label: {
-                                Text("Shell")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(AppPalette.secondaryText)
-                            }
-                        }
-
-                        if let summary = command.summary {
-                            Text(summary)
-                                .font(.caption)
-                                .foregroundStyle(AppPalette.secondaryText)
-                        } else if command.logs?.isEmpty != false {
-                            Text(command.waitingDescription)
-                                .font(.caption)
-                                .foregroundStyle(AppPalette.secondaryText)
-                        }
-
-                        if let logs = command.logs, !logs.isEmpty {
-                            SessionTranscriptMonospaceBlock(
-                                text: logs,
-                                language: nil,
-                                accentColor: commandStatusTint(command.status)
-                            )
-                        }
-
-                        if !command.supplementalEntries.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                ForEach(command.supplementalEntries) { item in
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        Text(item.title)
-                                            .font(.caption2.monospaced().weight(.semibold))
-                                            .foregroundStyle(AppPalette.secondaryText)
+                                if item.kind == .toolResult {
+                                    ScrollView(.vertical) {
                                         SessionTranscriptMonospaceBlock(
                                             text: item.body,
                                             language: nil,
-                                            accentColor: item.kind == .stdin ? AppPalette.accent : commandStatusTint(command.status)
+                                            accentColor: commandStatusTint(command.status)
                                         )
                                     }
+                                    .frame(maxHeight: 220)
+                                } else {
+                                    SessionTranscriptMonospaceBlock(
+                                        text: item.body,
+                                        language: nil,
+                                        accentColor: AppPalette.accent
+                                    )
                                 }
                             }
                         }
                     }
                 }
-                .frame(maxHeight: 320)
             }
             .padding(12)
         }

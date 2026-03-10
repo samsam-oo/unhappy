@@ -187,6 +187,7 @@ enum SessionTranscriptProcessing {
             if isStreamingReferenceEntry(entry),
                let existingIndex = matchingOpenCommandIndex(
                     for: entry,
+                    in: result,
                     openCommandIndexByToolUseID: openCommandIndexByToolUseID
                ),
                result.indices.contains(existingIndex),
@@ -198,6 +199,7 @@ enum SessionTranscriptProcessing {
                     logs: mergeStreamChunk(existing: existingPayload.logs ?? "", chunk: entry.body),
                     stdout: existingPayload.stdout,
                     stderr: existingPayload.stderr,
+                    sessionID: existingPayload.sessionID,
                     success: existingPayload.success,
                     exitCode: existingPayload.exitCode,
                     status: existingPayload.status,
@@ -218,6 +220,7 @@ enum SessionTranscriptProcessing {
             if entry.kind == .toolResult,
                let existingIndex = matchingOpenCommandIndex(
                     for: entry,
+                    in: result,
                     openCommandIndexByToolUseID: openCommandIndexByToolUseID
                ),
                result.indices.contains(existingIndex),
@@ -233,6 +236,7 @@ enum SessionTranscriptProcessing {
                         logs: existingPayload.logs,
                         stdout: existingPayload.stdout,
                         stderr: existingPayload.stderr,
+                        sessionID: existingPayload.sessionID,
                         success: existingPayload.success,
                         exitCode: existingPayload.exitCode,
                         status: existingPayload.status,
@@ -262,6 +266,11 @@ enum SessionTranscriptProcessing {
                     from: entry.body,
                     fallbackSuccess: inferredSuccess
                 )
+                let keepsCommandOpen = shouldKeepCommandOpen(
+                    toolName: normalizedToolName,
+                    existingPayload: existingPayload,
+                    resultPayload: resultPayload
+                )
                 let derivedDurationMs = resultPayload?.durationMs ?? durationMs(
                     from: result[existingIndex].createdAt,
                     to: flattenedEntry.createdAt
@@ -273,9 +282,14 @@ enum SessionTranscriptProcessing {
                     logs: existingPayload.logs,
                     stdout: resultPayload?.stdout ?? existingPayload.stdout,
                     stderr: resultPayload?.stderr ?? existingPayload.stderr,
-                    success: resultPayload?.success ?? existingPayload.success ?? inferredSuccess,
+                    sessionID: resultPayload?.sessionID ?? existingPayload.sessionID,
+                    success: keepsCommandOpen
+                        ? existingPayload.success
+                        : resultPayload?.success ?? existingPayload.success ?? inferredSuccess,
                     exitCode: resultPayload?.exitCode ?? existingPayload.exitCode,
-                    status: resultPayload?.status ?? existingPayload.status ?? inferredStatus,
+                    status: keepsCommandOpen
+                        ? (existingPayload.status ?? resultPayload?.status ?? "running")
+                        : (resultPayload?.status ?? existingPayload.status ?? inferredStatus),
                     durationMs: derivedDurationMs,
                     supplementalEntries: appendSupplementalEntry(
                         existingPayload.supplementalEntries,
@@ -289,14 +303,16 @@ enum SessionTranscriptProcessing {
                     result[existingIndex],
                     makeCommandEntry(
                         from: result[existingIndex].entry,
-                        kind: .toolResult,
+                        kind: keepsCommandOpen ? result[existingIndex].entry.kind : .toolResult,
                         payload: mergedPayload
                     )
                 )
-                if let toolUseID = normalizedToolUseID(entry.toolUseID) {
-                    openCommandIndexByToolUseID.removeValue(forKey: toolUseID)
-                } else {
-                    removeOpenCommandIndex(existingIndex, openCommandIndexByToolUseID: &openCommandIndexByToolUseID)
+                if keepsCommandOpen == false {
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                        openCommandIndexByToolUseID.removeValue(forKey: toolUseID)
+                    } else {
+                        removeOpenCommandIndex(existingIndex, openCommandIndexByToolUseID: &openCommandIndexByToolUseID)
+                    }
                 }
                 continue
             }
@@ -308,6 +324,7 @@ enum SessionTranscriptProcessing {
                normalizedToolName == "write_stdin",
                let existingIndex = matchingOpenCommandIndex(
                     for: entry,
+                    in: result,
                     openCommandIndexByToolUseID: openCommandIndexByToolUseID
                ),
                result.indices.contains(existingIndex),
@@ -319,6 +336,7 @@ enum SessionTranscriptProcessing {
                     logs: existingPayload.logs,
                     stdout: existingPayload.stdout,
                     stderr: existingPayload.stderr,
+                    sessionID: existingPayload.sessionID,
                     success: existingPayload.success,
                     exitCode: existingPayload.exitCode,
                     status: existingPayload.status,
@@ -432,11 +450,26 @@ enum SessionTranscriptProcessing {
 
     private static func matchingOpenCommandIndex(
         for entry: SessionTranscriptEntry,
+        in result: [FlattenedTranscriptEntry],
         openCommandIndexByToolUseID: [String: Int]
     ) -> Int? {
         if let toolUseID = normalizedToolUseID(entry.toolUseID),
            let existingIndex = openCommandIndexByToolUseID[toolUseID] {
             return existingIndex
+        }
+        if let sessionID = sessionID(for: entry) {
+            let matchingIndices = Array(Set(openCommandIndexByToolUseID.values))
+                .filter { index in
+                    guard result.indices.contains(index),
+                          let payload = commandPayloadIfApplicable(for: result[index].entry) else {
+                        return false
+                    }
+                    return payload.sessionID == sessionID
+                }
+                .sorted()
+            if matchingIndices.count == 1 {
+                return matchingIndices[0]
+            }
         }
         guard openCommandIndexByToolUseID.count == 1 else { return nil }
         return openCommandIndexByToolUseID.values.first
@@ -477,6 +510,7 @@ enum SessionTranscriptProcessing {
                 logs: existingPayload.logs,
                 stdout: existingPayload.stdout,
                 stderr: existingPayload.stderr,
+                sessionID: existingPayload.sessionID,
                 success: existingPayload.success ?? success,
                 exitCode: existingPayload.exitCode,
                 status: existingPayload.status ?? status,
@@ -582,5 +616,50 @@ enum SessionTranscriptProcessing {
             return fallbackSuccess ? "completed" : "failed"
         }
         return nil
+    }
+
+    private static func sessionID(for entry: SessionTranscriptEntry) -> String? {
+        if let payloadSessionID = SessionTranscriptRichContentParser.commandPayload(for: entry)?.sessionID {
+            return payloadSessionID
+        }
+        guard let data = entry.body.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return SessionTranscriptPresentationBuilder.normalizedText(object["session_id"]) ??
+            SessionTranscriptPresentationBuilder.normalizedText(object["sessionId"])
+    }
+
+    private static func shouldKeepCommandOpen(
+        toolName: String?,
+        existingPayload: SessionTranscriptCommandExecutionPayload,
+        resultPayload: SessionTranscriptCommandExecutionPayload?
+    ) -> Bool {
+        let normalizedToolName = toolName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard normalizedToolName == "exec_command" ||
+                normalizedToolName == "codexbash" ||
+                normalizedToolName == "bash" else {
+            return false
+        }
+        guard (resultPayload?.sessionID ?? existingPayload.sessionID) != nil else {
+            return false
+        }
+        if resultPayload?.exitCode != nil || resultPayload?.success == false {
+            return false
+        }
+        if let normalizedStatus = resultPayload?.status?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           normalizedStatus.contains("complete") ||
+            normalizedStatus.contains("success") ||
+            normalizedStatus.contains("done") ||
+            normalizedStatus.contains("fail") ||
+            normalizedStatus.contains("error") ||
+            normalizedStatus.contains("abort") {
+            return false
+        }
+        return true
     }
 }
