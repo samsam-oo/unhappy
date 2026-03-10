@@ -16,7 +16,7 @@ import {
 } from "./codexPublicCommands";
 
 export function machinesRoutes(app: Fastify) {
-    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 60 * 2;
+    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 30;
 
     function rejectEncryptedDataPlaneRequired(
         reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }
@@ -65,6 +65,10 @@ export function machinesRoutes(app: Fastify) {
         updatedAt: Date;
     }>(machine: T): Promise<T> {
         if (!machine.active) {
+            return machine;
+        }
+
+        if (findConnectedMachine(machine.accountId, machine.id)) {
             return machine;
         }
 
