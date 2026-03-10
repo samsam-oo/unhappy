@@ -16,58 +16,46 @@ on:
 jobs:
   smoke-test-linux:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [20]
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust build outputs
+      uses: Swatinem/rust-cache@v2
       with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'yarn'
-        cache-dependency-path: yarn.lock
+        workspaces: packages/unhappy-cli -> target
 
-    - name: Install dependencies
-      run: yarn install --immutable
-
-    - name: Build package
-      run: yarn workspace unhappy-cli build
-
-    - name: Pack package
-      run: yarn workspace unhappy-cli pack
-
-    - name: Install packed package globally
-      run: |
-        PACKAGE_FILE=$(ls packages/unhappy-cli/*.tgz)
-        npm install -g "./$PACKAGE_FILE"
+    - name: Build CLI
+      run: cargo build --manifest-path packages/unhappy-cli/Cargo.toml --release --locked
 
     - name: Test binary execution
       run: |
+        CLI=./packages/unhappy-cli/target/release/unhappy
+
         # Test that the binary starts successfully
         echo "Testing unhappy --help..."
-        timeout 30s unhappy --help || {
+        timeout 30s "$CLI" --help || {
           echo "Error: unhappy --help failed or timed out"
           exit 1
         }
 
-        echo "Testing unhappy --version..."
-        timeout 10s unhappy --version || {
-          echo "Error: unhappy --version failed or timed out"
+        echo "Testing unhappy status --json..."
+        timeout 10s "$CLI" status --json || {
+          echo "Error: unhappy status --json failed or timed out"
           exit 1
         }
 
-        echo "Testing unhappy doctor..."
-        timeout 30s unhappy doctor || {
-          echo "Error: unhappy doctor failed or timed out"
+        echo "Testing unhappy doctor-processes..."
+        timeout 30s "$CLI" doctor-processes || {
+          echo "Error: unhappy doctor-processes failed or timed out"
           exit 1
         }
 
         echo "Testing unhappy daemon status..."
-        timeout 10s unhappy daemon status || {
+        timeout 10s "$CLI" daemon status || {
           echo "Error: unhappy daemon status failed or timed out"
           exit 1
         }
@@ -76,142 +64,42 @@ jobs:
 
   smoke-test-windows:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        node-version: [20]
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust build outputs
+      uses: Swatinem/rust-cache@v2
       with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'yarn'
-        cache-dependency-path: yarn.lock
+        workspaces: packages/unhappy-cli -> target
 
-    - name: Install dependencies
-      run: yarn install --immutable
-
-    - name: Build package
-      run: yarn workspace unhappy-cli build
-
-    - name: Pack package
-      run: yarn workspace unhappy-cli pack
-
-    - name: Install packed package globally
-      shell: cmd
-      run: |
-        for %%f in (packages\\unhappy-cli\\*.tgz) do npm install -g "%%f"
-
-    - name: Debug npm global installation structure
-      shell: cmd
-      run: |
-        for /f "tokens=*" %%i in ('npm config get prefix') do set NPM_PREFIX=%%i
-        echo NPM_PREFIX: %NPM_PREFIX%
-        echo Listing npm prefix directory:
-        dir "%NPM_PREFIX%" 2>nul || echo Failed to list NPM_PREFIX
-        echo.
-        echo Checking for node_modules in npm prefix:
-        if exist "%NPM_PREFIX%\node_modules" (
-          echo Found node_modules directory
-          dir "%NPM_PREFIX%\node_modules" 2>nul
-          echo.
-          echo Checking for unhappy-cli package:
-          if exist "%NPM_PREFIX%\\node_modules\\unhappy-cli" (
-            echo Found unhappy-cli package
-            dir "%NPM_PREFIX%\\node_modules\\unhappy-cli" 2>nul
-            echo.
-            echo Checking for dist directory:
-            if exist "%NPM_PREFIX%\\node_modules\\unhappy-cli\\dist" (
-              echo Found dist directory
-              dir "%NPM_PREFIX%\\node_modules\\unhappy-cli\\dist" 2>nul
-            ) else (
-              echo No dist directory found
-            )
-          ) else (
-            echo No unhappy-cli package found
-          )
-        ) else (
-          echo No node_modules directory found
-        )
+    - name: Build CLI
+      run: cargo build --manifest-path packages/unhappy-cli/Cargo.toml --release --locked
 
     - name: Test binary execution
-      shell: cmd
+      shell: pwsh
       run: |
-        @echo on
+        $cli = ".\packages\unhappy-cli\target\release\unhappy.exe"
 
-        rem Get npm global prefix and add to PATH
-        for /f "tokens=*" %%i in ('npm config get prefix') do set NPM_PREFIX=%%i
-        set PATH=%NPM_PREFIX%;%PATH%
-        echo NPM_PREFIX: %NPM_PREFIX%
-        echo Current PATH: %PATH%
+        Write-Host "Testing unhappy --help..."
+        & $cli --help
+        if ($LASTEXITCODE -ne 0) { throw "unhappy --help failed" }
 
-        rem Debug: Check if unhappy exists in various locations
-        echo Checking for unhappy binary...
-        where unhappy 2>nul && echo Found unhappy in PATH || echo unhappy not found in PATH
-        if exist "%NPM_PREFIX%\\unhappy.cmd" echo Found unhappy.cmd in NPM_PREFIX
-        if exist "%NPM_PREFIX%\\node_modules\\.bin\\unhappy.cmd" echo Found unhappy.cmd in .bin directory
-        dir "%NPM_PREFIX%\\*unhappy*" 2>nul || echo No unhappy files found in NPM_PREFIX
+        Write-Host "Testing unhappy status --json..."
+        & $cli status --json
+        if ($LASTEXITCODE -ne 0) { throw "unhappy status --json failed" }
 
-        rem Debug: Check the actual contents and encoding of the installed file
-        if exist "%NPM_PREFIX%\\unhappy.cmd" (
-          echo File size and type:
-          dir "%NPM_PREFIX%\\unhappy.cmd"
-          echo.
-          echo First few lines of the file:
-          type "%NPM_PREFIX%\\unhappy.cmd" | head -5
-          echo.
-          echo Hex dump of first 50 bytes to check line endings:
-          powershell -Command "Get-Content '%NPM_PREFIX%\\unhappy.cmd' -Encoding Byte -TotalCount 50 | ForEach-Object { '{0:X2}' -f $_ } | Join-String -Separator ' '"
-          echo.
-          echo Testing with direct path...
-          "%NPM_PREFIX%\\unhappy.cmd" --help
-        ) else (
-          echo Testing unhappy --help...
-          unhappy --help
-        )
-        if errorlevel 1 (
-          echo Error: unhappy --help failed
-          exit /b 1
-        )
+        Write-Host "Testing unhappy doctor-processes..."
+        & $cli doctor-processes
+        if ($LASTEXITCODE -ne 0) { throw "unhappy doctor-processes failed" }
 
-        rem Test version
-        if exist "%NPM_PREFIX%\\unhappy.cmd" (
-          "%NPM_PREFIX%\\unhappy.cmd" --version
-        ) else (
-          unhappy --version
-        )
-        if errorlevel 1 (
-          echo Error: unhappy --version failed
-          exit /b 1
-        )
+        Write-Host "Testing unhappy daemon status..."
+        & $cli daemon status
+        if ($LASTEXITCODE -ne 0) { throw "unhappy daemon status failed" }
 
-        rem Test doctor
-        echo Testing unhappy doctor...
-        if exist "%NPM_PREFIX%\\unhappy.cmd" (
-          "%NPM_PREFIX%\\unhappy.cmd" doctor
-        ) else (
-          unhappy doctor
-        )
-        if errorlevel 1 (
-          echo Error: unhappy doctor failed
-          exit /b 1
-        )
-
-        rem Test daemon status
-        echo Testing unhappy daemon status...
-        if exist "%NPM_PREFIX%\\unhappy.cmd" (
-          "%NPM_PREFIX%\\unhappy.cmd" daemon status
-        ) else (
-          unhappy daemon status
-        )
-        if errorlevel 1 (
-          echo Error: unhappy daemon status failed
-          exit /b 1
-        )
-
-        echo Smoke test passed on Windows!
+        Write-Host "Smoke test passed on Windows!"
 
 # We don't need a smoke test for macOS because most contributors are developing on macOS.

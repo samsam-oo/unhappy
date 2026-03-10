@@ -1,4 +1,4 @@
-name: Publish unhappy-cli to npm
+name: Build unhappy-cli release artifacts
 
 on:
   push:
@@ -6,85 +6,48 @@ on:
       - main
     paths:
       - 'packages/unhappy-cli/**'
-      - 'yarn.lock'
+      - 'packages/unhappy-cli/Cargo.lock'
       - '.github/workflows/npm-publish-cli.yml'
     tags:
       - "unhappy-cli-v*"
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "Run npm publish in dry-run mode"
-        required: false
-        type: boolean
-        default: true
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  build-release:
     timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: unhappy-linux
+            binary_path: packages/unhappy-cli/target/release/unhappy
+          - os: macos-latest
+            artifact_name: unhappy-macos
+            binary_path: packages/unhappy-cli/target/release/unhappy
+          - os: windows-latest
+            artifact_name: unhappy-windows
+            binary_path: packages/unhappy-cli/target/release/unhappy.exe
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
         with:
-          node-version: 24
-          registry-url: "https://registry.npmjs.org"
-          cache: yarn
-          cache-dependency-path: yarn.lock
-
-      - name: Normalize npm user config for npm 11+
-        run: npm config delete always-auth --location=user || true
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Ensure tag version matches package version
-        if: github.event_name == 'push'
-        run: |
-          PACKAGE_VERSION="$(node -p "require('./packages/unhappy-cli/package.json').version")"
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            TAG_VERSION="${GITHUB_REF_NAME#unhappy-cli-v}"
-            if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
-              echo "Tag version ($TAG_VERSION) does not match package version ($PACKAGE_VERSION)"
-              exit 1
-            fi
-          fi
-
-      - name: Check npm version publication status
-        id: npm_version
-        run: |
-          PACKAGE_NAME="$(node -p "require('./packages/unhappy-cli/package.json').name")"
-          PACKAGE_VERSION="$(node -p "require('./packages/unhappy-cli/package.json').version")"
-          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
-            echo "already_published=true" >> "$GITHUB_OUTPUT"
-            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; publish step will be skipped."
-          else
-            echo "already_published=false" >> "$GITHUB_OUTPUT"
-            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is not published yet; publish step will run."
-          fi
+          workspaces: packages/unhappy-cli -> target
 
       - name: Build unhappy-cli
-        run: yarn workspace unhappy-cli build
+        run: cargo build --manifest-path packages/unhappy-cli/Cargo.toml --release --locked
 
-      - name: Publish unhappy-cli (dry-run)
-        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
-        working-directory: packages/unhappy-cli
-        run: npm publish --access public --provenance --dry-run
-
-      - name: Publish unhappy-cli
-        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && steps.npm_version.outputs.already_published == 'false'
-        working-directory: packages/unhappy-cli
-        run: npm publish --access public --provenance
-
-      - name: Skip publish (already published)
-        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && steps.npm_version.outputs.already_published == 'true'
-        run: echo "Skipping publish because this version is already on npm."
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.binary_path }}
