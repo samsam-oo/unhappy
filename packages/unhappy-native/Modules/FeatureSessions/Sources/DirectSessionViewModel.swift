@@ -52,6 +52,13 @@ public final class DirectSessionViewModel: ObservableObject {
     private var requestedOlderMessageCursors: Set<String> = []
     private var hasPrependedOlderPages = false
 
+    public var olderMessagesLoadTriggerID: String? {
+        guard hasOlderMessages else { return nil }
+        guard let olderMessagesCursor else { return nil }
+        let trimmed = olderMessagesCursor.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     public init(
         identity: DirectSessionIdentity,
         loader: any DirectSessionMessagesLoadingAction,
