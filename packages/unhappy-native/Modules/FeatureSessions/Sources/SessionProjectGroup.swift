@@ -64,19 +64,6 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
 public extension SessionListPresentationBuilder {
     static func projectGroup(
         id: String,
-        sessions _: [APISession],
-        upstreamSessions: [SessionLinkedUpstreamSession],
-        projects: [SessionMachineProject] = []
-    ) -> SessionProjectGroup? {
-        projectGroup(
-            id: id,
-            upstreamSessions: upstreamSessions,
-            projects: projects
-        )
-    }
-
-    static func projectGroup(
-        id: String,
         upstreamSessions: [SessionLinkedUpstreamSession],
         projects: [SessionMachineProject] = []
     ) -> SessionProjectGroup? {
@@ -84,17 +71,6 @@ public extension SessionListPresentationBuilder {
             upstreamSessions: upstreamSessions,
             projects: projects
         ).first(where: { $0.id == id })
-    }
-
-    static func projectGroups(
-        sessions _: [APISession],
-        upstreamSessions: [SessionLinkedUpstreamSession],
-        projects: [SessionMachineProject] = []
-    ) -> [SessionProjectGroup] {
-        projectGroups(
-            upstreamSessions: upstreamSessions,
-            projects: projects
-        )
     }
 
     static func projectGroups(

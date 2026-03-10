@@ -10,14 +10,7 @@ struct SessionRecentPresentationTests {
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
         let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-        let sessions = [
-            makeSession(id: "today-1", updatedAt: 1_700_000_000),
-            makeSession(id: "today-2", updatedAt: 1_699_999_000),
-            makeSession(id: "older-1", updatedAt: 1_699_840_000),
-        ]
-
         let sections = SessionRecentPresentationBuilder.make(
-            sessions: sessions,
             upstreamSessions: [],
             now: now,
             calendar: calendar
@@ -61,7 +54,6 @@ struct SessionRecentPresentationTests {
     @Test
     func makeReturnsEmptyForEmptyInput() {
         let sections = SessionRecentPresentationBuilder.make(
-            sessions: [],
             upstreamSessions: []
         )
         #expect(sections.isEmpty)
@@ -69,11 +61,6 @@ struct SessionRecentPresentationTests {
 
     @Test
     func makePrefersDirectProviderRowsOverMirroredSessions() {
-        let mirrored = makeSession(
-            id: "session-1",
-            updatedAt: 1_700_000_000,
-            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","cwd":"/repo/app"}"#
-        )
         let upstream = SessionLinkedUpstreamSession(
             machineID: "machine-1",
             machineDisplayName: "Work Mac",
@@ -90,7 +77,6 @@ struct SessionRecentPresentationTests {
         )
 
         let sections = SessionRecentPresentationBuilder.make(
-            sessions: [mirrored],
             upstreamSessions: [upstream],
             now: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -98,26 +84,4 @@ struct SessionRecentPresentationTests {
         #expect(sections.count == 1)
         #expect(sections.first?.entries.map(\.id) == ["direct:machine-1|codex|thread-1"])
     }
-}
-
-private func makeSession(
-    id: String,
-    updatedAt: TimeInterval,
-    metadata: String = "enc"
-) -> APISession {
-    APISession(
-        id: id,
-        displayName: nil,
-        seq: nil,
-        active: true,
-        activeAt: updatedAt,
-        createdAt: updatedAt - 60,
-        updatedAt: updatedAt,
-        metadataVersion: 1,
-        metadata: metadata,
-        agentState: nil,
-        agentStateVersion: nil,
-        dataEncryptionKey: nil,
-        lastMessage: nil
-    )
 }

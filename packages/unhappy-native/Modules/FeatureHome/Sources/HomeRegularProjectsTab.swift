@@ -115,7 +115,7 @@ struct HomeRegularProjectsTab: View {
             } else if isPreparingProjectsFromLoadedSessions {
                 ProgressView("Preparing projects…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
+            } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty, !showsSessionSidebarList {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Unable to load sessions")

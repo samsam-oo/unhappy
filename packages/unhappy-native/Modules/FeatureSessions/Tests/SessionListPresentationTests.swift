@@ -5,28 +5,6 @@ import CoreKit
 struct SessionListPresentationTests {
     @Test
     func projectGroupsClusterSessionsByMachineAndProjectPath() {
-        let mirroredSession = APISession(
-            id: "session-1",
-            active: true,
-            activeAt: 10,
-            createdAt: 1,
-            updatedAt: 20,
-            metadataVersion: 1,
-            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
-            dataEncryptionKey: nil,
-            lastMessage: nil
-        )
-        let mirroredSessionTwo = APISession(
-            id: "session-2",
-            active: false,
-            activeAt: 10,
-            createdAt: 1,
-            updatedAt: 18,
-            metadataVersion: 1,
-            metadata: #"{"machineId":"machine-1","flavor":"claude","agentSessionId":"claude-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
-            dataEncryptionKey: nil,
-            lastMessage: nil
-        )
         let upstreamRow = SessionLinkedUpstreamSession(
             machineID: "machine-1",
             machineDisplayName: "Work Mac",
@@ -42,7 +20,6 @@ struct SessionListPresentationTests {
         )
 
         let groups = SessionListPresentationBuilder.projectGroups(
-            sessions: [mirroredSession, mirroredSessionTwo],
             upstreamSessions: [upstreamRow],
             projects: [
                 SessionMachineProject(
@@ -71,7 +48,6 @@ struct SessionListPresentationTests {
     @Test
     func projectGroupsIncludeBookmarkedProjectWithoutExistingSessions() {
         let groups = SessionListPresentationBuilder.projectGroups(
-            sessions: [],
             upstreamSessions: [],
             projects: [
                 SessionMachineProject(
@@ -96,20 +72,7 @@ struct SessionListPresentationTests {
 
     @Test
     func projectGroupsIncludeRuntimeSessionPathsWithoutExplicitProjects() {
-        let mirroredSession = APISession(
-            id: "session-1",
-            active: true,
-            activeAt: 10,
-            createdAt: 1,
-            updatedAt: 20,
-            metadataVersion: 1,
-            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
-            dataEncryptionKey: nil,
-            lastMessage: nil
-        )
-
         let groups = SessionListPresentationBuilder.projectGroups(
-            sessions: [mirroredSession],
             upstreamSessions: [],
             projects: []
         )
@@ -119,20 +82,7 @@ struct SessionListPresentationTests {
 
     @Test
     func projectGroupsMatchHomeRelativeSessionPathToAbsoluteProject() {
-        let mirroredSession = APISession(
-            id: "session-1",
-            active: true,
-            activeAt: 10,
-            createdAt: 1,
-            updatedAt: 20,
-            metadataVersion: 1,
-            metadata: #"{"machineId":"machine-1","displayName":"Work Mac","path":"~/Downloads/unhappy","homeDir":"/Users/skyline23"}"#,
-            dataEncryptionKey: nil,
-            lastMessage: nil
-        )
-
         let groups = SessionListPresentationBuilder.projectGroups(
-            sessions: [mirroredSession],
             upstreamSessions: [],
             projects: [
                 SessionMachineProject(
@@ -158,7 +108,6 @@ struct SessionListPresentationTests {
     @Test
     func projectGroupsPreferServerProvidedDisplayPathVerbatim() {
         let groups = SessionListPresentationBuilder.projectGroups(
-            sessions: [],
             upstreamSessions: [],
             projects: [
                 SessionMachineProject(
@@ -194,7 +143,6 @@ struct SessionListPresentationTests {
             )
         )
         let initialGroup = SessionListPresentationBuilder.projectGroups(
-            sessions: [],
             upstreamSessions: [],
             projects: [project]
         ).first
@@ -215,7 +163,6 @@ struct SessionListPresentationTests {
 
         let resolvedGroup = SessionListPresentationBuilder.projectGroup(
             id: initialGroup?.id ?? "",
-            sessions: [],
             upstreamSessions: [upstreamRow],
             projects: [project]
         )
@@ -225,28 +172,6 @@ struct SessionListPresentationTests {
 
     @Test
     func projectGroupsCollapseMirroredDuplicatesAndMatchingUpstreamRows() {
-        let olderMirroredSession = APISession(
-            id: "session-1",
-            active: false,
-            activeAt: 10,
-            createdAt: 1,
-            updatedAt: 18,
-            metadataVersion: 1,
-            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
-            dataEncryptionKey: nil,
-            lastMessage: nil
-        )
-        let newerMirroredSession = APISession(
-            id: "session-2",
-            active: true,
-            activeAt: 11,
-            createdAt: 2,
-            updatedAt: 22,
-            metadataVersion: 1,
-            metadata: #"{"machineId":"machine-1","flavor":"codex","agentSessionId":"thread-1","displayName":"Work Mac","cwd":"/repo/app"}"#,
-            dataEncryptionKey: nil,
-            lastMessage: nil
-        )
         let matchingUpstreamRow = SessionLinkedUpstreamSession(
             machineID: "machine-1",
             machineDisplayName: "Work Mac",
@@ -262,7 +187,6 @@ struct SessionListPresentationTests {
         )
 
         let groups = SessionListPresentationBuilder.projectGroups(
-            sessions: [olderMirroredSession, newerMirroredSession],
             upstreamSessions: [matchingUpstreamRow],
             projects: [
                 SessionMachineProject(

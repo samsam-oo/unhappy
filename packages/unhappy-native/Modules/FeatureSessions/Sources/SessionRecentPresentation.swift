@@ -29,19 +29,6 @@ struct SessionRecentSection: Equatable, Identifiable, Sendable {
 
 enum SessionRecentPresentationBuilder {
     static func make(
-        sessions _: [APISession],
-        upstreamSessions: [SessionLinkedUpstreamSession],
-        now: Date = .now,
-        calendar: Calendar = .current
-    ) -> [SessionRecentSection] {
-        make(
-            upstreamSessions: upstreamSessions,
-            now: now,
-            calendar: calendar
-        )
-    }
-
-    static func make(
         upstreamSessions: [SessionLinkedUpstreamSession],
         now: Date = .now,
         calendar: Calendar = .current
