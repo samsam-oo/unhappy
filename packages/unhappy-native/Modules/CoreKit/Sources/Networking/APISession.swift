@@ -376,8 +376,8 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
             try? container.decodeIfPresent(String.self, forKey: .name)
         )
         cwd = try? container.decodeIfPresent(String.self, forKey: .cwd)
-        updatedAt = try? container.decodeIfPresent(String.self, forKey: .updatedAt)
-        createdAt = try? container.decodeIfPresent(String.self, forKey: .createdAt)
+        updatedAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .updatedAt)
+        createdAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .createdAt)
         archived = try? container.decodeIfPresent(Bool.self, forKey: .archived)
         model = DecodingSupport.normalizeDisplayText(
             try? container.decodeIfPresent(String.self, forKey: .model)
@@ -429,6 +429,21 @@ public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Senda
         self.updatedAt = updatedAt
         self.createdAt = createdAt
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case cwd
+        case updatedAt
+        case createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        cwd = try? container.decodeIfPresent(String.self, forKey: .cwd)
+        updatedAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .updatedAt)
+        createdAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .createdAt)
+    }
 }
 
 public struct APIGeminiSessionSummary: Decodable, Equatable, Identifiable, Sendable {
@@ -453,6 +468,29 @@ public struct APIGeminiSessionSummary: Decodable, Equatable, Identifiable, Senda
         self.updatedAt = updatedAt
         self.createdAt = createdAt
         self.model = model
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case cwd
+        case updatedAt
+        case createdAt
+        case model
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        title = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .title)
+        )
+        cwd = try? container.decodeIfPresent(String.self, forKey: .cwd)
+        updatedAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .updatedAt)
+        createdAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .createdAt)
+        model = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .model)
+        )
     }
 }
 
