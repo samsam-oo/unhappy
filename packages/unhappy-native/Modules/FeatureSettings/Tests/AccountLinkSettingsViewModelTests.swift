@@ -84,11 +84,12 @@ struct AccountLinkSettingsViewModelTests {
     @Test
     func restoreTokenSetsSuccessMessageAndReturnsToken() async {
         let restorer = MockAccountRestorer(token: "restored-token")
+        let secretStore = MemoryAccountSecretStore(initialSecret: "secret")
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
             restorer: restorer,
             qrRestorer: MockAccountQRRestorer(),
-            secretStore: MemoryAccountSecretStore(initialSecret: "secret")
+            secretStore: secretStore
         )
 
         await model.loadFromStore()
@@ -99,6 +100,26 @@ struct AccountLinkSettingsViewModelTests {
         #expect(model.errorMessage == nil)
         #expect(model.isRestoring == false)
         #expect(await restorer.lastCall?.serverURLString == "https://api.unhappy.im")
+        #expect(await secretStore.loadSecretBase64URL() == "secret")
+    }
+
+    @Test
+    func restoreTokenPersistsEditedSecretBeforeReturningToken() async {
+        let secretStore = MemoryAccountSecretStore(initialSecret: "")
+        let restorer = MockAccountRestorer(token: "restored-token")
+        let model = AccountLinkSettingsViewModel(
+            linker: MockAccountLinker(),
+            restorer: restorer,
+            qrRestorer: MockAccountQRRestorer(),
+            secretStore: secretStore
+        )
+
+        await model.loadFromStore()
+        model.accountSecretBase64URL = " edited-secret "
+        let token = await model.restoreToken(serverURLString: "https://api.unhappy.im")
+
+        #expect(token == "restored-token")
+        #expect(await secretStore.loadSecretBase64URL() == "edited-secret")
     }
 
     @Test
@@ -127,11 +148,12 @@ struct AccountLinkSettingsViewModelTests {
                 .authorized(AccountRestoreQRCredentials(token: "qr-token", secretBase64URL: "qr-secret"))
             ]
         )
+        let secretStore = MemoryAccountSecretStore(initialSecret: "secret")
         let model = AccountLinkSettingsViewModel(
             linker: MockAccountLinker(),
             restorer: MockAccountRestorer(),
             qrRestorer: qrRestorer,
-            secretStore: MemoryAccountSecretStore(initialSecret: "secret")
+            secretStore: secretStore
         )
 
         await model.loadFromStore()
@@ -143,6 +165,7 @@ struct AccountLinkSettingsViewModelTests {
         #expect(model.errorMessage == nil)
         #expect(model.isRestoringByQR == false)
         #expect(await qrRestorer.pollCallCount == 1)
+        #expect(await secretStore.loadSecretBase64URL() == "qr-secret")
     }
 
     @Test

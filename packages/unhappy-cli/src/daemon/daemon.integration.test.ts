@@ -23,18 +23,87 @@ import { configuration } from '@/configuration';
 import { ApiClient } from '@/api/api';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
 import { 
-  listDaemonSessions, 
-  stopDaemonSession, 
-  spawnDaemonSession, 
-  stopDaemonHttp, 
-  notifyDaemonProviderSessionStarted, 
-  stopDaemon
-} from '@/daemon/controlClient';
+  runDaemonSubcommandJson,
+  stopDaemonSubcommand,
+} from '@/utils/rustDaemonCli';
 import { readCredentials, readDaemonState, clearDaemonState, readSettings } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';
 import { getLatestDaemonLog } from '@/ui/logger';
 import { initialMachineMetadata } from './initialMachineMetadata';
+
+async function listDaemonSessions(): Promise<any[]> {
+  const result = await runDaemonSubcommandJson<{ children?: any[] }>(['list-sessions']);
+  return result.children ?? [];
+}
+
+async function stopDaemonSession(sessionId: string): Promise<boolean> {
+  const result = await runDaemonSubcommandJson<{ success?: boolean }>([
+    'stop-session',
+    '--session-id',
+    sessionId,
+  ]);
+  return result.success === true;
+}
+
+async function spawnDaemonSession(
+  directory: string,
+  codexResumeThreadId?: string,
+  options?: {
+    claudeResumeSessionId?: string;
+    agent: 'claude' | 'codex' | 'gemini';
+    providerRuntime?: {
+      codexHomeDir?: string;
+      codexTranscriptPath?: string;
+      claudeHookPort?: number;
+      geminiControlPort?: number;
+    };
+    token?: string;
+    environmentVariables?: Record<string, string>;
+    model?: string;
+    reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | 'xhigh';
+  },
+): Promise<any> {
+  return await runDaemonSubcommandJson([
+    'spawn-session',
+    '--request-json',
+    JSON.stringify({
+      directory,
+      codexResumeThreadId,
+      claudeResumeSessionId: options?.claudeResumeSessionId,
+      providerRuntime: options?.providerRuntime,
+      token: options?.token,
+      environmentVariables: options?.environmentVariables,
+      model: options?.model,
+      reasoningEffort: options?.reasoningEffort,
+      agent: options?.agent,
+    }),
+  ]);
+}
+
+async function notifyDaemonProviderSessionStarted(
+  provider: 'codex' | 'claude' | 'gemini',
+  providerSessionId: string,
+  metadata: Metadata,
+): Promise<void> {
+  await runDaemonSubcommandJson([
+    'provider-session-started',
+    '--request-json',
+    JSON.stringify({
+      provider,
+      providerSessionId,
+      metadata,
+    }),
+  ]);
+}
+
+async function stopDaemonHttp(): Promise<void> {
+  await stopDaemonSubcommand();
+}
+
+async function stopDaemon(): Promise<void> {
+  await stopDaemonSubcommand();
+}
 
 // Utility to wait for condition
 async function waitFor(

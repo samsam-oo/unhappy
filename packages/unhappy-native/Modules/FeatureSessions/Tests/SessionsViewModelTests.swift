@@ -138,10 +138,72 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
 
         let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
         #expect(requestedProjects.count == 1)
         #expect(requestedProjects.first?.isEmpty == true)
+    }
+
+    @Test
+    func loadProjectsStreamingStartsUpstreamSyncForVisibleProjectScopes() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Thread",
+                cwd: "/repo/app",
+                updatedAt: "2026-03-06T05:00:00.000Z",
+                createdAt: "2026-03-06T04:00:00.000Z",
+                archived: false
+            )
+        )
+        let projectsLoader = StreamingProjectsLoader(
+            snapshots: [
+                SessionProjectsLoadSnapshot(
+                    machineID: "machine-1",
+                    projects: [project],
+                    errorMessage: nil,
+                    isFinal: false
+                ),
+                SessionProjectsLoadSnapshot(
+                    machineID: nil,
+                    projects: [],
+                    errorMessage: nil,
+                    isFinal: true
+                ),
+            ]
+        )
+        let upstreamLoader = StreamingRecordingUpstreamSessionsLoader(rows: [upstreamRow])
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: projectsLoader,
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        try await Task.sleep(for: .milliseconds(50))
+
+        let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
+        #expect(requestedProjects.count == 1)
+        #expect(requestedProjects.first?.map(\.summary.path) == ["/repo/app"])
+        #expect(model.upstreamSessions.map(\.summary.id) == ["thread-1"])
     }
 
     @Test
@@ -179,6 +241,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
 
         #expect(model.sessions.isEmpty)
         #expect(await recorder.snapshot() == ["delete:session-older", "delete:session-newer"])
@@ -211,6 +274,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
         #expect(await projectsLoader.callCount() == 1)
         #expect(await upstreamLoader.callCount() == 1)
 
@@ -332,6 +396,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
 
         #expect(model.upstreamSessions.count == 2)
         #expect(model.upstreamSessions.map(\.summary.id) == ["thread-1", "thread-2"])
@@ -367,6 +432,7 @@ struct SessionsViewModelTests {
         )
 
         await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
         #expect(model.projects.map(\.id) == ["machine-1|/repo/app"])
 
         await model.removeProject(
@@ -429,6 +495,64 @@ struct SessionsViewModelTests {
         let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
         #expect(requestedProjects.count == 1)
         #expect(requestedProjects.first?.map(\.id) == [projectTwo.id])
+    }
+
+    @Test
+    func refreshProjectIsNotBlockedByAnotherActiveUpstreamScope() async throws {
+        let projectOne = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let projectTwo = SessionMachineProject(
+            machineID: "machine-2",
+            machineDisplayName: "Home Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/two",
+                latestUpdatedAt: "2026-03-06T01:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamLoader = DelayedStreamingUpstreamSessionsLoader(delay: .milliseconds(200))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([projectOne, projectTwo])),
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+
+        let firstRefresh = Task {
+            await model.refreshProject(
+                machineID: "machine-1",
+                projectPath: "/repo/one",
+                serverURLString: "https://api.unhappy.im",
+                token: "token"
+            )
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        await model.refreshProject(
+            machineID: "machine-2",
+            projectPath: "/repo/two",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        _ = await firstRefresh.value
+
+        let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
+        #expect(requestedProjects.count == 2)
+        #expect(requestedProjects.map { $0.map(\.id) } == [[projectOne.id], [projectTwo.id]])
     }
 
 

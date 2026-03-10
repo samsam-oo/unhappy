@@ -81,6 +81,7 @@ public final class AccountLinkSettingsViewModel: ObservableObject {
         }
 
         do {
+            await persistCurrentSecret()
             let token = try await restorer.restoreToken(
                 serverURLString: serverURLString,
                 accountSecretRaw: accountSecretBase64URL
@@ -123,6 +124,7 @@ public final class AccountLinkSettingsViewModel: ObservableObject {
                     try await Task.sleep(nanoseconds: 1_000_000_000)
                 case .authorized(let credentials):
                     accountSecretBase64URL = credentials.secretBase64URL
+                    await persistCurrentSecret()
                     statusMessage = "Recovered API token from QR approval"
                     return credentials.token
                 }
@@ -150,5 +152,11 @@ public final class AccountLinkSettingsViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await secretStore.setSecretBase64URL(secretValue)
         }
+    }
+
+    private func persistCurrentSecret() async {
+        persistenceTask?.cancel()
+        let secretValue = accountSecretBase64URL.trimmingCharacters(in: .whitespacesAndNewlines)
+        await secretStore.setSecretBase64URL(secretValue)
     }
 }

@@ -1,9 +1,9 @@
 import { configuration } from '@/configuration';
 import {
-  checkIfDaemonRunningAndCleanupStaleState,
-  stopDaemon,
-} from '@/daemon/controlClient';
-import { spawnDaemonExecutable } from '@/daemon/executable';
+  readDaemonLauncherStatus,
+  startDaemonDetached,
+  stopDaemonSubcommand,
+} from '@/utils/rustDaemonCli';
 import {
   clearCredentials,
   clearMachineId,
@@ -47,6 +47,17 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
   }
 }
 
+async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+  const status = await readDaemonLauncherStatus();
+  if (status.running) {
+    return true;
+  }
+  if (status.stale) {
+    await stopDaemonSubcommand({ env: process.env });
+  }
+  return false;
+}
+
 function showAuthHelp(): void {
   console.log(`
 ${chalk.bold('unhappy auth')} - Authentication management
@@ -81,7 +92,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     // Stop daemon if running
     try {
       logger.debug('Stopping daemon for force auth...');
-      await stopDaemon();
+      await stopDaemonSubcommand({ env: process.env });
       console.log(chalk.gray('✓ Stopped daemon'));
     } catch (error) {
       logger.debug('Daemon was not running or failed to stop:', error);
@@ -190,21 +201,7 @@ async function promptDaemonRegistrationAfterLogin(): Promise<void> {
   }
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      void spawnDaemonExecutable({
-        stdio: 'inherit',
-        env: process.env,
-      }).then((daemonProcess) => {
-        daemonProcess.once('error', reject);
-        daemonProcess.once('close', (code) => {
-          if (code === 0) {
-            resolve();
-            return;
-          }
-          reject(new Error(`daemon start exited with code ${code}`));
-        });
-      }).catch(reject);
-    });
+    await startDaemonDetached({ env: process.env });
     console.log(chalk.green('  ✓ Background daemon enabled'));
   } catch (error) {
     logger.debug('Failed to start daemon after login prompt:', error);
@@ -248,7 +245,7 @@ async function handleAuthLogout(): Promise<void> {
     try {
       // Stop daemon if running
       try {
-        await stopDaemon();
+        await stopDaemonSubcommand({ env: process.env });
         console.log(chalk.gray('Stopped daemon'));
       } catch {}
 

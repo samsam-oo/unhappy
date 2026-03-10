@@ -5,12 +5,14 @@ mod control_server;
 mod daemon_state;
 mod data_plane;
 mod lock;
+mod launcher;
 mod local_ops;
 mod machine_sync;
 mod provider;
 mod provider_session_ops;
 mod protocol;
 mod session_store;
+mod system_ops;
 mod tracked_session;
 
 use anyhow::Result;
@@ -19,9 +21,17 @@ use config::Config;
 use control_server::start_control_server;
 use data_plane::spawn_data_plane_service;
 use daemon_state::DaemonState;
+use launcher::{
+    list_sessions, print_status, provider_session_started, spawn_session, start_detached_daemon,
+    stop_daemon_from_state, stop_session,
+};
 use lock::DaemonLockGuard;
 use machine_sync::spawn_machine_sync;
+use std::env;
 use std::net::SocketAddr;
+use system_ops::{
+    doctor_clean, install_launchd_service, list_unhappy_processes, uninstall_launchd_service,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "unhappy-daemon-rs")]
@@ -34,6 +44,35 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     DataPlaneHandshake,
+    Start,
+    Stop,
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    ListSessions,
+    StopSession {
+        #[arg(long)]
+        session_id: String,
+    },
+    SpawnSession {
+        #[arg(long)]
+        request_json: String,
+    },
+    ProviderSessionStarted {
+        #[arg(long)]
+        request_json: String,
+    },
+    DoctorProcesses {
+        #[arg(long)]
+        json: bool,
+    },
+    DoctorClean {
+        #[arg(long)]
+        json: bool,
+    },
+    Install,
+    Uninstall,
     LocalControlServer {
         #[arg(long)]
         bind: Option<SocketAddr>,
@@ -47,6 +86,119 @@ async fn main() -> Result<()> {
         Command::DataPlaneHandshake => {
             let config = Config::from_env()?;
             data_plane::connect_and_handshake(&config).await?;
+        }
+        Command::Start => {
+            let config = Config::from_env()?;
+            start_detached_daemon(&config).await?;
+        }
+        Command::Stop => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            stop_daemon_from_state(&unhappy_home_dir).await?;
+        }
+        Command::Status { json } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            print_status(&unhappy_home_dir, json)?;
+        }
+        Command::ListSessions => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&list_sessions(&unhappy_home_dir).await?)?
+            );
+        }
+        Command::StopSession { session_id } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&stop_session(&unhappy_home_dir, &session_id).await?)?
+            );
+        }
+        Command::SpawnSession { request_json } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&spawn_session(&unhappy_home_dir, &request_json).await?)?
+            );
+        }
+        Command::ProviderSessionStarted { request_json } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(
+                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
+                    )
+                    .join(".unhappy")
+                });
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &provider_session_started(&unhappy_home_dir, &request_json).await?
+                )?
+            );
+        }
+        Command::DoctorProcesses { json } => {
+            let rows = list_unhappy_processes(std::process::id())?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                for row in rows {
+                    println!("{} {} {}", row.pid, row.process_type, row.command);
+                }
+            }
+        }
+        Command::DoctorClean { json } => {
+            let result = doctor_clean(std::process::id()).await?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("killed={}", result.killed);
+            }
+        }
+        Command::Install => {
+            let config = Config::from_env()?;
+            install_launchd_service(
+                &config.unhappy_home_dir,
+                &config.server_url,
+                &config.current_cli_version,
+            )?;
+        }
+        Command::Uninstall => {
+            uninstall_launchd_service()?;
         }
         Command::LocalControlServer { bind } => {
             let config = Config::from_env()?;

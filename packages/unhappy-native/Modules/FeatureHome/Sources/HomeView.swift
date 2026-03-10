@@ -24,6 +24,8 @@ public struct HomeView: View {
     @State private var isRestoreNavigationPresented = false
     @State private var isServerSettingsPresented = false
     @State private var selectedAuthenticatedTab: AuthenticatedTab = .projects
+    @State private var hasStoredAccountSecret = false
+    @State private var hasLoadedAccountSecretPresence = false
     private let onboarding: any HomeAccountOnboardingAction
     private let makeInboxViewModel: @MainActor () -> InboxViewModel
     private let makeSessionsViewModel: @MainActor () -> SessionsViewModel
@@ -34,6 +36,7 @@ public struct HomeView: View {
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
     private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
     private let makeAccountLinkViewModel: @MainActor () -> AccountLinkSettingsViewModel
+    private let accountSecretPresenceChecker: any AccountSecretPresenceCheckingAction
 
     public init(
         onboarding: any HomeAccountOnboardingAction,
@@ -47,7 +50,8 @@ public struct HomeView: View {
         makeDaemonStatusViewModel: @escaping @MainActor () -> ConnectorsDaemonStatusViewModel,
         makeTerminalConnectViewModel: @escaping @MainActor () -> TerminalConnectSettingsViewModel,
         makeAccountLinkViewModel: @escaping @MainActor () -> AccountLinkSettingsViewModel,
-        makeServerStatusViewModel: @escaping @MainActor () -> HomeServerConnectionStatusViewModel
+        makeServerStatusViewModel: @escaping @MainActor () -> HomeServerConnectionStatusViewModel,
+        accountSecretPresenceChecker: any AccountSecretPresenceCheckingAction
     ) {
         self.onboarding = onboarding
         _settingsViewModel = StateObject(wrappedValue: makeSettingsViewModel())
@@ -61,18 +65,36 @@ public struct HomeView: View {
         self.makeDaemonStatusViewModel = makeDaemonStatusViewModel
         self.makeTerminalConnectViewModel = makeTerminalConnectViewModel
         self.makeAccountLinkViewModel = makeAccountLinkViewModel
+        self.accountSecretPresenceChecker = accountSecretPresenceChecker
     }
 
     public var body: some View {
         Group {
-            if hasToken {
+            if hasToken && hasStoredAccountSecret {
                 authenticatedHome
+            } else if hasToken && hasLoadedAccountSecretPresence {
+                accountSecretRequiredHome
             } else {
                 unauthenticatedHome
             }
         }
         .task {
             await settingsViewModel.loadFromStore()
+            hasStoredAccountSecret = await accountSecretPresenceChecker.hasStoredSecret()
+            hasLoadedAccountSecretPresence = true
+        }
+        .onChange(of: isRestoreNavigationPresented) { _, isPresented in
+            guard !isPresented else { return }
+            Task {
+                hasStoredAccountSecret = await accountSecretPresenceChecker.hasStoredSecret()
+                hasLoadedAccountSecretPresence = true
+            }
+        }
+        .onChange(of: settingsViewModel.apiToken) { _, _ in
+            Task {
+                hasStoredAccountSecret = await accountSecretPresenceChecker.hasStoredSecret()
+                hasLoadedAccountSecretPresence = true
+            }
         }
     }
 
@@ -149,6 +171,48 @@ public struct HomeView: View {
             makeTerminalConnectViewModel: makeTerminalConnectViewModel,
             makeAccountLinkViewModel: makeAccountLinkViewModel
         )
+    }
+
+    private var accountSecretRequiredHome: some View {
+        NavigationStack {
+            VStack(spacing: 18) {
+                Image(systemName: "key.slash")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Text("Account Secret Required")
+                    .font(.title3.weight(.semibold))
+
+                Text("This app has an API token, but it does not have the account secret needed to decrypt encrypted machine data. Restore the secret to load projects and sessions.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                Button("Restore Account Secret") {
+                    isRestoreNavigationPresented = true
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Server Settings") {
+                    isServerSettingsPresented = true
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Account")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $isRestoreNavigationPresented) {
+                AccountRestoreView(
+                    viewModel: settingsViewModel,
+                    makeAccountLinkViewModel: makeAccountLinkViewModel
+                )
+            }
+            .navigationDestination(isPresented: $isServerSettingsPresented) {
+                ServerSettingsView(viewModel: settingsViewModel)
+            }
+        }
     }
 
     private var unauthenticatedHome: some View {

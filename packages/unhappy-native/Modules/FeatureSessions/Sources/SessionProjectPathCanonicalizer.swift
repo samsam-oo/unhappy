@@ -22,16 +22,45 @@ enum SessionProjectPathCanonicalizer {
                   !normalizedHomeDirectory.isEmpty {
             path = normalizedHomeDirectory + "/" + path.dropFirst(2)
         }
+        return normalizePOSIXPath(path)
+    }
 
-        if path == "/" {
-            return path
+    private static func normalizePOSIXPath(_ rawPath: String) -> String {
+        let path = rawPath.replacingOccurrences(of: "\\", with: "/")
+        let hasHomePrefix = path == "~" || path.hasPrefix("~/")
+        let hasRootPrefix = !hasHomePrefix && path.hasPrefix("/")
+        let suffix: Substring
+        if hasHomePrefix {
+            suffix = path == "~" ? Substring() : path.dropFirst(2)
+        } else if hasRootPrefix {
+            suffix = path.dropFirst()
+        } else {
+            suffix = Substring(path)
         }
 
-        let standardized = (path as NSString).standardizingPath
-        var normalized = standardized.isEmpty ? path : standardized
-        while normalized.count > 1 && normalized.hasSuffix("/") {
-            normalized.removeLast()
+        var components: [Substring] = []
+        for component in suffix.split(separator: "/", omittingEmptySubsequences: true) {
+            switch component {
+            case ".":
+                continue
+            case "..":
+                if let last = components.last, last != ".." {
+                    components.removeLast()
+                } else if !hasHomePrefix && !hasRootPrefix {
+                    components.append(component)
+                }
+            default:
+                components.append(component)
+            }
         }
-        return normalized
+
+        let joined = components.map(String.init).joined(separator: "/")
+        if hasHomePrefix {
+            return joined.isEmpty ? "~" : "~/" + joined
+        }
+        if hasRootPrefix {
+            return joined.isEmpty ? "/" : "/" + joined
+        }
+        return joined.isEmpty ? "." : joined
     }
 }

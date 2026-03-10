@@ -11,21 +11,15 @@ Command: `unhappy daemon start`
 Control Flow:
 
 1. `src/index.ts` receives `daemon start` command
-2. Spawns detached process via `spawnUnhappyCLI(['daemon', 'start-sync'], { detached: true })`
-3. New process calls `startDaemon()` from `src/daemon/run.ts`
-4. `startDaemon()` performs startup:
-   - Sets up shutdown promise and handlers (SIGINT, SIGTERM, uncaughtException, unhandledRejection)
-   - Version check: `isDaemonRunningSameVersion()` reads daemon.state.json, compares `startedWithCliVersion` with `configuration.currentCliVersion`
-   - If version mismatch: calls `stopDaemon()` to kill old daemon before proceeding
-   - If same version running: exits with "Daemon already running"
-   - Lock acquisition: `acquireDaemonLock()` creates exclusive lock file to prevent multiple daemons
-   - Authentication: `authAndSetupMachineIfNeeded()` ensures credentials exist
-   - State persistence: writes PID, version, HTTP port to daemon.state.json
-   - HTTP server: starts on random port for local CLI control (list, stop, spawn)
-   - WebSocket: establishes persistent connection to backend via `ApiMachineClient`
-   - RPC registration: exposes `spawn-unhappy-session`, `stop-session`, `requestShutdown` handlers
-   - Heartbeat loop: every 60s (or UNHAPPY_DAEMON_HEARTBEAT_INTERVAL) checks for version updates and prunes dead sessions
-5. Awaits shutdown promise which resolves when:
+2. CLI directly executes the Rust daemon binary `unhappy-daemon-rs start`
+3. The Rust launcher subcommand spawns a detached `unhappy-daemon-rs local-control-server`
+4. `local-control-server` performs startup:
+   - acquires the daemon lock
+   - restores persisted state
+   - writes PID, version, and HTTP port to `daemon.state.json`
+   - starts the local control server
+   - starts machine sync and the encrypted data-plane loop
+5. Awaits shutdown which resolves when:
    - OS signal received (SIGINT/SIGTERM)
    - HTTP `/stop` endpoint called
    - RPC `requestShutdown` invoked
@@ -58,15 +52,16 @@ Command: `unhappy daemon stop`
 
 Control Flow:
 
-1. `stopDaemon()` in `controlClient.ts` reads daemon.state.json
-2. Attempts graceful shutdown via HTTP POST to `/stop`
-3. Daemon receives request, calls `cleanupAndShutdown()`:
+1. CLI directly executes `unhappy-daemon-rs stop`
+2. The Rust launcher reads `daemon.state.json`
+3. Attempts graceful shutdown via HTTP POST to `/stop`
+4. Daemon receives request and shuts down:
    - Updates backend status to "shutting-down"
    - Closes WebSocket connection
    - Stops HTTP server
    - Deletes daemon.state.json
    - Releases lock file
-4. If HTTP fails, falls back to `process.kill(pid, 'SIGKILL')`
+5. If HTTP fails, falls back to `SIGKILL`
 
 ## 2. Session Management
 

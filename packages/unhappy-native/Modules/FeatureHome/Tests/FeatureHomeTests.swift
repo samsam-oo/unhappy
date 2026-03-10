@@ -97,7 +97,8 @@ struct FeatureHomeTests {
                 HomeServerConnectionStatusViewModel(
                     loader: MockHomeServerStatusLoader(status: .connected)
                 )
-            }
+            },
+            accountSecretPresenceChecker: MockAccountSecretPresenceChecker(hasStoredSecret: false)
         )
     }
 
@@ -131,6 +132,18 @@ private struct MockHomeServerStatusLoader: HomeServerConnectionStatusLoadingActi
 
     func loadStatus(serverURLString: String) async -> HomeServerConnectionStatus {
         status
+    }
+}
+
+private actor MockAccountSecretPresenceChecker: AccountSecretPresenceCheckingAction {
+    let hasStoredSecret: Bool
+
+    init(hasStoredSecret: Bool) {
+        self.hasStoredSecret = hasStoredSecret
+    }
+
+    func hasStoredSecret() async -> Bool {
+        hasStoredSecret
     }
 }
 

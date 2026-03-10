@@ -16,23 +16,43 @@ import { claudeCliPath } from './claude/claudeLocal';
 import { handleAuthCommand } from './commands/auth';
 import { handleConnectCommand } from './commands/connect';
 import {
-  checkIfDaemonRunningAndCleanupStaleState,
-  isDaemonRunningCurrentlyInstalledHappyVersion,
-  listDaemonSessions,
-  stopDaemon,
-  stopDaemonSession,
-} from './daemon/controlClient';
-import { killRunawayHappyProcesses } from './daemon/doctor';
-import { install } from './daemon/install';
-import { uninstall } from './daemon/uninstall';
+  printDaemonStatusSubcommand,
+  readDaemonLauncherStatus,
+  runDaemonSubcommand,
+  runDaemonSubcommandJson,
+  startDaemonAttached,
+  startDaemonDetached,
+  stopDaemonSubcommand,
+} from './utils/rustDaemonCli';
 import { runDaemonUpdate } from './daemon/update';
-import { spawnDaemonExecutable } from './daemon/executable';
 import { readCredentials, readSettings } from './persistence';
 import { authAndSetupMachineIfNeeded } from './ui/auth';
 import { runDoctorCommand } from './ui/doctor';
 import { getLatestDaemonLog, logger } from './ui/logger';
 
 (async () => {
+  async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+    const status = await readDaemonLauncherStatus();
+    if (status.running) {
+      return true;
+    }
+    if (status.stale) {
+      await stopDaemonSubcommand({ env: process.env });
+    }
+    return false;
+  }
+
+  async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<boolean> {
+    const status = await readDaemonLauncherStatus();
+    if (!status.running) {
+      if (status.stale) {
+        await stopDaemonSubcommand({ env: process.env });
+      }
+      return false;
+    }
+    return status.state?.startedWithCliVersion === packageJson.version;
+  }
+
   const args = process.argv.slice(2);
 
   // If --version is passed - do not log, its likely daemon inquiring about our version
@@ -50,7 +70,10 @@ import { getLatestDaemonLog, logger } from './ui/logger';
   if (subcommand === 'doctor') {
     // Check for clean subcommand
     if (args[1] === 'clean') {
-      const result = await killRunawayHappyProcesses();
+      const result = await runDaemonSubcommandJson<{
+        killed: number;
+        errors: Array<{ pid: number; error: string }>;
+      }>(['doctor-clean', '--json']);
       console.log(`Cleaned up ${result.killed} runaway processes`);
       if (result.errors.length > 0) {
         console.log('Errors:', result.errors);
@@ -364,13 +387,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
       if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
         logger.debug('Starting Unhappy background service...');
-        const daemonProcess = await spawnDaemonExecutable({
-          detached: true,
-          stdio: 'ignore',
-          env: process.env,
-        });
-        daemonProcess.unref();
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await startDaemonDetached({ env: process.env });
       }
 
       await runClaude(credentials, options);
@@ -683,13 +700,7 @@ ${chalk.bold('Examples:')}
       );
       if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
         logger.debug('Starting Unhappy background service...');
-        const daemonProcess = await spawnDaemonExecutable({
-          detached: true,
-          stdio: 'ignore',
-          env: process.env,
-        });
-        daemonProcess.unref();
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await startDaemonDetached({ env: process.env });
       }
 
       await runGemini({ credentials, startedBy, model, reasoningEffort });
@@ -749,7 +760,9 @@ ${chalk.bold('Examples:')}
 
     if (daemonSubcommand === 'list') {
       try {
-        const sessions = await listDaemonSessions();
+        const { children: sessions = [] } = await runDaemonSubcommandJson<{
+          children?: any[];
+        }>(['list-sessions']);
 
         if (sessions.length === 0) {
           console.log(
@@ -771,7 +784,12 @@ ${chalk.bold('Examples:')}
       }
 
       try {
-        const success = await stopDaemonSession(sessionId);
+        const response = await runDaemonSubcommandJson<{ success?: boolean }>([
+          'stop-session',
+          '--session-id',
+          sessionId,
+        ]);
+        const success = response.success === true;
         console.log(success ? 'Session stopped' : 'Failed to stop session');
       } catch (error) {
         console.log('No daemon running');
@@ -779,29 +797,9 @@ ${chalk.bold('Examples:')}
       return;
     } else if (daemonSubcommand === 'start') {
       try {
-        // Spawn detached daemon process
-        const child = await spawnDaemonExecutable({
-          detached: true,
-          stdio: 'ignore',
-          env: process.env,
-        });
-        child.unref();
-
-        // Wait for daemon to write state file (up to 5 seconds)
-        let started = false;
-        for (let i = 0; i < 50; i++) {
-          if (await checkIfDaemonRunningAndCleanupStaleState()) {
-            started = true;
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-
-        if (started) {
-          console.log('Daemon started successfully');
-        } else {
-          console.error('Failed to start daemon');
-          process.exit(1);
+        const output = await startDaemonDetached({ env: process.env });
+        if (output) {
+          console.log(output);
         }
         process.exit(0);
       } catch (error) {
@@ -813,24 +811,8 @@ ${chalk.bold('Examples:')}
       }
     } else if (daemonSubcommand === 'start-sync') {
       try {
-        const child = await spawnDaemonExecutable({
-          detached: false,
-          stdio: 'inherit',
-          env: process.env,
-        });
-        child.once('error', (error) => {
-          console.error(
-            chalk.red('Error:'),
-            error instanceof Error ? error.message : 'Unknown error',
-          );
-          process.exit(1);
-        });
-        child.once('close', (code, signal) => {
-          if (signal) {
-            process.exit(1);
-          }
-          process.exit(code ?? 0);
-        });
+        await startDaemonAttached({ env: process.env });
+        process.exit(0);
         return;
       } catch (error) {
         console.error(
@@ -840,11 +822,10 @@ ${chalk.bold('Examples:')}
         process.exit(1);
       }
     } else if (daemonSubcommand === 'stop') {
-      await stopDaemon();
+      await stopDaemonSubcommand({ env: process.env });
       process.exit(0);
     } else if (daemonSubcommand === 'status') {
-      // Show daemon-specific doctor output
-      await runDoctorCommand('daemon');
+      await printDaemonStatusSubcommand({ env: process.env });
       process.exit(0);
     } else if (daemonSubcommand === 'logs') {
       // Simply print the path to the latest daemon log file
@@ -857,7 +838,7 @@ ${chalk.bold('Examples:')}
       process.exit(0);
     } else if (daemonSubcommand === 'install') {
       try {
-        await install();
+        await runDaemonSubcommand(['install'], { env: process.env });
       } catch (error) {
         console.error(
           chalk.red('Error:'),
@@ -867,7 +848,7 @@ ${chalk.bold('Examples:')}
       }
     } else if (daemonSubcommand === 'uninstall') {
       try {
-        await uninstall();
+        await runDaemonSubcommand(['uninstall'], { env: process.env });
       } catch (error) {
         console.error(
           chalk.red('Error:'),

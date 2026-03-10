@@ -103,13 +103,44 @@ extension URLSessionMachinesService {
         explicitOnly: Bool = false,
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
-        try await rpcDirectoryService.fetchProjects(
-            serverURL: serverURL,
-            token: token,
-            machineID: machineID,
-            explicitOnly: explicitOnly,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cacheKey = ProjectsCacheKey(
+            serverURLString: serverURL.absoluteString,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            explicitOnly: explicitOnly
         )
+
+        if let cached = projectsCache[cacheKey],
+           Date().timeIntervalSince1970 - cached.cachedAt < MachinesCachePolicy.ttl {
+            return cached.projects
+        }
+
+        if let inFlightTask = inFlightProjectFetches[cacheKey] {
+            return try await inFlightTask.value
+        }
+
+        let rpcDirectoryService = self.rpcDirectoryService
+        let task = Task<[APIMachineProjectSummary], Error> {
+            try await rpcDirectoryService.fetchProjects(
+                serverURL: serverURL,
+                token: normalizedToken,
+                machineID: normalizedMachineID,
+                explicitOnly: explicitOnly,
+                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+            )
+        }
+
+        inFlightProjectFetches[cacheKey] = task
+        defer { inFlightProjectFetches[cacheKey] = nil }
+
+        let projects = try await task.value
+        projectsCache[cacheKey] = ProjectsCacheEntry(
+            projects: projects,
+            cachedAt: Date().timeIntervalSince1970
+        )
+        return projects
     }
 
     public func openProject(
@@ -119,13 +150,19 @@ extension URLSessionMachinesService {
         path: String,
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult {
-        try await rpcDirectoryService.openProject(
+        let result = try await rpcDirectoryService.openProject(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             path: path,
             wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
+        invalidateProjectCaches(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID
+        )
+        return result
     }
 
     public func removeProject(
@@ -135,23 +172,110 @@ extension URLSessionMachinesService {
         path: String,
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> APIMachineCommandResult {
-        try await rpcDirectoryService.removeProject(
+        let result = try await rpcDirectoryService.removeProject(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
             path: path,
             wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
         )
+        invalidateProjectCaches(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID
+        )
+        return result
     }
 
     public func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
-        let request = try MachinesAPI.makeListRequest(serverURL: serverURL, token: token)
-        let (data, http) = try await httpClient.data(for: request)
-        guard (200..<300).contains(http.statusCode) else {
-            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cacheKey = MachinesCacheKey(
+            serverURLString: serverURL.absoluteString,
+            token: normalizedToken
+        )
+
+        if let cached = machinesCache[cacheKey],
+           Date().timeIntervalSince1970 - cached.cachedAt < MachinesCachePolicy.ttl {
+            scheduleMachineDataPlanePrewarm(
+                machines: cached.machines,
+                serverURL: serverURL,
+                token: normalizedToken
+            )
+            return cached.machines
         }
 
-        return try MachinesAPI.decodeListResponse(data)
+        if let inFlightTask = inFlightMachineFetches[cacheKey] {
+            return try await inFlightTask.value
+        }
+
+        let httpClient = self.httpClient
+        let request = try MachinesAPI.makeListRequest(serverURL: serverURL, token: normalizedToken)
+        let task = Task<[APIMachine], Error> {
+            let (data, http) = try await httpClient.data(for: request)
+            guard (200..<300).contains(http.statusCode) else {
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+            return try MachinesAPI.decodeListResponse(data)
+        }
+
+        inFlightMachineFetches[cacheKey] = task
+        defer { inFlightMachineFetches[cacheKey] = nil }
+
+        let machines = try await task.value
+        machinesCache[cacheKey] = MachinesCacheEntry(
+            machines: machines,
+            cachedAt: Date().timeIntervalSince1970
+        )
+        scheduleMachineDataPlanePrewarm(
+            machines: machines,
+            serverURL: serverURL,
+            token: normalizedToken
+        )
+        return machines
+    }
+
+    private func invalidateProjectCaches(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) {
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        projectsCache = projectsCache.filter { key, _ in
+            !(key.serverURLString == serverURL.absoluteString &&
+                key.token == normalizedToken &&
+                key.machineID == normalizedMachineID)
+        }
+        inFlightProjectFetches = inFlightProjectFetches.filter { key, _ in
+            !(key.serverURLString == serverURL.absoluteString &&
+                key.token == normalizedToken &&
+                key.machineID == normalizedMachineID)
+        }
+    }
+
+    private func scheduleMachineDataPlanePrewarm(
+        machines: [APIMachine],
+        serverURL: URL,
+        token: String
+    ) {
+        let rpcDirectoryService = self.rpcDirectoryService
+        let activeMachines = machines.filter(\.active)
+        guard !activeMachines.isEmpty else { return }
+
+        Task(priority: .utility) {
+            await withTaskGroup(of: Void.self) { group in
+                for machine in activeMachines where machine.dataEncryptionKey?.isEmpty == false {
+                    group.addTask {
+                        await rpcDirectoryService.prewarmMachineDataPlane(
+                            serverURL: serverURL,
+                            token: token,
+                            machineID: machine.id,
+                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
+                        )
+                    }
+                }
+            }
+        }
     }
 
     public func deleteMachine(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {

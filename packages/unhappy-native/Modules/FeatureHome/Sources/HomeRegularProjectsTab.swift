@@ -112,6 +112,9 @@ struct HomeRegularProjectsTab: View {
             if shouldShowFullScreenLoading {
                 ProgressView("Loading sessions…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if isPreparingProjectsFromLoadedSessions {
+                ProgressView("Preparing projects…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -130,23 +133,42 @@ struct HomeRegularProjectsTab: View {
             } else if !showsSessionSidebarList {
                 ScrollView {
                     VStack(spacing: 14) {
-                        Image(systemName: "sparkles.rectangle.stack")
-                            .font(.system(size: 26, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("No projects yet")
-                            .font(.headline)
-                        Text("Add a project to start syncing its sessions.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        Button {
-                            isPresentingProjectPicker = true
-                        } label: {
-                            Label("Add Project", systemImage: "plus.circle.fill")
-                                .font(.subheadline.weight(.semibold))
+                        if let projectsErrorMessage = viewModel.projectsErrorMessage,
+                           !projectsErrorMessage.isEmpty {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 26, weight: .semibold))
+                                .foregroundStyle(.orange)
+                            Text("Unable to load projects")
+                                .font(.headline)
+                            Text(projectsErrorMessage)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Retry") {
+                                Task {
+                                    await reloadSessions()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            Image(systemName: "sparkles.rectangle.stack")
+                                .font(.system(size: 26, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text("No projects yet")
+                                .font(.headline)
+                            Text("Add a project to start syncing its sessions.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button {
+                                isPresentingProjectPicker = true
+                            } label: {
+                                Label("Add Project", systemImage: "plus.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .padding(.top, 2)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .padding(.top, 2)
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                     .padding(.top, 24)
@@ -323,11 +345,13 @@ struct HomeRegularProjectsTab: View {
     private var shouldShowFullScreenLoading: Bool {
         isRefreshingProjectContent
             && !showsSessionSidebarList
-            && (
-                viewModel.sessions.isEmpty
-                    || viewModel.isLoadingProjects
-                    || viewModel.isLoadingUpstreamSessions
-            )
+            && viewModel.sessions.isEmpty
+    }
+
+    private var isPreparingProjectsFromLoadedSessions: Bool {
+        !viewModel.sessions.isEmpty
+            && !showsSessionSidebarList
+            && (viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions)
     }
 
     private var projectGroups: [SessionProjectGroup] {
@@ -367,7 +391,7 @@ struct HomeRegularProjectRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Text(group.projectPath)
+            Text(group.projectDisplayPath)
                 .font(.caption2.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -384,6 +408,9 @@ struct HomeRegularProjectRow: View {
     }
 
     private var updatedLabel: String {
+        guard group.latestUpdatedAt > 0 else {
+            return "Unknown"
+        }
         let interval = Date().timeIntervalSince1970 - group.latestUpdatedAt
         if interval < 60 {
             return "just now"

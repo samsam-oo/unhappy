@@ -29,6 +29,8 @@ struct SessionMessageDetailPresentationTests {
         #expect(presentation.payloadCharacterCount == 5)
         #expect(presentation.payloadTruncated == false)
         #expect(presentation.payloadFields.isEmpty)
+        #expect(presentation.parsedEntries.count == 1)
+        #expect(presentation.parsedEntries[0].body == "hello")
     }
 
     @Test
@@ -50,6 +52,7 @@ struct SessionMessageDetailPresentationTests {
         #expect(presentation.payloadPreview?.count == SessionMessageDetailPresentationBuilder.payloadPreviewLimit)
         #expect(presentation.payloadPreview == String(payload.prefix(SessionMessageDetailPresentationBuilder.payloadPreviewLimit)))
         #expect(presentation.payloadFields.isEmpty)
+        #expect(presentation.parsedEntries.count == 1)
     }
 
     @Test
@@ -70,6 +73,7 @@ struct SessionMessageDetailPresentationTests {
         #expect(presentation.payloadCharacterCount == 0)
         #expect(presentation.payloadTruncated == false)
         #expect(presentation.payloadFields.isEmpty)
+        #expect(presentation.parsedEntries.count == 1)
     }
 
     @Test
@@ -93,5 +97,49 @@ struct SessionMessageDetailPresentationTests {
         let metaValue = presentation.payloadFields.first(where: { $0.key == "meta" })?.value ?? ""
         #expect(metaValue.contains(#""cwd""#))
         #expect(metaValue.contains("tmp"))
+        #expect(presentation.parsedEntries.count == 1)
+        #expect(presentation.parsedEntries[0].title == "Unknown role")
+    }
+
+    @Test
+    func makeUsesProvidedTranscriptPresentationForRichEntries() {
+        let payload = #"{"role":"agent","content":{"type":"text","text":"ignored"}}"#
+        let message = APISessionMessage(
+            id: "message-5",
+            seq: 5,
+            localId: nil,
+            content: APIEncryptedMessageContent(type: "tool", payload: payload),
+            createdAt: 100,
+            updatedAt: 100
+        )
+        let transcriptPresentation = SessionTranscriptMessagePresentation(
+            messageID: "message-5",
+            sequenceText: "5",
+            createdAt: 100,
+            createdAtText: "ts:100",
+            entries: [
+                SessionTranscriptEntry(
+                    id: "entry-1",
+                    role: .agent,
+                    kind: .toolResult,
+                    title: "Ran command",
+                    body: #"{"type":"commandExecutionPresentation","command":"git status","logs":"ok","success":true}"#,
+                    toolUseID: "tool-1",
+                    sourceType: "tool-result",
+                    toolName: "bash",
+                    isSidechain: true,
+                    threadID: nil
+                )
+            ]
+        )
+
+        let presentation = SessionMessageDetailPresentationBuilder.make(
+            from: message,
+            transcriptPresentation: transcriptPresentation
+        )
+
+        #expect(presentation.parsedEntries.count == 1)
+        #expect(presentation.parsedEntries[0].title == "Ran command")
+        #expect(presentation.parsedEntries[0].isSidechain == true)
     }
 }

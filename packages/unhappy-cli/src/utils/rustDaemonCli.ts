@@ -1,10 +1,8 @@
-import { type ChildProcess, spawn, type SpawnOptions } from 'child_process';
-import { existsSync } from 'fs';
+import { execFile, type ChildProcess, spawn, type SpawnOptions } from 'child_process';
+import { closeSync, existsSync, openSync } from 'fs';
 import { basename, isAbsolute, join, normalize, resolve } from 'path';
 
-import { encodeBase64 } from '@/api/encryption';
 import { configuration } from '@/configuration';
-import { readCredentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
 
 const DAEMON_EXECUTABLE_ENV = 'UNHAPPY_DAEMON_EXECUTABLE';
@@ -18,9 +16,15 @@ export interface ResolvedDaemonExecutable {
   executableBasename: string;
 }
 
-function normalizeForMatch(value: string): string {
-  return value.trim().normalize('NFKC').replaceAll('\\', '/');
-}
+export type LauncherStatus = {
+  running: boolean;
+  stale: boolean;
+  state?: {
+    pid: number;
+    httpPort?: number | null;
+    startedWithCliVersion?: string;
+  } | null;
+};
 
 function stripWrappingQuotes(value: string): string {
   const trimmed = value.trim();
@@ -54,7 +58,7 @@ function parseDaemonExecutableArgs(rawValue: string): string[] {
 }
 
 function resolveConfiguredExecutablePath(rawValue: string): string {
-  const normalizedValue = normalizeForMatch(stripWrappingQuotes(rawValue));
+  const normalizedValue = stripWrappingQuotes(rawValue.trim()).normalize('NFKC');
   if (!normalizedValue) {
     throw new Error(`${DAEMON_EXECUTABLE_ENV} cannot be empty when provided`);
   }
@@ -89,13 +93,48 @@ function findBundledRustDaemonExecutable(): string | null {
   return null;
 }
 
+function createTimestampForFilename(date: Date = new Date()): string {
+  return (
+    date
+      .toLocaleString('sv-SE', {
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+      .replace(/[: ]/g, '-')
+      .replace(/,/g, '') +
+    '-pid-' +
+    process.pid
+  );
+}
+
+function createDaemonLogFilePath(): string {
+  return join(configuration.logsDir, `${createTimestampForFilename()}-daemon.log`);
+}
+
+function resolveDaemonSpawnStdio(
+  stdio: SpawnOptions['stdio'],
+): { stdio: SpawnOptions['stdio']; logFd: number | null } {
+  if (stdio !== 'ignore') {
+    return { stdio, logFd: null };
+  }
+
+  const logFd = openSync(createDaemonLogFilePath(), 'a');
+  return {
+    stdio: ['ignore', logFd, logFd],
+    logFd,
+  };
+}
+
 export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
   const configuredExecutable = process.env[DAEMON_EXECUTABLE_ENV]?.trim();
   if (configuredExecutable) {
     const executablePath = resolveConfiguredExecutablePath(configuredExecutable);
-    const args = parseDaemonExecutableArgs(
-      process.env[DAEMON_EXECUTABLE_ARGS_ENV] ?? '',
-    );
+    const args = parseDaemonExecutableArgs(process.env[DAEMON_EXECUTABLE_ARGS_ENV] ?? '');
     return {
       source: 'environment',
       executablePath,
@@ -125,24 +164,8 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
 async function buildRustDaemonEnvironment(
   baseEnv: NodeJS.ProcessEnv,
 ): Promise<NodeJS.ProcessEnv> {
-  const credentials = await readCredentials();
-  if (!credentials) {
-    throw new Error('Rust daemon requires credentials. Run unhappy auth first.');
-  }
-  const settings = await readSettings();
-  const machineId = settings.machineId?.trim();
-  if (!machineId) {
-    throw new Error('Rust daemon requires a machineId. Run unhappy connect first.');
-  }
-
   return {
     ...baseEnv,
-    UNHAPPY_TOKEN: credentials.token,
-    UNHAPPY_MACHINE_ID: machineId,
-    UNHAPPY_MACHINE_DATA_KEY: encodeBase64(
-      credentials.encryption.machineKey,
-      'base64url',
-    ),
     UNHAPPY_CLI_VERSION: configuration.currentCliVersion,
     UNHAPPY_HOME_DIR: configuration.unhappyHomeDir,
     UNHAPPY_CLI_ROOT: projectPath(),
@@ -151,7 +174,7 @@ async function buildRustDaemonEnvironment(
   };
 }
 
-export async function getDaemonLaunchEnvironmentVariables(
+export async function getDaemonLauncherEnvironment(
   baseEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<NodeJS.ProcessEnv> {
   return await buildRustDaemonEnvironment(baseEnv);
@@ -168,35 +191,111 @@ export async function spawnDaemonExecutable(
     );
   }
 
-  return spawn(executable.executablePath, executable.args, {
+  const { stdio, logFd } = resolveDaemonSpawnStdio(options.stdio);
+  const child = spawn(executable.executablePath, executable.args, {
     ...options,
+    stdio,
     env: await buildRustDaemonEnvironment(options.env ?? process.env),
+  });
+  if (logFd !== null) {
+    closeSync(logFd);
+  }
+  return child;
+}
+
+export async function runDaemonSubcommand(
+  args: string[],
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<string> {
+  const executable = resolveDaemonExecutable();
+  const env = await getDaemonLauncherEnvironment(opts?.env ?? process.env);
+  return await new Promise<string>((resolve, reject) => {
+    execFile(
+      executable.executablePath,
+      args,
+      { env },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(stderr.trim() ? new Error(stderr.trim()) : error);
+          return;
+        }
+        resolve(stdout.trim());
+      },
+    );
   });
 }
 
-export function getDaemonLaunchProgramArguments(): string[] {
-  const executable = resolveDaemonExecutable();
-  return [executable.executablePath, ...executable.args];
+export async function runDaemonSubcommandJson<T>(
+  args: string[],
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<T> {
+  const raw = await runDaemonSubcommand(args, opts);
+  return JSON.parse(raw) as T;
 }
 
-export function isConfiguredDaemonProcessCommand(
-  command: string,
-  processName?: string,
-): boolean {
-  const executable = resolveDaemonExecutable();
-  const normalizedCommand = normalizeForMatch(command);
-  const normalizedProcessName = processName
-    ? normalizeForMatch(processName)
-    : '';
+export async function readDaemonLauncherStatus(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<LauncherStatus> {
+  return await runDaemonSubcommandJson<LauncherStatus>(['status', '--json'], opts);
+}
 
-  const normalizedExecutablePath = normalizeForMatch(executable.executablePath);
-  const firstCommandPart = stripWrappingQuotes(
-    normalizedCommand.split(/\s+/, 1)[0] ?? '',
-  );
-  return (
-    normalizedCommand.includes(normalizedExecutablePath) ||
-    firstCommandPart === executable.executableBasename ||
-    firstCommandPart.endsWith(`/${executable.executableBasename}`) ||
-    normalizedProcessName === executable.executableBasename
-  );
+export async function startDaemonDetached(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<string> {
+  return await runDaemonSubcommand(['start'], opts);
+}
+
+export async function startDaemonAttached(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<void> {
+  const child = await spawnDaemonExecutable({
+    detached: false,
+    stdio: 'inherit',
+    env: opts?.env ?? process.env,
+  });
+  await new Promise<void>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code, signal) => {
+      if (signal) {
+        reject(new Error(`daemon start terminated by signal ${signal}`));
+        return;
+      }
+      if ((code ?? 0) !== 0) {
+        reject(new Error(`daemon start exited with code ${code ?? 'unknown'}`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+export async function stopDaemonSubcommand(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<void> {
+  await runDaemonSubcommand(['stop'], opts);
+}
+
+export async function printDaemonStatusSubcommand(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<void> {
+  const executable = resolveDaemonExecutable();
+  const env = await getDaemonLauncherEnvironment(opts?.env ?? process.env);
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(executable.executablePath, ['status'], {
+      env,
+      stdio: 'inherit',
+    });
+    child.once('error', reject);
+    child.once('close', (code, signal) => {
+      if (signal) {
+        reject(new Error(`daemon status terminated by signal ${signal}`));
+        return;
+      }
+      if ((code ?? 0) !== 0) {
+        reject(new Error(`daemon status exited with code ${code ?? 'unknown'}`));
+        return;
+      }
+      resolve();
+    });
+  });
 }

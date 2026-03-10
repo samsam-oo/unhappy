@@ -20,24 +20,72 @@ use aes_gcm::{
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use futures_util::{SinkExt, StreamExt};
-use http::{header, Request};
+use http::header;
 use hkdf::Hkdf;
 use rand::RngCore;
 use serde_json::{json, Value};
 use sha2::Sha256;
+use std::time::Instant;
 use tokio::{
     process::Command,
     task::JoinHandle,
     time::{sleep, Duration},
 };
 use tokio_tungstenite::{
-    connect_async, tungstenite::protocol::Message, MaybeTlsStream, WebSocketStream,
+    connect_async,
+    tungstenite::{client::IntoClientRequest, protocol::Message},
+    MaybeTlsStream,
+    WebSocketStream,
 };
 use url::Url;
 use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 pub type DataPlaneStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+struct RequestTrace {
+    operation: MachineDataPlaneOperation,
+    stream_id: String,
+    started_at: Instant,
+}
+
+impl RequestTrace {
+    fn start(operation: MachineDataPlaneOperation, stream_id: &str, payload: &Value) -> Self {
+        eprintln!(
+            "[{}] [daemon-rs] category=data-plane op={} stream_id={} phase=start {}",
+            trace_timestamp(),
+            operation_name(operation),
+            stream_id,
+            operation_log_fields(operation, payload)
+        );
+        Self {
+            operation,
+            stream_id: stream_id.to_string(),
+            started_at: Instant::now(),
+        }
+    }
+
+    fn finish_ok(&self) {
+        eprintln!(
+            "[{}] [daemon-rs] category=data-plane op={} stream_id={} phase=end status=ok elapsed_ms={}",
+            trace_timestamp(),
+            operation_name(self.operation),
+            self.stream_id,
+            self.started_at.elapsed().as_millis()
+        );
+    }
+
+    fn finish_error(&self, error: &anyhow::Error) {
+        eprintln!(
+            "[{}] [daemon-rs] category=data-plane op={} stream_id={} phase=end status=error elapsed_ms={} error={}",
+            trace_timestamp(),
+            operation_name(self.operation),
+            self.stream_id,
+            self.started_at.elapsed().as_millis(),
+            error
+        );
+    }
+}
 
 pub struct SessionCryptoContext {
     machine_data_key: [u8; 32],
@@ -199,6 +247,7 @@ async fn connect_and_serve_once(config: &Config, state: SharedDaemonState) -> Re
 }
 
 async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
+    let started_at = Instant::now();
     let mut url = Url::parse(&config.server_url).context("invalid server url")?;
     match url.scheme() {
         "https" => url.set_scheme("wss").ok(),
@@ -209,20 +258,17 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
     url.set_path(&format!("/v1/machines/{}/data-plane", config.machine_id));
     url.set_query(None);
 
-    let request = Request::builder()
-        .method("GET")
-        .uri(url.as_str())
-        .header(header::AUTHORIZATION, format!("Bearer {}", config.token))
-        .header(
-            header::SEC_WEBSOCKET_PROTOCOL,
-            MACHINE_DATA_PLANE_SUBPROTOCOL,
-        )
-        .body(())
-        .context("failed to build websocket request")?;
+    let request = machine_data_plane_request(&url, &config.token)?;
 
     let (mut socket, _) = connect_async(request)
         .await
         .context("failed to connect to machine data plane websocket")?;
+    eprintln!(
+        "[{}] [daemon-rs] category=handshake phase=socket-connected elapsed_ms={} machine_id={}",
+        trace_timestamp(),
+        started_at.elapsed().as_millis(),
+        config.machine_id
+    );
 
     let crypto = SessionCryptoContext::new(
         MachineDataPlaneRole::Daemon,
@@ -248,6 +294,12 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
     let session_key = crypto
         .derive_session_key(&ack.key_exchange)
         .context("failed to derive session key from hello-ack")?;
+    eprintln!(
+        "[{}] [daemon-rs] category=handshake phase=relay-ready elapsed_ms={} machine_id={}",
+        trace_timestamp(),
+        started_at.elapsed().as_millis(),
+        config.machine_id
+    );
 
     if ack.max_chunk_bytes != MACHINE_DATA_PLANE_DEFAULT_MAX_CHUNK_BYTES
         || ack.max_in_flight_streams != MACHINE_DATA_PLANE_DEFAULT_MAX_IN_FLIGHT_STREAMS
@@ -259,6 +311,27 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
     }
 
     Ok((socket, session_key))
+}
+
+fn machine_data_plane_request(url: &Url, token: &str) -> Result<http::Request<()>> {
+    let mut request = url
+        .as_str()
+        .into_client_request()
+        .context("failed to build websocket request")?;
+    request
+        .headers_mut()
+        .insert(
+            header::AUTHORIZATION,
+            http::HeaderValue::from_str(&format!("Bearer {token}"))
+                .context("failed to encode authorization header")?,
+        );
+    request
+        .headers_mut()
+        .insert(
+            header::SEC_WEBSOCKET_PROTOCOL,
+            http::HeaderValue::from_static(MACHINE_DATA_PLANE_SUBPROTOCOL),
+        );
+    Ok(request.map(|_| ()))
 }
 
 async fn handle_request_frame(
@@ -273,6 +346,7 @@ async fn handle_request_frame(
         .context("failed to decrypt machine data-plane request")?;
     let request_json: Value =
         serde_json::from_slice(&request_payload).context("request payload was not valid JSON")?;
+    let trace = RequestTrace::start(frame.op, &frame.stream_id, &request_json);
 
     let result = dispatch_request(config, state, frame.op, request_json).await;
     match result {
@@ -310,8 +384,10 @@ async fn handle_request_frame(
                 .send(Message::Text(serde_json::to_string(&response)?.into()))
                 .await
                 .context("failed to send data-plane complete frame")?;
+            trace.finish_ok();
         }
         Err(error) => {
+            trace.finish_error(&error);
             let response = MachineDataPlaneErrorFrame {
                 v: MACHINE_DATA_PLANE_PROTOCOL_VERSION,
                 t: "error".to_string(),
@@ -327,6 +403,75 @@ async fn handle_request_frame(
         }
     }
     Ok(())
+}
+
+fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
+    match operation {
+        MachineDataPlaneOperation::MachineListModels => "machine.listModels",
+        MachineDataPlaneOperation::DaemonStop => "daemon.stop",
+        MachineDataPlaneOperation::DaemonUpdate => "daemon.update",
+        MachineDataPlaneOperation::ProviderSpawn => "provider.spawn",
+        MachineDataPlaneOperation::ProjectList => "project.list",
+        MachineDataPlaneOperation::ProjectOpen => "project.open",
+        MachineDataPlaneOperation::ProjectRemove => "project.remove",
+        MachineDataPlaneOperation::CodexListThreads => "codex.listThreads",
+        MachineDataPlaneOperation::CodexOpenThread => "codex.openThread",
+        MachineDataPlaneOperation::CodexListMessages => "codex.listMessages",
+        MachineDataPlaneOperation::CodexSendMessage => "codex.sendMessage",
+        MachineDataPlaneOperation::ClaudeListSessions => "claude.listSessions",
+        MachineDataPlaneOperation::ClaudeListMessages => "claude.listMessages",
+        MachineDataPlaneOperation::ClaudeSendMessage => "claude.sendMessage",
+        MachineDataPlaneOperation::GeminiListSessions => "gemini.listSessions",
+        MachineDataPlaneOperation::GeminiListMessages => "gemini.listMessages",
+        MachineDataPlaneOperation::GeminiSendMessage => "gemini.sendMessage",
+        MachineDataPlaneOperation::FsListDirectory => "fs.listDirectory",
+        MachineDataPlaneOperation::FsGetDirectoryTree => "fs.getDirectoryTree",
+        MachineDataPlaneOperation::FsReadFile => "fs.readFile",
+        MachineDataPlaneOperation::FsWriteFile => "fs.writeFile",
+        MachineDataPlaneOperation::ExecBash => "exec.bash",
+        MachineDataPlaneOperation::SearchRipgrep => "search.ripgrep",
+        MachineDataPlaneOperation::DiffDifftastic => "diff.difftastic",
+    }
+}
+
+fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -> String {
+    let mut fields: Vec<String> = Vec::new();
+    match operation {
+        MachineDataPlaneOperation::ProjectList => {
+            if let Some(explicit_only) = payload.get("explicitOnly").and_then(Value::as_bool) {
+                fields.push(format!("explicit_only={explicit_only}"));
+            }
+        }
+        MachineDataPlaneOperation::ProjectOpen | MachineDataPlaneOperation::ProjectRemove => {
+            if let Some(path) = payload.get("path").and_then(Value::as_str) {
+                fields.push(format!("path={}", path.replace('\n', "\\n")));
+            }
+        }
+        MachineDataPlaneOperation::CodexListThreads
+        | MachineDataPlaneOperation::ClaudeListSessions
+        | MachineDataPlaneOperation::GeminiListSessions
+        | MachineDataPlaneOperation::FsListDirectory
+        | MachineDataPlaneOperation::FsGetDirectoryTree
+        | MachineDataPlaneOperation::FsReadFile
+        | MachineDataPlaneOperation::FsWriteFile
+        | MachineDataPlaneOperation::ExecBash
+        | MachineDataPlaneOperation::DiffDifftastic => {
+            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+                fields.push(format!("cwd={}", cwd.replace('\n', "\\n")));
+            }
+            if let Some(path) = payload.get("path").and_then(Value::as_str) {
+                fields.push(format!("path={}", path.replace('\n', "\\n")));
+            }
+        }
+        _ => {}
+    }
+    fields.join(" ")
+}
+
+fn trace_timestamp() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "unknown-time".to_string())
 }
 
 async fn dispatch_request(
@@ -359,24 +504,10 @@ async fn dispatch_request(
             }))
         }
         MachineDataPlaneOperation::ProjectList => {
-            let explicit_only = payload
-                .get("explicitOnly")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            if explicit_only {
-                Ok(json!({
-                    "success": true,
-                    "projects": explicit_project_summaries(state.list_opened_projects().await)
-                }))
-            } else {
-                let explicit_paths = state
-                    .list_opened_projects()
-                    .await
-                    .into_iter()
-                    .map(|entry| entry.path)
-                    .collect::<Vec<_>>();
-                local_ops::project_scan(config, &explicit_paths).await
-            }
+            Ok(json!({
+                "success": true,
+                "projects": explicit_project_summaries(state.list_opened_projects().await)
+            }))
         }
         MachineDataPlaneOperation::ProjectOpen => {
             let path = payload
@@ -426,24 +557,7 @@ async fn dispatch_request(
             provider_session_ops::claude_send_message(&payload).await
         }
         MachineDataPlaneOperation::GeminiListSessions => {
-            let cwd_filter = payload
-                .get("cwd")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToOwned::to_owned);
-            let limit = payload
-                .get("limit")
-                .and_then(Value::as_u64)
-                .map(|value| value.clamp(1, 100) as usize)
-                .unwrap_or(20);
-            let cursor = payload
-                .get("cursor")
-                .and_then(Value::as_str)
-                .and_then(|value| value.trim().parse::<usize>().ok())
-                .unwrap_or(0);
-
-            let mut sessions = state
+            let active_sessions = state
                 .list_children()
                 .await
                 .into_iter()
@@ -458,11 +572,6 @@ async fn dispatch_request(
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
                         .map(ToOwned::to_owned)?;
-                    if let Some(filter) = cwd_filter.as_ref() {
-                        if filter != &cwd {
-                            return None;
-                        }
-                    }
                     let title = metadata
                         .get("name")
                         .or_else(|| metadata.get("title"))
@@ -497,20 +606,7 @@ async fn dispatch_request(
                     }))
                 })
                 .collect::<Vec<_>>();
-            sessions.sort_by(|left, right| {
-                right["updatedAt"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .cmp(left["updatedAt"].as_str().unwrap_or_default())
-            });
-            let start = cursor.min(sessions.len());
-            let end = (start + limit).min(sessions.len());
-            Ok(json!({
-                "success": true,
-                "sessions": sessions[start..end].to_vec(),
-                "hasNext": end < sessions.len(),
-                "nextCursor": if end < sessions.len() { Some(end.to_string()) } else { None::<String> },
-            }))
+            provider_session_ops::gemini_list_sessions(config, &payload, &active_sessions).await
         }
         MachineDataPlaneOperation::GeminiListMessages => {
             let session_id = payload
@@ -527,13 +623,8 @@ async fn dispatch_request(
                 .and_then(|child| child.metadata)
                 .and_then(|metadata| metadata.get("agentControlPort").cloned())
                 .and_then(|value| value.as_u64())
-                .and_then(|value| u16::try_from(value).ok())
-                .ok_or_else(|| anyhow!("Gemini session is not active on this machine"))?;
-            let mut helper_payload = payload.clone();
-            if let Some(object) = helper_payload.as_object_mut() {
-                object.insert("controlPort".to_string(), json!(control_port));
-            }
-            provider_session_ops::gemini_list_messages(&helper_payload).await
+                .and_then(|value| u16::try_from(value).ok());
+            provider_session_ops::gemini_list_messages(config, &payload, control_port).await
         }
         MachineDataPlaneOperation::GeminiSendMessage => {
             let session_id = payload
@@ -610,6 +701,7 @@ fn explicit_project_summaries(projects: Vec<OpenedProject>) -> Vec<Value> {
                 .unwrap_or_else(|| now.clone());
             json!({
                 "path": entry.path,
+                "displayPath": project_display_path(&entry.path),
                 "latestUpdatedAt": latest,
                 "codexThreadCount": 0,
                 "claudeSessionCount": 0,
@@ -617,6 +709,34 @@ fn explicit_project_summaries(projects: Vec<OpenedProject>) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+fn project_display_path(path: &str) -> String {
+    let normalized = path.trim();
+    if normalized.is_empty() {
+        return String::new();
+    }
+
+    let home_dir = std::env::var("HOME")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(home_dir) = home_dir {
+        if normalized == home_dir {
+            return "~".to_string();
+        }
+
+        let home_prefix = format!("{home_dir}/");
+        if normalized.starts_with(&home_prefix) {
+            let relative = normalized[home_prefix.len()..].trim_start_matches('/');
+            if relative.is_empty() {
+                return "~".to_string();
+            }
+            return format!("~/{}", relative);
+        }
+    }
+
+    normalized.to_string()
 }
 
 fn request_aad(frame: &MachineDataPlaneRequestFrame) -> String {
@@ -713,4 +833,27 @@ fn timestamp_to_rfc3339(timestamp_millis: u64) -> String {
         .ok()
         .and_then(|timestamp| timestamp.format(&time::format_description::well_known::Rfc3339).ok())
         .unwrap_or_else(|| timestamp_millis.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn machine_data_plane_request_adds_authentication_headers() {
+        let url = Url::parse("wss://api.unhappy.im/v1/machines/machine/data-plane").unwrap();
+        let request = machine_data_plane_request(&url, "token-123").unwrap();
+
+        assert_eq!(
+            request.headers().get(header::AUTHORIZATION).unwrap(),
+            "Bearer token-123"
+        );
+        assert_eq!(
+            request
+                .headers()
+                .get(header::SEC_WEBSOCKET_PROTOCOL)
+                .unwrap(),
+            MACHINE_DATA_PLANE_SUBPROTOCOL
+        );
+    }
 }

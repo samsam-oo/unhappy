@@ -67,19 +67,179 @@ struct SessionProjectsUseCasesTests {
         #expect(project.summary.path == "/repo/app")
         #expect(project.summary.openedExplicitly == true)
     }
+
+    @Test
+    func loadProjectsThrowsWhenAllMachineProjectFetchesFail() async {
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-1",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Work Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                )
+            ],
+            projectsByMachineID: [:],
+            fetchProjectsError: MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
+        )
+        let useCase = SessionProjectsLoadUseCase(service: service)
+
+        await #expect(throws: MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")) {
+            _ = try await useCase.loadProjects(
+                serverURLString: "https://api.unhappy.im",
+                token: "token"
+            )
+        }
+    }
+
+    @Test
+    func loadProjectsTimesOutPerMachineWithoutBlockingSuccessfulMachines() async throws {
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-fast",
+                    active: true,
+                    activeAt: 20,
+                    createdAt: 1,
+                    updatedAt: 20,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Fast Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+                APIMachine(
+                    id: "machine-slow",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Slow Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+            ],
+            projectsByMachineID: [
+                "machine-fast": [
+                    APIMachineProjectSummary(
+                        path: "/repo/app",
+                        latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                ]
+            ],
+            delayedMachineIDs: ["machine-slow"],
+            fetchDelay: .milliseconds(200)
+        )
+        let useCase = SessionProjectsLoadUseCase(
+            service: service,
+            machineRequestTimeout: .milliseconds(30)
+        )
+
+        let projects = try await useCase.loadProjects(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(projects.count == 1)
+        #expect(projects.first?.machineID == "machine-fast")
+    }
+
+    @Test
+    func loadProjectsStreamYieldsFastMachineBeforeSlowMachineTimesOut() async throws {
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-fast",
+                    active: true,
+                    activeAt: 20,
+                    createdAt: 1,
+                    updatedAt: 20,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Fast Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+                APIMachine(
+                    id: "machine-slow",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Slow Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+            ],
+            projectsByMachineID: [
+                "machine-fast": [
+                    APIMachineProjectSummary(
+                        path: "/repo/app",
+                        latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                ]
+            ],
+            delayedMachineIDs: ["machine-slow"],
+            fetchDelay: .milliseconds(200)
+        )
+        let useCase = SessionProjectsLoadUseCase(
+            service: service,
+            machineRequestTimeout: .milliseconds(30)
+        )
+        var iterator = await useCase.loadProjectsStream(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        ).makeAsyncIterator()
+
+        let firstSnapshot = await iterator.next()
+        let finalSnapshot = await iterator.next()
+
+        #expect(firstSnapshot?.isFinal == false)
+        #expect(firstSnapshot?.machineID == "machine-fast")
+        #expect(firstSnapshot?.projects.count == 1)
+        #expect(firstSnapshot?.projects.first?.machineID == "machine-fast")
+        #expect(finalSnapshot?.isFinal == true)
+        #expect(finalSnapshot?.machineID == nil)
+        #expect(finalSnapshot?.projects.isEmpty == true)
+    }
 }
 
 private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
     let machines: [APIMachine]
     let projectsByMachineID: [String: [APIMachineProjectSummary]]
+    let fetchProjectsError: Error?
+    let delayedMachineIDs: Set<String>
+    let fetchDelay: Duration?
     private(set) var requestedExplicitOnlyValues: [Bool] = []
 
     init(
         machines: [APIMachine],
-        projectsByMachineID: [String: [APIMachineProjectSummary]]
+        projectsByMachineID: [String: [APIMachineProjectSummary]],
+        fetchProjectsError: Error? = nil,
+        delayedMachineIDs: Set<String> = [],
+        fetchDelay: Duration? = nil
     ) {
         self.machines = machines
         self.projectsByMachineID = projectsByMachineID
+        self.fetchProjectsError = fetchProjectsError
+        self.delayedMachineIDs = delayedMachineIDs
+        self.fetchDelay = fetchDelay
     }
 
     func fetchMachines(serverURL: URL, token: String) async throws -> [APIMachine] {
@@ -94,6 +254,12 @@ private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
         requestedExplicitOnlyValues.append(explicitOnly)
+        if delayedMachineIDs.contains(machineID), let fetchDelay {
+            try await Task.sleep(for: fetchDelay)
+        }
+        if let fetchProjectsError {
+            throw fetchProjectsError
+        }
         return projectsByMachineID[machineID] ?? []
     }
 }

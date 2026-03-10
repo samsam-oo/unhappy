@@ -5,6 +5,7 @@ import CoreKit
 public final class SessionsViewModel: ObservableObject {
     private enum SyncPolicy {
         static let supportingDataRefreshInterval: TimeInterval = 15
+        static let initialPollingGraceInterval: Duration = .seconds(2)
     }
 
     @Published public private(set) var sessions: [APISession] = []
@@ -34,6 +35,10 @@ public final class SessionsViewModel: ObservableObject {
     private var lastSupportingDataSyncAt: TimeInterval?
     private var lastSupportingDataFingerprint: String?
     private var multiAgentInProgressCountCache = 0
+    private var activeUpstreamScopeIDs: Set<String> = []
+    private var activeUpstreamLoadCount = 0
+    private var supportingDataTask: Task<Void, Never>?
+    private var lastPrimarySessionLoadAt: TimeInterval?
 
     public init(
         loader: any SessionsLoading,
@@ -67,6 +72,10 @@ public final class SessionsViewModel: ObservableObject {
         )
     }
 
+    deinit {
+        supportingDataTask?.cancel()
+    }
+
     public func isRemoving(projectID: String) -> Bool {
         removingProjectID == projectID
     }
@@ -89,7 +98,6 @@ public final class SessionsViewModel: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
-        defer { isLoading = false }
 
         do {
             let firstPage = try await pageLoader.loadPage(
@@ -99,24 +107,19 @@ public final class SessionsViewModel: ObservableObject {
                 limit: 50
             )
             setSessionsIfChanged(firstPage.sessions)
-            await cleanupProviderBackedSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
-            await cleanupMirroredDuplicateSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
             nextCursor = firstPage.nextCursor
             hasMoreSessions = firstPage.hasNext
+            lastPrimarySessionLoadAt = Date().timeIntervalSince1970
             errorMessage = nil
-            await refreshSupportingProjectContent(
+            isLoading = false
+            scheduleSupportingDataRefresh(
                 serverURLString: serverURLString,
                 token: token,
                 force: true
             )
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            isLoading = false
         }
     }
 
@@ -125,10 +128,15 @@ public final class SessionsViewModel: ObservableObject {
         token: String,
         interval: Duration = .seconds(15)
     ) async {
-        isLoading = true
+        if sessions.isEmpty {
+            isLoading = true
+        }
         errorMessage = nil
 
         do {
+            if shouldDelayInitialPolling {
+                try await Task.sleep(for: SyncPolicy.initialPollingGraceInterval)
+            }
             let stream = await poller.makePollingStream(
                 serverURLString: serverURLString,
                 token: token,
@@ -136,15 +144,8 @@ public final class SessionsViewModel: ObservableObject {
             )
             for try await rows in stream {
                 setSessionsIfChanged(mergeLatestRows(rows, into: sessions))
-                await cleanupProviderBackedSessions(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                await cleanupMirroredDuplicateSessions(
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                await refreshSupportingProjectContent(
+                lastPrimarySessionLoadAt = Date().timeIntervalSince1970
+                scheduleSupportingDataRefresh(
                     serverURLString: serverURLString,
                     token: token,
                     force: false
@@ -224,16 +225,41 @@ public final class SessionsViewModel: ObservableObject {
             return
         }
         guard let upstreamSessionsLoader else { return }
-        guard !isLoadingUpstreamSessions else { return }
+        let acceptedProjects = beginUpstreamLoad(for: [targetProject])
+        guard !acceptedProjects.isEmpty else { return }
+        defer { endUpstreamLoad(for: acceptedProjects) }
 
-        isLoadingUpstreamSessions = true
-        defer { isLoadingUpstreamSessions = false }
+        if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
+            for await snapshot in await streamingLoader.loadUpstreamSessionsStream(
+                serverURLString: serverURLString,
+                token: token,
+                projects: acceptedProjects
+            ) {
+                if let machineID = snapshot.machineID,
+                   let scopedProjectPath = snapshot.projectPath {
+                    setUpstreamSessionsIfChanged(
+                        mergeProjectScopedUpstreamRows(
+                            existing: upstreamSessions,
+                            refreshed: snapshot.rows,
+                            machineID: machineID,
+                            projectPath: scopedProjectPath
+                        )
+                    )
+                }
+                if snapshot.errorMessage?.isEmpty == false {
+                    upstreamSessionsErrorMessage = snapshot.errorMessage
+                } else if snapshot.machineID != nil || snapshot.isFinal {
+                    upstreamSessionsErrorMessage = nil
+                }
+            }
+            return
+        }
 
         do {
             let refreshedRows = try await upstreamSessionsLoader.loadUpstreamSessions(
                 serverURLString: serverURLString,
                 token: token,
-                projects: [targetProject]
+                projects: acceptedProjects
             )
             setUpstreamSessionsIfChanged(mergeProjectScopedUpstreamRows(
                 existing: upstreamSessions,
@@ -257,16 +283,41 @@ public final class SessionsViewModel: ObservableObject {
             upstreamSessionsErrorMessage = nil
             return
         }
-        guard !isLoadingUpstreamSessions else { return }
+        let acceptedProjects = beginUpstreamLoad(for: projectsToSync)
+        guard !acceptedProjects.isEmpty else { return }
+        defer { endUpstreamLoad(for: acceptedProjects) }
 
-        isLoadingUpstreamSessions = true
-        defer { isLoadingUpstreamSessions = false }
+        if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
+            for await snapshot in await streamingLoader.loadUpstreamSessionsStream(
+                serverURLString: serverURLString,
+                token: token,
+                projects: acceptedProjects
+            ) {
+                if let machineID = snapshot.machineID,
+                   let projectPath = snapshot.projectPath {
+                    setUpstreamSessionsIfChanged(
+                        mergeProjectScopedUpstreamRows(
+                            existing: upstreamSessions,
+                            refreshed: snapshot.rows,
+                            machineID: machineID,
+                            projectPath: projectPath
+                        )
+                    )
+                }
+                if snapshot.errorMessage?.isEmpty == false {
+                    upstreamSessionsErrorMessage = snapshot.errorMessage
+                } else if snapshot.machineID != nil || snapshot.isFinal {
+                    upstreamSessionsErrorMessage = nil
+                }
+            }
+            return
+        }
 
         do {
             let rows = try await upstreamSessionsLoader.loadUpstreamSessions(
                 serverURLString: serverURLString,
                 token: token,
-                projects: projectsToSync
+                projects: acceptedProjects
             )
             setUpstreamSessionsIfChanged(rows)
             upstreamSessionsErrorMessage = nil
@@ -288,6 +339,37 @@ public final class SessionsViewModel: ObservableObject {
 
         isLoadingProjects = true
         defer { isLoadingProjects = false }
+
+        if let streamingProjectsLoader = projectsLoader as? any SessionProjectsStreamingAction {
+            for await snapshot in await streamingProjectsLoader.loadProjectsStream(
+                serverURLString: serverURLString,
+                token: token
+            ) {
+                let refreshedProjects = snapshot.projects.filter(\.summary.openedExplicitly)
+                if let machineID = snapshot.machineID {
+                    setProjectsIfChanged(
+                        mergeMachineScopedProjects(
+                            existing: projects,
+                            refreshed: refreshedProjects,
+                            machineID: machineID
+                        )
+                    )
+                    if !refreshedProjects.isEmpty {
+                        scheduleIncrementalUpstreamLoad(
+                            projects: refreshedProjects,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
+                }
+                if snapshot.errorMessage?.isEmpty == false {
+                    projectsErrorMessage = snapshot.errorMessage
+                } else if snapshot.machineID != nil || snapshot.isFinal {
+                    projectsErrorMessage = nil
+                }
+            }
+            return
+        }
 
         do {
             let loadedProjects = try await projectsLoader.loadProjects(
@@ -319,15 +401,21 @@ public final class SessionsViewModel: ObservableObject {
             return
         }
 
+        let usesIncrementalSupportingStreams =
+            (projectsLoader as? any SessionProjectsStreamingAction) != nil &&
+            (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
+
         await loadProjects(
             serverURLString: serverURLString,
             token: token
         )
-        await loadUpstreamSessions(
-            serverURLString: serverURLString,
-            token: token,
-            projectsToSync: projectsForUpstreamSync()
-        )
+        if !usesIncrementalSupportingStreams {
+            await loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token,
+                projectsToSync: projectsForUpstreamSync()
+            )
+        }
         lastSupportingDataFingerprint = fingerprint
         lastSupportingDataSyncAt = Date().timeIntervalSince1970
     }
@@ -354,7 +442,7 @@ public final class SessionsViewModel: ObservableObject {
         }
 
         do {
-            let openedProject = try await projectOpener.openProject(
+            _ = try await projectOpener.openProject(
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
@@ -362,14 +450,11 @@ public final class SessionsViewModel: ObservableObject {
                 path: projectPath,
                 wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
             )
-            if !projects.contains(where: { $0.id == openedProject.id }) {
-                projects.insert(openedProject, at: 0)
-            }
-                await refreshSupportingProjectContent(
-                    serverURLString: serverURLString,
-                    token: token,
-                    force: true
-                )
+            await refreshSupportingProjectContent(
+                serverURLString: serverURLString,
+                token: token,
+                force: true
+            )
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
@@ -422,6 +507,21 @@ public final class SessionsViewModel: ObservableObject {
 
     private func mergeLatestRows(_ latestRows: [APISession], into existingRows: [APISession]) -> [APISession] {
         sessionsMergeLatestRows(latestRows, into: existingRows)
+    }
+
+    private func scheduleIncrementalUpstreamLoad(
+        projects: [SessionMachineProject],
+        serverURLString: String,
+        token: String
+    ) {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.loadUpstreamSessions(
+                serverURLString: serverURLString,
+                token: token,
+                projectsToSync: projects
+            )
+        }
     }
 
     private func projectsForUpstreamSync() -> [SessionMachineProject] {
@@ -598,6 +698,65 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    private func beginUpstreamLoad(
+        for projects: [SessionMachineProject]
+    ) -> [SessionMachineProject] {
+        var acceptedProjects: [SessionMachineProject] = []
+        for project in projects {
+            guard let scopeID = canonicalProjectID(
+                machineID: project.machineID,
+                projectPath: project.summary.path
+            ) else {
+                continue
+            }
+            guard activeUpstreamScopeIDs.insert(scopeID).inserted else {
+                continue
+            }
+            acceptedProjects.append(project)
+        }
+        if !acceptedProjects.isEmpty {
+            activeUpstreamLoadCount += 1
+            isLoadingUpstreamSessions = true
+        }
+        return acceptedProjects
+    }
+
+    private func endUpstreamLoad(
+        for projects: [SessionMachineProject]
+    ) {
+        guard !projects.isEmpty else { return }
+        for project in projects {
+            if let scopeID = canonicalProjectID(
+                machineID: project.machineID,
+                projectPath: project.summary.path
+            ) {
+                activeUpstreamScopeIDs.remove(scopeID)
+            }
+        }
+        activeUpstreamLoadCount = max(0, activeUpstreamLoadCount - 1)
+        isLoadingUpstreamSessions = activeUpstreamLoadCount > 0
+    }
+
+    private func mergeMachineScopedProjects(
+        existing: [SessionMachineProject],
+        refreshed: [SessionMachineProject],
+        machineID: String
+    ) -> [SessionMachineProject] {
+        let retained = existing.filter { $0.machineID != machineID }
+        let merged = retained + refreshed
+        return merged.sorted { lhs, rhs in
+            let lhsDate = Date.parseISO8601(lhs.summary.latestUpdatedAt) ?? .distantPast
+            let rhsDate = Date.parseISO8601(rhs.summary.latestUpdatedAt) ?? .distantPast
+            if lhsDate != rhsDate {
+                return lhsDate > rhsDate
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.summary.path.localizedCaseInsensitiveCompare(rhs.summary.path) == .orderedAscending
+        }
+    }
+
     private func setSessionsIfChanged(_ nextSessions: [APISession]) {
         guard sessions != nextSessions else { return }
         sessions = nextSessions
@@ -612,5 +771,46 @@ public final class SessionsViewModel: ObservableObject {
     private func setUpstreamSessionsIfChanged(_ nextRows: [SessionLinkedUpstreamSession]) {
         guard upstreamSessions != nextRows else { return }
         upstreamSessions = nextRows
+    }
+
+    private var shouldDelayInitialPolling: Bool {
+        guard !sessions.isEmpty else { return false }
+        guard let lastPrimarySessionLoadAt else { return false }
+        return Date().timeIntervalSince1970 - lastPrimarySessionLoadAt < 5
+    }
+
+    func waitForPendingSupportingDataRefresh() async {
+        await supportingDataTask?.value
+    }
+
+    private func scheduleSupportingDataRefresh(
+        serverURLString: String,
+        token: String,
+        force: Bool
+    ) {
+        if force {
+            supportingDataTask?.cancel()
+        } else if supportingDataTask != nil {
+            return
+        }
+
+        supportingDataTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.supportingDataTask = nil }
+            await self.cleanupProviderBackedSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            await self.cleanupMirroredDuplicateSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            guard !Task.isCancelled else { return }
+            await self.refreshSupportingProjectContent(
+                serverURLString: serverURLString,
+                token: token,
+                force: force
+            )
+        }
     }
 }

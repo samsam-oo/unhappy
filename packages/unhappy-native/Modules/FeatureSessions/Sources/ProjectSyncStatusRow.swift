@@ -2,10 +2,12 @@ import SwiftUI
 
 struct ProjectSyncStatusPresentation: Equatable {
     enum Layout: Equatable {
+        case centered
         case leading
     }
 
     let layout: Layout
+    let showsSpinner: Bool
     let primaryText: String
     let secondaryText: String?
     let multiAgentStatus: MultiAgentStatusPresentation?
@@ -15,19 +17,19 @@ struct ProjectSyncStatusPresentation: Equatable {
         isRefreshing: Bool,
         refreshLabel: String
     ) {
-        _ = isRefreshing
-        _ = refreshLabel
         if let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
             inProgressCount: multiAgentInProgressCount
         ) {
             self.layout = .leading
+            self.showsSpinner = isRefreshing
             self.primaryText = multiAgentStatus.summaryText
-            self.secondaryText = nil
+            self.secondaryText = isRefreshing ? refreshLabel : nil
             self.multiAgentStatus = multiAgentStatus
             return
         }
-        self.layout = .leading
-        self.primaryText = ""
+        self.layout = .centered
+        self.showsSpinner = isRefreshing
+        self.primaryText = isRefreshing ? refreshLabel : "Projects are up to date"
         self.secondaryText = nil
         self.multiAgentStatus = nil
     }
@@ -75,6 +77,17 @@ public struct ProjectSyncStatusRow: View {
 
                     Spacer(minLength: 0)
                 }
+            } else {
+                HStack(spacing: 10) {
+                    if presentation.showsSpinner {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(presentation.primaryText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 12)

@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     collections::HashMap,
+    fs,
     path::PathBuf,
     process,
     sync::Arc,
@@ -131,32 +132,11 @@ impl DaemonState {
             .ok()
             .and_then(|bytes| serde_json::from_slice::<PersistedDaemonState>(&bytes).ok());
         let mut inner = self.inner.write().await;
-        inner.opened_projects = persisted_state
-            .map(|state| state.opened_projects)
-            .unwrap_or_else(|| {
-                store
-                    .tracked_sessions
-                    .iter()
-                    .filter_map(|session| {
-                        session
-                            .metadata
-                            .as_ref()
-                            .and_then(|metadata| metadata.get("directory"))
-                            .and_then(Value::as_str)
-                            .map(str::trim)
-                            .filter(|value| !value.is_empty())
-                            .map(|path| OpenedProject {
-                                path: path.to_string(),
-                                opened_at: None,
-                            })
-                    })
-                    .fold(Vec::<OpenedProject>::new(), |mut acc, entry| {
-                        if acc.iter().all(|item| item.path != entry.path) {
-                            acc.push(entry);
-                        }
-                        acc
-                    })
-            });
+        inner.opened_projects = restore_opened_projects(
+            &self.config,
+            persisted_state.as_ref(),
+            &store,
+        );
         inner.sessions_by_pid = store
             .tracked_sessions
             .into_iter()
@@ -554,6 +534,140 @@ impl DaemonState {
     }
 }
 
+fn restore_opened_projects(
+    config: &Config,
+    persisted_state: Option<&PersistedDaemonState>,
+    store: &PersistedSessionStore,
+) -> Vec<OpenedProject> {
+    if let Some(state) = persisted_state {
+        let restored = normalize_opened_projects(
+            state
+                .opened_projects
+                .iter()
+                .map(|entry| (entry.path.as_str(), entry.opened_at)),
+        );
+        if !restored.is_empty() {
+            return restored;
+        }
+    }
+
+    let restored_from_store = normalize_opened_projects(
+        store
+            .opened_projects
+            .iter()
+            .map(|path| (path.as_str(), None)),
+    );
+    if !restored_from_store.is_empty() {
+        return restored_from_store;
+    }
+
+    let restored_from_metadata = normalize_opened_projects(
+        store.tracked_sessions.iter().filter_map(|session| {
+            session
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("directory"))
+                .and_then(Value::as_str)
+                .map(|path| (path, None))
+        }),
+    );
+    if !restored_from_metadata.is_empty() {
+        return restored_from_metadata;
+    }
+
+    restore_opened_projects_from_codex_resume(config)
+}
+
+fn normalize_opened_projects<'a>(
+    paths: impl IntoIterator<Item = (&'a str, Option<u64>)>,
+) -> Vec<OpenedProject> {
+    let mut restored = Vec::new();
+    let fallback_opened_at = now_millis();
+    for (path, opened_at) in paths {
+        let normalized = path.trim();
+        if normalized.is_empty() {
+            continue;
+        }
+        if restored.iter().any(|entry: &OpenedProject| entry.path == normalized) {
+            continue;
+        }
+        restored.push(OpenedProject {
+            path: normalized.to_string(),
+            opened_at: Some(opened_at.unwrap_or(fallback_opened_at)),
+        });
+    }
+    restored
+}
+
+fn restore_opened_projects_from_codex_resume(config: &Config) -> Vec<OpenedProject> {
+    let resume_state_path = config.unhappy_home_dir.join("codex.resume.json");
+    let Ok(bytes) = fs::read(&resume_state_path) else {
+        return Vec::new();
+    };
+    let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
+        return Vec::new();
+    };
+    let Some(entries) = value.get("entries").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+
+    normalize_opened_projects(
+        entries
+            .keys()
+            .map(String::as_str)
+            .filter(|path| path_looks_like_project_root(path))
+            .map(|path| (path, None)),
+    )
+}
+
+fn path_looks_like_project_root(path: &str) -> bool {
+    let normalized = path.trim();
+    if normalized.is_empty() {
+        return false;
+    }
+
+    let candidate = PathBuf::from(normalized);
+    if !candidate.is_dir() {
+        return false;
+    }
+
+    if std::env::var("HOME")
+        .ok()
+        .map(PathBuf::from)
+        .as_ref()
+        == Some(&candidate)
+    {
+        return false;
+    }
+
+    const PROJECT_MARKERS: [&str; 8] = [
+        ".git",
+        "package.json",
+        "Cargo.toml",
+        "Project.swift",
+        "pyproject.toml",
+        "go.mod",
+        "pom.xml",
+        "Gemfile",
+    ];
+
+    if PROJECT_MARKERS
+        .iter()
+        .any(|marker| candidate.join(marker).exists())
+    {
+        return true;
+    }
+
+    let Ok(entries) = fs::read_dir(&candidate) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let path = entry.path();
+        path.extension().and_then(|value| value.to_str()) == Some("xcodeproj") ||
+            path.extension().and_then(|value| value.to_str()) == Some("xcworkspace")
+    })
+}
+
 fn parse_pid_fallback(session_id: &str) -> Option<u32> {
     session_id
         .strip_prefix("PID-")
@@ -608,6 +722,8 @@ mod tests {
             token: "token".to_string(),
             machine_id: "machine-id".to_string(),
             machine_data_key_base64url: "key".to_string(),
+            account_public_key_base64url: "public-key".to_string(),
+            current_cli_version: "0.14.15".to_string(),
             unhappy_home_dir: home_dir.to_path_buf(),
             provider_commands: ProviderCommandConfig::from_env().unwrap(),
             session_webhook_timeout_ms: 100,
@@ -697,5 +813,63 @@ mod tests {
             .unwrap();
         assert!(persisted.registry.tracked_sessions.is_empty());
         assert!(persisted.registry.awaiting_provider_session_pids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn restore_persisted_sessions_uses_session_store_opened_projects_when_state_is_empty() {
+        let temp_dir = tempdir().expect("tempdir");
+        let state = DaemonState::new_shared(test_config(temp_dir.path()));
+
+        write_json_file(
+            &state.session_store_path(),
+            &PersistedSessionStore {
+                schema_version: 1,
+                tracked_sessions: Vec::new(),
+                awaiting_provider_session_pids: Vec::new(),
+                opened_projects: vec!["/tmp/project-a".to_string(), "/tmp/project-b".to_string()],
+            },
+        )
+        .await
+        .unwrap();
+
+        state.restore_persisted_sessions().await.unwrap();
+
+        let opened = state.list_opened_projects().await;
+        assert_eq!(opened.len(), 2);
+        assert_eq!(opened[0].path, "/tmp/project-a");
+        assert_eq!(opened[1].path, "/tmp/project-b");
+        assert!(opened[0].opened_at.is_some());
+        assert!(opened[1].opened_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn restore_persisted_sessions_recovers_project_like_codex_resume_paths() {
+        let temp_dir = tempdir().expect("tempdir");
+        let workspace_dir = temp_dir.path().join("workspace");
+        let project_dir = workspace_dir.join("unhappy");
+        let home_like_dir = workspace_dir.join("home-root");
+        fs::create_dir_all(&project_dir).unwrap();
+        fs::create_dir_all(&home_like_dir).unwrap();
+        fs::write(project_dir.join("package.json"), "{}").unwrap();
+        fs::write(
+            temp_dir.path().join("codex.resume.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schemaVersion": 1,
+                "entries": {
+                    (project_dir.display().to_string()): { "cwd": project_dir.display().to_string() },
+                    (home_like_dir.display().to_string()): { "cwd": home_like_dir.display().to_string() }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let state = DaemonState::new_shared(test_config(temp_dir.path()));
+        state.restore_persisted_sessions().await.unwrap();
+
+        let opened = state.list_opened_projects().await;
+        assert_eq!(opened.len(), 1);
+        assert_eq!(opened[0].path, project_dir.display().to_string());
+        assert!(opened[0].opened_at.is_some());
     }
 }

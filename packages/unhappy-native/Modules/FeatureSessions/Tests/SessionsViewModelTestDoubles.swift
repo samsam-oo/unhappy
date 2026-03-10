@@ -213,6 +213,111 @@ actor RecordingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
     }
 }
 
+actor StreamingRecordingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction, SessionUpstreamSessionsStreamingAction {
+    private var calls = 0
+    private var requestedProjects: [[SessionMachineProject]] = []
+    let rows: [SessionLinkedUpstreamSession]
+
+    init(rows: [SessionLinkedUpstreamSession]) {
+        self.rows = rows
+    }
+
+    func loadUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async throws -> [SessionLinkedUpstreamSession] {
+        calls += 1
+        requestedProjects.append(projects)
+        return rows
+    }
+
+    func loadUpstreamSessionsStream(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async -> AsyncStream<SessionUpstreamSessionsLoadSnapshot> {
+        calls += 1
+        requestedProjects.append(projects)
+        let firstProject = projects.first
+        return AsyncStream { continuation in
+            continuation.yield(
+                SessionUpstreamSessionsLoadSnapshot(
+                    machineID: firstProject?.machineID,
+                    projectPath: firstProject?.summary.path,
+                    rows: rows,
+                    errorMessage: nil,
+                    isFinal: false
+                )
+            )
+            continuation.yield(
+                SessionUpstreamSessionsLoadSnapshot(
+                    machineID: nil,
+                    projectPath: nil,
+                    rows: [],
+                    errorMessage: nil,
+                    isFinal: true
+                )
+            )
+            continuation.finish()
+        }
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+
+    func requestedProjectSnapshots() -> [[SessionMachineProject]] {
+        requestedProjects
+    }
+}
+
+actor DelayedStreamingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction, SessionUpstreamSessionsStreamingAction {
+    private var requestedProjects: [[SessionMachineProject]] = []
+    let delay: Duration
+
+    init(delay: Duration) {
+        self.delay = delay
+    }
+
+    func loadUpstreamSessions(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async throws -> [SessionLinkedUpstreamSession] {
+        requestedProjects.append(projects)
+        try await Task.sleep(for: delay)
+        return []
+    }
+
+    func loadUpstreamSessionsStream(
+        serverURLString: String,
+        token: String,
+        projects: [SessionMachineProject]
+    ) async -> AsyncStream<SessionUpstreamSessionsLoadSnapshot> {
+        requestedProjects.append(projects)
+        return AsyncStream { continuation in
+            Task {
+                try? await Task.sleep(for: delay)
+                continuation.yield(
+                    SessionUpstreamSessionsLoadSnapshot(
+                        machineID: projects.first?.machineID,
+                        projectPath: projects.first?.summary.path,
+                        rows: [],
+                        errorMessage: nil,
+                        isFinal: true
+                    )
+                )
+                continuation.finish()
+            }
+        }
+    }
+
+    func requestedProjectSnapshots() -> [[SessionMachineProject]] {
+        requestedProjects
+    }
+}
+
 enum MockProjectsLoaderError: Error, Sendable {
     case failed
 }
@@ -258,6 +363,30 @@ actor RecordingProjectsLoader: SessionProjectsLoadingAction {
 
     func callCount() -> Int {
         calls
+    }
+}
+
+actor StreamingProjectsLoader: SessionProjectsLoadingAction, SessionProjectsStreamingAction {
+    let snapshots: [SessionProjectsLoadSnapshot]
+
+    init(snapshots: [SessionProjectsLoadSnapshot]) {
+        self.snapshots = snapshots
+    }
+
+    func loadProjects(serverURLString: String, token: String) async throws -> [SessionMachineProject] {
+        snapshots.last?.projects ?? []
+    }
+
+    func loadProjectsStream(
+        serverURLString: String,
+        token: String
+    ) async -> AsyncStream<SessionProjectsLoadSnapshot> {
+        AsyncStream { continuation in
+            for snapshot in snapshots {
+                continuation.yield(snapshot)
+            }
+            continuation.finish()
+        }
     }
 }
 

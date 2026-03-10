@@ -8,6 +8,7 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
     public let machineDisplayName: String
     public let wrappedMachineDataEncryptionKey: String?
     public let projectPath: String
+    public let projectDisplayPath: String
     public let hasConcreteProjectPath: Bool
     public let catalogSessionCount: Int
     public let catalogLatestUpdatedAt: TimeInterval
@@ -18,6 +19,7 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
         machineDisplayName: String,
         wrappedMachineDataEncryptionKey: String? = nil,
         projectPath: String,
+        projectDisplayPath: String? = nil,
         hasConcreteProjectPath: Bool,
         catalogSessionCount: Int = 0,
         catalogLatestUpdatedAt: TimeInterval = 0,
@@ -27,6 +29,7 @@ public struct SessionProjectGroup: Identifiable, Equatable, Sendable {
         self.machineDisplayName = machineDisplayName
         self.wrappedMachineDataEncryptionKey = wrappedMachineDataEncryptionKey
         self.projectPath = projectPath
+        self.projectDisplayPath = projectDisplayPath ?? projectPath
         self.hasConcreteProjectPath = hasConcreteProjectPath
         self.catalogSessionCount = max(0, catalogSessionCount)
         self.catalogLatestUpdatedAt = max(0, catalogLatestUpdatedAt)
@@ -84,6 +87,7 @@ public extension SessionListPresentationBuilder {
             var machineDisplayName: String
             var wrappedMachineDataEncryptionKey: String?
             var projectPath: String
+            var projectDisplayPath: String
             var hasConcreteProjectPath: Bool
             var catalogSessionCount: Int
             var catalogLatestUpdatedAt: TimeInterval
@@ -95,6 +99,9 @@ public extension SessionListPresentationBuilder {
         for project in explicitProjects {
             let rawProjectPath = project.summary.path.trimmingCharacters(in: .whitespacesAndNewlines)
             let projectPath = normalizedProjectPath(rawProjectPath) ?? rawProjectPath
+            let trimmedDisplayPath = project.summary.displayPath?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let projectDisplayPath = (trimmedDisplayPath?.isEmpty == false ? trimmedDisplayPath : nil) ?? projectPath
             guard !projectPath.isEmpty else { continue }
             let key = "\(project.machineID)|\(projectPath)"
             if groups[key] == nil {
@@ -102,6 +109,7 @@ public extension SessionListPresentationBuilder {
                     machineDisplayName: project.machineDisplayName,
                     wrappedMachineDataEncryptionKey: project.wrappedMachineDataEncryptionKey,
                     projectPath: projectPath,
+                    projectDisplayPath: projectDisplayPath,
                     hasConcreteProjectPath: true,
                     catalogSessionCount: max(0, project.summary.codexThreadCount + project.summary.claudeSessionCount),
                     catalogLatestUpdatedAt: parseISO8601(project.summary.latestUpdatedAt)?.timeIntervalSince1970 ?? 0
@@ -115,6 +123,7 @@ public extension SessionListPresentationBuilder {
                 if accumulator.wrappedMachineDataEncryptionKey == nil {
                     accumulator.wrappedMachineDataEncryptionKey = project.wrappedMachineDataEncryptionKey
                 }
+                accumulator.projectDisplayPath = projectDisplayPath
                 accumulator.hasConcreteProjectPath = true
                 accumulator.catalogSessionCount = max(
                     accumulator.catalogSessionCount,
@@ -149,6 +158,7 @@ public extension SessionListPresentationBuilder {
                 machineDisplayName: value.machineDisplayName,
                 wrappedMachineDataEncryptionKey: value.wrappedMachineDataEncryptionKey,
                 projectPath: value.projectPath,
+                projectDisplayPath: value.projectDisplayPath,
                 hasConcreteProjectPath: value.hasConcreteProjectPath,
                 catalogSessionCount: value.catalogSessionCount,
                 catalogLatestUpdatedAt: value.catalogLatestUpdatedAt,

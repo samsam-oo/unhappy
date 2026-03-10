@@ -24,6 +24,7 @@ struct UnhappyNativeApp: App {
     private let makeTerminalConnectViewModel: @MainActor () -> TerminalConnectSettingsViewModel
     private let makeAccountLinkViewModel: @MainActor () -> AccountLinkSettingsViewModel
     private let makeServerStatusViewModel: @MainActor () -> HomeServerConnectionStatusViewModel
+    private let accountSecretPresenceChecker: any AccountSecretPresenceCheckingAction
 
     init() {
         let settingsStore = UserDefaultsAppSettingsStore()
@@ -79,6 +80,7 @@ struct UnhappyNativeApp: App {
         let accountRestoreQRUseCase = AccountRestoreQRUseCase(
             requestService: accountRestoreRequestService
         )
+        let accountSecretPresenceUseCase = AccountSecretPresenceUseCase(store: accountSecretStore)
         let onboardingUseCase = HomeAccountOnboardingUseCase(
             authTokenService: authTokenService,
             secretStore: accountSecretStore
@@ -178,6 +180,7 @@ struct UnhappyNativeApp: App {
         self.makeServerStatusViewModel = {
             HomeServerConnectionStatusViewModel(loader: homeServerStatusLoader)
         }
+        self.accountSecretPresenceChecker = accountSecretPresenceUseCase
     }
 
     var body: some Scene {
@@ -194,7 +197,8 @@ struct UnhappyNativeApp: App {
                 makeDaemonStatusViewModel: makeDaemonStatusViewModel,
                 makeTerminalConnectViewModel: makeTerminalConnectViewModel,
                 makeAccountLinkViewModel: makeAccountLinkViewModel,
-                makeServerStatusViewModel: makeServerStatusViewModel
+                makeServerStatusViewModel: makeServerStatusViewModel,
+                accountSecretPresenceChecker: accountSecretPresenceChecker
             )
             .preferredColorScheme(preferredColorScheme)
         }

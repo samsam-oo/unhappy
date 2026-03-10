@@ -1,4 +1,4 @@
-import WebSocket from 'ws'
+import WebSocket, { type RawData } from 'ws'
 
 import { configuration } from '@/configuration'
 import { logger } from '@/ui/logger'
@@ -80,7 +80,7 @@ export class MachineDataPlaneClient {
       socket.send(JSON.stringify(this.localHandshake.hello))
     })
 
-    socket.on('message', async (raw) => {
+    socket.on('message', async (raw: RawData) => {
       const text = typeof raw === 'string' ? raw : raw.toString('utf8')
       let frame: MachineDataPlaneFrame | unknown
       try {
@@ -111,7 +111,7 @@ export class MachineDataPlaneClient {
       this.reconnectTimer.unref?.()
     })
 
-    socket.on('error', (error) => {
+    socket.on('error', (error: Error) => {
       logger.debug('[MACHINE DP] Data-plane websocket error', error)
     })
   }
