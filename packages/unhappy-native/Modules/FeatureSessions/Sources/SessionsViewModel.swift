@@ -758,9 +758,12 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     private func setSessionsIfChanged(_ nextSessions: [APISession]) {
-        guard sessions != nextSessions else { return }
-        sessions = nextSessions
-        multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(nextSessions)
+        let filteredSessions = nextSessions.filter { session in
+            SessionUpstreamIdentity(session: session)?.provider != .codex
+        }
+        guard sessions != filteredSessions else { return }
+        sessions = filteredSessions
+        multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(filteredSessions)
     }
 
     private func setProjectsIfChanged(_ nextProjects: [SessionMachineProject]) {
