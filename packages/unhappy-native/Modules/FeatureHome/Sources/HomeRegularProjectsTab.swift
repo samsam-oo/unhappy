@@ -349,7 +349,7 @@ struct HomeRegularProjectsTab: View {
 
     private var projectGroups: [SessionProjectGroup] {
         SessionListPresentationBuilder.projectGroups(
-            upstreamSessions: viewModel.upstreamSessions,
+            upstreamSessions: viewModel.aggregatedProjectRows,
             projects: viewModel.projects
         )
     }
