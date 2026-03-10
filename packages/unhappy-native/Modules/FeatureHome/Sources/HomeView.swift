@@ -342,14 +342,16 @@ public struct HomeView: View {
 
     private func brandedMark(size: CGFloat, cornerRadius: CGFloat) -> some View {
         Image("UnhappyMark")
+            .renderingMode(.template)
             .resizable()
             .interpolation(.high)
             .scaledToFit()
             .frame(width: size, height: size)
+            .foregroundStyle(colorScheme == .dark ? .white : .black)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(.white.opacity(colorScheme == .dark ? 0.08 : 0.18), lineWidth: 1)
+                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.18), lineWidth: 1)
             }
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 12, y: 6)
             .accessibilityHidden(true)

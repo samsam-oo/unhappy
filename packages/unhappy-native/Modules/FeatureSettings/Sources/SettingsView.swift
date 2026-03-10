@@ -5,6 +5,7 @@ import FeatureMachine
 @MainActor
 public struct SettingsView: View {
     @ObservedObject private var viewModel: SettingsViewModel
+    @Environment(\.colorScheme) private var colorScheme
     private let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     private let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
     private let makeDaemonStatusViewModel: @MainActor () -> ConnectorsDaemonStatusViewModel
@@ -155,9 +156,11 @@ public struct SettingsView: View {
     private var splitDetailPlaceholder: some View {
         VStack(spacing: 10) {
             Image("UnhappyMark")
+                .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 74, height: 74)
+                .foregroundStyle(colorScheme == .dark ? .white : .black)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -250,7 +253,7 @@ private struct ChangelogRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Label("Changelog", systemImage: "text.book.closed.fill")
+            Label("Changelog", systemImage: "text.book.closed")
             Spacer()
             if hasUnread {
                 Text("NEW")

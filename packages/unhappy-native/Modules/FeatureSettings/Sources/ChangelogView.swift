@@ -2,72 +2,61 @@ import SwiftUI
 
 public struct ChangelogView: View {
     private let entries: [ChangelogEntry]
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(entries: [ChangelogEntry] = SettingsChangelog.entries) {
         self.entries = entries
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                changelogHero
+        List {
+            Section {
+                HStack(alignment: .center, spacing: 14) {
+                    Image("UnhappyMark")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 44, height: 44)
+                        .foregroundStyle(colorScheme == .dark ? .white : .black)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("What changed in Unhappy")
+                            .font(.headline)
+                        Text("Recent app updates, UI refinements, and session workflow fixes.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .listRowBackground(Color(uiColor: .secondarySystemBackground))
 
-                ForEach(entries) { entry in
-                    VStack(alignment: .leading, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.title)
-                                .font(.headline)
-                            Text("\(entry.id) • \(entry.publishedAt)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        ForEach(entry.highlights, id: \.self) { highlight in
-                            HStack(alignment: .top, spacing: 10) {
-                                Circle()
-                                    .fill(Color.primary.opacity(0.18))
-                                    .frame(width: 7, height: 7)
-                                    .padding(.top, 6)
-                                Text(highlight)
-                                    .font(.body)
-                                    .foregroundStyle(.primary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+            ForEach(entries) { entry in
+                Section {
+                    ForEach(entry.highlights, id: \.self) { highlight in
+                        HStack(alignment: .top, spacing: 10) {
+                            Circle()
+                                .fill(Color.primary.opacity(0.18))
+                                .frame(width: 7, height: 7)
+                                .padding(.top, 6)
+                            Text(highlight)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
-                    .padding(18)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemBackground))
-                    )
+                } header: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(entry.title)
+                            .font(.headline)
+                        Text("\(entry.id) • \(entry.publishedAt)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .textCase(nil)
                 }
             }
         }
-        .padding(20)
-        .background(Color(uiColor: .systemGroupedBackground))
+        .listStyle(.insetGrouped)
         .navigationTitle("Changelog")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var changelogHero: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Image("UnhappyMark")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 72, height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            Text("What changed in Unhappy")
-                .font(.title3.weight(.bold))
-            Text("Recent app updates, UI refinements, and session workflow fixes.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(uiColor: .secondarySystemBackground))
-        )
     }
 }
 
