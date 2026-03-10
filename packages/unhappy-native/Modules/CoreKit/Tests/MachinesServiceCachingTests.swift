@@ -118,7 +118,8 @@ struct MachinesServiceCachingTests {
         let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
         let service = URLSessionMachinesService(
             httpClient: httpClient,
-            rpcDirectoryService: rpcDirectoryService
+            rpcDirectoryService: rpcDirectoryService,
+            prewarmPolicy: TestMachineDataPlanePrewarmPolicy(allowsBackgroundPrewarm: true)
         )
 
         _ = try await service.fetchMachines(
@@ -157,7 +158,8 @@ struct MachinesServiceCachingTests {
         let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
         let service = URLSessionMachinesService(
             httpClient: httpClient,
-            rpcDirectoryService: rpcDirectoryService
+            rpcDirectoryService: rpcDirectoryService,
+            prewarmPolicy: TestMachineDataPlanePrewarmPolicy(allowsBackgroundPrewarm: true)
         )
 
         _ = try await service.fetchMachines(
@@ -199,7 +201,8 @@ struct MachinesServiceCachingTests {
         let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
         let service = URLSessionMachinesService(
             httpClient: httpClient,
-            rpcDirectoryService: rpcDirectoryService
+            rpcDirectoryService: rpcDirectoryService,
+            prewarmPolicy: TestMachineDataPlanePrewarmPolicy(allowsBackgroundPrewarm: true)
         )
 
         _ = try await service.fetchMachines(
@@ -283,6 +286,18 @@ struct MachinesServiceCachingTests {
         #expect(capabilities.reasoningEfforts == ["high"])
         #expect(await httpClient.requestCount == 1)
         #expect(await rpcDirectoryService.invokedCommands == ["list-models"])
+    }
+}
+
+private actor TestMachineDataPlanePrewarmPolicy: MachineDataPlanePrewarmPolicy {
+    let allowsBackgroundPrewarmValue: Bool
+
+    init(allowsBackgroundPrewarm: Bool) {
+        allowsBackgroundPrewarmValue = allowsBackgroundPrewarm
+    }
+
+    func allowsBackgroundPrewarm() async -> Bool {
+        allowsBackgroundPrewarmValue
     }
 }
 

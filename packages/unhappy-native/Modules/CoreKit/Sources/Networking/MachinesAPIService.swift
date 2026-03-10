@@ -273,12 +273,28 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String
     ) {
+        let prewarmPolicy = self.prewarmPolicy
+        Task(priority: .utility) {
+            guard await prewarmPolicy.allowsBackgroundPrewarm() else { return }
+            await self.performMachineDataPlanePrewarm(
+                machines: machines,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
+
+    private func performMachineDataPlanePrewarm(
+        machines: [APIMachine],
+        serverURL: URL,
+        token: String
+    ) async {
         let rpcDirectoryService = self.rpcDirectoryService
         let now = Date().timeIntervalSince1970
         let eligibleMachines = machines.compactMap { machine -> (APIMachine, String)? in
             guard machine.active else { return nil }
             guard machine.activeAt > 0 else { return nil }
-            guard now - machine.activeAt <= MachineDataPlanePrewarmPolicy.recentActivityInterval else {
+            guard now - machine.activeAt <= MachineDataPlanePrewarmConfig.recentActivityInterval else {
                 return nil
             }
             guard let wrappedKey = machine.dataEncryptionKey?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -293,7 +309,7 @@ extension URLSessionMachinesService {
                 wrappedMachineDataEncryptionKey: wrappedKey
             )
             if let lastPrewarmAt = lastMachineDataPlanePrewarmAt[prewarmKey],
-               now - lastPrewarmAt < MachineDataPlanePrewarmPolicy.throttleInterval {
+               now - lastPrewarmAt < MachineDataPlanePrewarmConfig.throttleInterval {
                 return nil
             }
             lastMachineDataPlanePrewarmAt[prewarmKey] = now
@@ -301,17 +317,15 @@ extension URLSessionMachinesService {
         }
         guard !eligibleMachines.isEmpty else { return }
 
-        Task(priority: .utility) {
-            await withTaskGroup(of: Void.self) { group in
-                for (machine, wrappedKey) in eligibleMachines {
-                    group.addTask {
-                        await rpcDirectoryService.prewarmMachineDataPlane(
-                            serverURL: serverURL,
-                            token: token,
-                            machineID: machine.id,
-                            wrappedMachineDataEncryptionKey: wrappedKey
-                        )
-                    }
+        await withTaskGroup(of: Void.self) { group in
+            for (machine, wrappedKey) in eligibleMachines {
+                group.addTask {
+                    await rpcDirectoryService.prewarmMachineDataPlane(
+                        serverURL: serverURL,
+                        token: token,
+                        machineID: machine.id,
+                        wrappedMachineDataEncryptionKey: wrappedKey
+                    )
                 }
             }
         }
