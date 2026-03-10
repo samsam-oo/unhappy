@@ -384,8 +384,7 @@ public struct SessionProjectDetailView: View {
                     machineID: initialGroup.machineID,
                     projectPath: initialGroup.projectPath
                 )
-            ) &&
-            viewModel.upstreamSessionsErrorMessage == nil
+            )
     }
 
     private var shouldTriggerInitialProjectSessionLoad: Bool {
@@ -447,7 +446,7 @@ public struct SessionProjectDetailView: View {
             token: token
         )
         guard archived else {
-            archiveErrorMessage = viewModel.upstreamSessionsErrorMessage ?? "Failed to archive session"
+            archiveErrorMessage = "Failed to archive session"
             return
         }
     }

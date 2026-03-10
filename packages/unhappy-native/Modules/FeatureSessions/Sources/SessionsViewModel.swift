@@ -344,6 +344,12 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async {
+        guard shouldLoadGlobalUpstreamState else {
+            setUpstreamSessionsIfChanged([])
+            upstreamSessionsErrorMessage = nil
+            isLoadingUpstreamSessions = false
+            return
+        }
         await loadUpstreamSessions(
             serverURLString: serverURLString,
             token: token,
@@ -588,7 +594,7 @@ public final class SessionsViewModel: ObservableObject {
             (projectsLoader as? any SessionProjectsStreamingAction) != nil &&
             (
                 shouldHydrateProjectScopedSessionsForLists ||
-                (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
+                shouldLoadGlobalUpstreamState && (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
             )
 
         await loadProjects(
@@ -760,6 +766,9 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) {
+        guard shouldHydrateProjectScopedSessionsForLists || shouldLoadGlobalUpstreamState else {
+            return
+        }
         Task { [weak self] in
             guard let self else { return }
             await self.loadUpstreamSessions(
@@ -1115,6 +1124,12 @@ public final class SessionsViewModel: ObservableObject {
 
     private var shouldHydrateProjectScopedSessionsForLists: Bool {
         projectSessionsLoader != nil && recentCatalogSessionsLoader == nil
+    }
+
+    private var shouldLoadGlobalUpstreamState: Bool {
+        upstreamSessionsLoader != nil &&
+            projectSessionsLoader == nil &&
+            recentCatalogSessionsLoader == nil
     }
 
     func waitForPendingSupportingDataRefresh() async {
