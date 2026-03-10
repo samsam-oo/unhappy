@@ -262,7 +262,7 @@ extension URLSessionMachinesService {
         let activeMachines = machines.filter(\.active)
         guard !activeMachines.isEmpty else { return }
 
-        Task(priority: .utility) {
+        Task(priority: .userInitiated) {
             await withTaskGroup(of: Void.self) { group in
                 for machine in activeMachines where machine.dataEncryptionKey?.isEmpty == false {
                     group.addTask {

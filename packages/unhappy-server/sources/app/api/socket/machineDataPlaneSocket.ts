@@ -31,6 +31,7 @@ type ConnectionState = {
     role: MachineDataPlaneRole | null;
     hello: MachineDataPlaneHelloFrame | null;
     ready: boolean;
+    handshakeTimeout: ReturnType<typeof setTimeout> | null;
 };
 
 type StreamState = {
@@ -44,6 +45,7 @@ type MachineRouteState = {
 };
 
 const machinePathPattern = /^\/v1\/machines\/([^/]+)\/data-plane\/?$/;
+const NATIVE_HANDSHAKE_TIMEOUT_MS = 2_500;
 
 function machineKey(userId: string, machineId: string): string {
     return `${userId}:${machineId}`;
@@ -103,6 +105,12 @@ export function startMachineDataPlaneSocket(app: Fastify) {
     const machineRoutes = new Map<string, MachineRouteState>();
     const socketStates = new WeakMap<WebSocket, ConnectionState>();
 
+    function clearHandshakeTimeout(state: ConnectionState | undefined): void {
+        if (!state?.handshakeTimeout) return;
+        clearTimeout(state.handshakeTimeout);
+        state.handshakeTimeout = null;
+    }
+
     function getRouteState(userId: string, machineId: string): MachineRouteState {
         const key = machineKey(userId, machineId);
         const existing = machineRoutes.get(key);
@@ -113,6 +121,7 @@ export function startMachineDataPlaneSocket(app: Fastify) {
     }
 
     function cleanupState(state: ConnectionState): void {
+        clearHandshakeTimeout(state);
         const key = machineKey(state.userId, state.machineId);
         const routeState = machineRoutes.get(key);
         if (!routeState) return;
@@ -188,6 +197,26 @@ export function startMachineDataPlaneSocket(app: Fastify) {
         sendJSONFrame(daemon.socket, daemonAck);
         native.ready = true;
         daemon.ready = true;
+        clearHandshakeTimeout(native);
+        clearHandshakeTimeout(daemon);
+    }
+
+    function scheduleNativeHandshakeTimeout(routeState: MachineRouteState, state: ConnectionState): void {
+        clearHandshakeTimeout(state);
+        state.handshakeTimeout = setTimeout(() => {
+            const currentNative = routeState.native;
+            if (!currentNative || currentNative.socket !== state.socket || currentNative.ready) {
+                return;
+            }
+            if (routeState.daemon?.ready) {
+                return;
+            }
+            log(
+                { module: "machine-data-plane", level: "warn" },
+                `Native data-plane handshake timed out for machine ${state.machineId}`
+            );
+            state.socket.close(1013, "Daemon data-plane connection timed out");
+        }, NATIVE_HANDSHAKE_TIMEOUT_MS);
     }
 
     function dropPeerForRenegotiation(
@@ -232,6 +261,9 @@ export function startMachineDataPlaneSocket(app: Fastify) {
 
         if (role === "native") {
             routeState.native = state;
+            if (!routeState.daemon?.ready) {
+                scheduleNativeHandshakeTimeout(routeState, state);
+            }
         } else {
             routeState.daemon = state;
         }
@@ -366,6 +398,7 @@ export function startMachineDataPlaneSocket(app: Fastify) {
                     role: null,
                     hello: null,
                     ready: false,
+                    handshakeTimeout: null,
                 };
                 socketStates.set(ws, state);
 
