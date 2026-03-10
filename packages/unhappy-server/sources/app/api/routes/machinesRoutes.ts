@@ -14,6 +14,7 @@ import {
     findConnectedMachine,
     invokePublicCommand
 } from "./codexPublicCommands";
+import { Prisma } from "@prisma/client";
 
 export function machinesRoutes(app: Fastify) {
     const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 30;
@@ -68,6 +69,24 @@ export function machinesRoutes(app: Fastify) {
             archived: row.archived,
             model: row.model,
         };
+    }
+
+    function isMissingCatalogTableError(error: unknown): boolean {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+            return false;
+        }
+        return error.code === 'P2021'
+            && typeof error.meta?.table === 'string'
+            && (error.meta.table.includes('MachineSessionCatalogEntry')
+                || error.meta.table.includes('MachineProjectCatalogEntry'));
+    }
+
+    function sendCatalogUnavailable(reply: any) {
+        return reply.code(503).send({
+            error: 'Session catalog unavailable',
+            message: 'Session catalog tables are unavailable until the latest database migrations are applied',
+            statusCode: 503,
+        });
     }
 
     async function replaceSessionCatalogScope(
@@ -540,8 +559,15 @@ export function machinesRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Machine not found' });
         }
 
-        for (const scope of request.body.scopes) {
-            await replaceSessionCatalogScope(userId, id, scope);
+        try {
+            for (const scope of request.body.scopes) {
+                await replaceSessionCatalogScope(userId, id, scope);
+            }
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
         }
 
         return reply.send({
@@ -652,19 +678,27 @@ export function machinesRoutes(app: Fastify) {
         const cursor = Number.parseInt((request.query.cursor ?? '').trim(), 10);
         const offset = Number.isFinite(cursor) && cursor >= 0 ? cursor : 0;
 
-        const rows = await db.machineSessionCatalogEntry.findMany({
-            where: {
-                accountId: userId,
-                machineId: id,
-                projectPath,
-            },
-            orderBy: [
-                { providerUpdatedAt: 'desc' },
-                { providerSessionId: 'asc' },
-            ],
-            skip: offset,
-            take: limit + 1,
-        });
+        let rows;
+        try {
+            rows = await db.machineSessionCatalogEntry.findMany({
+                where: {
+                    accountId: userId,
+                    machineId: id,
+                    projectPath,
+                },
+                orderBy: [
+                    { providerUpdatedAt: 'desc' },
+                    { providerSessionId: 'asc' },
+                ],
+                skip: offset,
+                take: limit + 1,
+            });
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
+        }
 
         const hasNext = rows.length > limit;
         const pageRows = hasNext ? rows.slice(0, limit) : rows;
@@ -704,7 +738,15 @@ export function machinesRoutes(app: Fastify) {
             return reply.code(404).send({ error: 'Machine not found' });
         }
 
-        const projects = await buildMachineProjectCatalogRows(userId, id);
+        let projects;
+        try {
+            projects = await buildMachineProjectCatalogRows(userId, id);
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
+        }
         return reply.send({
             success: true,
             projects,
@@ -725,18 +767,26 @@ export function machinesRoutes(app: Fastify) {
         const cursor = Number.parseInt((request.query.cursor ?? '').trim(), 10);
         const offset = Number.isFinite(cursor) && cursor >= 0 ? cursor : 0;
 
-        const rows = await db.machineSessionCatalogEntry.findMany({
-            where: {
-                accountId: userId,
-            },
-            orderBy: [
-                { providerUpdatedAt: 'desc' },
-                { machineId: 'asc' },
-                { providerSessionId: 'asc' },
-            ],
-            skip: offset,
-            take: limit + 1,
-        });
+        let rows;
+        try {
+            rows = await db.machineSessionCatalogEntry.findMany({
+                where: {
+                    accountId: userId,
+                },
+                orderBy: [
+                    { providerUpdatedAt: 'desc' },
+                    { machineId: 'asc' },
+                    { providerSessionId: 'asc' },
+                ],
+                skip: offset,
+                take: limit + 1,
+            });
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
+        }
 
         const hasNext = rows.length > limit;
         const pageRows = hasNext ? rows.slice(0, limit) : rows;
