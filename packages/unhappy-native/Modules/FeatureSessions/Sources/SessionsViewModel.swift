@@ -150,7 +150,7 @@ public final class SessionsViewModel: ObservableObject {
         return projectScopedSessionErrors[scopeID]
     }
 
-    public var aggregatedRecentSessions: [SessionLinkedUpstreamSession] {
+    public var aggregatedProjectRows: [SessionLinkedUpstreamSession] {
         var rowsByID: [String: SessionLinkedUpstreamSession] = [:]
         for row in upstreamSessions {
             rowsByID[row.id] = row
@@ -173,6 +173,10 @@ public final class SessionsViewModel: ObservableObject {
             }
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
+    }
+
+    public var aggregatedRecentSessions: [SessionLinkedUpstreamSession] {
+        aggregatedProjectRows
     }
 
     public func load(serverURLString: String, token: String) async {
