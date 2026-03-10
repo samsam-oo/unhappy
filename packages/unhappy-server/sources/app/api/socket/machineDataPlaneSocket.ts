@@ -190,15 +190,44 @@ export function startMachineDataPlaneSocket(app: Fastify) {
         daemon.ready = true;
     }
 
+    function dropPeerForRenegotiation(
+        routeState: MachineRouteState,
+        peerRole: MachineDataPlaneRole,
+        reason: string
+    ): void {
+        const peer = peerRole === "native" ? routeState.native : routeState.daemon;
+        if (!peer) return;
+
+        routeState.streams.clear();
+        if (peerRole === "native") {
+            routeState.native = undefined;
+        } else {
+            routeState.daemon = undefined;
+        }
+        peer.socket.close(1012, reason);
+    }
+
     function registerHello(state: ConnectionState, hello: MachineDataPlaneHelloFrame): void {
         const routeState = getRouteState(state.userId, state.machineId);
         const role = MachineDataPlaneRoleSchema.parse(hello.role);
         state.role = role;
         state.hello = hello;
+        state.ready = false;
 
         const existing = role === "native" ? routeState.native : routeState.daemon;
         if (existing && existing.socket !== state.socket) {
+            routeState.streams.clear();
             existing.socket.close(1012, "Superseded by a newer data-plane connection");
+        }
+
+        const peerRole = role === "native" ? "daemon" : "native";
+        const peer = peerRole === "native" ? routeState.native : routeState.daemon;
+        if (peer?.ready) {
+            dropPeerForRenegotiation(
+                routeState,
+                peerRole,
+                "Peer reconnected; renegotiating data-plane session"
+            );
         }
 
         if (role === "native") {
