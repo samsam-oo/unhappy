@@ -368,6 +368,9 @@ private struct ProjectDirectSessionRow: View {
 
     var body: some View {
         let updatedLabel = SessionTimestampPresentation.updatedLabelIfKnown(for: updatedAt)
+        let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
+            inProgressCount: identity.collabInProgressCount
+        )
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(identity.title)
@@ -376,6 +379,10 @@ private struct ProjectDirectSessionRow: View {
                 Text(identity.provider.displayName)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if let multiAgentStatus {
+                    MultiAgentStatusBadge(presentation: multiAgentStatus)
+                }
             }
 
             HStack(spacing: 8) {

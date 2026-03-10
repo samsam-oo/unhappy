@@ -19,6 +19,31 @@ struct MultiAgentStatusPresentation: Equatable, Sendable {
     }
 }
 
+struct MultiAgentStatusBadge: View {
+    let presentation: MultiAgentStatusPresentation
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: presentation.symbolName)
+                .font(.caption2.weight(.semibold))
+            Text(presentation.summaryText)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(presentation.badgeForeground)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(presentation.badgeBackground)
+        )
+        .overlay {
+            Capsule(style: .continuous)
+                .stroke(presentation.badgeForeground.opacity(0.22), lineWidth: 1)
+        }
+    }
+}
+
 enum MultiAgentStatusPresentationBuilder {
     static func make(inProgressCount: Int) -> MultiAgentStatusPresentation? {
         let safeCount = max(0, inProgressCount)

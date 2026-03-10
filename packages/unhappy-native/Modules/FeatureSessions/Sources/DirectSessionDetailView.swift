@@ -178,8 +178,8 @@ public struct DirectSessionDetailView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 8) {
-                if viewModel.identity.collabInProgressCount > 0 {
-                    SessionSubAgentLiveBar(count: viewModel.identity.collabInProgressCount)
+                if displayedCollabCount > 0 {
+                    SessionSubAgentLiveBar(count: displayedCollabCount)
                 }
                 bottomDock
                     .padding(.horizontal, 12)
@@ -307,6 +307,46 @@ public struct DirectSessionDetailView: View {
         cachedTranscriptPresentations
     }
 
+    private var displayedCollabCount: Int {
+        max(viewModel.identity.collabInProgressCount, transcriptDerivedCollabCount)
+    }
+
+    private var transcriptDerivedCollabCount: Int {
+        let entries = transcriptPresentations.flatMap(\.entries)
+        let sidechainThreads = Set(
+            entries
+                .filter(\.isSidechain)
+                .compactMap(\.threadID)
+        )
+        if !sidechainThreads.isEmpty {
+            return sidechainThreads.count
+        }
+
+        let relevantToolNames = Set(["spawn_agent", "wait"])
+        let startedToolUseIDs = Set(
+            entries.compactMap { entry -> String? in
+                guard entry.kind == .toolCall else { return nil }
+                guard let toolName = entry.toolName?.lowercased(),
+                      relevantToolNames.contains(toolName) else {
+                    return nil
+                }
+                return entry.toolUseID
+            }
+        )
+        let completedToolUseIDs = Set(
+            entries.compactMap { entry -> String? in
+                guard entry.kind == .toolResult else { return nil }
+                guard let toolName = entry.toolName?.lowercased(),
+                      relevantToolNames.contains(toolName) else {
+                    return nil
+                }
+                return entry.toolUseID
+            }
+        )
+        let outstandingToolUseIDs = startedToolUseIDs.subtracting(completedToolUseIDs)
+        return outstandingToolUseIDs.isEmpty ? 0 : outstandingToolUseIDs.count
+    }
+
     @ViewBuilder
     private func topPagingRow(proxy: ScrollViewProxy) -> some View {
         HStack {
@@ -342,6 +382,12 @@ public struct DirectSessionDetailView: View {
                         .modifier(DockChipModifier(tone: .primary))
                     Text(viewModel.identity.machineDisplayName)
                         .modifier(DockChipModifier(tone: .neutral))
+                    if let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
+                        inProgressCount: displayedCollabCount
+                    ) {
+                        Spacer(minLength: 0)
+                        MultiAgentStatusBadge(presentation: multiAgentStatus)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {

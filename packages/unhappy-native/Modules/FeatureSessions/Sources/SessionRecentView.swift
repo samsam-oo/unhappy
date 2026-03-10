@@ -117,10 +117,19 @@ private struct RecentDirectSessionRow: View {
     let updatedAt: TimeInterval
 
     var body: some View {
+        let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
+            inProgressCount: identity.collabInProgressCount
+        )
         VStack(alignment: .leading, spacing: 6) {
-            Text(identity.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                Text(identity.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if let multiAgentStatus {
+                    MultiAgentStatusBadge(presentation: multiAgentStatus)
+                }
+            }
 
             HStack(spacing: 8) {
                 Text(identity.provider.displayName)

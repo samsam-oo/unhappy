@@ -3,6 +3,38 @@ import SwiftUI
 import CoreKit
 import UIFoundation
 
+struct SessionTranscriptGenericToolField: Equatable, Identifiable, Sendable {
+    let id: String
+    let label: String
+    let value: String
+}
+
+struct SessionTranscriptGenericToolPresentation: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
+        case spawnAgent
+        case wait
+        case stdin
+        case toolResult
+        case toolCall
+    }
+
+    enum BadgeTone: Equatable, Sendable {
+        case accent
+        case success
+        case warning
+        case neutral
+    }
+
+    let kind: Kind
+    let title: String
+    let compactSummary: String?
+    let subtitle: String?
+    let badgeText: String?
+    let badgeTone: BadgeTone
+    let fields: [SessionTranscriptGenericToolField]
+    let body: String?
+}
+
 struct SessionMarkdownListItem: Equatable, Sendable {
     let depth: Int
     let marker: String
@@ -220,6 +252,7 @@ enum SessionTranscriptRichToolContent: Equatable, Sendable {
     case commandExecution(SessionTranscriptCommandRunPresentation)
     case fileChanges([SessionTranscriptFileChangePresentation])
     case diff([SessionTranscriptDiffFilePresentation])
+    case toolDetails(SessionTranscriptGenericToolPresentation)
 }
 
 enum SessionTranscriptRichContentParser {
@@ -330,6 +363,9 @@ enum SessionTranscriptRichContentParser {
            !diffFiles.isEmpty {
             return .diff(diffFiles)
         }
+        if let toolDetails = genericToolPresentation(for: entry) {
+            return .toolDetails(toolDetails)
+        }
         return nil
     }
 
@@ -348,6 +384,11 @@ enum SessionTranscriptRichContentParser {
                     return "Diff \(fileName(from: first.path))"
                 }
                 return "Diff \(files.count) files"
+            case .toolDetails(let tool):
+                if let compactSummary = tool.compactSummary, !compactSummary.isEmpty {
+                    return "\(tool.title) · \(compactSummary)"
+                }
+                return tool.title
             }
         }
 
@@ -363,6 +404,28 @@ enum SessionTranscriptRichContentParser {
             return nil
         }
         return commandSummaryText(from: entry.body)
+    }
+
+    static func summarySubtitle(for entry: SessionTranscriptEntry) -> String? {
+        guard let richContent = richToolContent(for: entry) else {
+            return nil
+        }
+
+        switch richContent {
+        case .commandExecution(let command):
+            if let summary = command.summary, !summary.isEmpty {
+                return summary
+            }
+            return command.command
+        case .fileChanges(let changes):
+            guard changes.count == 1, let first = changes.first else { return nil }
+            return first.path
+        case .diff(let files):
+            guard files.count == 1, let first = files.first else { return nil }
+            return first.path
+        case .toolDetails(let tool):
+            return tool.subtitle
+        }
     }
 
     static func commandPayload(for entry: SessionTranscriptEntry) -> SessionTranscriptCommandExecutionPayload? {
@@ -557,6 +620,112 @@ enum SessionTranscriptRichContentParser {
             status: status,
             durationMs: durationMs,
             supplementalEntries: supplementalEntries
+        )
+    }
+
+    static func genericToolPresentation(
+        for entry: SessionTranscriptEntry
+    ) -> SessionTranscriptGenericToolPresentation? {
+        guard entry.kind == .toolCall || entry.kind == .toolResult else {
+            return nil
+        }
+        guard let object = parseJSONObject(from: entry.body) else {
+            return nil
+        }
+
+        let normalizedToolName = entry.toolName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let kind: SessionTranscriptGenericToolPresentation.Kind = {
+            switch normalizedToolName {
+            case "spawn_agent":
+                return .spawnAgent
+            case "wait":
+                return .wait
+            case "write_stdin", "send_input":
+                return .stdin
+            default:
+                return entry.kind == .toolResult ? .toolResult : .toolCall
+            }
+        }()
+
+        let title: String
+        switch kind {
+        case .spawnAgent:
+            title = "Spawn Agent"
+        case .wait:
+            title = "Wait for Agent"
+        case .stdin:
+            title = entry.kind == .toolResult ? "Input Sent" : "Send Input"
+        case .toolResult:
+            title = entry.title ?? "Tool Result"
+        case .toolCall:
+            title = entry.title ?? "Tool Call"
+        }
+
+        let compactSummary = genericToolCompactSummary(kind: kind, object: object)
+        let subtitle = genericToolSubtitle(kind: kind, object: object)
+        let badge = genericToolBadge(kind: kind, entryKind: entry.kind, object: object)
+
+        let interestingKeys = Set([
+            "agent_id",
+            "id",
+            "nickname",
+            "agentNickname",
+            "agent_type",
+            "timeout_ms",
+            "status",
+            "completed",
+            "timed_out",
+            "session_id",
+            "thread_id",
+            "ids",
+            "agent_ids",
+        ])
+        let fields: [SessionTranscriptGenericToolField] = Array(interestingKeys).sorted().enumerated().compactMap { index, key in
+            guard let value = genericToolFieldValue(for: key, value: object[key]) else { return nil }
+            return SessionTranscriptGenericToolField(
+                id: "\(key)-\(index)",
+                label: humanizedFieldName(key),
+                value: value
+            )
+        }
+
+        let body: String?
+        switch kind {
+        case .stdin:
+            body = normalizeString(object["chars"]) ?? normalizeString(object["text"])
+        default:
+            body = formattedGenericToolBody(
+                object,
+                excludingKeys: interestingKeys.union([
+                    "message",
+                    "prompt",
+                    "description",
+                    "chars",
+                    "text",
+                ])
+            )
+        }
+
+        let hasStructuredHighlights = compactSummary != nil ||
+            subtitle != nil ||
+            badge != nil ||
+            !fields.isEmpty
+
+        if !hasStructuredHighlights {
+            return nil
+        }
+
+        return SessionTranscriptGenericToolPresentation(
+            kind: kind,
+            title: title,
+            compactSummary: compactSummary,
+            subtitle: subtitle,
+            badgeText: badge?.text,
+            badgeTone: badge?.tone ?? .neutral,
+            fields: fields,
+            body: body
         )
     }
 
@@ -1108,6 +1277,273 @@ enum SessionTranscriptRichContentParser {
 
         return parts.joined(separator: ", ")
     }
+
+    private static func formattedGenericToolBody(
+        _ object: [String: Any],
+        excludingKeys: Set<String>
+    ) -> String? {
+        let filtered = object.filter { key, _ in
+            !excludingKeys.contains(key)
+        }
+        guard !filtered.isEmpty else { return nil }
+        return SessionTranscriptPresentationBuilder.stringify(filtered)
+    }
+
+    private static func genericToolCompactSummary(
+        kind: SessionTranscriptGenericToolPresentation.Kind,
+        object: [String: Any]
+    ) -> String? {
+        switch kind {
+        case .spawnAgent:
+            return firstString(
+                object["nickname"],
+                object["agentNickname"],
+                object["agent_id"],
+                object["id"],
+                object["agent_type"]
+            )
+        case .wait:
+            if let count = genericToolListCount(
+                object["ids"],
+                object["agent_ids"]
+            ) {
+                return count == 1 ? "1 agent" : "\(count) agents"
+            }
+            return completedSummary(from: object["completed"]) ??
+                humanizedStatus(normalizeString(object["status"]))
+        case .stdin:
+            return truncatedText(
+                normalizeString(object["chars"]) ?? normalizeString(object["text"]),
+                limit: 72
+            )
+        case .toolResult, .toolCall:
+            return firstString(
+                humanizedStatus(normalizeString(object["status"])),
+                object["nickname"],
+                object["agent_id"],
+                object["id"]
+            )
+        }
+    }
+
+    private static func genericToolSubtitle(
+        kind: SessionTranscriptGenericToolPresentation.Kind,
+        object: [String: Any]
+    ) -> String? {
+        switch kind {
+        case .spawnAgent:
+            return firstString(
+                object["message"],
+                object["prompt"],
+                object["description"]
+            )
+        case .wait:
+            return firstString(
+                completedMessage(from: object["completed"]),
+                object["message"],
+                object["prompt"],
+                object["description"]
+            )
+        case .stdin:
+            return nil
+        case .toolResult, .toolCall:
+            return firstString(
+                object["message"],
+                object["prompt"],
+                object["description"],
+                completedMessage(from: object["completed"])
+            )
+        }
+    }
+
+    private static func genericToolBadge(
+        kind: SessionTranscriptGenericToolPresentation.Kind,
+        entryKind: SessionTranscriptEntryKind,
+        object: [String: Any]
+    ) -> (text: String, tone: SessionTranscriptGenericToolPresentation.BadgeTone)? {
+        if normalizedBool(object["timed_out"]) == true {
+            return ("Timed Out", .warning)
+        }
+
+        if let status = humanizedStatus(normalizeString(object["status"])) {
+            let tone: SessionTranscriptGenericToolPresentation.BadgeTone
+            let lowercased = status.lowercased()
+            if lowercased.contains("complete") || lowercased.contains("success") || lowercased == "done" {
+                tone = .success
+            } else if lowercased.contains("fail") || lowercased.contains("error") || lowercased.contains("cancel") {
+                tone = .warning
+            } else {
+                tone = .accent
+            }
+            return (status, tone)
+        }
+
+        switch kind {
+        case .spawnAgent:
+            return entryKind == .toolResult ? ("Started", .success) : ("Requested", .accent)
+        case .wait:
+            if completedSummary(from: object["completed"]) != nil {
+                return ("Completed", .success)
+            }
+            return entryKind == .toolResult ? ("Updated", .neutral) : ("Waiting", .accent)
+        case .stdin:
+            return entryKind == .toolResult ? ("Sent", .success) : ("Pending", .accent)
+        case .toolResult:
+            return ("Result", .neutral)
+        case .toolCall:
+            return nil
+        }
+    }
+
+    private static func genericToolListCount(_ candidates: Any?...) -> Int? {
+        for candidate in candidates {
+            if let array = candidate as? [Any], !array.isEmpty {
+                return array.count
+            }
+        }
+        return nil
+    }
+
+    private static func genericToolFieldValue(for key: String, value: Any?) -> String? {
+        guard let value else { return nil }
+
+        if key == "timed_out", normalizedBool(value) != true {
+            return nil
+        }
+
+        if key == "timeout_ms", let milliseconds = normalizedInt(value) {
+            return "\(milliseconds) ms"
+        }
+
+        if let object = value as? [String: Any] {
+            return firstString(
+                object["message"],
+                humanizedStatus(normalizeString(object["status"])),
+                object["nickname"],
+                object["agent_id"],
+                object["id"]
+            )
+        }
+
+        if let array = value as? [Any], !array.isEmpty {
+            let texts = array.compactMap(normalizeString)
+            if !texts.isEmpty {
+                return texts.count <= 3
+                    ? texts.joined(separator: ", ")
+                    : "\(texts.count) items"
+            }
+            return "\(array.count) items"
+        }
+
+        if let boolean = normalizedBool(value) {
+            return boolean ? "Yes" : "No"
+        }
+
+        if key == "completed" {
+            return completedSummary(from: value)
+        }
+
+        if key == "status" {
+            return humanizedStatus(normalizeString(value))
+        }
+
+        return normalizeString(value)
+    }
+
+    private static func completedSummary(from value: Any?) -> String? {
+        if let bool = normalizedBool(value) {
+            return bool ? "Completed" : nil
+        }
+        if let object = value as? [String: Any] {
+            return firstString(
+                humanizedStatus(normalizeString(object["status"])),
+                object["message"],
+                object["nickname"],
+                object["agent_id"],
+                object["id"]
+            )
+        }
+        if let text = normalizeString(value) {
+            return humanizedStatus(text) ?? text
+        }
+        return nil
+    }
+
+    private static func completedMessage(from value: Any?) -> String? {
+        guard let object = value as? [String: Any] else { return nil }
+        return firstString(
+            object["message"],
+            object["content"],
+            object["summary"]
+        )
+    }
+
+    private static func humanizedStatus(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return humanizedFieldName(trimmed)
+    }
+
+    private static func truncatedText(_ value: String?, limit: Int) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.count > limit else { return trimmed }
+        return String(trimmed.prefix(limit)) + "…"
+    }
+
+    private static func normalizedBool(_ value: Any?) -> Bool? {
+        if let bool = value as? Bool {
+            return bool
+        }
+        if let number = value as? NSNumber {
+            if CFGetTypeID(number) == CFBooleanGetTypeID() {
+                return number.boolValue
+            }
+        }
+        if let string = value as? String {
+            switch string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "true", "yes", "1":
+                return true
+            case "false", "no", "0":
+                return false
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    private static func normalizedInt(_ value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let string = value as? String,
+           let parsed = Int(string.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return parsed
+        }
+        return nil
+    }
+
+    private static func humanizedFieldName(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(
+                of: "([a-z0-9])([A-Z])",
+                with: "$1 $2",
+                options: .regularExpression
+            )
+            .split(separator: " ")
+            .map { token in
+                let lower = token.lowercased()
+                return lower.prefix(1).uppercased() + lower.dropFirst()
+            }
+            .joined(separator: " ")
+    }
 }
 
 struct SessionTranscriptMarkdownView: View {
@@ -1230,6 +1666,8 @@ struct SessionTranscriptToolRichContentView: View {
                 }
             case .diff(let files):
                 diffFileList(files, compact: false)
+            case .toolDetails(let tool):
+                genericToolCard(tool)
             }
         } else {
             SessionTranscriptMonospaceBlock(
@@ -1237,6 +1675,113 @@ struct SessionTranscriptToolRichContentView: View {
                 language: nil,
                 accentColor: AppPalette.terminalLineTool
             )
+        }
+    }
+
+    @ViewBuilder
+    private func genericToolCard(
+        _ tool: SessionTranscriptGenericToolPresentation
+    ) -> some View {
+        let badgeTint = genericToolBadgeTint(tool.badgeTone)
+        SessionSurfaceCard(
+            cornerRadius: 14,
+            fillColor: AppPalette.chatToolBackground.opacity(0.95),
+            strokeColor: badgeTint.opacity(tool.badgeText == nil ? 0.18 : 0.24)
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: genericToolSymbolName(tool.kind))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(badgeTint)
+                    Text(tool.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppPalette.primaryText)
+                    if let badgeText = tool.badgeText, !badgeText.isEmpty {
+                        Text(badgeText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(badgeTint)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(badgeTint.opacity(0.12))
+                            )
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                if let compactSummary = tool.compactSummary, !compactSummary.isEmpty {
+                    Text(compactSummary)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppPalette.primaryText)
+                        .textSelection(.enabled)
+                }
+
+                if let subtitle = tool.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+
+                if !tool.fields.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(tool.fields) { field in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(field.label)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(AppPalette.secondaryText)
+                                    .frame(width: 88, alignment: .leading)
+                                Text(field.value)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(AppPalette.primaryText)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                }
+
+                if let body = tool.body, !body.isEmpty {
+                    SessionTranscriptMonospaceBlock(
+                        text: body,
+                        language: nil,
+                        accentColor: badgeTint
+                    )
+                }
+            }
+            .padding(12)
+        }
+    }
+
+    private func genericToolSymbolName(
+        _ kind: SessionTranscriptGenericToolPresentation.Kind
+    ) -> String {
+        switch kind {
+        case .spawnAgent:
+            return "person.badge.plus"
+        case .wait:
+            return "hourglass"
+        case .stdin:
+            return "arrow.up.to.line.compact"
+        case .toolResult:
+            return "checkmark.circle"
+        case .toolCall:
+            return "hammer"
+        }
+    }
+
+    private func genericToolBadgeTint(
+        _ tone: SessionTranscriptGenericToolPresentation.BadgeTone
+    ) -> Color {
+        switch tone {
+        case .accent:
+            return AppPalette.accent
+        case .success:
+            return .green
+        case .warning:
+            return .orange
+        case .neutral:
+            return AppPalette.secondaryText
         }
     }
 

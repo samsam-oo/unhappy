@@ -501,6 +501,12 @@ extension SessionTranscriptPresentationBuilder {
             return "View Diff"
         case "task":
             return "Run Task"
+        case "spawnagent":
+            return "Spawn Agent"
+        case "wait":
+            return "Wait for Agent"
+        case "writestdin", "sendinput":
+            return "Send Input"
         case "webfetch":
             return "Fetch Web"
         case "codexreasoning":
