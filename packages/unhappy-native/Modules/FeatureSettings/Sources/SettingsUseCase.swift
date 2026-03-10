@@ -74,31 +74,31 @@ public struct ChangelogEntry: Sendable, Equatable, Identifiable {
 public enum SettingsChangelog {
     public static let entries: [ChangelogEntry] = [
         ChangelogEntry(
-            id: "2026.02.26",
-            title: "Settings parity update",
-            publishedAt: "Feb 26, 2026",
+            id: "2026.03.10",
+            title: "Unhappy brand refresh",
+            publishedAt: "Mar 10, 2026",
             highlights: [
-                "Added a native changelog screen in Settings.",
-                "Added unread indicator support for new changelog entries.",
-                "Persisted last viewed changelog version in app settings."
+                "Replaced the temporary lightning-and-shield branding with the Unhappy mark across onboarding and settings.",
+                "Added an About screen so version and app identity are visible inside the app.",
+                "Refreshed the changelog layout to read like product notes instead of a raw settings list."
             ]
         ),
         ChangelogEntry(
-            id: "2026.02.21",
-            title: "Account linking improvements",
-            publishedAt: "Feb 21, 2026",
+            id: "2026.03.10.1",
+            title: "Session list visibility fixes",
+            publishedAt: "Mar 10, 2026",
             highlights: [
-                "Improved account link flow reliability and error handling.",
-                "Refined restore paths for token and QR onboarding."
+                "Upstream sessions can now appear even before a project has been explicitly bookmarked in the sidebar.",
+                "Direct provider-backed sessions are grouped from synced session state instead of depending on a second client-side mirror."
             ]
         ),
         ChangelogEntry(
-            id: "2026.02.14",
-            title: "Settings and machine updates",
-            publishedAt: "Feb 14, 2026",
+            id: "2026.03.10.2",
+            title: "Command transcript cleanup",
+            publishedAt: "Mar 10, 2026",
             highlights: [
-                "Expanded machine management controls in Settings.",
-                "Improved usage and connection settings organization."
+                "Ran command rows now collapse into a single readable tool result flow instead of duplicating nested cards.",
+                "Long tool output now scrolls inside its own result box so transcript navigation stays stable."
             ]
         )
     ]
