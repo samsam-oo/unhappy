@@ -66,7 +66,23 @@ public struct SessionProjectDetailView: View {
                 summaryCard
             }
 
-            if sessionEntries.isEmpty {
+            if shouldShowSessionsLoadingState {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Loading sessions…")
+                                .font(.headline)
+                            Text("Pulling Codex, Claude, and Gemini sessions for this project.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 4)
+                }
+            } else if sessionEntries.isEmpty {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("No sessions yet")
@@ -89,7 +105,7 @@ public struct SessionProjectDetailView: View {
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
         .task(id: group.id) {
-            if sessionEntries.isEmpty {
+            if shouldTriggerInitialProjectSessionLoad {
                 await viewModel.refreshProject(
                     machineID: group.machineID,
                     projectPath: group.projectPath,
@@ -276,8 +292,17 @@ public struct SessionProjectDetailView: View {
                 HStack(spacing: 8) {
                     Text(group.machineDisplayName)
                         .modifier(DockChipModifier(tone: .neutral))
-                    Text("\(sessionEntries.count) sessions")
+                    if shouldShowSessionsLoadingState {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Loading…")
+                        }
                         .modifier(DockChipModifier(tone: .primary))
+                    } else {
+                        Text("\(sessionEntries.count) sessions")
+                            .modifier(DockChipModifier(tone: .primary))
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -307,6 +332,33 @@ public struct SessionProjectDetailView: View {
             }
             return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
         }
+    }
+
+    private var shouldShowSessionsLoadingState: Bool {
+        sessionEntries.isEmpty &&
+            (
+                viewModel.isProjectSessionsLoading(
+                    machineID: group.machineID,
+                    projectPath: group.projectPath
+                ) ||
+                !viewModel.hasLoadedProjectSessions(
+                    machineID: group.machineID,
+                    projectPath: group.projectPath
+                )
+            ) &&
+            viewModel.upstreamSessionsErrorMessage == nil
+    }
+
+    private var shouldTriggerInitialProjectSessionLoad: Bool {
+        sessionEntries.isEmpty &&
+            !viewModel.isProjectSessionsLoading(
+                machineID: group.machineID,
+                projectPath: group.projectPath
+            ) &&
+            !viewModel.hasLoadedProjectSessions(
+                machineID: group.machineID,
+                projectPath: group.projectPath
+            )
     }
 
     @ViewBuilder
