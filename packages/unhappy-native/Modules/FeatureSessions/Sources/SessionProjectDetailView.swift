@@ -313,6 +313,7 @@ private struct ProjectDirectSessionRow: View {
     let updatedAt: TimeInterval
 
     var body: some View {
+        let updatedLabel = SessionTimestampPresentation.updatedLabelIfKnown(for: updatedAt)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(identity.title)
@@ -324,13 +325,17 @@ private struct ProjectDirectSessionRow: View {
             }
 
             HStack(spacing: 8) {
-                Text("Updated \(SessionTimestampPresentation.updatedLabel(for: updatedAt))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let model = identity.model, !model.isEmpty {
-                    Text("·")
-                        .font(.caption2)
+                if let updatedLabel {
+                    Text("Updated \(updatedLabel)")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if let model = identity.model, !model.isEmpty {
+                    if updatedLabel != nil {
+                        Text("·")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     Text(model)
                         .font(.caption)
                         .foregroundStyle(.secondary)
