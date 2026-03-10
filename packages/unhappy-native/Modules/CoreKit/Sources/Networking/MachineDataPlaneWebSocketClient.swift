@@ -52,6 +52,7 @@ public actor MachineDataPlaneWebSocketClient {
     private struct LiveConnection {
         let task: URLSessionWebSocketTask
         let sessionKey: Data
+        var lastActivityAt: TimeInterval
     }
 
     private struct ConnectionState {
@@ -61,17 +62,27 @@ public actor MachineDataPlaneWebSocketClient {
         var isProcessing = false
     }
 
+    private struct RetryableRequestError: Error {
+        let message: String
+    }
+
     private let session: URLSession
     private let requestTimeoutInterval: TimeInterval
+    private let staleConnectionProbeInterval: TimeInterval
+    private let retryableErrorRetryDelay: Duration
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
     private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
 
     public init(
         session: URLSession = .shared,
-        requestTimeoutInterval: TimeInterval = 4
+        requestTimeoutInterval: TimeInterval = 8,
+        staleConnectionProbeInterval: TimeInterval = 5,
+        retryableErrorRetryDelay: Duration = .milliseconds(350)
     ) {
         self.session = session
         self.requestTimeoutInterval = requestTimeoutInterval
+        self.staleConnectionProbeInterval = staleConnectionProbeInterval
+        self.retryableErrorRetryDelay = retryableErrorRetryDelay
     }
 
     public func requestJSON(
@@ -179,6 +190,18 @@ public actor MachineDataPlaneWebSocketClient {
         return try JSONDecoder().decode(MachineDataPlaneHelloAckFrame.self, from: Data(text.utf8))
     }
 
+    private func sendPing(task: URLSessionWebSocketTask) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            task.sendPing { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
     private func enqueueRequest(
         _ request: QueuedRequest,
         machineDataKey: Data,
@@ -239,9 +262,13 @@ public actor MachineDataPlaneWebSocketClient {
                 using: liveConnection
             )
         } catch {
-            let mappedError = mapTransportError(error)
-            if allowReconnectRetry, shouldReconnectAfterTransportError(mappedError) {
+            let mappedError = (error as? MachinesAPIError) ?? mapTransportError(error)
+            if allowReconnectRetry, shouldRetryAfterConnectionFailure(mappedError) {
                 invalidateConnection(for: key)
+                if case .rpcCallFailed(let message) = mappedError,
+                   message == "Peer data-plane connection is not ready" {
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
                 return try await performRequest(
                     request,
                     for: key,
@@ -259,7 +286,26 @@ public actor MachineDataPlaneWebSocketClient {
         serverURL: URL
     ) async throws -> LiveConnection {
         if let existingConnection = connectionStates[key]?.liveConnection {
-            return existingConnection
+            let now = Date().timeIntervalSince1970
+            if now - existingConnection.lastActivityAt >= staleConnectionProbeInterval {
+                do {
+                    try await sendPing(task: existingConnection.task)
+                } catch {
+                    invalidateConnection(for: key)
+                }
+            } else {
+                var refreshed = existingConnection
+                refreshed.lastActivityAt = now
+                connectionStates[key]?.liveConnection = refreshed
+                return refreshed
+            }
+
+            if let refreshedConnection = connectionStates[key]?.liveConnection {
+                var refreshed = refreshedConnection
+                refreshed.lastActivityAt = now
+                connectionStates[key]?.liveConnection = refreshed
+                return refreshed
+            }
         }
 
         if let inFlightConnection = inFlightConnections[key] {
@@ -300,7 +346,11 @@ public actor MachineDataPlaneWebSocketClient {
                     role: "native"
                 )
 
-                return LiveConnection(task: task, sessionKey: sessionKey)
+                return LiveConnection(
+                    task: task,
+                    sessionKey: sessionKey,
+                    lastActivityAt: Date().timeIntervalSince1970
+                )
             } catch {
                 task.cancel(with: .goingAway, reason: nil)
                 throw error
@@ -311,8 +361,10 @@ public actor MachineDataPlaneWebSocketClient {
         defer { inFlightConnections[key] = nil }
 
         let liveConnection = try await connectTask.value
-        connectionStates[key]?.liveConnection = liveConnection
-        return liveConnection
+        var updatedConnection = liveConnection
+        updatedConnection.lastActivityAt = Date().timeIntervalSince1970
+        connectionStates[key]?.liveConnection = updatedConnection
+        return updatedConnection
     }
 
     private func performRequest(
@@ -380,12 +432,13 @@ public actor MachineDataPlaneWebSocketClient {
         inFlightConnections[key] = nil
     }
 
-    private func shouldReconnectAfterTransportError(_ error: MachinesAPIError) -> Bool {
+    private func shouldRetryAfterConnectionFailure(_ error: MachinesAPIError) -> Bool {
         switch error {
         case .rpcTimedOut:
             return true
         case .rpcCallFailed(let message):
-            return message == "Machine data-plane socket is not connected"
+            return message == "Machine data-plane socket is not connected" ||
+                message == "Peer data-plane connection is not ready"
         default:
             return false
         }

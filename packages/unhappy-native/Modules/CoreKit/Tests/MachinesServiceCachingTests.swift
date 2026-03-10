@@ -129,6 +129,48 @@ struct MachinesServiceCachingTests {
         let prewarmedMachineIDs = await rpcDirectoryService.prewarmedMachineIDs
         #expect(prewarmedMachineIDs == ["machine-1"])
     }
+
+    @Test
+    func fetchMachinesPrewarmsActiveMachineDataPlaneOnCacheHit() async throws {
+        let httpClient = CountingMachineHTTPClient(
+            responseData: Data(
+                """
+                [
+                  {
+                    "id": "machine-1",
+                    "active": true,
+                    "activeAt": 1,
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                    "metadataVersion": 1,
+                    "metadata": "{}",
+                    "daemonStateVersion": 1,
+                    "daemonState": "{}",
+                    "dataEncryptionKey": "wrapped-key"
+                  }
+                ]
+                """.utf8
+            )
+        )
+        let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
+        let service = URLSessionMachinesService(
+            httpClient: httpClient,
+            rpcDirectoryService: rpcDirectoryService
+        )
+
+        _ = try await service.fetchMachines(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token"
+        )
+        _ = try await service.fetchMachines(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token"
+        )
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let prewarmedMachineIDs = await rpcDirectoryService.prewarmedMachineIDs
+        #expect(prewarmedMachineIDs == ["machine-1", "machine-1"])
+    }
 }
 
 private actor CountingMachineHTTPClient: MachineHTTPClient {

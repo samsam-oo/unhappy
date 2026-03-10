@@ -196,6 +196,11 @@ extension URLSessionMachinesService {
 
         if let cached = machinesCache[cacheKey],
            Date().timeIntervalSince1970 - cached.cachedAt < MachinesCachePolicy.ttl {
+            scheduleMachineDataPlanePrewarm(
+                machines: cached.machines,
+                serverURL: serverURL,
+                token: normalizedToken
+            )
             return cached.machines
         }
 

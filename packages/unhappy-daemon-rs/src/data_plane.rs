@@ -295,7 +295,7 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
         .derive_session_key(&ack.key_exchange)
         .context("failed to derive session key from hello-ack")?;
     eprintln!(
-        "[{}] [daemon-rs] category=handshake phase=ready elapsed_ms={} machine_id={}",
+        "[{}] [daemon-rs] category=handshake phase=relay-ready elapsed_ms={} machine_id={}",
         trace_timestamp(),
         started_at.elapsed().as_millis(),
         config.machine_id
