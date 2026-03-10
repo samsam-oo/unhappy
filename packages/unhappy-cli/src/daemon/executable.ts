@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn, type SpawnOptions } from 'child_process';
+import { execFile, type ChildProcess, spawn, type SpawnOptions } from 'child_process';
 import { closeSync, existsSync, openSync } from 'fs';
 import { basename, isAbsolute, join, normalize, resolve } from 'path';
 
@@ -15,6 +15,16 @@ export interface ResolvedDaemonExecutable {
   displayCommand: string;
   executableBasename: string;
 }
+
+export type LauncherStatus = {
+  running: boolean;
+  stale: boolean;
+  state?: {
+    pid: number;
+    httpPort?: number | null;
+    startedWithCliVersion?: string;
+  } | null;
+};
 
 function normalizeForMatch(value: string): string {
   return value.trim().normalize('NFKC').replaceAll('\\', '/');
@@ -194,4 +204,101 @@ export async function spawnDaemonExecutable(
     closeSync(logFd);
   }
   return child;
+}
+
+export async function runDaemonSubcommand(
+  args: string[],
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<string> {
+  const executable = resolveDaemonExecutable();
+  const env = await getDaemonLauncherEnvironment(opts?.env ?? process.env);
+  return await new Promise<string>((resolve, reject) => {
+    execFile(
+      executable.executablePath,
+      args,
+      { env },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(stderr.trim() ? new Error(stderr.trim()) : error);
+          return;
+        }
+        resolve(stdout.trim());
+      },
+    );
+  });
+}
+
+export async function runDaemonSubcommandJson<T>(
+  args: string[],
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<T> {
+  const raw = await runDaemonSubcommand(args, opts);
+  return JSON.parse(raw) as T;
+}
+
+export async function readDaemonLauncherStatus(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<LauncherStatus> {
+  return await runDaemonSubcommandJson<LauncherStatus>(['status', '--json'], opts);
+}
+
+export async function startDaemonDetached(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<string> {
+  return await runDaemonSubcommand(['start'], opts);
+}
+
+export async function startDaemonAttached(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<void> {
+  const child = await spawnDaemonExecutable({
+    detached: false,
+    stdio: 'inherit',
+    env: opts?.env ?? process.env,
+  });
+  await new Promise<void>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code, signal) => {
+      if (signal) {
+        reject(new Error(`daemon start terminated by signal ${signal}`));
+        return;
+      }
+      if ((code ?? 0) !== 0) {
+        reject(new Error(`daemon start exited with code ${code ?? 'unknown'}`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+export async function stopDaemonSubcommand(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<void> {
+  await runDaemonSubcommand(['stop'], opts);
+}
+
+export async function printDaemonStatusSubcommand(
+  opts?: { env?: NodeJS.ProcessEnv },
+): Promise<void> {
+  const executable = resolveDaemonExecutable();
+  const env = await getDaemonLauncherEnvironment(opts?.env ?? process.env);
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(executable.executablePath, ['status'], {
+      env,
+      stdio: 'inherit',
+    });
+    child.once('error', reject);
+    child.once('close', (code, signal) => {
+      if (signal) {
+        reject(new Error(`daemon status terminated by signal ${signal}`));
+        return;
+      }
+      if ((code ?? 0) !== 0) {
+        reject(new Error(`daemon status exited with code ${code ?? 'unknown'}`));
+        return;
+      }
+      resolve();
+    });
+  });
 }

@@ -1,11 +1,9 @@
 import { configuration } from '@/configuration';
 import {
-  checkIfDaemonRunningAndCleanupStaleState,
-} from '@/daemon/controlClient';
-import {
-  startDaemonViaRustLauncher,
-  stopDaemonViaRustLauncher,
-} from '@/daemon/rustLauncher';
+  readDaemonLauncherStatus,
+  startDaemonDetached,
+  stopDaemonSubcommand,
+} from '@/daemon/executable';
 import {
   clearCredentials,
   clearMachineId,
@@ -49,6 +47,17 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
   }
 }
 
+async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+  const status = await readDaemonLauncherStatus();
+  if (status.running) {
+    return true;
+  }
+  if (status.stale) {
+    await stopDaemonSubcommand({ env: process.env });
+  }
+  return false;
+}
+
 function showAuthHelp(): void {
   console.log(`
 ${chalk.bold('unhappy auth')} - Authentication management
@@ -83,7 +92,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     // Stop daemon if running
     try {
       logger.debug('Stopping daemon for force auth...');
-      await stopDaemonViaRustLauncher();
+      await stopDaemonSubcommand({ env: process.env });
       console.log(chalk.gray('✓ Stopped daemon'));
     } catch (error) {
       logger.debug('Daemon was not running or failed to stop:', error);
@@ -192,7 +201,7 @@ async function promptDaemonRegistrationAfterLogin(): Promise<void> {
   }
 
   try {
-    await startDaemonViaRustLauncher({ detached: true, env: process.env });
+    await startDaemonDetached({ env: process.env });
     console.log(chalk.green('  ✓ Background daemon enabled'));
   } catch (error) {
     logger.debug('Failed to start daemon after login prompt:', error);
@@ -236,7 +245,7 @@ async function handleAuthLogout(): Promise<void> {
     try {
       // Stop daemon if running
       try {
-        await stopDaemonViaRustLauncher();
+        await stopDaemonSubcommand({ env: process.env });
         console.log(chalk.gray('Stopped daemon'));
       } catch {}
 

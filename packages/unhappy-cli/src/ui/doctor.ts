@@ -6,8 +6,11 @@
  */
 
 import { configuration } from '@/configuration';
-import { checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
-import { listDaemonProcessesViaRust } from '@/daemon/rustLauncher';
+import {
+  readDaemonLauncherStatus,
+  runDaemonSubcommandJson,
+  stopDaemonSubcommand,
+} from '@/daemon/executable';
 import { readCredentials, readDaemonState, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import chalk from 'chalk';
@@ -70,6 +73,17 @@ function getLogFiles(
  */
 export async function runDoctorDaemon(): Promise<void> {
   return runDoctorCommand('daemon');
+}
+
+async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
+  const status = await readDaemonLauncherStatus();
+  if (status.running) {
+    return true;
+  }
+  if (status.stale) {
+    await stopDaemonSubcommand({ env: process.env });
+  }
+  return false;
 }
 
 export async function runDoctorCommand(
@@ -187,7 +201,9 @@ export async function runDoctorCommand(
     }
 
     // All Unhappy processes
-    const allProcesses = await listDaemonProcessesViaRust();
+    const allProcesses = await runDaemonSubcommandJson<
+      Array<{ pid: number; command: string; processType: string }>
+    >(['doctor-processes', '--json']);
     if (allProcesses.length > 0) {
       console.log(chalk.bold('\n🔍 All Unhappy CLI Processes'));
 

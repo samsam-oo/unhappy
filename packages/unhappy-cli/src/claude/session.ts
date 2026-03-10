@@ -5,7 +5,7 @@ import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import { getProjectPath } from "./utils/path";
 import { join } from "node:path";
-import { notifyDaemonProviderSessionStarted } from "@/daemon/controlClient";
+import { runDaemonSubcommand } from "@/daemon/executable";
 
 export interface SessionPushNotifier {
     sendToAllDevices(
@@ -122,11 +122,19 @@ export class Session {
         }));
         const metadataSnapshot = this.client.getMetadataSnapshot();
         if (metadataSnapshot) {
-            void notifyDaemonProviderSessionStarted('claude', sessionId, {
-                ...metadataSnapshot,
-                agentSessionId: sessionId,
-                agentTranscriptPath: transcriptPath,
-            }).catch((error) => {
+            void runDaemonSubcommand([
+                'provider-session-started',
+                '--request-json',
+                JSON.stringify({
+                    provider: 'claude',
+                    providerSessionId: sessionId,
+                    metadata: {
+                        ...metadataSnapshot,
+                        agentSessionId: sessionId,
+                        agentTranscriptPath: transcriptPath,
+                    },
+                }),
+            ]).catch((error) => {
                 logger.debug('[Session] Failed to report provider session to daemon', error);
             });
         }
