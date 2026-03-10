@@ -347,7 +347,20 @@ async fn list_codex_models(config: &Config) -> Result<Value> {
 
 async fn list_claude_models(config: &Config) -> Result<Value> {
     let reasoning_efforts = detect_claude_reasoning_efforts(config).await;
-    let model_metadata = claude_model_metadata();
+    let model_metadata = if let Some(executable_path) = resolve_executable_path(
+        if config.provider_commands.resolve(Provider::Claude).executable() == "unhappy" {
+            "claude"
+        } else {
+            config.provider_commands.resolve(Provider::Claude).executable()
+        },
+    ) {
+        match read_claude_model_metadata_from_binary(&executable_path).await {
+            Some(metadata) if !metadata.is_empty() => metadata,
+            _ => claude_model_metadata_fallback(),
+        }
+    } else {
+        claude_model_metadata_fallback()
+    };
     let models = model_metadata
         .iter()
         .filter_map(|row| row.get("id").and_then(Value::as_str))
@@ -465,7 +478,7 @@ fn normalized_reasoning_effort_value(value: &Value) -> Option<String> {
     }
 }
 
-fn claude_model_metadata() -> Vec<Value> {
+fn claude_model_metadata_fallback() -> Vec<Value> {
     vec![
         json!({
             "id": "default",
@@ -505,6 +518,149 @@ fn claude_model_metadata() -> Vec<Value> {
             "description": "Claude Code Opus Plan alias from the official model configuration docs.",
         }),
     ]
+}
+
+async fn read_claude_model_metadata_from_binary(executable_path: &Path) -> Option<Vec<Value>> {
+    let output = Command::new("strings")
+        .arg("-a")
+        .arg(executable_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_claude_model_metadata(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_claude_model_metadata(source: &str) -> Option<Vec<Value>> {
+    let alias_order = ["default", "sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"];
+    let available_aliases = alias_order
+        .iter()
+        .copied()
+        .filter(|alias| source.lines().any(|line| line.trim() == *alias))
+        .collect::<Vec<_>>();
+
+    let latest_family_models = latest_claude_family_models(source);
+    if available_aliases.is_empty() && latest_family_models.is_empty() {
+        return None;
+    }
+
+    let mut metadata = Vec::<Value>::new();
+    for alias in available_aliases {
+        metadata.push(match alias {
+            "default" => json!({
+                "id": "default",
+                "model": "default",
+                "displayName": "Default",
+                "description": "Installed Claude Code binary default model alias.",
+                "isDefault": true,
+            }),
+            "sonnet" => json!({
+                "id": "sonnet",
+                "model": "sonnet",
+                "displayName": "Sonnet",
+                "description": "Installed Claude Code binary Sonnet alias.",
+            }),
+            "opus" => json!({
+                "id": "opus",
+                "model": "opus",
+                "displayName": "Opus",
+                "description": "Installed Claude Code binary Opus alias.",
+            }),
+            "haiku" => json!({
+                "id": "haiku",
+                "model": "haiku",
+                "displayName": "Haiku",
+                "description": "Installed Claude Code binary Haiku alias.",
+            }),
+            "sonnet[1m]" => json!({
+                "id": "sonnet[1m]",
+                "model": "sonnet[1m]",
+                "displayName": "Sonnet 1M",
+                "description": "Installed Claude Code binary Sonnet 1M alias.",
+            }),
+            "opusplan" => json!({
+                "id": "opusplan",
+                "model": "opusplan",
+                "displayName": "Opus Plan",
+                "description": "Installed Claude Code binary Opus Plan alias.",
+            }),
+            _ => continue,
+        });
+    }
+
+    for model_id in latest_family_models {
+        let display_name = model_id
+            .strip_prefix("claude-")
+            .map(|value| value.replace('-', " "))
+            .unwrap_or_else(|| model_id.clone());
+        metadata.push(json!({
+            "id": model_id,
+            "model": model_id,
+            "displayName": display_name,
+            "description": "Latest installed Claude Code family model id discovered from the local binary surface."
+        }));
+    }
+
+    Some(metadata)
+}
+
+fn latest_claude_family_models(source: &str) -> Vec<String> {
+    let mut latest = std::collections::HashMap::<&str, (u8, u32, u32, String)>::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        let Some((family, category, major, minor)) = parse_claude_model_rank(trimmed) else {
+            continue;
+        };
+        match latest.get(family) {
+            Some((best_category, best_major, best_minor, _))
+                if (*best_category, *best_major, *best_minor) >= (category, major, minor) => {}
+            _ => {
+                latest.insert(family, (category, major, minor, trimmed.to_string()));
+            }
+        }
+    }
+
+    ["sonnet", "opus", "haiku"]
+        .into_iter()
+        .filter_map(|family| latest.get(family).map(|(_, _, _, model)| model.clone()))
+        .collect()
+}
+
+fn parse_claude_model_rank(value: &str) -> Option<(&str, u8, u32, u32)> {
+    let trimmed = value.trim();
+    let stripped = trimmed.strip_prefix("claude-")?;
+    let (family, version) = stripped.split_once('-')?;
+    if !matches!(family, "sonnet" | "opus" | "haiku") {
+        return None;
+    }
+    let parts = version.split('-').collect::<Vec<_>>();
+    if parts.len() == 2
+        && parts[0].chars().all(|char| char.is_ascii_digit())
+        && parts[1].chars().all(|char| char.is_ascii_digit())
+        && parts[1].len() <= 2
+    {
+        return Some((
+            family,
+            3,
+            parts[0].parse::<u32>().ok()?,
+            parts[1].parse::<u32>().ok()?,
+        ));
+    }
+    if parts.len() == 1 && parts[0].chars().all(|char| char.is_ascii_digit()) {
+        return Some((family, 2, parts[0].parse::<u32>().ok()?, 0));
+    }
+    if parts.len() == 2
+        && parts[0].chars().all(|char| char.is_ascii_digit())
+        && parts[1].chars().all(|char| char.is_ascii_digit())
+    {
+        return Some((family, 1, parts[0].parse::<u32>().ok()?, 0));
+    }
+    None
 }
 
 async fn list_gemini_models(config: &Config) -> Result<Value> {
@@ -946,7 +1102,7 @@ mod tests {
 
     #[test]
     fn claude_model_metadata_uses_documented_aliases() {
-        let metadata = claude_model_metadata();
+        let metadata = claude_model_metadata_fallback();
         let ids = metadata
             .iter()
             .filter_map(|row| row.get("id").and_then(Value::as_str))
@@ -955,6 +1111,45 @@ mod tests {
         assert_eq!(
             ids,
             vec!["default", "sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"]
+        );
+    }
+
+    #[test]
+    fn parse_claude_model_metadata_reads_aliases_and_latest_family_models() {
+        let metadata = parse_claude_model_metadata(
+            "default\n\
+             sonnet\n\
+             opus\n\
+             haiku\n\
+             sonnet[1m]\n\
+             opusplan\n\
+             claude-sonnet-4-5\n\
+             claude-sonnet-4-6\n\
+             claude-opus-4-5\n\
+             claude-opus-4-6\n\
+             claude-haiku-4-5\n\
+             claude-opus-4-20250514\n",
+        )
+        .expect("metadata");
+
+        let ids = metadata
+            .iter()
+            .filter_map(|row| row.get("id").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec![
+                "default",
+                "sonnet",
+                "opus",
+                "haiku",
+                "sonnet[1m]",
+                "opusplan",
+                "claude-sonnet-4-6",
+                "claude-opus-4-6",
+                "claude-haiku-4-5",
+            ]
         );
     }
 
