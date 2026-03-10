@@ -254,6 +254,68 @@ struct SessionProjectsUseCasesTests {
         #expect(firstSnapshot?.projects.isEmpty == true)
         #expect(finalSnapshot?.isFinal == true)
     }
+
+    @Test
+    func loadProjectsIgnoresStaleActiveMachines() async throws {
+        let now = Date.now.timeIntervalSince1970
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-fresh",
+                    active: true,
+                    activeAt: now - 10,
+                    createdAt: 1,
+                    updatedAt: now - 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Fresh Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+                APIMachine(
+                    id: "machine-stale",
+                    active: true,
+                    activeAt: now - 120,
+                    createdAt: 1,
+                    updatedAt: now - 120,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Stale Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+            ],
+            projectsByMachineID: [
+                "machine-fresh": [
+                    APIMachineProjectSummary(
+                        path: "/repo/fresh",
+                        latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                ],
+                "machine-stale": [
+                    APIMachineProjectSummary(
+                        path: "/repo/stale",
+                        latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                        codexThreadCount: 1,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                ]
+            ]
+        )
+        let useCase = SessionProjectsLoadUseCase(service: service)
+
+        let projects = try await useCase.loadProjects(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(projects.map(\.machineID) == ["machine-fresh"])
+        #expect(projects.map(\.summary.path) == ["/repo/fresh"])
+    }
 }
 
 private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {

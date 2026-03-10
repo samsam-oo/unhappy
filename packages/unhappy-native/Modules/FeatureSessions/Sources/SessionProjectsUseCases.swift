@@ -160,7 +160,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
                 continuation.finish()
                 return
             }
-            let activeMachines = machines.filter(\.active)
+            let activeMachines = SessionMachineActivityGuard.eligibleMachines(from: machines)
             var projects: [SessionMachineProject] = []
             var firstError: Error?
             let service = self.service
