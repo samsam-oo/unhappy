@@ -8,15 +8,12 @@ WORKDIR /repo
 
 COPY package.json yarn.lock ./
 
-RUN mkdir -p packages/unhappy-server packages/unhappy-cli
+RUN mkdir -p packages/unhappy-server
 
 COPY packages/unhappy-server/package.json packages/unhappy-server/
-COPY packages/unhappy-cli/package.json packages/unhappy-cli/
 
 # Workspace postinstall requirements
 COPY packages/unhappy-server/prisma packages/unhappy-server/prisma
-COPY packages/unhappy-cli/scripts packages/unhappy-cli/scripts
-COPY packages/unhappy-cli/tools packages/unhappy-cli/tools
 
 RUN yarn install --frozen-lockfile --ignore-engines
 
