@@ -16,7 +16,7 @@ import { extractUserMessageText } from '@/api/types';
 import type { ACPMessageData } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { runDaemonSubcommand } from '@/daemon/executable';
+import { runDaemonSubcommand } from '@/utils/rustDaemonCli';
 import { initialMachineMetadata } from '@/daemon/initialMachineMetadata';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';

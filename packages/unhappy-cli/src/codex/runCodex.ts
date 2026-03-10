@@ -3,7 +3,7 @@ import type { SessionRuntimeClient } from '@/api/apiSession';
 import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { runDaemonSubcommand } from '@/daemon/executable';
+import { runDaemonSubcommand } from '@/utils/rustDaemonCli';
 import { initialMachineMetadata } from '@/daemon/initialMachineMetadata';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {

@@ -23,7 +23,7 @@ import {
   startDaemonAttached,
   startDaemonDetached,
   stopDaemonSubcommand,
-} from './daemon/executable';
+} from './utils/rustDaemonCli';
 import { runDaemonUpdate } from './daemon/update';
 import { readCredentials, readSettings } from './persistence';
 import { authAndSetupMachineIfNeeded } from './ui/auth';
