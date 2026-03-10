@@ -369,6 +369,7 @@ struct HomeRegularProjectRow: View {
     let isSelected: Bool
 
     var body: some View {
+        let updatedLabel = updatedLabel
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(group.title)
@@ -384,12 +385,14 @@ struct HomeRegularProjectRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text("·")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(updatedLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let updatedLabel {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(updatedLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Text(group.projectDisplayPath)
                 .font(.caption2.monospaced())
@@ -407,9 +410,9 @@ struct HomeRegularProjectRow: View {
         )
     }
 
-    private var updatedLabel: String {
+    private var updatedLabel: String? {
         guard group.latestUpdatedAt > 0 else {
-            return "Unknown"
+            return nil
         }
         let interval = Date().timeIntervalSince1970 - group.latestUpdatedAt
         if interval < 60 {

@@ -382,9 +382,11 @@ private struct SessionsRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                Text("Updated \(SessionTimestampPresentation.updatedLabel(for: session.updatedAt))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let updatedLabel = SessionTimestampPresentation.updatedLabelIfKnown(for: session.updatedAt) {
+                    Text("Updated \(updatedLabel)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text(session.id)
                     .font(.caption2.monospaced())
                     .foregroundStyle(.tertiary)
@@ -434,12 +436,14 @@ private struct ProjectRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text("·")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(SessionTimestampPresentation.updatedLabel(for: group.latestUpdatedAt))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let updatedLabel = SessionTimestampPresentation.updatedLabelIfKnown(for: group.latestUpdatedAt) {
+                    Text("·")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(updatedLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             Text(group.projectDisplayPath)
                 .font(.caption2.monospaced())
