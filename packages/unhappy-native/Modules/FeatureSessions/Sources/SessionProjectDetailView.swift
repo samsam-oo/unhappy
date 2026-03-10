@@ -261,7 +261,7 @@ public struct SessionProjectDetailView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(group.projectPath)
+                    Text(group.projectDisplayPath)
                         .font(.body.monospaced())
                         .foregroundStyle(AppPalette.primaryText)
                         .textSelection(.enabled)

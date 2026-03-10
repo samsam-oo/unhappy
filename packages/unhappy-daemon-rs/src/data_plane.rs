@@ -701,6 +701,7 @@ fn explicit_project_summaries(projects: Vec<OpenedProject>) -> Vec<Value> {
                 .unwrap_or_else(|| now.clone());
             json!({
                 "path": entry.path,
+                "displayPath": project_display_path(&entry.path),
                 "latestUpdatedAt": latest,
                 "codexThreadCount": 0,
                 "claudeSessionCount": 0,
@@ -708,6 +709,34 @@ fn explicit_project_summaries(projects: Vec<OpenedProject>) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+fn project_display_path(path: &str) -> String {
+    let normalized = path.trim();
+    if normalized.is_empty() {
+        return String::new();
+    }
+
+    let home_dir = std::env::var("HOME")
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty());
+    if let Some(home_dir) = home_dir {
+        if normalized == home_dir {
+            return "~".to_string();
+        }
+
+        let home_prefix = format!("{home_dir}/");
+        if normalized.starts_with(&home_prefix) {
+            let relative = normalized[home_prefix.len()..].trim_start_matches('/');
+            if relative.is_empty() {
+                return "~".to_string();
+            }
+            return format!("~/{}", relative);
+        }
+    }
+
+    normalized.to_string()
 }
 
 fn request_aad(frame: &MachineDataPlaneRequestFrame) -> String {

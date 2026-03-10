@@ -84,6 +84,7 @@ public struct APIMachineCommandResult: Decodable, Equatable, Sendable {
 
 public struct APIMachineProjectSummary: Decodable, Equatable, Identifiable, Sendable {
     public let path: String
+    public let displayPath: String?
     public let latestUpdatedAt: String
     public let codexThreadCount: Int
     public let claudeSessionCount: Int
@@ -93,12 +94,14 @@ public struct APIMachineProjectSummary: Decodable, Equatable, Identifiable, Send
 
     public init(
         path: String,
+        displayPath: String? = nil,
         latestUpdatedAt: String,
         codexThreadCount: Int,
         claudeSessionCount: Int,
         openedExplicitly: Bool
     ) {
         self.path = path
+        self.displayPath = displayPath
         self.latestUpdatedAt = latestUpdatedAt
         self.codexThreadCount = codexThreadCount
         self.claudeSessionCount = claudeSessionCount

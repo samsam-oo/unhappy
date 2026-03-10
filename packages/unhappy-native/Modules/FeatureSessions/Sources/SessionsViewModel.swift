@@ -442,7 +442,7 @@ public final class SessionsViewModel: ObservableObject {
         }
 
         do {
-            let openedProject = try await projectOpener.openProject(
+            _ = try await projectOpener.openProject(
                 serverURLString: serverURLString,
                 token: token,
                 machineID: machineID,
@@ -450,14 +450,11 @@ public final class SessionsViewModel: ObservableObject {
                 path: projectPath,
                 wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
             )
-            if !projects.contains(where: { $0.id == openedProject.id }) {
-                projects.insert(openedProject, at: 0)
-            }
-                await refreshSupportingProjectContent(
-                    serverURLString: serverURLString,
-                    token: token,
-                    force: true
-                )
+            await refreshSupportingProjectContent(
+                serverURLString: serverURLString,
+                token: token,
+                force: true
+            )
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
