@@ -1649,6 +1649,8 @@ mod tests {
                 {
                     "id": "root-thread",
                     "preview": "Root preview",
+                    "updatedAt": 1_778_130_400,
+                    "createdAt": 1_778_130_000,
                     "source": "cli",
                     "agentNickname": null,
                     "agentRole": null
@@ -1656,7 +1658,7 @@ mod tests {
                 {
                     "id": "subagent-thread",
                     "preview": "Subagent preview",
-                    "source": { "subagent": { "parentThreadId": "root-thread" } },
+                    "source": { "subAgentThreadSpawn": { "parentThreadId": "root-thread" } },
                     "agentNickname": "copernicus",
                     "agentRole": "worker"
                 }
@@ -1666,6 +1668,8 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0]["id"].as_str(), Some("root-thread"));
         assert_eq!(rows[0]["preview"].as_str(), Some("Root preview"));
+        assert_eq!(rows[0]["updatedAt"].as_str(), Some("2026-05-07T05:06:40Z"));
+        assert_eq!(rows[0]["createdAt"].as_str(), Some("2026-05-07T05:00:00Z"));
     }
 
     #[tokio::test]
