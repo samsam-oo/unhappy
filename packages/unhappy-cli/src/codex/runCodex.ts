@@ -3,7 +3,7 @@ import type { SessionRuntimeClient } from '@/api/apiSession';
 import { extractUserMessageText, extractUserMessageImageUrls } from '@/api/types';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
+import { runDaemonSubcommand } from '@/daemon/executable';
 import { initialMachineMetadata } from '@/daemon/initialMachineMetadata';
 import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import {
@@ -1308,7 +1308,15 @@ export async function runCodex(opts: {
         ...(conversationId ? { agentConversationId: conversationId } : {}),
         ...(transcriptPath ? { agentTranscriptPath: transcriptPath } : {}),
       }));
-      void notifyDaemonProviderSessionStarted('codex', sessionId, nextMetadata as any).catch((error) => {
+      void runDaemonSubcommand([
+        'provider-session-started',
+        '--request-json',
+        JSON.stringify({
+          provider: 'codex',
+          providerSessionId: sessionId,
+          metadata: nextMetadata,
+        }),
+      ]).catch((error) => {
         logger.debug('[Codex] Failed to report provider session to daemon', error);
       });
       logger.debug(`[Codex] Reported agent session id to metadata (${source}):`, {

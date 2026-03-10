@@ -16,7 +16,7 @@ import { extractUserMessageText } from '@/api/types';
 import type { ACPMessageData } from '@/api/apiSession';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { notifyDaemonProviderSessionStarted } from '@/daemon/controlClient';
+import { runDaemonSubcommand } from '@/daemon/executable';
 import { initialMachineMetadata } from '@/daemon/initialMachineMetadata';
 import { Credentials, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
@@ -227,11 +227,15 @@ export async function runGemini(opts: {
       ...(model ? { model } : {}),
     }));
 
-    void notifyDaemonProviderSessionStarted(
-      'gemini',
-      normalizedSessionId,
-      nextMetadata,
-    ).catch((error) => {
+    void runDaemonSubcommand([
+      'provider-session-started',
+      '--request-json',
+      JSON.stringify({
+        provider: 'gemini',
+        providerSessionId: normalizedSessionId,
+        metadata: nextMetadata,
+      }),
+    ]).catch((error) => {
       logger.debug(
         `[Gemini] Failed to report provider session to daemon (${source})`,
         error,

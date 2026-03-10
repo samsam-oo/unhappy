@@ -2,9 +2,9 @@ import { spawn } from 'child_process';
 
 import { logger } from '@/ui/logger';
 import {
-  startDaemonViaRustLauncher,
-  stopDaemonViaRustLauncher,
-} from './rustLauncher';
+  startDaemonDetached,
+  stopDaemonSubcommand,
+} from './executable';
 
 const DEFAULT_UPDATE_COMMAND = 'npm install -g unhappy-cli@latest';
 
@@ -56,8 +56,8 @@ export async function runDaemonUpdate(opts?: {
 
   // Always restart daemon after update command, even if version did not change.
   // This keeps behavior predictable for "update now" requests from mobile.
-  await stopDaemonViaRustLauncher({ env: process.env });
-  await startDaemonViaRustLauncher({ detached: true, env: process.env });
+  await stopDaemonSubcommand({ env: process.env });
+  await startDaemonDetached({ env: process.env });
 
   logger.info('[DAEMON UPDATE] Daemon restart requested');
   return { command };
