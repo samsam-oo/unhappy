@@ -72,12 +72,31 @@ struct SessionListPresentationTests {
 
     @Test
     func projectGroupsIncludeRuntimeSessionPathsWithoutExplicitProjects() {
+        let upstreamRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-3",
+                provider: .codex,
+                title: "Direct Only",
+                cwd: "/repo/runtime",
+                updatedAt: "2026-03-06T06:00:00.000Z",
+                createdAt: "2026-03-06T05:00:00.000Z",
+                archived: false
+            )
+        )
+
         let groups = SessionListPresentationBuilder.projectGroups(
-            upstreamSessions: [],
+            upstreamSessions: [upstreamRow],
             projects: []
         )
 
-        #expect(groups.isEmpty)
+        #expect(groups.count == 1)
+        #expect(groups.first?.projectPath == "/repo/runtime")
+        #expect(groups.first?.projectDisplayPath == "/repo/runtime")
+        #expect(groups.first?.hasConcreteProjectPath == true)
+        #expect(groups.first?.upstreamSessions.map(\.summary.id) == ["thread-3"])
+        #expect(groups.first?.allSessionCount == 1)
     }
 
     @Test

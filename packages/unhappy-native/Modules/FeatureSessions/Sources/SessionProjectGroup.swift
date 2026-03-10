@@ -78,7 +78,6 @@ public extension SessionListPresentationBuilder {
         projects: [SessionMachineProject] = []
     ) -> [SessionProjectGroup] {
         let explicitProjects = projects.filter(\.summary.openedExplicitly)
-        guard !explicitProjects.isEmpty else { return [] }
 
         struct Accumulator {
             var machineDisplayName: String
@@ -138,12 +137,23 @@ public extension SessionListPresentationBuilder {
             let normalizedPath = normalizedProjectPath(row.summary.cwd)
             let projectPath = normalizedPath ?? "No Project Context"
             let key = "\(row.machineID)|\(projectPath)"
-            guard var accumulator = groups[key] else { continue }
+            var accumulator = groups[key] ?? Accumulator(
+                machineDisplayName: row.machineDisplayName,
+                wrappedMachineDataEncryptionKey: row.wrappedMachineDataEncryptionKey,
+                projectPath: projectPath,
+                projectDisplayPath: row.summary.cwd ?? projectPath,
+                hasConcreteProjectPath: normalizedPath != nil,
+                catalogSessionCount: 0,
+                catalogLatestUpdatedAt: 0
+            )
             accumulator.machineDisplayName = SessionMachineDisplayNameResolver.preferred(
                 existing: accumulator.machineDisplayName,
                 candidate: row.machineDisplayName,
                 machineID: row.machineID
             )
+            if accumulator.wrappedMachineDataEncryptionKey == nil {
+                accumulator.wrappedMachineDataEncryptionKey = row.wrappedMachineDataEncryptionKey
+            }
             accumulator.upstreamSessions.append(row)
             groups[key] = accumulator
         }
