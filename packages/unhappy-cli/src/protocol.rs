@@ -41,6 +41,8 @@ pub enum MachineDataPlaneOperation {
     ProviderSpawn,
     #[serde(rename = "project.list")]
     ProjectList,
+    #[serde(rename = "project.sessions")]
+    ProjectSessions,
     #[serde(rename = "project.open")]
     ProjectOpen,
     #[serde(rename = "project.remove")]

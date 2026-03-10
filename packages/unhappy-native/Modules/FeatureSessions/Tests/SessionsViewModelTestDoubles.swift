@@ -138,6 +138,10 @@ enum MockUpstreamSessionsLoaderError: Error, Sendable {
     case failed
 }
 
+enum MockProjectSessionsLoaderError: Error, Sendable {
+    case failed
+}
+
 struct MockUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
     let result: Result<[SessionLinkedUpstreamSession], MockUpstreamSessionsLoaderError>
 
@@ -209,6 +213,39 @@ actor RecordingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction {
     }
 
     func requestedProjectSnapshots() -> [[SessionMachineProject]] {
+        requestedProjects
+    }
+}
+
+actor RecordingProjectSessionsLoader: SessionProjectSessionsLoadingAction {
+    private var calls = 0
+    private var requestedProjects: [SessionMachineProject] = []
+    let result: Result<[SessionLinkedUpstreamSession], MockProjectSessionsLoaderError>
+
+    init(result: Result<[SessionLinkedUpstreamSession], MockProjectSessionsLoaderError>) {
+        self.result = result
+    }
+
+    func loadProjectSessions(
+        serverURLString: String,
+        token: String,
+        project: SessionMachineProject
+    ) async throws -> [SessionLinkedUpstreamSession] {
+        calls += 1
+        requestedProjects.append(project)
+        switch result {
+        case .success(let rows):
+            return rows
+        case .failure(let error):
+            throw error
+        }
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+
+    func requestedProjectsSnapshot() -> [SessionMachineProject] {
         requestedProjects
     }
 }

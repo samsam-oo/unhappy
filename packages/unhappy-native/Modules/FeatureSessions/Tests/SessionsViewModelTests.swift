@@ -713,6 +713,63 @@ struct SessionsViewModelTests {
         #expect(model.hasLoadedProjectSessions(machineID: "machine-1", projectPath: "/repo/one"))
     }
 
+    @Test
+    func refreshProjectStoresRowsInProjectScopedCacheWhenDedicatedLoaderExists() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Fix loading",
+                cwd: "/repo/one",
+                path: "/tmp/thread.jsonl",
+                updatedAt: "2026-03-06T01:00:00Z",
+                createdAt: "2026-03-06T00:00:00Z",
+                archived: false,
+                model: "gpt-5-codex",
+                effort: .high,
+                preview: "Fix loading",
+                statusType: nil
+            )
+        )
+        let projectSessionsLoader = RecordingProjectSessionsLoader(result: .success([row]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            projectSessionsLoader: projectSessionsLoader,
+            upstreamSessionsLoader: RecordingUpstreamSessionsLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.refreshProject(
+            machineID: "machine-1",
+            projectPath: "/repo/one",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(await projectSessionsLoader.callCount() == 1)
+        #expect(model.projectSessions(machineID: "machine-1", projectPath: "/repo/one").map(\.id) == [row.id])
+        #expect(model.projectSessionsError(machineID: "machine-1", projectPath: "/repo/one") == nil)
+    }
+
 
     @Test
     func loadMoreAppendsNextPageRows() async throws {

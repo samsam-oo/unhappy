@@ -152,6 +152,16 @@ public protocol MachineRPCDirectoryListing: Sendable {
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary]
 
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage
+
     func openProject(
         serverURL: URL,
         token: String,
@@ -536,6 +546,45 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         return try MachinesAPI.decodeProjectsResponse(responseData)
     }
 
+    public func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedProjectPath = projectPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProjectPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let boundedLimit = min(max(limit, 1), 200)
+        var bodyObject: [String: Any] = [
+            "path": normalizedProjectPath,
+            "limit": boundedLimit,
+        ]
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            bodyObject["cursor"] = normalizedCursor
+        }
+
+        let responseData = try await dataPlaneClient.requestJSON(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            operation: .projectSessions,
+            bodyObject: bodyObject
+        )
+        return try MachinesAPI.decodeProjectSessionsPageResponse(responseData)
+    }
+
     public func openProject(
         serverURL: URL,
         token: String,
@@ -685,6 +734,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             return .providerSpawn
         case "list-projects":
             return .projectList
+        case "project-sessions":
+            return .projectSessions
         case "open-project":
             return .projectOpen
         case "close-project":

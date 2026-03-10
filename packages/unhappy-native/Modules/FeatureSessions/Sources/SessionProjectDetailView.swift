@@ -82,6 +82,17 @@ public struct SessionProjectDetailView: View {
                     }
                     .padding(.vertical, 4)
                 }
+            } else if let projectSessionsErrorMessage, sessionEntries.isEmpty {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Couldn't load sessions")
+                            .font(.headline)
+                        Text(projectSessionsErrorMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
             } else if sessionEntries.isEmpty {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
@@ -188,7 +199,10 @@ public struct SessionProjectDetailView: View {
                         case .gemini:
                             provider = .gemini
                         }
-                        if let directRow = viewModel.upstreamSessions.first(where: {
+                        if let directRow = viewModel.projectSessions(
+                            machineID: resolvedMachineID,
+                            projectPath: context.directoryPath
+                        ).first(where: {
                             $0.machineID == resolvedMachineID &&
                             $0.summary.provider == provider &&
                             $0.summary.id == sessionID
@@ -320,7 +334,7 @@ public struct SessionProjectDetailView: View {
     }
 
     private var sessionEntries: [SessionListEntry] {
-        let directEntries: [SessionListEntry] = group.displayUpstreamSessions.compactMap { row in
+        let directEntries: [SessionListEntry] = projectScopedRows.compactMap { row in
             guard let identity = DirectSessionIdentityResolver.resolve(from: row) else {
                 return nil
             }
@@ -332,6 +346,27 @@ public struct SessionProjectDetailView: View {
             }
             return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
         }
+    }
+
+    private var projectScopedRows: [SessionLinkedUpstreamSession] {
+        let rows = viewModel.projectSessions(
+            machineID: group.machineID,
+            projectPath: group.projectPath
+        )
+        if !rows.isEmpty || viewModel.hasLoadedProjectSessions(
+            machineID: group.machineID,
+            projectPath: group.projectPath
+        ) {
+            return rows
+        }
+        return group.displayUpstreamSessions
+    }
+
+    private var projectSessionsErrorMessage: String? {
+        viewModel.projectSessionsError(
+            machineID: group.machineID,
+            projectPath: group.projectPath
+        )
     }
 
     private var shouldShowSessionsLoadingState: Bool {
