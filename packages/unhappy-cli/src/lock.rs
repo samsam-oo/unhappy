@@ -25,9 +25,10 @@ impl DaemonLockGuard {
         {
             Ok(mut file) => {
                 let pid = std::process::id();
-                file.write_all(pid.to_string().as_bytes()).with_context(|| {
-                    format!("failed to write daemon lock {}", lock_path.display())
-                })?;
+                file.write_all(pid.to_string().as_bytes())
+                    .with_context(|| {
+                        format!("failed to write daemon lock {}", lock_path.display())
+                    })?;
                 Ok(Some(Self {
                     path: lock_path,
                     _file: file,

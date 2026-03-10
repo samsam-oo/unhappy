@@ -3,7 +3,6 @@ use crate::{
     control_server::SpawnSessionRequest,
     daemon_state::{OpenedProject, SharedDaemonState},
     local_ops,
-    provider_session_ops,
     protocol::{
         MachineDataPlaneCompleteFrame, MachineDataPlaneErrorFrame, MachineDataPlaneHelloAckFrame,
         MachineDataPlaneHelloFrame, MachineDataPlaneKeyExchange, MachineDataPlaneOperation,
@@ -12,6 +11,7 @@ use crate::{
         MACHINE_DATA_PLANE_DEFAULT_MAX_IN_FLIGHT_STREAMS, MACHINE_DATA_PLANE_PROTOCOL_VERSION,
         MACHINE_DATA_PLANE_SUBPROTOCOL,
     },
+    provider_session_ops,
 };
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
@@ -20,8 +20,8 @@ use aes_gcm::{
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use futures_util::{SinkExt, StreamExt};
-use http::header;
 use hkdf::Hkdf;
+use http::header;
 use rand::RngCore;
 use serde_json::{json, Value};
 use sha2::Sha256;
@@ -34,8 +34,7 @@ use tokio::{
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, protocol::Message},
-    MaybeTlsStream,
-    WebSocketStream,
+    MaybeTlsStream, WebSocketStream,
 };
 use url::Url;
 use uuid::Uuid;
@@ -318,19 +317,15 @@ fn machine_data_plane_request(url: &Url, token: &str) -> Result<http::Request<()
         .as_str()
         .into_client_request()
         .context("failed to build websocket request")?;
-    request
-        .headers_mut()
-        .insert(
-            header::AUTHORIZATION,
-            http::HeaderValue::from_str(&format!("Bearer {token}"))
-                .context("failed to encode authorization header")?,
-        );
-    request
-        .headers_mut()
-        .insert(
-            header::SEC_WEBSOCKET_PROTOCOL,
-            http::HeaderValue::from_static(MACHINE_DATA_PLANE_SUBPROTOCOL),
-        );
+    request.headers_mut().insert(
+        header::AUTHORIZATION,
+        http::HeaderValue::from_str(&format!("Bearer {token}"))
+            .context("failed to encode authorization header")?,
+    );
+    request.headers_mut().insert(
+        header::SEC_WEBSOCKET_PROTOCOL,
+        http::HeaderValue::from_static(MACHINE_DATA_PLANE_SUBPROTOCOL),
+    );
     Ok(request.map(|_| ()))
 }
 
@@ -503,12 +498,10 @@ async fn dispatch_request(
                 "message": "Daemon update requested"
             }))
         }
-        MachineDataPlaneOperation::ProjectList => {
-            Ok(json!({
-                "success": true,
-                "projects": explicit_project_summaries(state.list_opened_projects().await)
-            }))
-        }
+        MachineDataPlaneOperation::ProjectList => Ok(json!({
+            "success": true,
+            "projects": explicit_project_summaries(state.list_opened_projects().await)
+        })),
         MachineDataPlaneOperation::ProjectOpen => {
             let path = payload
                 .get("path")
@@ -649,30 +642,21 @@ async fn dispatch_request(
             }
             provider_session_ops::gemini_send_message(&helper_payload).await
         }
-        MachineDataPlaneOperation::FsListDirectory => {
-            local_ops::list_directory(&payload).await
-        }
+        MachineDataPlaneOperation::FsListDirectory => local_ops::list_directory(&payload).await,
         MachineDataPlaneOperation::FsGetDirectoryTree => {
             local_ops::get_directory_tree(&payload).await
         }
-        MachineDataPlaneOperation::FsReadFile => {
-            local_ops::read_file(&payload).await
-        }
-        MachineDataPlaneOperation::FsWriteFile => {
-            local_ops::write_file(&payload).await
-        }
+        MachineDataPlaneOperation::FsReadFile => local_ops::read_file(&payload).await,
+        MachineDataPlaneOperation::FsWriteFile => local_ops::write_file(&payload).await,
         MachineDataPlaneOperation::ExecBash => local_ops::bash(&payload).await,
-        MachineDataPlaneOperation::SearchRipgrep => {
-            local_ops::ripgrep(&payload).await
-        }
-        MachineDataPlaneOperation::DiffDifftastic => {
-            local_ops::difftastic(config, &payload).await
-        }
+        MachineDataPlaneOperation::SearchRipgrep => local_ops::ripgrep(&payload).await,
+        MachineDataPlaneOperation::DiffDifftastic => local_ops::difftastic(config, &payload).await,
     }
 }
 
 async fn spawn_daemon_update(_config: &Config) -> Result<()> {
-    let current_executable = std::env::current_exe().context("failed to resolve current executable")?;
+    let current_executable =
+        std::env::current_exe().context("failed to resolve current executable")?;
     let mut command = Command::new(current_executable);
     command
         .arg("daemon")
@@ -743,8 +727,17 @@ fn request_aad(frame: &MachineDataPlaneRequestFrame) -> String {
         format!("v={}", frame.v),
         format!("t={}", frame.t),
         format!("streamId={}", frame.stream_id),
-        format!("op={}", serde_json::to_string(&frame.op).unwrap_or_else(|_| "\"\"".to_string()).trim_matches('"').to_string()),
-        format!("expectsChunks={}", if frame.expects_chunks { "1" } else { "0" }),
+        format!(
+            "op={}",
+            serde_json::to_string(&frame.op)
+                .unwrap_or_else(|_| "\"\"".to_string())
+                .trim_matches('"')
+                .to_string()
+        ),
+        format!(
+            "expectsChunks={}",
+            if frame.expects_chunks { "1" } else { "0" }
+        ),
     ]
     .join("\n")
 }
@@ -755,8 +748,18 @@ fn complete_aad(frame: &MachineDataPlaneCompleteFrame) -> String {
         format!("t={}", frame.t),
         format!("streamId={}", frame.stream_id),
         format!("seq={}", frame.seq),
-        format!("hasMore={}", if frame.has_more.unwrap_or(false) { "1" } else { "0" }),
-        format!("nextCursor={}", frame.next_cursor.clone().unwrap_or_default()),
+        format!(
+            "hasMore={}",
+            if frame.has_more.unwrap_or(false) {
+                "1"
+            } else {
+                "0"
+            }
+        ),
+        format!(
+            "nextCursor={}",
+            frame.next_cursor.clone().unwrap_or_default()
+        ),
     ]
     .join("\n")
 }
@@ -783,7 +786,10 @@ fn open_payload(
     cipher
         .decrypt(
             Nonce::from_slice(&nonce_bytes),
-            Payload { msg: &combined, aad },
+            Payload {
+                msg: &combined,
+                aad,
+            },
         )
         .map_err(|_| anyhow!("failed to decrypt sealed body"))
 }
@@ -830,7 +836,11 @@ fn chrono_like_now() -> u64 {
 fn timestamp_to_rfc3339(timestamp_millis: u64) -> String {
     time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_millis) * 1_000_000)
         .ok()
-        .and_then(|timestamp| timestamp.format(&time::format_description::well_known::Rfc3339).ok())
+        .and_then(|timestamp| {
+            timestamp
+                .format(&time::format_description::well_known::Rfc3339)
+                .ok()
+        })
         .unwrap_or_else(|| timestamp_millis.to_string())
 }
 

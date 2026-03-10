@@ -83,7 +83,10 @@ async fn post_machine_snapshot(
     });
 
     let response = client
-        .post(format!("{}/v1/machines", config.server_url.trim_end_matches('/')))
+        .post(format!(
+            "{}/v1/machines",
+            config.server_url.trim_end_matches('/')
+        ))
         .bearer_auth(&config.token)
         .json(&payload)
         .send()
@@ -140,10 +143,7 @@ fn resolve_machine_host() -> String {
 
 #[cfg(target_os = "macos")]
 fn read_scutil_host(key: &str) -> Option<String> {
-    let output = Command::new("scutil")
-        .args(["--get", key])
-        .output()
-        .ok()?;
+    let output = Command::new("scutil").args(["--get", key]).output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -255,7 +255,9 @@ mod tests {
 
         let cipher = Aes256Gcm::new_from_slice(&symmetric_key).expect("cipher");
         let nonce = Nonce::from_slice(nonce_bytes);
-        let plaintext = cipher.decrypt(nonce, ciphertext).expect("decrypt machine key");
+        let plaintext = cipher
+            .decrypt(nonce, ciphertext)
+            .expect("decrypt machine key");
 
         assert_eq!(plaintext, machine_key);
     }

@@ -1,16 +1,17 @@
-mod config;
-mod codex_transcript;
 mod codex_app_server;
+mod codex_transcript;
+mod config;
 mod control_server;
 mod daemon_state;
 mod data_plane;
-mod lock;
+mod global_install;
 mod launcher;
 mod local_ops;
+mod lock;
 mod machine_sync;
+mod protocol;
 mod provider;
 mod provider_session_ops;
-mod protocol;
 mod session_store;
 mod system_ops;
 mod tracked_session;
@@ -19,8 +20,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use config::Config;
 use control_server::start_control_server;
-use data_plane::spawn_data_plane_service;
 use daemon_state::DaemonState;
+use data_plane::spawn_data_plane_service;
+use global_install::{install_global_cli, reinstall_global_cli, uninstall_global_cli};
 use launcher::{
     list_sessions, print_status, provider_session_started, spawn_session, start_detached_daemon,
     stop_daemon_from_state, stop_session,
@@ -46,6 +48,10 @@ enum Command {
     Daemon {
         #[command(subcommand)]
         command: DaemonCommand,
+    },
+    Global {
+        #[command(subcommand)]
+        command: GlobalCommand,
     },
     DataPlaneHandshake,
     Start,
@@ -108,12 +114,22 @@ enum DaemonCommand {
     Uninstall,
 }
 
+#[derive(Debug, Subcommand)]
+enum GlobalCommand {
+    Install,
+    Uninstall,
+    Reinstall,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Daemon { command } => {
             run_daemon_command(command).await?;
+        }
+        Command::Global { command } => {
+            run_global_command(command)?;
         }
         Command::DataPlaneHandshake => {
             let config = Config::from_env()?;
@@ -127,10 +143,8 @@ async fn main() -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             stop_daemon_from_state(&unhappy_home_dir).await?;
         }
@@ -138,10 +152,8 @@ async fn main() -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             print_status(&unhappy_home_dir, json)?;
         }
@@ -149,10 +161,8 @@ async fn main() -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",
@@ -163,10 +173,8 @@ async fn main() -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",
@@ -177,24 +185,22 @@ async fn main() -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",
-                serde_json::to_string_pretty(&spawn_session(&unhappy_home_dir, &request_json).await?)?
+                serde_json::to_string_pretty(
+                    &spawn_session(&unhappy_home_dir, &request_json).await?
+                )?
             );
         }
         Command::ProviderSessionStarted { request_json } => {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",
@@ -241,7 +247,10 @@ async fn main() -> Result<()> {
             let state = DaemonState::new_shared(config);
             state.restore_persisted_sessions().await?;
             let server = start_control_server(state.clone(), bind).await?;
-            if let Err(error) = state.initialize_persistence(server.local_addr().port()).await {
+            if let Err(error) = state
+                .initialize_persistence(server.local_addr().port())
+                .await
+            {
                 state
                     .request_shutdown_with_reason("state-file-initialization-failed")
                     .await;
@@ -289,6 +298,15 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn run_global_command(command: GlobalCommand) -> Result<()> {
+    match command {
+        GlobalCommand::Install => install_global_cli()?,
+        GlobalCommand::Uninstall => uninstall_global_cli()?,
+        GlobalCommand::Reinstall => reinstall_global_cli()?,
+    }
+    Ok(())
+}
+
 async fn run_daemon_command(command: DaemonCommand) -> Result<()> {
     match command {
         DaemonCommand::Start => {
@@ -299,10 +317,8 @@ async fn run_daemon_command(command: DaemonCommand) -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             stop_daemon_from_state(&unhappy_home_dir).await?;
         }
@@ -310,10 +326,8 @@ async fn run_daemon_command(command: DaemonCommand) -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             print_status(&unhappy_home_dir, json)?;
         }
@@ -321,10 +335,8 @@ async fn run_daemon_command(command: DaemonCommand) -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",
@@ -335,10 +347,8 @@ async fn run_daemon_command(command: DaemonCommand) -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",
@@ -349,24 +359,22 @@ async fn run_daemon_command(command: DaemonCommand) -> Result<()> {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",
-                serde_json::to_string_pretty(&spawn_session(&unhappy_home_dir, &request_json).await?)?
+                serde_json::to_string_pretty(
+                    &spawn_session(&unhappy_home_dir, &request_json).await?
+                )?
             );
         }
         DaemonCommand::ProviderSessionStarted { request_json } => {
             let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|_| {
-                    std::path::PathBuf::from(
-                        env::var("HOME").unwrap_or_else(|_| ".".to_string()),
-                    )
-                    .join(".unhappy")
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
                 });
             println!(
                 "{}",

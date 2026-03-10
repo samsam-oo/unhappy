@@ -1,9 +1,9 @@
 use crate::provider::ProviderCommandConfig;
+use anyhow::{Context, Result};
 use base64::{
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
     Engine as _,
 };
-use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::env;
 use std::fs;
@@ -75,13 +75,13 @@ impl Config {
             .unwrap_or_else(|_| {
                 PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string())).join(".unhappy")
             });
-        let server_url = env::var("UNHAPPY_SERVER_URL")
-            .unwrap_or_else(|_| "https://api.unhappy.im".to_string());
+        let server_url =
+            env::var("UNHAPPY_SERVER_URL").unwrap_or_else(|_| "https://api.unhappy.im".to_string());
         let bootstrap = BootstrapMaterial::load(&unhappy_home_dir)?;
         let token = env::var("UNHAPPY_TOKEN").unwrap_or(bootstrap.token);
         let machine_id = env::var("UNHAPPY_MACHINE_ID").unwrap_or(bootstrap.machine_id);
-        let machine_data_key_base64url = env::var("UNHAPPY_MACHINE_DATA_KEY")
-            .unwrap_or(bootstrap.machine_data_key_base64url);
+        let machine_data_key_base64url =
+            env::var("UNHAPPY_MACHINE_DATA_KEY").unwrap_or(bootstrap.machine_data_key_base64url);
         let account_public_key_base64url = env::var("UNHAPPY_ACCOUNT_PUBLIC_KEY")
             .unwrap_or(bootstrap.account_public_key_base64url);
         let current_cli_version =
@@ -105,7 +105,7 @@ impl Config {
             session_webhook_timeout_ms,
         })
     }
-    
+
     pub fn session_store_path(&self) -> PathBuf {
         self.unhappy_home_dir.join("daemon.sessions.json")
     }
@@ -193,11 +193,15 @@ impl Config {
         if let Ok(cli_root) = env::var(UNHAPPY_CLI_ROOT_ENV) {
             let trimmed = cli_root.trim();
             if !trimmed.is_empty() {
-                return PathBuf::from(trimmed).join("scripts").join("session_hook_forwarder.cjs");
+                return PathBuf::from(trimmed)
+                    .join("scripts")
+                    .join("session_hook_forwarder.cjs");
             }
         }
 
-        self.cli_root().join("scripts").join("session_hook_forwarder.cjs")
+        self.cli_root()
+            .join("scripts")
+            .join("session_hook_forwarder.cjs")
     }
 
     pub fn claude_hook_command(&self, port: u16) -> String {
@@ -227,9 +231,15 @@ impl Config {
         } else {
             vec![
                 config_dir.join("settings.json"),
-                home_dir().join(".config").join("gemini").join("settings.json"),
+                home_dir()
+                    .join(".config")
+                    .join("gemini")
+                    .join("settings.json"),
                 config_dir.join("config.json"),
-                home_dir().join(".config").join("gemini").join("config.json"),
+                home_dir()
+                    .join(".config")
+                    .join("gemini")
+                    .join("config.json"),
             ]
         };
 
@@ -259,9 +269,12 @@ impl Config {
         }
         if let Ok(current_executable) = env::current_exe() {
             if let Some(target_dir) = current_executable.parent() {
-                if target_dir.file_name().and_then(|value| value.to_str()) == Some("release") ||
-                    target_dir.file_name().and_then(|value| value.to_str()) == Some("debug") {
-                    if let Some(candidate_root) = target_dir.parent().and_then(|value| value.parent()) {
+                if target_dir.file_name().and_then(|value| value.to_str()) == Some("release")
+                    || target_dir.file_name().and_then(|value| value.to_str()) == Some("debug")
+                {
+                    if let Some(candidate_root) =
+                        target_dir.parent().and_then(|value| value.parent())
+                    {
                         return candidate_root.to_path_buf();
                     }
                 }
@@ -312,8 +325,14 @@ mod tests {
         let config = sample_config();
         let paths = config.codex_runtime_paths(Some("/tmp/custom-codex-home"));
         assert_eq!(paths.home_dir, PathBuf::from("/tmp/custom-codex-home"));
-        assert_eq!(paths.auth_file, PathBuf::from("/tmp/custom-codex-home/auth.json"));
-        assert_eq!(paths.sessions_dir, PathBuf::from("/tmp/custom-codex-home/sessions"));
+        assert_eq!(
+            paths.auth_file,
+            PathBuf::from("/tmp/custom-codex-home/auth.json")
+        );
+        assert_eq!(
+            paths.sessions_dir,
+            PathBuf::from("/tmp/custom-codex-home/sessions")
+        );
     }
 
     #[test]
@@ -352,9 +371,15 @@ mod tests {
             paths.settings_candidates,
             vec![
                 PathBuf::from("/tmp/.gemini-test/settings.json"),
-                home_dir().join(".config").join("gemini").join("settings.json"),
+                home_dir()
+                    .join(".config")
+                    .join("gemini")
+                    .join("settings.json"),
                 PathBuf::from("/tmp/.gemini-test/config.json"),
-                home_dir().join(".config").join("gemini").join("config.json"),
+                home_dir()
+                    .join(".config")
+                    .join("gemini")
+                    .join("config.json"),
             ],
         );
         assert_eq!(

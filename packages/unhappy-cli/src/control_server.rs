@@ -1,5 +1,5 @@
-use crate::{config::Config, daemon_state::SharedDaemonState};
 use crate::provider::Provider;
+use crate::{config::Config, daemon_state::SharedDaemonState};
 use anyhow::{Context, Result};
 use axum::{
     extract::State,
@@ -10,8 +10,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fs;
 use std::collections::HashMap;
+use std::fs;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use tokio::{net::TcpListener, task::JoinHandle};
 
@@ -48,8 +48,12 @@ pub fn create_claude_hook_settings_artifact(
     let forwarder_script = config.claude_hook_forwarder_script();
 
     if let Some(parent) = settings_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("failed to create Claude hook settings dir {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create Claude hook settings dir {}",
+                parent.display()
+            )
+        })?;
     }
 
     let settings = json!({
@@ -67,7 +71,12 @@ pub fn create_claude_hook_settings_artifact(
         serde_json::to_vec_pretty(&settings)
             .context("failed to encode Claude hook settings JSON")?,
     )
-    .with_context(|| format!("failed to write Claude hook settings {}", settings_path.display()))?;
+    .with_context(|| {
+        format!(
+            "failed to write Claude hook settings {}",
+            settings_path.display()
+        )
+    })?;
 
     Ok(ClaudeHookSettingsArtifact {
         settings_path,
@@ -318,7 +327,9 @@ async fn spawn_session(
 }
 
 async fn stop_daemon(State(state): State<SharedDaemonState>) -> Json<StatusOkResponse> {
-    state.request_shutdown_with_reason("http-stop-request").await;
+    state
+        .request_shutdown_with_reason("http-stop-request")
+        .await;
     Json(StatusOkResponse::stopping())
 }
 
@@ -333,8 +344,12 @@ pub fn generate_claude_hook_settings_file(
 ) -> Result<ClaudeHookSettingsArtifact> {
     let settings_path = config.claude_hook_settings_path_for_pid(pid);
     let hooks_dir = config.claude_hook_settings_dir();
-    fs::create_dir_all(&hooks_dir)
-        .with_context(|| format!("failed to create Claude hook settings dir {}", hooks_dir.display()))?;
+    fs::create_dir_all(&hooks_dir).with_context(|| {
+        format!(
+            "failed to create Claude hook settings dir {}",
+            hooks_dir.display()
+        )
+    })?;
 
     let forwarder_script = config.claude_hook_forwarder_script();
     let hook_command = config.claude_hook_command(port);
@@ -355,8 +370,12 @@ pub fn generate_claude_hook_settings_file(
     });
 
     let bytes = serde_json::to_vec_pretty(&settings)?;
-    fs::write(&settings_path, bytes)
-        .with_context(|| format!("failed to write Claude hook settings {}", settings_path.display()))?;
+    fs::write(&settings_path, bytes).with_context(|| {
+        format!(
+            "failed to write Claude hook settings {}",
+            settings_path.display()
+        )
+    })?;
 
     Ok(ClaudeHookSettingsArtifact {
         settings_path,
@@ -405,10 +424,10 @@ mod tests {
         let temp_dir = tempdir().expect("tempdir");
         let config = sample_config(temp_dir.path());
 
-        let artifact = create_claude_hook_settings_artifact(&config, 42, 3344)
-            .expect("create artifact");
-        let file_contents = fs::read_to_string(&artifact.settings_path)
-            .expect("read hook settings");
+        let artifact =
+            create_claude_hook_settings_artifact(&config, 42, 3344).expect("create artifact");
+        let file_contents =
+            fs::read_to_string(&artifact.settings_path).expect("read hook settings");
 
         assert!(artifact.settings_path.ends_with("session-hook-42.json"));
         assert!(file_contents.contains("SessionStart"));

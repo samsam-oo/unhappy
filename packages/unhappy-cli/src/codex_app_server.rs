@@ -29,8 +29,14 @@ pub async fn open_or_resume_codex_thread(
         .spawn()
         .context("failed to spawn codex app-server")?;
 
-    let stdin = child.stdin.take().context("missing codex app-server stdin")?;
-    let stdout = child.stdout.take().context("missing codex app-server stdout")?;
+    let stdin = child
+        .stdin
+        .take()
+        .context("missing codex app-server stdin")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("missing codex app-server stdout")?;
     let mut client = CodexAppServerRpcClient::new(stdin, stdout);
 
     client
@@ -50,7 +56,9 @@ pub async fn open_or_resume_codex_thread(
         .filter(|value| !value.is_empty())
         .map(|value| if value == "max" { "xhigh" } else { value });
 
-    let response = if let Some(thread_id) = resume_thread_id.filter(|value| !value.trim().is_empty()) {
+    let response = if let Some(thread_id) =
+        resume_thread_id.filter(|value| !value.trim().is_empty())
+    {
         client
             .call(
                 "thread/resume",
@@ -129,9 +137,12 @@ impl CodexAppServerRpcClient {
             line.clear();
             let bytes = self.stdout.read_line(&mut line).await?;
             if bytes == 0 {
-                return Err(anyhow!("codex app-server closed before responding to {method}"));
+                return Err(anyhow!(
+                    "codex app-server closed before responding to {method}"
+                ));
             }
-            let parsed: Value = serde_json::from_str(line.trim()).context("invalid json-rpc line")?;
+            let parsed: Value =
+                serde_json::from_str(line.trim()).context("invalid json-rpc line")?;
             if parsed.get("id").and_then(Value::as_u64) != Some(id) {
                 continue;
             }
@@ -144,22 +155,28 @@ impl CodexAppServerRpcClient {
 }
 
 fn extract_thread_id(value: &Value) -> Option<String> {
-    candidate_strings(value, &[
-        &["thread", "id"],
-        &["threadId"],
-        &["sessionId"],
-        &["meta", "sessionId"],
-        &["response", "threadId"],
-        &["response", "sessionId"],
-    ])
+    candidate_strings(
+        value,
+        &[
+            &["thread", "id"],
+            &["threadId"],
+            &["sessionId"],
+            &["meta", "sessionId"],
+            &["response", "threadId"],
+            &["response", "sessionId"],
+        ],
+    )
 }
 
 fn extract_conversation_id(value: &Value) -> Option<String> {
-    candidate_strings(value, &[
-        &["conversationId"],
-        &["meta", "conversationId"],
-        &["response", "conversationId"],
-    ])
+    candidate_strings(
+        value,
+        &[
+            &["conversationId"],
+            &["meta", "conversationId"],
+            &["response", "conversationId"],
+        ],
+    )
 }
 
 fn candidate_strings(value: &Value, paths: &[&[&str]]) -> Option<String> {
@@ -178,7 +195,11 @@ fn candidate_strings(value: &Value, paths: &[&[&str]]) -> Option<String> {
         if missing {
             continue;
         }
-        if let Some(text) = current.as_str().map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(text) = current
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             return Some(text.to_string());
         }
     }

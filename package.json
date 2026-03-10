@@ -2,9 +2,9 @@
     "name": "monorepo",
     "private": true,
     "scripts": {
-        "cli:global:install": "node ./scripts/cli-global-install.cjs install",
-        "cli:global:reinstall": "node ./scripts/cli-global-install.cjs reinstall",
-        "cli:global:uninstall": "node ./scripts/cli-global-install.cjs uninstall"
+        "cli:global:install": "cargo run --manifest-path packages/unhappy-cli/Cargo.toml -- global install",
+        "cli:global:reinstall": "cargo run --manifest-path packages/unhappy-cli/Cargo.toml -- global reinstall",
+        "cli:global:uninstall": "cargo run --manifest-path packages/unhappy-cli/Cargo.toml -- global uninstall"
     },
     "workspaces": {
         "packages": [

@@ -437,9 +437,7 @@ fn parse_command_args(raw_value: &str) -> Result<Vec<String>> {
 
     if trimmed.starts_with('[') {
         let parsed = serde_json::from_str::<Vec<String>>(trimmed).with_context(|| {
-            format!(
-                "failed to parse provider executable args as JSON array: {trimmed}"
-            )
+            format!("failed to parse provider executable args as JSON array: {trimmed}")
         })?;
         return Ok(parsed);
     }

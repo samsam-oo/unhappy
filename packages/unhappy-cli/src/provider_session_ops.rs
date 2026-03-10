@@ -1,6 +1,5 @@
 use crate::{
-    codex_app_server::open_or_resume_codex_thread,
-    codex_transcript::list_codex_thread_messages,
+    codex_app_server::open_or_resume_codex_thread, codex_transcript::list_codex_thread_messages,
     config::Config,
 };
 use anyhow::{anyhow, Context, Result};
@@ -19,10 +18,29 @@ use tokio::{
 };
 
 pub async fn codex_list_threads(config: &Config, payload: &Value) -> Result<Value> {
-    let cwd = payload.get("cwd").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).unwrap_or("");
-    let normalized_cwd = if cwd.is_empty() { None } else { Some(resolve_cwd(cwd)) };
-    let limit = payload.get("limit").and_then(Value::as_u64).map(|value| value.clamp(1, 100) as usize).unwrap_or(20);
-    let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
+    let cwd = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("");
+    let normalized_cwd = if cwd.is_empty() {
+        None
+    } else {
+        Some(resolve_cwd(cwd))
+    };
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value.clamp(1, 100) as usize)
+        .unwrap_or(20);
+    let cursor = payload
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0);
 
     let Some(filter) = normalized_cwd.as_deref() else {
         return Ok(json!({
@@ -48,10 +66,23 @@ pub async fn codex_list_threads(config: &Config, payload: &Value) -> Result<Valu
 
 pub async fn codex_open_thread(config: &Config, payload: &Value) -> Result<Value> {
     let cwd = required_string(payload, "cwd")?;
-    let thread_id = payload.get("threadId").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let model = payload.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let effort = payload.get("effort").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let result = open_or_resume_codex_thread(config, &resolve_cwd(cwd), thread_id, model, effort).await?;
+    let thread_id = payload
+        .get("threadId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let model = payload
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let effort = payload
+        .get("effort")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let result =
+        open_or_resume_codex_thread(config, &resolve_cwd(cwd), thread_id, model, effort).await?;
     Ok(json!({
         "success": true,
         "threadId": result.thread_id,
@@ -63,8 +94,15 @@ pub async fn codex_open_thread(config: &Config, payload: &Value) -> Result<Value
 
 pub async fn codex_list_messages(payload: &Value) -> Result<Value> {
     let path = required_string(payload, "path")?;
-    let limit = payload.get("limit").and_then(Value::as_u64).map(|value| value as usize);
-    let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value as usize);
+    let cursor = payload
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     list_codex_thread_messages(path, limit, cursor).await
 }
 
@@ -72,11 +110,24 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
     let thread_id = required_string(payload, "threadId")?;
     let cwd = required_string(payload, "cwd")?;
     let text = required_string(payload, "text")?;
-    let model = payload.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let effort = payload.get("effort").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let permission_mode = payload.get("permissionMode").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+    let model = payload
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let effort = payload
+        .get("effort")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let permission_mode = payload
+        .get("permissionMode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
-    let code_home = payload.get("path")
+    let code_home = payload
+        .get("path")
         .and_then(Value::as_str)
         .and_then(extract_codex_home_from_transcript_path);
     let mut command = Command::new("codex");
@@ -88,15 +139,24 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
-    let mut child = command.spawn().context("failed to spawn codex app-server")?;
+    let mut child = command
+        .spawn()
+        .context("failed to spawn codex app-server")?;
     let mut stdin = child.stdin.take().context("missing codex stdin")?;
     let stdout = child.stdout.take().context("missing codex stdout")?;
     let mut reader = BufReader::new(stdout).lines();
 
-    let _ = call_rpc(&mut stdin, &mut reader, 1, "initialize", json!({
-        "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" },
-        "capabilities": { "experimentalApi": true }
-    })).await?;
+    let _ = call_rpc(
+        &mut stdin,
+        &mut reader,
+        1,
+        "initialize",
+        json!({
+            "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" },
+            "capabilities": { "experimentalApi": true }
+        }),
+    )
+    .await?;
 
     let mut resume_params = json!({
         "threadId": thread_id,
@@ -107,7 +167,8 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
         resume_params["model"] = Value::String(model.to_string());
     }
     if let Some(effort) = effort {
-        resume_params["config"] = json!({ "model_reasoning_effort": if effort == "max" { "xhigh" } else { effort } });
+        resume_params["config"] =
+            json!({ "model_reasoning_effort": if effort == "max" { "xhigh" } else { effort } });
     }
     let _ = call_rpc(&mut stdin, &mut reader, 2, "thread/resume", resume_params).await?;
 
@@ -119,12 +180,17 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
         turn_params["model"] = Value::String(model.to_string());
     }
     if let Some(effort) = effort {
-        turn_params["effort"] = Value::String(if effort == "max" { "xhigh".to_string() } else { effort.to_string() });
+        turn_params["effort"] = Value::String(if effort == "max" {
+            "xhigh".to_string()
+        } else {
+            effort.to_string()
+        });
     }
     if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
         turn_params["cwd"] = Value::String(resolve_cwd(cwd));
     }
-    if let Some((approval_policy, sandbox_policy)) = map_codex_permission_mode(permission_mode, cwd) {
+    if let Some((approval_policy, sandbox_policy)) = map_codex_permission_mode(permission_mode, cwd)
+    {
         if let Some(approval_policy) = approval_policy {
             turn_params["approvalPolicy"] = Value::String(approval_policy.to_string());
         }
@@ -139,10 +205,24 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
 }
 
 pub async fn claude_list_sessions(payload: &Value) -> Result<Value> {
-    let cwd = payload.get("cwd").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+    let cwd = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let normalized_cwd = cwd.map(resolve_cwd);
-    let limit = payload.get("limit").and_then(Value::as_u64).map(|value| value.clamp(1, 100) as usize).unwrap_or(20);
-    let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value.clamp(1, 100) as usize)
+        .unwrap_or(20);
+    let cursor = payload
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0);
 
     let claude_config_dir = default_claude_config_dir();
     let session_files = claude_session_files(normalized_cwd.as_deref(), &claude_config_dir).await?;
@@ -178,7 +258,11 @@ pub async fn claude_list_sessions(payload: &Value) -> Result<Value> {
         }));
     }
 
-    rows.sort_by(|lhs, rhs| rhs.get("updatedAt").and_then(Value::as_str).cmp(&lhs.get("updatedAt").and_then(Value::as_str)));
+    rows.sort_by(|lhs, rhs| {
+        rhs.get("updatedAt")
+            .and_then(Value::as_str)
+            .cmp(&lhs.get("updatedAt").and_then(Value::as_str))
+    });
     let start = cursor.min(rows.len());
     let end = (start + limit).min(rows.len());
     let has_next = end < rows.len();
@@ -193,9 +277,20 @@ pub async fn claude_list_sessions(payload: &Value) -> Result<Value> {
 pub async fn claude_list_messages(payload: &Value) -> Result<Value> {
     let session_id = required_string(payload, "sessionId")?;
     let cwd = required_string(payload, "cwd")?;
-    let limit = payload.get("limit").and_then(Value::as_u64).map(|value| value as usize).unwrap_or(120);
-    let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).and_then(|value| value.parse::<usize>().ok());
-    let Some(transcript_path) = find_claude_session_file(session_id, Some(cwd), &default_claude_config_dir()).await? else {
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value as usize)
+        .unwrap_or(120);
+    let cursor = payload
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<usize>().ok());
+    let Some(transcript_path) =
+        find_claude_session_file(session_id, Some(cwd), &default_claude_config_dir()).await?
+    else {
         return Ok(json!({ "success": true, "messages": [], "hasNext": false }));
     };
 
@@ -211,7 +306,10 @@ pub async fn claude_list_messages(payload: &Value) -> Result<Value> {
             Ok(value) => value,
             Err(_) => continue,
         };
-        let role = parsed.get("type").and_then(Value::as_str).unwrap_or_default();
+        let role = parsed
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let envelope = if role == "user" {
             json!({
                 "role": "user",
@@ -246,9 +344,21 @@ pub async fn claude_send_message(payload: &Value) -> Result<Value> {
     let session_id = required_string(payload, "sessionId")?;
     let cwd = required_string(payload, "cwd")?;
     let text = required_string(payload, "text")?;
-    let model = payload.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let effort = payload.get("effort").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let permission_mode = payload.get("permissionMode").and_then(Value::as_str).map(str::trim).unwrap_or("default");
+    let model = payload
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let effort = payload
+        .get("effort")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let permission_mode = payload
+        .get("permissionMode")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("default");
 
     let mut args = vec![
         "--output-format".to_string(),
@@ -280,7 +390,11 @@ pub async fn claude_send_message(payload: &Value) -> Result<Value> {
         .context("failed to spawn claude")?;
     if !output.status.success() {
         let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(anyhow!(if detail.is_empty() { "Claude returned an error".to_string() } else { detail }));
+        return Err(anyhow!(if detail.is_empty() {
+            "Claude returned an error".to_string()
+        } else {
+            detail
+        }));
     }
     Ok(json!({ "success": true }))
 }
@@ -290,14 +404,33 @@ pub async fn gemini_list_sessions(
     payload: &Value,
     active_sessions: &[Value],
 ) -> Result<Value> {
-    let cwd_filter = payload.get("cwd").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).map(resolve_cwd);
-    let limit = payload.get("limit").and_then(Value::as_u64).map(|value| value.clamp(1, 100) as usize).unwrap_or(20);
-    let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
+    let cwd_filter = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(resolve_cwd);
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value.clamp(1, 100) as usize)
+        .unwrap_or(20);
+    let cursor = payload
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0);
 
     let mut merged_rows = HashMap::<String, Value>::new();
     for row in active_sessions {
         if let Some(filter) = cwd_filter.as_deref() {
-            let row_cwd = row.get("cwd").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+            let row_cwd = row
+                .get("cwd")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
             if row_cwd != Some(filter) {
                 continue;
             }
@@ -305,12 +438,18 @@ pub async fn gemini_list_sessions(
         merge_provider_session_row(&mut merged_rows, row.clone());
     }
 
-    for row in list_gemini_historical_sessions(&config.gemini_config_dir(), cwd_filter.as_deref()).await? {
+    for row in
+        list_gemini_historical_sessions(&config.gemini_config_dir(), cwd_filter.as_deref()).await?
+    {
         merge_provider_session_row(&mut merged_rows, row);
     }
 
     let mut rows = merged_rows.into_values().collect::<Vec<_>>();
-    rows.sort_by(|lhs, rhs| rhs.get("updatedAt").and_then(Value::as_str).cmp(&lhs.get("updatedAt").and_then(Value::as_str)));
+    rows.sort_by(|lhs, rhs| {
+        rhs.get("updatedAt")
+            .and_then(Value::as_str)
+            .cmp(&lhs.get("updatedAt").and_then(Value::as_str))
+    });
     let start = cursor.min(rows.len());
     let end = (start + limit).min(rows.len());
     let has_next = end < rows.len();
@@ -346,10 +485,21 @@ pub async fn gemini_list_messages(
 
     let session_id = required_string(payload, "sessionId")?;
     let limit = payload.get("limit").and_then(Value::as_u64).unwrap_or(120);
-    let cursor = payload.get("cursor").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()).and_then(|value| value.parse::<usize>().ok());
-    let cwd_hint = payload.get("cwd").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+    let cursor = payload
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<usize>().ok());
+    let cwd_hint = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
-    let Some(session_path) = find_gemini_session_file(&config.gemini_config_dir(), session_id, cwd_hint).await? else {
+    let Some(session_path) =
+        find_gemini_session_file(&config.gemini_config_dir(), session_id, cwd_hint).await?
+    else {
         return Ok(json!({ "success": true, "messages": [], "hasNext": false }));
     };
     let Some(stored_session) = read_gemini_session_file(&session_path).await? else {
@@ -402,8 +552,16 @@ pub async fn gemini_send_message(payload: &Value) -> Result<Value> {
         .and_then(Value::as_u64)
         .ok_or_else(|| anyhow!("controlPort is required"))?;
     let text = required_string(payload, "text")?;
-    let session_id = payload.get("sessionId").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-    let model = payload.get("model").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+    let session_id = payload
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let model = payload
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     let client = Client::new();
     let response = client
@@ -421,7 +579,10 @@ pub async fn gemini_send_message(payload: &Value) -> Result<Value> {
 
 async fn parse_success_json(response: reqwest::Response) -> Result<Value> {
     let status = response.status();
-    let payload: Value = response.json().await.context("failed to decode JSON response")?;
+    let payload: Value = response
+        .json()
+        .await
+        .context("failed to decode JSON response")?;
     if !status.is_success() || payload.get("success") == Some(&Value::Bool(false)) {
         let message = payload
             .get("error")
@@ -434,40 +595,58 @@ async fn parse_success_json(response: reqwest::Response) -> Result<Value> {
     Ok(payload)
 }
 
-fn map_codex_permission_mode<'a>(mode: Option<&'a str>, cwd: &'a str) -> Option<(Option<&'a str>, Option<Value>)> {
+fn map_codex_permission_mode<'a>(
+    mode: Option<&'a str>,
+    cwd: &'a str,
+) -> Option<(Option<&'a str>, Option<Value>)> {
     match mode.unwrap_or_default() {
         "" | "passthrough" => None,
-        "read-only" => Some((Some("never"), Some(json!({
-            "type": "readOnly",
-            "access": { "type": "fullAccess" }
-        })))),
-        "safe-yolo" => Some((Some("on-failure"), Some(json!({
-            "type": "workspaceWrite",
-            "writableRoots": [resolve_cwd(cwd)],
-            "readOnlyAccess": { "type": "fullAccess" },
-            "networkAccess": false,
-            "excludeTmpdirEnvVar": false,
-            "excludeSlashTmp": false
-        })))),
-        "yolo" | "bypassPermissions" => Some((Some("on-failure"), Some(json!({
-            "type": "dangerFullAccess"
-        })))),
-        "acceptEdits" => Some((Some("on-request"), Some(json!({
-            "type": "workspaceWrite",
-            "writableRoots": [resolve_cwd(cwd)],
-            "readOnlyAccess": { "type": "fullAccess" },
-            "networkAccess": false,
-            "excludeTmpdirEnvVar": false,
-            "excludeSlashTmp": false
-        })))),
-        _ => Some((Some("untrusted"), Some(json!({
-            "type": "workspaceWrite",
-            "writableRoots": [resolve_cwd(cwd)],
-            "readOnlyAccess": { "type": "fullAccess" },
-            "networkAccess": false,
-            "excludeTmpdirEnvVar": false,
-            "excludeSlashTmp": false
-        })))),
+        "read-only" => Some((
+            Some("never"),
+            Some(json!({
+                "type": "readOnly",
+                "access": { "type": "fullAccess" }
+            })),
+        )),
+        "safe-yolo" => Some((
+            Some("on-failure"),
+            Some(json!({
+                "type": "workspaceWrite",
+                "writableRoots": [resolve_cwd(cwd)],
+                "readOnlyAccess": { "type": "fullAccess" },
+                "networkAccess": false,
+                "excludeTmpdirEnvVar": false,
+                "excludeSlashTmp": false
+            })),
+        )),
+        "yolo" | "bypassPermissions" => Some((
+            Some("on-failure"),
+            Some(json!({
+                "type": "dangerFullAccess"
+            })),
+        )),
+        "acceptEdits" => Some((
+            Some("on-request"),
+            Some(json!({
+                "type": "workspaceWrite",
+                "writableRoots": [resolve_cwd(cwd)],
+                "readOnlyAccess": { "type": "fullAccess" },
+                "networkAccess": false,
+                "excludeTmpdirEnvVar": false,
+                "excludeSlashTmp": false
+            })),
+        )),
+        _ => Some((
+            Some("untrusted"),
+            Some(json!({
+                "type": "workspaceWrite",
+                "writableRoots": [resolve_cwd(cwd)],
+                "readOnlyAccess": { "type": "fullAccess" },
+                "networkAccess": false,
+                "excludeTmpdirEnvVar": false,
+                "excludeSlashTmp": false
+            })),
+        )),
     }
 }
 
@@ -510,7 +689,9 @@ async fn read_claude_session_meta(path: &Path) -> Result<Option<ClaudeSessionMet
     let file = match File::open(path).await {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error).with_context(|| format!("failed to open {}", path.display())),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to open {}", path.display()))
+        }
     };
     let mut lines = BufReader::new(file).lines();
     while let Some(line) = lines.next_line().await? {
@@ -522,15 +703,31 @@ async fn read_claude_session_meta(path: &Path) -> Result<Option<ClaudeSessionMet
             Ok(value) => value,
             Err(_) => continue,
         };
-        let Some(object) = parsed.as_object() else { continue };
-        let session_id = object.get("sessionId").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
-        let cwd = object.get("cwd").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+        let Some(object) = parsed.as_object() else {
+            continue;
+        };
+        let session_id = object
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let cwd = object
+            .get("cwd")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         if let Some((session_id, cwd)) = session_id.zip(cwd) {
             return Ok(Some(ClaudeSessionMeta {
                 session_id: session_id.to_string(),
                 cwd: cwd.to_string(),
-                timestamp: object.get("timestamp").and_then(Value::as_str).map(ToOwned::to_owned),
-                is_sidechain: object.get("isSidechain").and_then(Value::as_bool).unwrap_or(false),
+                timestamp: object
+                    .get("timestamp")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned),
+                is_sidechain: object
+                    .get("isSidechain")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
             }));
         }
     }
@@ -592,7 +789,9 @@ async fn call_rpc(
         "method": method,
         "params": params
     });
-    stdin.write_all(serde_json::to_string(&request)?.as_bytes()).await?;
+    stdin
+        .write_all(serde_json::to_string(&request)?.as_bytes())
+        .await?;
     stdin.write_all(b"\n").await?;
     stdin.flush().await?;
 
@@ -620,7 +819,9 @@ async fn collect_jsonl_files(root: &Path) -> Result<Vec<PathBuf>> {
         let mut reader = match fs::read_dir(&current).await {
             Ok(reader) => reader,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error).with_context(|| format!("failed to read {}", current.display())),
+            Err(error) => {
+                return Err(error).with_context(|| format!("failed to read {}", current.display()))
+            }
         };
         while let Some(entry) = reader.next_entry().await? {
             let path = entry.path();
@@ -639,7 +840,9 @@ async fn collect_session_json_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut reader = match fs::read_dir(root).await {
         Ok(reader) => reader,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(files),
-        Err(error) => return Err(error).with_context(|| format!("failed to read {}", root.display())),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", root.display()))
+        }
     };
 
     while let Some(entry) = reader.next_entry().await? {
@@ -657,7 +860,10 @@ async fn collect_session_json_files(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-async fn claude_session_files(cwd_filter: Option<&str>, claude_config_dir: &Path) -> Result<Vec<PathBuf>> {
+async fn claude_session_files(
+    cwd_filter: Option<&str>,
+    claude_config_dir: &Path,
+) -> Result<Vec<PathBuf>> {
     if let Some(cwd) = cwd_filter {
         return collect_jsonl_files(&claude_project_dir_with_config(cwd, claude_config_dir)).await;
     }
@@ -670,7 +876,8 @@ async fn find_claude_session_file(
     claude_config_dir: &Path,
 ) -> Result<Option<PathBuf>> {
     if let Some(cwd) = cwd_hint {
-        let direct_path = claude_project_dir_with_config(cwd, claude_config_dir).join(format!("{session_id}.jsonl"));
+        let direct_path = claude_project_dir_with_config(cwd, claude_config_dir)
+            .join(format!("{session_id}.jsonl"));
         if fs::metadata(&direct_path).await.is_ok() {
             return Ok(Some(direct_path));
         }
@@ -704,7 +911,9 @@ async fn claude_transcript_contains_session_id(path: &Path, session_id: &str) ->
     let file = match File::open(path).await {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(error).with_context(|| format!("failed to open {}", path.display())),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to open {}", path.display()))
+        }
     };
     let mut lines = BufReader::new(file).lines();
     while let Some(line) = lines.next_line().await? {
@@ -732,7 +941,10 @@ async fn list_gemini_historical_sessions(
     };
 
     let project_hash = gemini_project_hash(cwd);
-    let session_root = gemini_config_dir.join("tmp").join(&project_hash).join("chats");
+    let session_root = gemini_config_dir
+        .join("tmp")
+        .join(&project_hash)
+        .join("chats");
     let mut rows = Vec::<Value>::new();
     let mut seen = HashSet::<String>::new();
 
@@ -740,7 +952,12 @@ async fn list_gemini_historical_sessions(
         let Some(stored) = read_gemini_session_file(&path).await? else {
             continue;
         };
-        let Some(session_id) = stored.session_id.clone().map(|value| value.trim().to_string()).filter(|value| !value.is_empty()) else {
+        let Some(session_id) = stored
+            .session_id
+            .clone()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+        else {
             continue;
         };
         if stored.project_hash.as_deref() != Some(project_hash.as_str()) {
@@ -776,7 +993,14 @@ async fn find_gemini_session_file(
 ) -> Result<Option<PathBuf>> {
     if let Some(cwd) = cwd_hint {
         let project_hash = gemini_project_hash(&resolve_cwd(cwd));
-        for path in collect_session_json_files(&gemini_config_dir.join("tmp").join(project_hash).join("chats")).await? {
+        for path in collect_session_json_files(
+            &gemini_config_dir
+                .join("tmp")
+                .join(project_hash)
+                .join("chats"),
+        )
+        .await?
+        {
             let Some(stored) = read_gemini_session_file(&path).await? else {
                 continue;
             };
@@ -790,7 +1014,9 @@ async fn find_gemini_session_file(
     let mut reader = match fs::read_dir(&tmp_root).await {
         Ok(reader) => reader,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error).with_context(|| format!("failed to read {}", tmp_root.display())),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", tmp_root.display()))
+        }
     };
 
     while let Some(entry) = reader.next_entry().await? {
@@ -815,7 +1041,9 @@ async fn read_gemini_session_file(path: &Path) -> Result<Option<GeminiStoredSess
     let file = match fs::read_to_string(path).await {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error).with_context(|| format!("failed to read {}", path.display())),
+        Err(error) => {
+            return Err(error).with_context(|| format!("failed to read {}", path.display()))
+        }
     };
     let parsed = serde_json::from_str::<GeminiStoredSession>(&file)
         .with_context(|| format!("failed to parse {}", path.display()))?;
@@ -867,23 +1095,36 @@ fn value_contains_named_string(value: &Value, key: &str, expected: &str) -> bool
             (child_key == key && child_value.as_str().map(str::trim) == Some(expected))
                 || value_contains_named_string(child_value, key, expected)
         }),
-        Value::Array(items) => items.iter().any(|item| value_contains_named_string(item, key, expected)),
+        Value::Array(items) => items
+            .iter()
+            .any(|item| value_contains_named_string(item, key, expected)),
         _ => false,
     }
 }
 
 fn is_subagent_path(path: &Path) -> bool {
-    path.components().any(|component| component.as_os_str() == "subagents")
+    path.components()
+        .any(|component| component.as_os_str() == "subagents")
 }
 
 fn merge_provider_session_row(rows: &mut HashMap<String, Value>, row: Value) {
-    let id = row.get("id").and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty());
+    let id = row
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let Some(id) = id else { return };
 
     match rows.get(id) {
         Some(existing) => {
-            let existing_updated = existing.get("updatedAt").and_then(Value::as_str).unwrap_or_default();
-            let next_updated = row.get("updatedAt").and_then(Value::as_str).unwrap_or_default();
+            let existing_updated = existing
+                .get("updatedAt")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let next_updated = row
+                .get("updatedAt")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             if next_updated > existing_updated {
                 rows.insert(id.to_string(), row);
             }
@@ -908,8 +1149,14 @@ async fn list_codex_threads_via_app_server(
         .spawn()
         .context("failed to spawn codex app-server")?;
 
-    let mut stdin = child.stdin.take().context("missing codex app-server stdin")?;
-    let stdout = child.stdout.take().context("missing codex app-server stdout")?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("missing codex app-server stdin")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("missing codex app-server stdout")?;
     let mut reader = BufReader::new(stdout).lines();
 
     let _ = call_rpc(
@@ -922,8 +1169,8 @@ async fn list_codex_threads_via_app_server(
             "capabilities": { "experimentalApi": true }
         }),
     )
-        .await
-        .context("codex app-server initialize failed")?;
+    .await
+    .context("codex app-server initialize failed")?;
 
     let response = call_rpc(
         &mut stdin,
@@ -936,8 +1183,8 @@ async fn list_codex_threads_via_app_server(
             "sortKey": "updated_at"
         }),
     )
-        .await
-        .context("codex thread/list failed")?;
+    .await
+    .context("codex thread/list failed")?;
 
     let _ = child.start_kill();
     Ok(extract_codex_thread_summaries_from_list_response(&response))
@@ -954,35 +1201,60 @@ fn extract_codex_thread_summaries_from_list_response(response: &Value) -> Vec<Va
     let mut summaries = Vec::<Value>::new();
     let mut seen = std::collections::HashSet::<String>::new();
     for row in rows {
-        let Some(object) = row.as_object() else { continue };
+        let Some(object) = row.as_object() else {
+            continue;
+        };
         let nested_thread = object.get("thread").and_then(Value::as_object);
         let id = object
             .get("id")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .or_else(|| nested_thread.and_then(|thread| thread.get("id")).and_then(Value::as_str).map(str::trim).filter(|value| !value.is_empty()));
+            .or_else(|| {
+                nested_thread
+                    .and_then(|thread| thread.get("id"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            });
         let Some(id) = id else { continue };
         if !seen.insert(id.to_string()) {
             continue;
         }
 
-        let cwd = object
-            .get("cwd")
-            .and_then(Value::as_str)
-            .or_else(|| nested_thread.and_then(|thread| thread.get("cwd")).and_then(Value::as_str));
+        let cwd = object.get("cwd").and_then(Value::as_str).or_else(|| {
+            nested_thread
+                .and_then(|thread| thread.get("cwd"))
+                .and_then(Value::as_str)
+        });
         let updated_at = object
             .get("updatedAt")
             .or_else(|| object.get("updated_at"))
             .and_then(Value::as_str)
-            .or_else(|| nested_thread.and_then(|thread| thread.get("updatedAt")).and_then(Value::as_str))
-            .or_else(|| nested_thread.and_then(|thread| thread.get("updated_at")).and_then(Value::as_str));
+            .or_else(|| {
+                nested_thread
+                    .and_then(|thread| thread.get("updatedAt"))
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                nested_thread
+                    .and_then(|thread| thread.get("updated_at"))
+                    .and_then(Value::as_str)
+            });
         let created_at = object
             .get("createdAt")
             .or_else(|| object.get("created_at"))
             .and_then(Value::as_str)
-            .or_else(|| nested_thread.and_then(|thread| thread.get("createdAt")).and_then(Value::as_str))
-            .or_else(|| nested_thread.and_then(|thread| thread.get("created_at")).and_then(Value::as_str));
+            .or_else(|| {
+                nested_thread
+                    .and_then(|thread| thread.get("createdAt"))
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                nested_thread
+                    .and_then(|thread| thread.get("created_at"))
+                    .and_then(Value::as_str)
+            });
 
         summaries.push(json!({
             "id": id,
@@ -1032,7 +1304,11 @@ fn required_string<'a>(payload: &'a Value, key: &str) -> Result<&'a str> {
         .ok_or_else(|| anyhow!("{key} is required"))
 }
 
-fn paginate_message_values(messages: Vec<Value>, limit: usize, cursor: Option<usize>) -> Result<Value> {
+fn paginate_message_values(
+    messages: Vec<Value>,
+    limit: usize,
+    cursor: Option<usize>,
+) -> Result<Value> {
     let total = messages.len();
     let requested_limit = limit.max(1);
     let end = cursor.unwrap_or(total).min(total);
@@ -1068,7 +1344,11 @@ fn paginate_message_values(messages: Vec<Value>, limit: usize, cursor: Option<us
 }
 
 fn extract_codex_home_from_transcript_path(path: &str) -> Option<String> {
-    let marker = format!("{}sessions{}", std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR);
+    let marker = format!(
+        "{}sessions{}",
+        std::path::MAIN_SEPARATOR,
+        std::path::MAIN_SEPARATOR
+    );
     path.rfind(&marker).map(|index| path[..index].to_string())
 }
 
@@ -1080,7 +1360,11 @@ fn system_time_to_rfc3339(value: std::time::SystemTime) -> Option<String> {
         .map(|timestamp| {
             time::OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp) * 1_000_000)
                 .ok()
-                .and_then(|value| value.format(&time::format_description::well_known::Rfc3339).ok())
+                .and_then(|value| {
+                    value
+                        .format(&time::format_description::well_known::Rfc3339)
+                        .ok()
+                })
                 .unwrap_or_else(|| timestamp.to_string())
         })
 }
@@ -1179,6 +1463,9 @@ mod tests {
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0]["id"].as_str(), Some("gemini-session-1"));
         assert_eq!(sessions[0]["cwd"].as_str(), Some(cwd));
-        assert_eq!(sessions[0]["title"].as_str(), Some("Summarize this repository"));
+        assert_eq!(
+            sessions[0]["title"].as_str(),
+            Some("Summarize this repository")
+        );
     }
 }
