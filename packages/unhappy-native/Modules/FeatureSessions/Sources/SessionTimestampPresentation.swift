@@ -1,6 +1,17 @@
 import Foundation
 
 enum SessionTimestampPresentation {
+    static func updatedLabelIfKnown(
+        for unixTimeSeconds: TimeInterval,
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> String? {
+        guard unixTimeSeconds > 0 else {
+            return nil
+        }
+        return updatedLabel(for: unixTimeSeconds, now: now, calendar: calendar)
+    }
+
     static func updatedLabel(
         for unixTimeSeconds: TimeInterval,
         now: Date = .now,
