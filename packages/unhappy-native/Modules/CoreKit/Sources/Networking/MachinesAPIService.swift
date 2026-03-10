@@ -337,6 +337,21 @@ extension URLSessionMachinesService {
         }
 
         do {
+            let data = try await rpcDirectoryService.invokeCommand(
+                serverURL: serverURL,
+                token: token,
+                machineID: normalizedMachineID,
+                command: "list-models",
+                params: ["agent": .string(agent.rawValue)]
+            )
+            return try MachinesAPI.decodeAgentCapabilitiesResponse(data)
+        } catch let error as MachinesAPIError {
+            if shouldFallbackToLegacyModelsEndpoint(error) == false {
+                throw error
+            }
+        }
+
+        do {
             let request = try MachinesAPI.makeListModelsRequest(
                 serverURL: serverURL,
                 token: token,
@@ -819,6 +834,27 @@ extension URLSessionMachinesService {
 
     private func shouldFallbackToRPC(statusCode: Int) -> Bool {
         statusCode == 404 || statusCode == 405 || statusCode == 501
+    }
+
+    private func shouldFallbackToLegacyModelsEndpoint(_ error: MachinesAPIError) -> Bool {
+        switch error {
+        case .rpcTimedOut,
+             .rpcSocketConnectionFailed,
+             .invalidRPCPayload:
+            return true
+        case .rpcCallFailed:
+            return true
+        case .missingToken,
+             .missingMachineID,
+             .missingThreadID,
+             .missingDirectory,
+             .missingPath,
+             .missingCommand,
+             .machineNotFound,
+             .endpointUnavailable,
+             .invalidHTTPStatus:
+            return false
+        }
     }
 
     private func parseServerErrorMessage(from data: Data) -> String? {
