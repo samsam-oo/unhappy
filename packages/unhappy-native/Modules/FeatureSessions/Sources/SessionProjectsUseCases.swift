@@ -112,12 +112,15 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
         token: String
     ) async -> AsyncStream<SessionProjectsLoadSnapshot> {
         AsyncStream { continuation in
-            Task {
+            let task = Task {
                 await self.streamProjects(
                     serverURLString: serverURLString,
                     token: token,
                     continuation: continuation
                 )
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
@@ -152,6 +155,10 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
 
         do {
             let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
+            guard !Task.isCancelled else {
+                continuation.finish()
+                return
+            }
             let activeMachines = machines.filter(\.active)
             var projects: [SessionMachineProject] = []
             var firstError: Error?
@@ -193,6 +200,10 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
                 }
 
                 for await batch in group {
+                    if Task.isCancelled {
+                        group.cancelAll()
+                        break
+                    }
                     projects.append(contentsOf: batch.projects)
                     projects = sortedProjects(projects)
                     if batch.projects.isEmpty == false {
@@ -381,22 +392,22 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
 }
 
 extension Date {
-    nonisolated(unsafe) static let fractionalISO8601Formatter: ISO8601DateFormatter = {
+    private static func fractionalISO8601Formatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
-    nonisolated(unsafe) static let internetISO8601Formatter: ISO8601DateFormatter = {
+    private static func internetISO8601Formatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
-    }()
+    }
 
     static func parseISO8601(_ value: String) -> Date? {
-        if let date = fractionalISO8601Formatter.date(from: value) {
+        if let date = fractionalISO8601Formatter().date(from: value) {
             return date
         }
-        return internetISO8601Formatter.date(from: value)
+        return internetISO8601Formatter().date(from: value)
     }
 }
