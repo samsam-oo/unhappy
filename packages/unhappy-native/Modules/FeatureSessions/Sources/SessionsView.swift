@@ -311,13 +311,6 @@ public struct SessionsView: View {
         }
     }
 
-    private var visibleSessions: [APISession] {
-        if hideInactiveSessions {
-            return viewModel.sessions.filter(\.active)
-        }
-        return viewModel.sessions
-    }
-
     private var sidebarCanvasColor: Color {
         Color(uiColor: .systemBackground)
     }
@@ -346,7 +339,6 @@ public struct SessionsView: View {
 
     private var projectGroups: [SessionProjectGroup] {
         SessionListPresentationBuilder.projectGroups(
-            sessions: visibleSessions,
             upstreamSessions: viewModel.upstreamSessions,
             projects: viewModel.projects
         )

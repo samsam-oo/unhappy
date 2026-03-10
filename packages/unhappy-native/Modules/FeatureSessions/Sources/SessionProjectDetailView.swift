@@ -237,17 +237,9 @@ public struct SessionProjectDetailView: View {
     private var group: SessionProjectGroup {
         SessionListPresentationBuilder.projectGroup(
             id: initialGroup.id,
-            sessions: visibleSessions,
             upstreamSessions: viewModel.upstreamSessions,
             projects: viewModel.projects
         ) ?? initialGroup
-    }
-
-    private var visibleSessions: [APISession] {
-        if hideInactiveSessions {
-            return viewModel.sessions.filter(\.active)
-        }
-        return viewModel.sessions
     }
 
     private var summaryCard: some View {

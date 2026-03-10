@@ -120,6 +120,11 @@ public final class SessionsViewModel: ObservableObject {
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             isLoading = false
+            scheduleSupportingDataRefresh(
+                serverURLString: serverURLString,
+                token: token,
+                force: true
+            )
         }
     }
 
@@ -759,7 +764,7 @@ public final class SessionsViewModel: ObservableObject {
 
     private func setSessionsIfChanged(_ nextSessions: [APISession]) {
         let filteredSessions = nextSessions.filter { session in
-            SessionUpstreamIdentity(session: session)?.provider != .codex
+            SessionUpstreamIdentity(session: session) == nil
         }
         guard sessions != filteredSessions else { return }
         sessions = filteredSessions

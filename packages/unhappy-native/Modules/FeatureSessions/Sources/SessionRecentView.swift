@@ -22,7 +22,6 @@ public struct SessionRecentView: View {
 
     public var body: some View {
         let sections = SessionRecentPresentationBuilder.make(
-            sessions: viewModel.sessions,
             upstreamSessions: viewModel.upstreamSessions
         )
 
