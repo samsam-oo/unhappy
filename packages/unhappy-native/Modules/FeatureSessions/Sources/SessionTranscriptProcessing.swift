@@ -201,7 +201,8 @@ enum SessionTranscriptProcessing {
                     success: existingPayload.success,
                     exitCode: existingPayload.exitCode,
                     status: existingPayload.status,
-                    durationMs: existingPayload.durationMs
+                    durationMs: existingPayload.durationMs,
+                    supplementalEntries: existingPayload.supplementalEntries
                 )
                 result[existingIndex] = replacingEntry(
                     result[existingIndex],
@@ -220,23 +221,69 @@ enum SessionTranscriptProcessing {
                     openCommandIndexByToolUseID: openCommandIndexByToolUseID
                ),
                result.indices.contains(existingIndex),
-               let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry),
-               let resultPayload = SessionTranscriptRichContentParser.commandPayload(for: entry) {
-                let derivedDurationMs = resultPayload.durationMs ?? durationMs(
+               let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry) {
+                let normalizedToolName = entry.toolName?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+                if normalizedToolName == "write_stdin" {
+                    let mergedPayload = SessionTranscriptCommandExecutionPayload(
+                        command: existingPayload.command,
+                        cwd: existingPayload.cwd,
+                        summary: existingPayload.summary,
+                        logs: existingPayload.logs,
+                        stdout: existingPayload.stdout,
+                        stderr: existingPayload.stderr,
+                        success: existingPayload.success,
+                        exitCode: existingPayload.exitCode,
+                        status: existingPayload.status,
+                        durationMs: existingPayload.durationMs,
+                        supplementalEntries: appendSupplementalEntry(
+                            existingPayload.supplementalEntries,
+                            kind: .toolResult,
+                            title: "write_stdin",
+                            body: entry.body,
+                            entryID: entry.id
+                        )
+                    )
+                    result[existingIndex] = replacingEntry(
+                        result[existingIndex],
+                        makeCommandEntry(
+                            from: result[existingIndex].entry,
+                            kind: result[existingIndex].entry.kind,
+                            payload: mergedPayload
+                        )
+                    )
+                    continue
+                }
+
+                let resultPayload = SessionTranscriptRichContentParser.commandPayload(for: entry)
+                let inferredSuccess = inferCommandResultSuccess(from: entry.body)
+                let inferredStatus = inferCommandResultStatus(
+                    from: entry.body,
+                    fallbackSuccess: inferredSuccess
+                )
+                let derivedDurationMs = resultPayload?.durationMs ?? durationMs(
                     from: result[existingIndex].createdAt,
                     to: flattenedEntry.createdAt
                 )
                 let mergedPayload = SessionTranscriptCommandExecutionPayload(
-                    command: existingPayload.command ?? resultPayload.command,
-                    cwd: existingPayload.cwd ?? resultPayload.cwd,
-                    summary: existingPayload.summary ?? resultPayload.summary,
+                    command: existingPayload.command ?? resultPayload?.command,
+                    cwd: existingPayload.cwd ?? resultPayload?.cwd,
+                    summary: existingPayload.summary ?? resultPayload?.summary,
                     logs: existingPayload.logs,
-                    stdout: resultPayload.stdout ?? existingPayload.stdout,
-                    stderr: resultPayload.stderr ?? existingPayload.stderr,
-                    success: resultPayload.success ?? existingPayload.success,
-                    exitCode: resultPayload.exitCode ?? existingPayload.exitCode,
-                    status: resultPayload.status ?? existingPayload.status,
-                    durationMs: derivedDurationMs
+                    stdout: resultPayload?.stdout ?? existingPayload.stdout,
+                    stderr: resultPayload?.stderr ?? existingPayload.stderr,
+                    success: resultPayload?.success ?? existingPayload.success ?? inferredSuccess,
+                    exitCode: resultPayload?.exitCode ?? existingPayload.exitCode,
+                    status: resultPayload?.status ?? existingPayload.status ?? inferredStatus,
+                    durationMs: derivedDurationMs,
+                    supplementalEntries: appendSupplementalEntry(
+                        existingPayload.supplementalEntries,
+                        kind: .toolResult,
+                        title: entry.title ?? "Tool result",
+                        body: entry.body,
+                        entryID: entry.id
+                    )
                 )
                 result[existingIndex] = replacingEntry(
                     result[existingIndex],
@@ -251,6 +298,47 @@ enum SessionTranscriptProcessing {
                 } else {
                     removeOpenCommandIndex(existingIndex, openCommandIndexByToolUseID: &openCommandIndexByToolUseID)
                 }
+                continue
+            }
+
+            if entry.kind == .toolCall,
+               let normalizedToolName = entry.toolName?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased(),
+               normalizedToolName == "write_stdin",
+               let existingIndex = matchingOpenCommandIndex(
+                    for: entry,
+                    openCommandIndexByToolUseID: openCommandIndexByToolUseID
+               ),
+               result.indices.contains(existingIndex),
+               let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry) {
+                let mergedPayload = SessionTranscriptCommandExecutionPayload(
+                    command: existingPayload.command,
+                    cwd: existingPayload.cwd,
+                    summary: existingPayload.summary,
+                    logs: existingPayload.logs,
+                    stdout: existingPayload.stdout,
+                    stderr: existingPayload.stderr,
+                    success: existingPayload.success,
+                    exitCode: existingPayload.exitCode,
+                    status: existingPayload.status,
+                    durationMs: existingPayload.durationMs,
+                    supplementalEntries: appendSupplementalEntry(
+                        existingPayload.supplementalEntries,
+                        kind: .stdin,
+                        title: "write_stdin",
+                        body: entry.body,
+                        entryID: entry.id
+                    )
+                )
+                result[existingIndex] = replacingEntry(
+                    result[existingIndex],
+                    makeCommandEntry(
+                        from: result[existingIndex].entry,
+                        kind: result[existingIndex].entry.kind,
+                        payload: mergedPayload
+                    )
+                )
                 continue
             }
 
@@ -392,7 +480,8 @@ enum SessionTranscriptProcessing {
                 success: existingPayload.success ?? success,
                 exitCode: existingPayload.exitCode,
                 status: existingPayload.status ?? status,
-                durationMs: existingPayload.durationMs ?? durationMs(from: result[index].createdAt, to: completedAt)
+                durationMs: existingPayload.durationMs ?? durationMs(from: result[index].createdAt, to: completedAt),
+                supplementalEntries: existingPayload.supplementalEntries
             )
             result[index] = replacingEntry(
                 result[index],
@@ -448,12 +537,50 @@ enum SessionTranscriptProcessing {
               !normalized.isEmpty else {
             return false
         }
-        return normalized == "codexbash" || normalized == "bash"
+        return normalized == "codexbash" ||
+            normalized == "bash" ||
+            normalized == "exec_command"
     }
 
     private static func normalizedToolUseID(_ raw: String?) -> String? {
         guard let raw else { return nil }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func appendSupplementalEntry(
+        _ existing: [SessionTranscriptCommandExecutionPayload.SupplementalEntry],
+        kind: SessionTranscriptCommandExecutionPayload.SupplementalEntry.Kind,
+        title: String,
+        body: String,
+        entryID: String
+    ) -> [SessionTranscriptCommandExecutionPayload.SupplementalEntry] {
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedBody.isEmpty else { return existing }
+        if existing.contains(where: { $0.id == entryID || ($0.kind == kind && $0.body == trimmedBody) }) {
+            return existing
+        }
+        return existing + [
+            .init(id: entryID, kind: kind, title: title, body: trimmedBody)
+        ]
+    }
+
+    private static func inferCommandResultSuccess(from rawBody: String) -> Bool? {
+        let normalized = rawBody.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalized.isEmpty else { return nil }
+        if normalized.contains("failed") || normalized.contains("rejected") || normalized.contains("error") {
+            return false
+        }
+        return true
+    }
+
+    private static func inferCommandResultStatus(
+        from rawBody: String,
+        fallbackSuccess: Bool?
+    ) -> String? {
+        if let fallbackSuccess {
+            return fallbackSuccess ? "completed" : "failed"
+        }
+        return nil
     }
 }
