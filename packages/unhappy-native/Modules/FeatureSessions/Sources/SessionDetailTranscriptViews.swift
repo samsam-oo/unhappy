@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import CoreKit
 import UIFoundation
 
@@ -170,6 +171,9 @@ struct SessionTranscriptMessageRow: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 0)
         .contextMenu {
+            Button("Copy Message") {
+                UIPasteboard.general.string = copyableText
+            }
             if let onMessageInspect {
                 Button("Inspect Message") {
                     onMessageInspect()
@@ -183,6 +187,22 @@ struct SessionTranscriptMessageRow: View {
             guard entry.role == .user || entry.role == .agent else { return false }
             return entry.kind == .text || entry.kind == .thinking
         }
+    }
+
+    private var copyableText: String {
+        presentation.entries
+            .compactMap { entry -> String? in
+                let title = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let title, !title.isEmpty, !body.isEmpty {
+                    return title + "\n" + body
+                }
+                if let title, !title.isEmpty {
+                    return title
+                }
+                return body.isEmpty ? nil : body
+            }
+            .joined(separator: "\n\n")
     }
 }
 
@@ -300,10 +320,22 @@ struct SessionTranscriptLogLine: View {
                             .font(.caption2)
                             .foregroundStyle(AppPalette.terminalLineTool)
                             .padding(.top, 1)
-                        Text(collapsibleTitle)
-                            .font(.caption2.monospaced().weight(.semibold))
-                            .foregroundStyle(AppPalette.terminalLineTool)
-                            .lineLimit(1)
+                        Image(systemName: collapsibleSymbolName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppPalette.accent)
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(collapsibleTitle)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(AppPalette.primaryText)
+                                .lineLimit(1)
+                            if let collapsibleSubtitle, !collapsibleSubtitle.isEmpty {
+                                Text(collapsibleSubtitle)
+                                    .font(.caption2)
+                                    .foregroundStyle(AppPalette.secondaryText)
+                                    .lineLimit(1)
+                            }
+                        }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 2)
@@ -428,6 +460,51 @@ struct SessionTranscriptLogLine: View {
             return "Tool result"
         default:
             return "Details"
+        }
+    }
+
+    private var collapsibleSubtitle: String? {
+        SessionTranscriptRichContentParser.summarySubtitle(for: entry)
+    }
+
+    private var collapsibleSymbolName: String {
+        if let richContent = SessionTranscriptRichContentParser.richToolContent(for: entry) {
+            switch richContent {
+            case .commandExecution:
+                return "terminal"
+            case .fileChanges:
+                return "square.and.pencil"
+            case .diff:
+                return "arrow.left.arrow.right"
+            case .toolDetails(let tool):
+                switch tool.kind {
+                case .spawnAgent:
+                    return "person.badge.plus"
+                case .wait:
+                    return "hourglass"
+                case .stdin:
+                    return "arrow.up.to.line.compact"
+                case .toolResult:
+                    return "checkmark.circle"
+                case .toolCall:
+                    return "hammer"
+                }
+            }
+        }
+
+        if SessionTranscriptLogLineDisplayMode.isEditFilesEntry(entry) {
+            return "square.and.pencil"
+        }
+
+        switch entry.kind {
+        case .toolResult:
+            return "checkmark.circle"
+        case .toolCall:
+            return "hammer"
+        case .raw:
+            return "doc.text"
+        case .text, .thinking, .event:
+            return "doc.text"
         }
     }
 

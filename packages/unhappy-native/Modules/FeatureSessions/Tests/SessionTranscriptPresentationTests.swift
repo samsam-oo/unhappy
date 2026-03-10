@@ -124,6 +124,14 @@ struct SessionTranscriptPresentationTests {
     }
 
     @Test
+    func readableToolNamesCoverMultiAgentAndInputTools() {
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("spawn_agent") == "Spawn Agent")
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("wait") == "Wait for Agent")
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("write_stdin") == "Send Input")
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("send_input") == "Send Input")
+    }
+
+    @Test
     func outputUserToolResultKeepsToolUseID() {
         let payload: [String: Any] = [
             "role": "agent",

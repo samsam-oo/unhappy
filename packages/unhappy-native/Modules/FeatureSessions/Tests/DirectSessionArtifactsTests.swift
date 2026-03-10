@@ -20,7 +20,8 @@ struct DirectSessionArtifactsTests {
                     success: true,
                     exitCode: 0,
                     status: "completed",
-                    durationMs: 100
+                    durationMs: 100,
+                    supplementalEntries: []
                 )
             ),
             toolUseID: "tool-1",
@@ -53,7 +54,7 @@ struct DirectSessionArtifactsTests {
 
         let entries = DirectSessionArtifacts.richEntries(from: presentations)
 
-        #expect(entries.map(\.id) == ["tool-1"])
+        #expect(entries.map { $0.id } == ["tool-1"])
     }
 
     @Test
@@ -119,6 +120,6 @@ struct DirectSessionArtifactsTests {
             matchingFilePath: "/tmp/project/Sources/file.swift"
         )
 
-        #expect(entries.map(\.id) == ["match"])
+        #expect(entries.map { $0.id } == ["match"])
     }
 }
