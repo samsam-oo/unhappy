@@ -4,75 +4,89 @@ import Testing
 
 struct AppSettingsStoreTests {
     @Test
-    func userDefaultsStoreReturnsDefaultServerWhenMissing() async {
-        let suiteName = "im.unhappy.tests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
-            Issue.record("failed to create UserDefaults test suite")
-            return
-        }
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-        }
-
-        let store = UserDefaultsAppSettingsStore(
-            defaults: defaults,
+    func userDefaultsStoreReturnsDefaultServerWhenMissing() async throws {
+        let fixture = try makeFixture(
             defaultServerURL: "https://default.example.com"
         )
+        defer { fixture.tearDown() }
 
-        #expect(await store.serverURLString() == "https://default.example.com")
-        #expect(await store.apiToken() == "")
-        #expect(await store.appLanguageCode() == "system")
-        #expect(await store.appearanceMode() == "system")
-        #expect(await store.experimentsEnabled() == false)
-        #expect(await store.hideInactiveSessions() == false)
-        #expect(await store.useEnhancedSessionWizard() == false)
-        #expect(await store.voiceEnabled() == false)
-        #expect(await store.voiceLanguageCode() == "system")
-        #expect(await store.defaultNewSessionAgent() == "claude")
-        #expect(await store.lastViewedChangelogID() == "")
-        #expect(await store.recentProjectPaths().isEmpty)
+        #expect(await fixture.store.serverURLString() == "https://default.example.com")
+        #expect(await fixture.store.apiToken() == "")
+        #expect(await fixture.store.appLanguageCode() == "system")
+        #expect(await fixture.store.appearanceMode() == "system")
+        #expect(await fixture.store.experimentsEnabled() == false)
+        #expect(await fixture.store.hideInactiveSessions() == false)
+        #expect(await fixture.store.useEnhancedSessionWizard() == false)
+        #expect(await fixture.store.voiceEnabled() == false)
+        #expect(await fixture.store.voiceLanguageCode() == "system")
+        #expect(await fixture.store.defaultNewSessionAgent() == "claude")
+        #expect(await fixture.store.lastViewedChangelogID() == "")
+        #expect(await fixture.store.recentProjectPaths().isEmpty)
     }
 
     @Test
-    func userDefaultsStorePersistsServerAndToken() async {
-        let suiteName = "im.unhappy.tests.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
-            Issue.record("failed to create UserDefaults test suite")
-            return
-        }
-        defer {
-            defaults.removePersistentDomain(forName: suiteName)
-        }
+    func userDefaultsStorePersistsServerAndToken() async throws {
+        let fixture = try makeFixture()
+        defer { fixture.tearDown() }
 
-        let store = UserDefaultsAppSettingsStore(defaults: defaults)
-        await store.setServerURLString("https://api.example.com")
-        await store.setAPIToken("secret")
-        await store.setAppLanguageCode("korean")
-        await store.setAppearanceMode("dark")
-        await store.setExperimentsEnabled(true)
-        await store.setHideInactiveSessions(true)
-        await store.setUseEnhancedSessionWizard(true)
-        await store.setVoiceEnabled(true)
-        await store.setVoiceLanguageCode("korean")
-        await store.setDefaultNewSessionAgent("codex")
-        await store.setLastViewedChangelogID("2026.02.25")
-        await store.setRecentProjectPaths([
+        await fixture.store.setServerURLString("https://api.example.com")
+        await fixture.store.setAPIToken("secret")
+        await fixture.store.setAppLanguageCode("korean")
+        await fixture.store.setAppearanceMode("dark")
+        await fixture.store.setExperimentsEnabled(true)
+        await fixture.store.setHideInactiveSessions(true)
+        await fixture.store.setUseEnhancedSessionWizard(true)
+        await fixture.store.setVoiceEnabled(true)
+        await fixture.store.setVoiceLanguageCode("korean")
+        await fixture.store.setDefaultNewSessionAgent("codex")
+        await fixture.store.setLastViewedChangelogID("2026.02.25")
+        await fixture.store.setRecentProjectPaths([
             " /repo/alpha ",
             "",
             "/repo/beta"
         ])
 
-        #expect(await store.serverURLString() == "https://api.example.com")
-        #expect(await store.apiToken() == "secret")
-        #expect(await store.appLanguageCode() == "korean")
-        #expect(await store.appearanceMode() == "dark")
-        #expect(await store.experimentsEnabled() == true)
-        #expect(await store.hideInactiveSessions() == true)
-        #expect(await store.useEnhancedSessionWizard() == true)
-        #expect(await store.voiceEnabled() == true)
-        #expect(await store.voiceLanguageCode() == "korean")
-        #expect(await store.defaultNewSessionAgent() == "codex")
-        #expect(await store.lastViewedChangelogID() == "2026.02.25")
-        #expect(await store.recentProjectPaths() == ["/repo/alpha", "/repo/beta"])
+        #expect(await fixture.store.serverURLString() == "https://api.example.com")
+        #expect(await fixture.store.apiToken() == "secret")
+        #expect(await fixture.store.appLanguageCode() == "korean")
+        #expect(await fixture.store.appearanceMode() == "dark")
+        #expect(await fixture.store.experimentsEnabled() == true)
+        #expect(await fixture.store.hideInactiveSessions() == true)
+        #expect(await fixture.store.useEnhancedSessionWizard() == true)
+        #expect(await fixture.store.voiceEnabled() == true)
+        #expect(await fixture.store.voiceLanguageCode() == "korean")
+        #expect(await fixture.store.defaultNewSessionAgent() == "codex")
+        #expect(await fixture.store.lastViewedChangelogID() == "2026.02.25")
+        #expect(await fixture.store.recentProjectPaths() == ["/repo/alpha", "/repo/beta"])
     }
+}
+
+private struct AppSettingsStoreFixture {
+    let suiteName: String
+    let store: UserDefaultsAppSettingsStore
+
+    func tearDown() {
+        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+    }
+}
+
+private enum AppSettingsStoreFixtureError: Error {
+    case failedToCreateSuite
+}
+
+private func makeFixture(
+    defaultServerURL: String = "https://api.unhappy.im"
+) throws -> AppSettingsStoreFixture {
+    let suiteName = "im.unhappy.tests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw AppSettingsStoreFixtureError.failedToCreateSuite
+    }
+
+    return AppSettingsStoreFixture(
+        suiteName: suiteName,
+        store: UserDefaultsAppSettingsStore(
+            defaults: defaults,
+            defaultServerURL: defaultServerURL
+        )
+    )
 }
