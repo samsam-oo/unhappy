@@ -34,6 +34,18 @@ enum SessionRecentPresentationBuilder {
         now: Date = .now,
         calendar: Calendar = .current
     ) -> [SessionRecentSection] {
+        make(
+            upstreamSessions: upstreamSessions,
+            now: now,
+            calendar: calendar
+        )
+    }
+
+    static func make(
+        upstreamSessions: [SessionLinkedUpstreamSession],
+        now: Date = .now,
+        calendar: Calendar = .current
+    ) -> [SessionRecentSection] {
         let directPairs: [(String, SessionRecentSection.Entry)] = upstreamSessions.compactMap { row in
             guard let identity = DirectSessionIdentityResolver.resolve(from: row) else {
                 return nil

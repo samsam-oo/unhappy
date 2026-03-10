@@ -323,13 +323,6 @@ struct HomeRegularProjectsTab: View {
         }
     }
 
-    private var visibleSessions: [APISession] {
-        if hideInactiveSessions {
-            return viewModel.sessions.filter(\.active)
-        }
-        return viewModel.sessions
-    }
-
     private var showsSessionSidebarList: Bool {
         !projectGroups.isEmpty
     }
@@ -356,7 +349,6 @@ struct HomeRegularProjectsTab: View {
 
     private var projectGroups: [SessionProjectGroup] {
         SessionListPresentationBuilder.projectGroups(
-            sessions: visibleSessions,
             upstreamSessions: viewModel.upstreamSessions,
             projects: viewModel.projects
         )
