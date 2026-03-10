@@ -1177,7 +1177,6 @@ struct SessionTranscriptMarkdownView: View {
 
 struct SessionTranscriptToolRichContentView: View {
     let entry: SessionTranscriptEntry
-    @State private var isCommandExpanded = false
 
     private var richContent: SessionTranscriptRichToolContent? {
         SessionTranscriptRichContentParser.richToolContent(for: entry)
@@ -1215,96 +1214,86 @@ struct SessionTranscriptToolRichContentView: View {
             fillColor: AppPalette.chatToolBackground.opacity(0.96),
             strokeColor: commandStatusTint(command.status).opacity(0.24)
         ) {
-            DisclosureGroup(isExpanded: $isCommandExpanded) {
-                VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "terminal")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(commandStatusTint(command.status))
+                    Text("Ran command")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppPalette.primaryText)
+                    statusBadge(for: command)
+                    Spacer(minLength: 0)
+                    Text(command.command)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(AppPalette.secondaryText)
+                        .lineLimit(1)
+                    if let exitCode = command.exitCode {
+                        Text("Exit code \(exitCode)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+                    if let durationText = command.durationText {
+                        Text(durationText)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+                }
+                SessionTranscriptMonospaceBlock(
+                    text: "$ " + command.command,
+                    language: "shell",
+                    accentColor: commandStatusTint(command.status)
+                )
+
+                if let cwd = command.cwd {
+                    LabeledContent {
+                        Text(cwd)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                    } label: {
+                        Text("Shell")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(AppPalette.secondaryText)
+                    }
+                }
+
+                if let summary = command.summary {
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                } else if command.logs?.isEmpty != false {
+                    Text(command.waitingDescription)
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+
+                if let logs = command.logs, !logs.isEmpty {
                     SessionTranscriptMonospaceBlock(
-                        text: "$ " + command.command,
-                        language: "shell",
+                        text: logs,
+                        language: nil,
                         accentColor: commandStatusTint(command.status)
                     )
+                }
 
-                    if let cwd = command.cwd {
-                        LabeledContent {
-                            Text(cwd)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(AppPalette.secondaryText)
-                                .textSelection(.enabled)
-                                .lineLimit(2)
-                        } label: {
-                            Text("Shell")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(AppPalette.secondaryText)
-                        }
-                    }
-
-                    if let summary = command.summary {
-                        Text(summary)
-                            .font(.caption)
-                            .foregroundStyle(AppPalette.secondaryText)
-                    } else if command.logs?.isEmpty != false {
-                        Text(command.waitingDescription)
-                            .font(.caption)
-                            .foregroundStyle(AppPalette.secondaryText)
-                    }
-
-                    if let logs = command.logs, !logs.isEmpty {
-                        ScrollView(.vertical) {
-                            SessionTranscriptMonospaceBlock(
-                                text: logs,
-                                language: nil,
-                                accentColor: commandStatusTint(command.status)
-                            )
-                        }
-                        .frame(maxHeight: 240)
-                    }
-
-                    if !command.supplementalEntries.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(command.supplementalEntries) { item in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(item.title)
-                                        .font(.caption2.monospaced().weight(.semibold))
-                                        .foregroundStyle(AppPalette.secondaryText)
-                                    SessionTranscriptMonospaceBlock(
-                                        text: item.body,
-                                        language: nil,
-                                        accentColor: item.kind == .stdin ? AppPalette.accent : commandStatusTint(command.status)
-                                    )
-                                }
+                if !command.supplementalEntries.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(command.supplementalEntries) { item in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(item.title)
+                                    .font(.caption2.monospaced().weight(.semibold))
+                                    .foregroundStyle(AppPalette.secondaryText)
+                                SessionTranscriptMonospaceBlock(
+                                    text: item.body,
+                                    language: nil,
+                                    accentColor: item.kind == .stdin ? AppPalette.accent : commandStatusTint(command.status)
+                                )
                             }
                         }
                     }
                 }
-                .padding(.top, 4)
-            } label: {
-                HStack(alignment: .center, spacing: 8) {
-                    HStack(alignment: .center, spacing: 8) {
-                        Image(systemName: "terminal")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(commandStatusTint(command.status))
-                        Text("Ran command")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppPalette.primaryText)
-                        statusBadge(for: command)
-                        Spacer(minLength: 0)
-                        Text(command.command)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .lineLimit(1)
-                        if let exitCode = command.exitCode {
-                            Text("Exit code \(exitCode)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(AppPalette.secondaryText)
-                        }
-                        if let durationText = command.durationText {
-                            Text(durationText)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(AppPalette.secondaryText)
-                        }
-                    }
-                }
             }
-            .tint(commandStatusTint(command.status))
             .padding(12)
         }
     }
