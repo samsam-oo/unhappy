@@ -3,8 +3,11 @@ import { delay } from "@/utils/delay";
 import { forever } from "@/utils/forever";
 import { shutdownSignal } from "@/utils/shutdown";
 import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, eventRouter } from "@/app/events/eventRouter";
+import { findConnectedMachine } from "@/app/api/routes/codexPublicCommands";
 
 export function startTimeout() {
+    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 30;
+
     forever('session-timeout', async () => {
         while (true) {
             // Find timed out sessions
@@ -36,11 +39,14 @@ export function startTimeout() {
                 where: {
                     active: true,
                     lastActiveAt: {
-                        lte: new Date(Date.now() - 1000 * 60 * 10) // 10 minutes
+                        lte: new Date(Date.now() - MACHINE_ACTIVE_STALE_AFTER_MS)
                     }
                 }
             });
             for (const machine of machines) {
+                if (findConnectedMachine(machine.accountId, machine.id)) {
+                    continue;
+                }
                 const updated = await db.machine.updateManyAndReturn({
                     where: { id: machine.id, active: true },
                     data: { active: false }

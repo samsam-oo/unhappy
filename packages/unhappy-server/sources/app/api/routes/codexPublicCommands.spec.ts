@@ -49,4 +49,19 @@ describe("findConnectedMachine", () => {
         expect(resolved).toBe(freshConnection);
         expect(eventRouter.getConnections(userId)?.size).toBe(1);
     });
+
+    it("ignores disconnected machine-scoped connections", () => {
+        const disconnectedConnection: MachineScopedConnection = {
+            connectionType: "machine-scoped",
+            socket: makeSocket(false),
+            userId,
+            machineId: "machine-1",
+        };
+
+        eventRouter.addConnection(userId, disconnectedConnection);
+
+        const resolved = findConnectedMachine(userId, "machine-1");
+
+        expect(resolved).toBeNull();
+    });
 });
