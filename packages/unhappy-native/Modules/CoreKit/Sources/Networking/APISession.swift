@@ -414,17 +414,23 @@ public struct APICodexThreadSummary: Decodable, Equatable, Identifiable, Sendabl
 
 public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Sendable {
     public let id: String
+    public let title: String?
+    public let preview: String?
     public let cwd: String?
     public let updatedAt: String?
     public let createdAt: String?
 
     public init(
         id: String,
+        title: String? = nil,
+        preview: String? = nil,
         cwd: String?,
         updatedAt: String?,
         createdAt: String?
     ) {
         self.id = id
+        self.title = title
+        self.preview = preview
         self.cwd = cwd
         self.updatedAt = updatedAt
         self.createdAt = createdAt
@@ -432,6 +438,8 @@ public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Senda
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case title
+        case preview
         case cwd
         case updatedAt
         case createdAt
@@ -440,6 +448,12 @@ public struct APIClaudeSessionSummary: Decodable, Equatable, Identifiable, Senda
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = (try? container.decode(String.self, forKey: .id)) ?? ""
+        title = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .title)
+        )
+        preview = DecodingSupport.normalizeDisplayText(
+            try? container.decodeIfPresent(String.self, forKey: .preview)
+        )
         cwd = try? container.decodeIfPresent(String.self, forKey: .cwd)
         updatedAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .updatedAt)
         createdAt = container.decodeFlexibleTimestampStringIfPresent(forKey: .createdAt)
@@ -591,11 +605,15 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
 }
 
 public extension APICodexThreadSummary {
+    var displayTitle: String {
+        preferredDisplayTitle(name, preview, fallback: "Untitled")
+    }
+
     var upstreamSummary: APIUpstreamSessionSummary {
         APIUpstreamSessionSummary(
             id: id,
             provider: .codex,
-            title: (name?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? name! : "Untitled"),
+            title: displayTitle,
             cwd: cwd,
             path: path,
             updatedAt: updatedAt,
@@ -610,11 +628,15 @@ public extension APICodexThreadSummary {
 }
 
 public extension APIClaudeSessionSummary {
+    var displayTitle: String {
+        preferredDisplayTitle(title, preview, fallback: id)
+    }
+
     var upstreamSummary: APIUpstreamSessionSummary {
         APIUpstreamSessionSummary(
             id: id,
             provider: .claude,
-            title: id,
+            title: displayTitle,
             cwd: cwd,
             path: nil,
             updatedAt: updatedAt,
@@ -622,18 +644,22 @@ public extension APIClaudeSessionSummary {
             archived: nil,
             model: nil,
             effort: nil,
-            preview: nil,
+            preview: preview,
             statusType: nil
         )
     }
 }
 
 public extension APIGeminiSessionSummary {
+    var displayTitle: String {
+        preferredDisplayTitle(title, fallback: "Gemini Session")
+    }
+
     var upstreamSummary: APIUpstreamSessionSummary {
         APIUpstreamSessionSummary(
             id: id,
             provider: .gemini,
-            title: (title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? title! : "Gemini Session"),
+            title: displayTitle,
             cwd: cwd,
             path: nil,
             updatedAt: updatedAt,
@@ -645,6 +671,17 @@ public extension APIGeminiSessionSummary {
             statusType: nil
         )
     }
+}
+
+private func preferredDisplayTitle(_ candidates: String?..., fallback: String) -> String {
+    for candidate in candidates {
+        guard let candidate else { continue }
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+    }
+    return fallback
 }
 
 public enum APISessionSpawnAgent: String, Encodable, Sendable {

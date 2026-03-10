@@ -529,7 +529,13 @@ async fn dispatch_request(
             }))
         }
         MachineDataPlaneOperation::CodexListThreads => {
-            provider_session_ops::codex_list_threads(config, &payload).await
+            provider_session_ops::list_provider_sessions(
+                crate::provider::Provider::Codex,
+                config,
+                &payload,
+                &[],
+            )
+            .await
         }
         MachineDataPlaneOperation::CodexOpenThread => {
             provider_session_ops::codex_open_thread(config, &payload).await
@@ -541,7 +547,15 @@ async fn dispatch_request(
             provider_session_ops::codex_send_message(&payload).await
         }
         MachineDataPlaneOperation::ClaudeListSessions => {
-            provider_session_ops::claude_list_sessions(&payload).await
+            let active_sessions =
+                active_provider_sessions_for(&state, crate::provider::Provider::Claude).await;
+            provider_session_ops::list_provider_sessions(
+                crate::provider::Provider::Claude,
+                config,
+                &payload,
+                &active_sessions,
+            )
+            .await
         }
         MachineDataPlaneOperation::ClaudeListMessages => {
             provider_session_ops::claude_list_messages(&payload).await
@@ -550,56 +564,15 @@ async fn dispatch_request(
             provider_session_ops::claude_send_message(&payload).await
         }
         MachineDataPlaneOperation::GeminiListSessions => {
-            let active_sessions = state
-                .list_children()
-                .await
-                .into_iter()
-                .filter(|child| child.provider == Some(crate::provider::Provider::Gemini))
-                .filter_map(|child| {
-                    let metadata = child.metadata?;
-                    let session_id = child.provider_session_id.trim().to_string();
-                    let cwd = metadata
-                        .get("directory")
-                        .or_else(|| metadata.get("cwd"))
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .map(ToOwned::to_owned)?;
-                    let title = metadata
-                        .get("name")
-                        .or_else(|| metadata.get("title"))
-                        .or_else(|| metadata.get("preview"))
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .map(ToOwned::to_owned);
-                    let model = metadata
-                        .get("model")
-                        .and_then(Value::as_str)
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .map(ToOwned::to_owned);
-                    let updated_at = metadata
-                        .get("updatedAt")
-                        .and_then(Value::as_str)
-                        .map(ToOwned::to_owned)
-                        .unwrap_or_else(|| timestamp_to_rfc3339(chrono_like_now()));
-                    let created_at = metadata
-                        .get("createdAt")
-                        .and_then(Value::as_str)
-                        .map(ToOwned::to_owned)
-                        .unwrap_or_else(|| updated_at.clone());
-                    Some(json!({
-                        "id": session_id,
-                        "cwd": cwd,
-                        "title": title,
-                        "updatedAt": updated_at,
-                        "createdAt": created_at,
-                        "model": model,
-                    }))
-                })
-                .collect::<Vec<_>>();
-            provider_session_ops::gemini_list_sessions(config, &payload, &active_sessions).await
+            let active_sessions =
+                active_provider_sessions_for(&state, crate::provider::Provider::Gemini).await;
+            provider_session_ops::list_provider_sessions(
+                crate::provider::Provider::Gemini,
+                config,
+                &payload,
+                &active_sessions,
+            )
+            .await
         }
         MachineDataPlaneOperation::GeminiListMessages => {
             let session_id = payload
@@ -652,6 +625,127 @@ async fn dispatch_request(
         MachineDataPlaneOperation::SearchRipgrep => local_ops::ripgrep(&payload).await,
         MachineDataPlaneOperation::DiffDifftastic => local_ops::difftastic(config, &payload).await,
     }
+}
+
+fn active_provider_session_row(child: crate::control_server::ListChild) -> Option<Value> {
+    let metadata = child.metadata?;
+    if metadata
+        .get("isSidechain")
+        .or_else(|| metadata.get("sidechain"))
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        return None;
+    }
+
+    if metadata
+        .get("agentRole")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return None;
+    }
+
+    if metadata
+        .get("agentNickname")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return None;
+    }
+
+    let session_id = child.provider_session_id.trim();
+    if session_id.is_empty() {
+        return None;
+    }
+    let cwd = metadata
+        .get("directory")
+        .or_else(|| metadata.get("cwd"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)?;
+    let title = metadata
+        .get("name")
+        .or_else(|| metadata.get("title"))
+        .or_else(|| metadata.get("preview"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let model = metadata
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let updated_at = metadata
+        .get("updatedAt")
+        .and_then(metadata_timestamp_to_rfc3339)
+        .unwrap_or_else(|| timestamp_to_rfc3339(chrono_like_now()));
+    let created_at = metadata
+        .get("createdAt")
+        .and_then(metadata_timestamp_to_rfc3339)
+        .unwrap_or_else(|| updated_at.clone());
+
+    Some(json!({
+        "id": session_id,
+        "cwd": cwd,
+        "title": title,
+        "updatedAt": updated_at,
+        "createdAt": created_at,
+        "model": model,
+        "startedBy": child.started_by,
+    }))
+}
+
+async fn active_provider_sessions_for(
+    state: &SharedDaemonState,
+    provider: crate::provider::Provider,
+) -> Vec<Value> {
+    state
+        .list_children()
+        .await
+        .into_iter()
+        .filter(|child| child.provider == Some(provider))
+        .filter_map(active_provider_session_row)
+        .collect()
+}
+
+fn metadata_timestamp_to_rfc3339(value: &Value) -> Option<String> {
+    match value {
+        Value::String(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else if let Ok(parsed) = trimmed.parse::<f64>() {
+                Some(timestamp_to_rfc3339(normalize_timestamp_millis(parsed)))
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Value::Number(number) => number
+            .as_f64()
+            .map(normalize_timestamp_millis)
+            .map(timestamp_to_rfc3339),
+        _ => None,
+    }
+}
+
+fn normalize_timestamp_millis(raw: f64) -> u64 {
+    let abs_raw = raw.abs();
+    let millis = if abs_raw >= 10_000_000_000_000.0 {
+        raw / 1_000.0
+    } else if abs_raw >= 10_000_000_000.0 {
+        raw
+    } else {
+        raw * 1_000.0
+    };
+    millis.max(0.0).round() as u64
 }
 
 async fn spawn_daemon_update(_config: &Config) -> Result<()> {
@@ -847,6 +941,8 @@ fn timestamp_to_rfc3339(timestamp_millis: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{control_server::ListChild, provider::Provider};
+    use serde_json::json;
 
     #[test]
     fn machine_data_plane_request_adds_authentication_headers() {
@@ -864,5 +960,44 @@ mod tests {
                 .unwrap(),
             MACHINE_DATA_PLANE_SUBPROTOCOL
         );
+    }
+
+    #[test]
+    fn active_provider_session_row_uses_preview_as_title() {
+        let row = active_provider_session_row(ListChild {
+            started_by: "daemon".to_string(),
+            provider: Some(Provider::Claude),
+            provider_session_id: "claude-session-1".to_string(),
+            pid: 42,
+            metadata: Some(json!({
+                "directory": "/tmp/project",
+                "preview": "Summarize the repo",
+                "updatedAt": 1_778_130_400,
+                "createdAt": 1_778_130_000
+            })),
+        })
+        .expect("row");
+
+        assert_eq!(row["title"].as_str(), Some("Summarize the repo"));
+        assert_eq!(row["cwd"].as_str(), Some("/tmp/project"));
+        assert_eq!(row["updatedAt"].as_str(), Some("2026-05-07T05:06:40Z"));
+        assert_eq!(row["createdAt"].as_str(), Some("2026-05-07T05:00:00Z"));
+    }
+
+    #[test]
+    fn active_provider_session_row_skips_subagent_metadata() {
+        let row = active_provider_session_row(ListChild {
+            started_by: "daemon".to_string(),
+            provider: Some(Provider::Claude),
+            provider_session_id: "claude-subagent".to_string(),
+            pid: 43,
+            metadata: Some(json!({
+                "directory": "/tmp/project",
+                "agentRole": "worker",
+                "updatedAt": "2026-03-10T10:01:00Z"
+            })),
+        });
+
+        assert!(row.is_none());
     }
 }

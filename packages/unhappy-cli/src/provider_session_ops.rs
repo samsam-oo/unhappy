@@ -1,6 +1,6 @@
 use crate::{
     codex_app_server::open_or_resume_codex_thread, codex_transcript::list_codex_thread_messages,
-    config::Config,
+    config::Config, provider::Provider,
 };
 use anyhow::{anyhow, Context, Result};
 use reqwest::Client;
@@ -9,6 +9,8 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
+    future::Future,
+    pin::Pin,
     path::{Path, PathBuf},
 };
 use tokio::{
@@ -16,6 +18,90 @@ use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
 };
+
+type ProviderSessionListFuture<'a> = Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>>;
+
+pub struct ProviderSessionListContext<'a> {
+    pub config: &'a Config,
+    pub payload: &'a Value,
+    pub active_sessions: &'a [Value],
+}
+
+pub trait ProviderSessionListAdapter: Send + Sync {
+    fn list_sessions<'a>(
+        &'a self,
+        context: ProviderSessionListContext<'a>,
+    ) -> ProviderSessionListFuture<'a>;
+}
+
+pub struct ProviderSessionListAdapters;
+
+impl ProviderSessionListAdapters {
+    pub fn for_provider(provider: Provider) -> &'static dyn ProviderSessionListAdapter {
+        match provider {
+            Provider::Codex => &CODEX_SESSION_LIST_ADAPTER,
+            Provider::Claude => &CLAUDE_SESSION_LIST_ADAPTER,
+            Provider::Gemini => &GEMINI_SESSION_LIST_ADAPTER,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct CodexSessionListAdapter;
+
+impl ProviderSessionListAdapter for CodexSessionListAdapter {
+    fn list_sessions<'a>(
+        &'a self,
+        context: ProviderSessionListContext<'a>,
+    ) -> ProviderSessionListFuture<'a> {
+        Box::pin(async move { codex_list_threads(context.config, context.payload).await })
+    }
+}
+
+#[derive(Debug, Default)]
+struct ClaudeSessionListAdapter;
+
+impl ProviderSessionListAdapter for ClaudeSessionListAdapter {
+    fn list_sessions<'a>(
+        &'a self,
+        context: ProviderSessionListContext<'a>,
+    ) -> ProviderSessionListFuture<'a> {
+        Box::pin(async move { claude_list_sessions(context.payload, context.active_sessions).await })
+    }
+}
+
+#[derive(Debug, Default)]
+struct GeminiSessionListAdapter;
+
+impl ProviderSessionListAdapter for GeminiSessionListAdapter {
+    fn list_sessions<'a>(
+        &'a self,
+        context: ProviderSessionListContext<'a>,
+    ) -> ProviderSessionListFuture<'a> {
+        Box::pin(async move {
+            gemini_list_sessions(context.config, context.payload, context.active_sessions).await
+        })
+    }
+}
+
+static CODEX_SESSION_LIST_ADAPTER: CodexSessionListAdapter = CodexSessionListAdapter;
+static CLAUDE_SESSION_LIST_ADAPTER: ClaudeSessionListAdapter = ClaudeSessionListAdapter;
+static GEMINI_SESSION_LIST_ADAPTER: GeminiSessionListAdapter = GeminiSessionListAdapter;
+
+pub async fn list_provider_sessions(
+    provider: Provider,
+    config: &Config,
+    payload: &Value,
+    active_sessions: &[Value],
+) -> Result<Value> {
+    ProviderSessionListAdapters::for_provider(provider)
+        .list_sessions(ProviderSessionListContext {
+            config,
+            payload,
+            active_sessions,
+        })
+        .await
+}
 
 pub async fn codex_list_threads(config: &Config, payload: &Value) -> Result<Value> {
     let cwd = payload
@@ -204,7 +290,7 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
     Ok(json!({ "success": true }))
 }
 
-pub async fn claude_list_sessions(payload: &Value) -> Result<Value> {
+pub async fn claude_list_sessions(payload: &Value, active_sessions: &[Value]) -> Result<Value> {
     let cwd = payload
         .get("cwd")
         .and_then(Value::as_str)
@@ -224,36 +310,44 @@ pub async fn claude_list_sessions(payload: &Value) -> Result<Value> {
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(0);
 
-    let claude_config_dir = default_claude_config_dir();
-    let session_files = claude_session_files(normalized_cwd.as_deref(), &claude_config_dir).await?;
     let mut rows = Vec::<Value>::new();
     let mut seen = HashSet::<String>::new();
 
-    for path in session_files {
-        let Some(meta) = read_claude_session_meta(&path).await? else {
-            continue;
-        };
-        if meta.is_sidechain || is_subagent_path(&path) {
+    for row in active_sessions {
+        if provider_row_is_subagent(row) {
             continue;
         }
+        let session_id = row
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let row_cwd = row
+            .get("cwd")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let Some((session_id, row_cwd)) = session_id.zip(row_cwd) else {
+            continue;
+        };
         if let Some(filter) = normalized_cwd.as_deref() {
-            if meta.cwd != filter {
+            if row_cwd != filter {
                 continue;
             }
         }
-        if !seen.insert(meta.session_id.clone()) {
+        if !seen.insert(session_id.to_string()) {
             continue;
         }
-        let updated_at = fs::metadata(&path)
-            .await
-            .ok()
-            .and_then(|value| value.modified().ok())
-            .and_then(system_time_to_rfc3339)
-            .or(meta.timestamp.clone());
+        let updated_at = timestamp_value_to_rfc3339(row.get("updatedAt"))
+            .or_else(|| system_time_to_rfc3339(std::time::SystemTime::now()))
+            .unwrap_or_default();
+        let created_at =
+            timestamp_value_to_rfc3339(row.get("createdAt")).unwrap_or_else(|| updated_at.clone());
         rows.push(json!({
-            "id": meta.session_id,
-            "cwd": meta.cwd,
-            "createdAt": updated_at,
+            "id": session_id,
+            "cwd": row_cwd,
+            "title": row.get("title").cloned().unwrap_or(Value::Null),
+            "createdAt": created_at,
             "updatedAt": updated_at
         }));
     }
@@ -400,7 +494,7 @@ pub async fn claude_send_message(payload: &Value) -> Result<Value> {
 }
 
 pub async fn gemini_list_sessions(
-    config: &Config,
+    _config: &Config,
     payload: &Value,
     active_sessions: &[Value],
 ) -> Result<Value> {
@@ -425,6 +519,9 @@ pub async fn gemini_list_sessions(
 
     let mut merged_rows = HashMap::<String, Value>::new();
     for row in active_sessions {
+        if provider_row_is_subagent(row) {
+            continue;
+        }
         if let Some(filter) = cwd_filter.as_deref() {
             let row_cwd = row
                 .get("cwd")
@@ -436,12 +533,6 @@ pub async fn gemini_list_sessions(
             }
         }
         merge_provider_session_row(&mut merged_rows, row.clone());
-    }
-
-    for row in
-        list_gemini_historical_sessions(&config.gemini_config_dir(), cwd_filter.as_deref()).await?
-    {
-        merge_provider_session_row(&mut merged_rows, row);
     }
 
     let mut rows = merged_rows.into_values().collect::<Vec<_>>();
@@ -860,16 +951,6 @@ async fn collect_session_json_files(root: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-async fn claude_session_files(
-    cwd_filter: Option<&str>,
-    claude_config_dir: &Path,
-) -> Result<Vec<PathBuf>> {
-    if let Some(cwd) = cwd_filter {
-        return collect_jsonl_files(&claude_project_dir_with_config(cwd, claude_config_dir)).await;
-    }
-    collect_jsonl_files(&claude_config_dir.join("projects")).await
-}
-
 async fn find_claude_session_file(
     session_id: &str,
     cwd_hint: Option<&str>,
@@ -1102,11 +1183,6 @@ fn value_contains_named_string(value: &Value, key: &str, expected: &str) -> bool
     }
 }
 
-fn is_subagent_path(path: &Path) -> bool {
-    path.components()
-        .any(|component| component.as_os_str() == "subagents")
-}
-
 fn merge_provider_session_row(rows: &mut HashMap<String, Value>, row: Value) {
     let id = row
         .get("id")
@@ -1132,6 +1208,100 @@ fn merge_provider_session_row(rows: &mut HashMap<String, Value>, row: Value) {
         None => {
             rows.insert(id.to_string(), row);
         }
+    }
+}
+
+fn normalized_timestamp_seconds(raw: f64) -> f64 {
+    let abs_raw = raw.abs();
+    if abs_raw >= 10_000_000_000_000.0 {
+        return raw / 1_000_000.0;
+    }
+    if abs_raw >= 10_000_000_000.0 {
+        return raw / 1_000.0;
+    }
+    raw
+}
+
+fn timestamp_seconds_to_rfc3339(raw: f64) -> Option<String> {
+    let seconds = normalized_timestamp_seconds(raw);
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return None;
+    }
+    let nanos = (seconds * 1_000_000_000.0).round() as i128;
+    time::OffsetDateTime::from_unix_timestamp_nanos(nanos)
+        .ok()
+        .and_then(|value| {
+            value
+                .format(&time::format_description::well_known::Rfc3339)
+                .ok()
+        })
+}
+
+fn timestamp_value_to_rfc3339(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::String(raw)) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else if let Ok(parsed) = trimmed.parse::<f64>() {
+                timestamp_seconds_to_rfc3339(parsed).or_else(|| Some(trimmed.to_string()))
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Some(Value::Number(number)) => number.as_f64().and_then(timestamp_seconds_to_rfc3339),
+        _ => None,
+    }
+}
+
+fn value_contains_subagent_marker(value: &Value) -> bool {
+    match value {
+        Value::String(raw) => raw.to_ascii_lowercase().contains("subagent"),
+        Value::Object(map) => map.iter().any(|(key, child)| {
+            key.to_ascii_lowercase().contains("subagent") || value_contains_subagent_marker(child)
+        }),
+        Value::Array(items) => items.iter().any(value_contains_subagent_marker),
+        _ => false,
+    }
+}
+
+fn provider_row_is_subagent(row: &Value) -> bool {
+    let Some(object) = row.as_object() else {
+        return false;
+    };
+
+    if object
+        .get("agentRole")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return true;
+    }
+
+    if object
+        .get("agentNickname")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return true;
+    }
+
+    if object
+        .get("isSidechain")
+        .or_else(|| object.get("sidechain"))
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        return true;
+    }
+
+    match object.get("source") {
+        Some(source) => value_contains_subagent_marker(source),
+        _ => false,
     }
 }
 
@@ -1180,7 +1350,8 @@ async fn list_codex_threads_via_app_server(
         json!({
             "cwd": cwd,
             "limit": limit.clamp(1, 100),
-            "sortKey": "updated_at"
+            "sortKey": "updated_at",
+            "sourceKinds": ["cli", "vscode", "exec", "appServer"]
         }),
     )
     .await
@@ -1230,31 +1401,27 @@ fn extract_codex_thread_summaries_from_list_response(response: &Value) -> Vec<Va
         let updated_at = object
             .get("updatedAt")
             .or_else(|| object.get("updated_at"))
-            .and_then(Value::as_str)
             .or_else(|| {
                 nested_thread
                     .and_then(|thread| thread.get("updatedAt"))
-                    .and_then(Value::as_str)
             })
             .or_else(|| {
                 nested_thread
                     .and_then(|thread| thread.get("updated_at"))
-                    .and_then(Value::as_str)
             });
         let created_at = object
             .get("createdAt")
             .or_else(|| object.get("created_at"))
-            .and_then(Value::as_str)
             .or_else(|| {
                 nested_thread
                     .and_then(|thread| thread.get("createdAt"))
-                    .and_then(Value::as_str)
             })
             .or_else(|| {
                 nested_thread
                     .and_then(|thread| thread.get("created_at"))
-                    .and_then(Value::as_str)
             });
+        let updated_at = timestamp_value_to_rfc3339(updated_at);
+        let created_at = timestamp_value_to_rfc3339(created_at);
 
         summaries.push(json!({
             "id": id,
@@ -1267,9 +1434,15 @@ fn extract_codex_thread_summaries_from_list_response(response: &Value) -> Vec<Va
             "model": object.get("model").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("model")).and_then(Value::as_str)),
             "effort": object.get("effort").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("effort")).and_then(Value::as_str)),
             "preview": object.get("preview").and_then(Value::as_str).or_else(|| nested_thread.and_then(|thread| thread.get("preview")).and_then(Value::as_str)),
+            "source": object.get("source").cloned().unwrap_or(Value::Null),
+            "agentNickname": object.get("agentNickname").cloned().unwrap_or(Value::Null),
+            "agentRole": object.get("agentRole").cloned().unwrap_or(Value::Null),
         }));
     }
     summaries
+        .into_iter()
+        .filter(|row| !provider_row_is_subagent(row))
+        .collect()
 }
 
 fn resolve_cwd(raw: &str) -> String {
@@ -1466,6 +1639,58 @@ mod tests {
         assert_eq!(
             sessions[0]["title"].as_str(),
             Some("Summarize this repository")
+        );
+    }
+
+    #[test]
+    fn extract_codex_thread_summaries_filters_subagent_rows() {
+        let rows = extract_codex_thread_summaries_from_list_response(&json!({
+            "data": [
+                {
+                    "id": "root-thread",
+                    "preview": "Root preview",
+                    "source": "cli",
+                    "agentNickname": null,
+                    "agentRole": null
+                },
+                {
+                    "id": "subagent-thread",
+                    "preview": "Subagent preview",
+                    "source": { "subagent": { "parentThreadId": "root-thread" } },
+                    "agentNickname": "copernicus",
+                    "agentRole": "worker"
+                }
+            ]
+        }));
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["id"].as_str(), Some("root-thread"));
+        assert_eq!(rows[0]["preview"].as_str(), Some("Root preview"));
+    }
+
+    #[tokio::test]
+    async fn claude_list_sessions_uses_active_session_title() {
+        let response = claude_list_sessions(
+            &json!({
+                "cwd": "/tmp/project",
+                "limit": 20
+            }),
+            &[json!({
+                "id": "claude-session-1",
+                "cwd": "/tmp/project",
+                "title": "Active Claude Session",
+                "updatedAt": "2026-03-10T10:01:00Z",
+                "createdAt": "2026-03-10T10:00:00Z"
+            })],
+        )
+        .await
+        .expect("list sessions");
+
+        let sessions = response["sessions"].as_array().expect("sessions array");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(
+            sessions[0]["title"].as_str(),
+            Some("Active Claude Session")
         );
     }
 }
