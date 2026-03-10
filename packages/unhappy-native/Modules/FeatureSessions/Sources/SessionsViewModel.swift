@@ -537,7 +537,7 @@ public final class SessionsViewModel: ObservableObject {
                             machineID: machineID
                         )
                     )
-                    if !refreshedProjects.isEmpty {
+                    if shouldHydrateProjectScopedSessionsForLists, !refreshedProjects.isEmpty {
                         scheduleIncrementalUpstreamLoad(
                             projects: refreshedProjects,
                             serverURLString: serverURLString,
@@ -587,7 +587,7 @@ public final class SessionsViewModel: ObservableObject {
         let usesIncrementalSupportingStreams =
             (projectsLoader as? any SessionProjectsStreamingAction) != nil &&
             (
-                projectSessionsLoader != nil ||
+                shouldHydrateProjectScopedSessionsForLists ||
                 (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
             )
 
@@ -595,6 +595,12 @@ public final class SessionsViewModel: ObservableObject {
             serverURLString: serverURLString,
             token: token
         )
+        if recentCatalogSessionsLoader != nil {
+            await loadRecentCatalogSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
         if !usesIncrementalSupportingStreams {
             await loadUpstreamSessions(
                 serverURLString: serverURLString,
@@ -1105,6 +1111,10 @@ public final class SessionsViewModel: ObservableObject {
         guard !sessions.isEmpty else { return false }
         guard let lastPrimarySessionLoadAt else { return false }
         return Date().timeIntervalSince1970 - lastPrimarySessionLoadAt < 5
+    }
+
+    private var shouldHydrateProjectScopedSessionsForLists: Bool {
+        projectSessionsLoader != nil && recentCatalogSessionsLoader == nil
     }
 
     func waitForPendingSupportingDataRefresh() async {

@@ -207,7 +207,7 @@ struct SessionsViewModelTests {
     }
 
     @Test
-    func loadProjectsStreamingStartsProjectScopedSyncWhenDedicatedLoaderExists() async throws {
+    func loadProjectsStreamingDoesNotPreloadProjectScopedSessionsWhenCatalogDrivesLists() async throws {
         let project = SessionMachineProject(
             machineID: "machine-1",
             machineDisplayName: "Work Mac",
@@ -218,21 +218,6 @@ struct SessionsViewModelTests {
                 codexThreadCount: 1,
                 claudeSessionCount: 0,
                 openedExplicitly: true
-            )
-        )
-        let row = SessionLinkedUpstreamSession(
-            machineID: "machine-1",
-            machineDisplayName: "Work Mac",
-            wrappedMachineDataEncryptionKey: "wrapped-key",
-            summary: APIUpstreamSessionSummary(
-                id: "thread-1",
-                provider: .codex,
-                title: "Thread",
-                cwd: "/repo/app",
-                path: "/tmp/thread.jsonl",
-                updatedAt: "2026-03-06T05:00:00.000Z",
-                createdAt: "2026-03-06T04:00:00.000Z",
-                archived: false
             )
         )
         let projectsLoader = StreamingProjectsLoader(
@@ -265,10 +250,9 @@ struct SessionsViewModelTests {
         await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
         try await Task.sleep(for: .milliseconds(50))
 
-        #expect(await projectSessionsLoader.callCount() == 1)
-        #expect(await projectSessionsLoader.requestedProjectsSnapshot().map(\.id) == [project.id])
-        #expect(model.projectSessions(machineID: "machine-1", projectPath: "/repo/app").map(\.id) == [row.id])
-        #expect(model.upstreamSessions.map(\.id) == [row.id])
+        #expect(await projectSessionsLoader.callCount() == 0)
+        #expect(model.projectSessions(machineID: "machine-1", projectPath: "/repo/app").isEmpty)
+        #expect(model.upstreamSessions.isEmpty)
     }
 
     @Test
