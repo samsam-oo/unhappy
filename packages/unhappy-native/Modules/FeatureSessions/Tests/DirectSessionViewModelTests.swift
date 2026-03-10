@@ -131,6 +131,54 @@ struct DirectSessionViewModelTests {
         #expect(await loader.recordedCursors == [nil, "cursor-1"])
     }
 
+    @Test
+    func olderMessagesLoadTriggerIDMatchesCursorUntilPaginationEnds() async {
+        let loader = RepeatingOlderCursorLoader()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: SuccessfulSender()
+        )
+
+        await viewModel.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.olderMessagesLoadTriggerID == "cursor-1")
+
+        await viewModel.loadOlderMessages(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.olderMessagesLoadTriggerID == nil)
+    }
+
+    @Test
+    func loadOlderMessagesPrependsOlderMessagesAheadOfCurrentPage() async {
+        let loader = OlderMessagesPrependLoader()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: SuccessfulSender()
+        )
+
+        await viewModel.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        #expect(viewModel.messages.map(\.id) == ["latest-1", "latest-2"])
+
+        await viewModel.loadOlderMessages(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.messages.map(\.id) == ["older-1", "older-2", "latest-1", "latest-2"])
+        #expect(viewModel.hasOlderMessages == false)
+    }
+
     private func makeIdentity() -> DirectSessionIdentity {
         DirectSessionIdentity(
             machineID: "machine-1",
@@ -248,6 +296,64 @@ private actor RepeatingOlderCursorLoader: DirectSessionMessagesLoadingAction {
             ],
             nextCursor: "cursor-1",
             hasNext: true
+        )
+    }
+}
+
+private actor OlderMessagesPrependLoader: DirectSessionMessagesLoadingAction {
+    func loadMessages(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
+        if cursor == nil {
+            return APISessionMessagesPage(
+                messages: [
+                    APISessionMessage(
+                        id: "latest-1",
+                        seq: 3,
+                        localId: nil,
+                        content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                        createdAt: 3,
+                        updatedAt: 3
+                    ),
+                    APISessionMessage(
+                        id: "latest-2",
+                        seq: 4,
+                        localId: nil,
+                        content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                        createdAt: 4,
+                        updatedAt: 4
+                    ),
+                ],
+                nextCursor: "cursor-older",
+                hasNext: true
+            )
+        }
+
+        return APISessionMessagesPage(
+            messages: [
+                APISessionMessage(
+                    id: "older-1",
+                    seq: 1,
+                    localId: nil,
+                    content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                    createdAt: 1,
+                    updatedAt: 1
+                ),
+                APISessionMessage(
+                    id: "older-2",
+                    seq: 2,
+                    localId: nil,
+                    content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                    createdAt: 2,
+                    updatedAt: 2
+                ),
+            ],
+            nextCursor: nil,
+            hasNext: false
         )
     }
 }

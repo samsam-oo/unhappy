@@ -44,6 +44,7 @@ public struct DirectSessionDetailView: View {
     @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var shouldFollowTranscript = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
+    @State private var pendingOlderMessagesAnchorID: String?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
@@ -124,6 +125,14 @@ public struct DirectSessionDetailView: View {
                 }
             )
             .onChange(of: transcriptPresentations.map(\.messageID)) { _, _ in
+                if let pendingOlderMessagesAnchorID {
+                    self.pendingOlderMessagesAnchorID = nil
+                    Task { @MainActor in
+                        await Task.yield()
+                        scrollToMessage(pendingOlderMessagesAnchorID, using: proxy)
+                    }
+                    return
+                }
                 guard shouldFollowTranscript else { return }
                 scrollTranscriptToBottom(using: proxy, animated: true)
             }
@@ -355,25 +364,21 @@ public struct DirectSessionDetailView: View {
                 ProgressView("Loading earlier messages…")
                     .font(.footnote)
             } else {
-                Button {
-                    shouldFollowTranscript = false
-                    let anchorMessageID = transcriptPresentations.first?.messageID
-                    Task {
-                        await viewModel.loadOlderMessages(
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                        guard let anchorMessageID else { return }
-                        scrollToMessage(anchorMessageID, using: proxy)
-                    }
-                } label: {
-                    Label("Load earlier messages", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                        .font(.footnote.weight(.semibold))
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppPalette.secondaryText)
+                    Text("Loading earlier messages automatically…")
+                        .font(.footnote)
+                        .foregroundStyle(AppPalette.secondaryText)
                 }
-                .buttonStyle(.plain)
+                .onAppear {
+                    autoLoadOlderMessagesIfNeeded()
+                }
             }
             Spacer()
         }
+        .id(viewModel.olderMessagesLoadTriggerID ?? "no-older-messages")
     }
 
     private var summaryCard: some View {
@@ -841,6 +846,22 @@ public struct DirectSessionDetailView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             proxy.scrollTo(messageID, anchor: .top)
+        }
+    }
+
+    private func autoLoadOlderMessagesIfNeeded() {
+        guard viewModel.isLoadingOlderMessages == false else { return }
+        guard viewModel.hasOlderMessages else { return }
+        guard let anchorMessageID = transcriptPresentations.first?.messageID else { return }
+
+        shouldFollowTranscript = false
+        pendingOlderMessagesAnchorID = anchorMessageID
+
+        Task {
+            await viewModel.loadOlderMessages(
+                serverURLString: serverURLString,
+                token: token
+            )
         }
     }
 }
