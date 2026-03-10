@@ -1216,7 +1216,7 @@ fn first_gemini_user_preview(messages: &[GeminiStoredMessage]) -> Option<String>
 
 fn normalize_transcript_text(value: Value) -> String {
     match value {
-        Value::String(text) => text.trim().to_string(),
+        Value::String(text) => strip_inline_image_markup(&text),
         Value::Array(items) => items
             .into_iter()
             .map(normalize_transcript_text)
@@ -1231,6 +1231,31 @@ fn normalize_transcript_text(value: Value) -> String {
         }
         other => serde_json::to_string(&other).unwrap_or_default(),
     }
+}
+
+fn strip_inline_image_markup(raw: &str) -> String {
+    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+    let mut kept_lines = Vec::<String>::new();
+    let mut previous_blank = false;
+
+    for line in normalized.lines() {
+        let trimmed = line.trim();
+        let is_wrapper_open = trimmed.starts_with("<image") && trimmed.ends_with('>');
+        let is_wrapper_close = trimmed == "</image>";
+        if is_wrapper_open || is_wrapper_close {
+            continue;
+        }
+
+        let is_blank = trimmed.is_empty();
+        if is_blank && previous_blank {
+            continue;
+        }
+
+        kept_lines.push(trimmed.to_string());
+        previous_blank = is_blank;
+    }
+
+    kept_lines.join("\n").trim().to_string()
 }
 
 fn value_contains_named_string(value: &Value, key: &str, expected: &str) -> bool {
@@ -1759,5 +1784,14 @@ mod tests {
             sessions[0]["title"].as_str(),
             Some("Active Claude Session")
         );
+    }
+
+    #[test]
+    fn normalize_transcript_text_strips_inline_image_wrapper_tags() {
+        let normalized = normalize_transcript_text(Value::String(
+            "<image name=[Image #1]>\n\nPlease inspect this screenshot.\n\n</image>".to_string(),
+        ));
+
+        assert_eq!(normalized, "Please inspect this screenshot.");
     }
 }
