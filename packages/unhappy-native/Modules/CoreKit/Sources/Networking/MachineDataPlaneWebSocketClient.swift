@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import SecurityKit
 
 public actor MachineDataPlaneWebSocketClient {
@@ -51,7 +52,7 @@ public actor MachineDataPlaneWebSocketClient {
     }
 
     private struct LiveConnection {
-        let task: URLSessionWebSocketTask
+        let transport: any MachineDataPlaneTextTransport
         let sessionKey: Data
         var lastActivityAt: TimeInterval
     }
@@ -64,30 +65,20 @@ public actor MachineDataPlaneWebSocketClient {
         var lastConnectionFailureAt: TimeInterval?
     }
 
-    private struct RetryableRequestError: Error {
-        let message: String
-    }
-
-    private let session: URLSession
     private let requestTimeoutInterval: TimeInterval
     private let staleConnectionProbeInterval: TimeInterval
     private let backgroundReconnectBackoffInterval: TimeInterval
-    private let retryableErrorRetryDelay: Duration
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
     private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
 
     public init(
-        session: URLSession = .shared,
         requestTimeoutInterval: TimeInterval = 8,
         staleConnectionProbeInterval: TimeInterval = 5,
-        backgroundReconnectBackoffInterval: TimeInterval = 10,
-        retryableErrorRetryDelay: Duration = .milliseconds(350)
+        backgroundReconnectBackoffInterval: TimeInterval = 10
     ) {
-        self.session = session
         self.requestTimeoutInterval = requestTimeoutInterval
         self.staleConnectionProbeInterval = staleConnectionProbeInterval
         self.backgroundReconnectBackoffInterval = backgroundReconnectBackoffInterval
-        self.retryableErrorRetryDelay = retryableErrorRetryDelay
     }
 
     public func requestJSON(
@@ -153,6 +144,19 @@ public actor MachineDataPlaneWebSocketClient {
     }
 
     nonisolated func mapTransportError(_ error: Error) -> MachinesAPIError {
+        if let machinesError = error as? MachinesAPIError {
+            return machinesError
+        }
+        if let nwError = error as? NWError {
+            switch nwError {
+            case .posix(.ENOTCONN), .posix(.ECONNABORTED), .posix(.ECONNRESET):
+                return .rpcCallFailed("Machine data-plane socket is not connected")
+            case .posix(.ETIMEDOUT):
+                return .rpcTimedOut
+            default:
+                return .rpcCallFailed(nwError.debugDescription)
+            }
+        }
         let nsError = error as NSError
         if nsError.domain == NSPOSIXErrorDomain, nsError.code == 57 {
             return .rpcCallFailed("Machine data-plane socket is not connected")
@@ -166,15 +170,20 @@ public actor MachineDataPlaneWebSocketClient {
         return .rpcCallFailed(nsError.localizedDescription)
     }
 
-    private func makeTask(serverURL: URL, token: String, machineID: String) throws -> URLSessionWebSocketTask {
+    private func makeTransport(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) throws -> any MachineDataPlaneTextTransport {
         guard let url = dataPlaneURL(serverURL: serverURL, machineID: machineID) else {
             throw MachinesAPIError.invalidRPCPayload
         }
-        var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue(MachineDataPlaneProtocol.subprotocol, forHTTPHeaderField: "Sec-WebSocket-Protocol")
-        request.timeoutInterval = requestTimeoutInterval
-        return session.webSocketTask(with: request)
+        return MachineDataPlaneNetworkTransport(
+            url: url,
+            token: token,
+            subprotocol: MachineDataPlaneProtocol.subprotocol,
+            connectTimeoutInterval: requestTimeoutInterval
+        )
     }
 
     private func dataPlaneURL(serverURL: URL, machineID: String) -> URL? {
@@ -187,24 +196,11 @@ public actor MachineDataPlaneWebSocketClient {
         return components.url
     }
 
-    private func receiveHelloAck(task: URLSessionWebSocketTask) async throws -> MachineDataPlaneHelloAckFrame {
-        let message = try await task.receive()
-        guard case .string(let text) = message else {
-            throw MachinesAPIError.invalidRPCPayload
-        }
+    private func receiveHelloAck(
+        transport: any MachineDataPlaneTextTransport
+    ) async throws -> MachineDataPlaneHelloAckFrame {
+        let text = try await transport.receiveText()
         return try JSONDecoder().decode(MachineDataPlaneHelloAckFrame.self, from: Data(text.utf8))
-    }
-
-    private func sendPing(task: URLSessionWebSocketTask) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            task.sendPing { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
-            }
-        }
     }
 
     private func enqueueRequest(
@@ -298,12 +294,8 @@ public actor MachineDataPlaneWebSocketClient {
         if let existingConnection = connectionStates[key]?.liveConnection {
             let now = Date().timeIntervalSince1970
             if now - existingConnection.lastActivityAt >= staleConnectionProbeInterval {
-                do {
-                    try await sendPing(task: existingConnection.task)
-                } catch {
-                    recordConnectionFailure(for: key)
-                    invalidateConnection(for: key)
-                }
+                recordConnectionFailure(for: key)
+                invalidateConnection(for: key)
             } else {
                 var refreshed = existingConnection
                 refreshed.lastActivityAt = now
@@ -330,12 +322,11 @@ public actor MachineDataPlaneWebSocketClient {
         }
 
         let connectTask = Task<LiveConnection, Error> {
-            let task = try makeTask(
+            let transport = try makeTransport(
                 serverURL: serverURL,
                 token: key.token,
                 machineID: key.machineID
             )
-            task.resume()
 
             do {
                 let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
@@ -347,9 +338,9 @@ public actor MachineDataPlaneWebSocketClient {
                         nonce: handshake.nonceBase64URL
                     )
                 )
-                try await send(frame: hello, task: task)
+                try await send(frame: hello, transport: transport)
 
-                let helloAck = try await receiveHelloAck(task: task)
+                let helloAck = try await receiveHelloAck(transport: transport)
                 let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
                     machineDataKey: machineDataKey,
                     localPrivateKey: handshake.privateKey,
@@ -360,12 +351,12 @@ public actor MachineDataPlaneWebSocketClient {
                 )
 
                 return LiveConnection(
-                    task: task,
+                    transport: transport,
                     sessionKey: sessionKey,
                     lastActivityAt: Date().timeIntervalSince1970
                 )
             } catch {
-                task.cancel(with: .goingAway, reason: nil)
+                await transport.close()
                 throw error
             }
         }
@@ -407,11 +398,10 @@ public actor MachineDataPlaneWebSocketClient {
             ),
             expectsChunks: false
         )
-        try await send(frame: requestFrame, task: liveConnection.task)
+        try await send(frame: requestFrame, transport: liveConnection.transport)
 
         while true {
-            let message = try await liveConnection.task.receive()
-            guard case .string(let text) = message else { continue }
+            let text = try await liveConnection.transport.receiveText()
 
             if let errorFrame = try? JSONDecoder().decode(
                 MachineDataPlaneErrorFrame.self,
@@ -439,7 +429,11 @@ public actor MachineDataPlaneWebSocketClient {
 
     private func invalidateConnection(for key: ConnectionKey) {
         guard var state = connectionStates[key] else { return }
-        state.liveConnection?.task.cancel(with: .goingAway, reason: nil)
+        if let transport = state.liveConnection?.transport {
+            Task {
+                await transport.close()
+            }
+        }
         state.liveConnection = nil
         connectionStates[key] = state
         inFlightConnections[key]?.cancel()
@@ -477,12 +471,15 @@ public actor MachineDataPlaneWebSocketClient {
         connectionStates[key] = state
     }
 
-    private func send<T: Encodable>(frame: T, task: URLSessionWebSocketTask) async throws {
+    private func send<T: Encodable>(
+        frame: T,
+        transport: any MachineDataPlaneTextTransport
+    ) async throws {
         let data = try JSONEncoder().encode(frame)
         guard let text = String(data: data, encoding: .utf8) else {
             throw MachinesAPIError.invalidRPCPayload
         }
-        try await task.send(.string(text))
+        try await transport.send(text: text)
     }
 
     private func requestAAD(for frame: MachineDataPlaneRequestFrame) -> Data {
