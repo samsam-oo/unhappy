@@ -441,7 +441,7 @@ private struct ProjectRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Text(group.projectPath)
+            Text(group.projectDisplayPath)
                 .font(.caption2.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

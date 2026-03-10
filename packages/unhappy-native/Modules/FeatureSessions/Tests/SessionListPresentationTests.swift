@@ -156,6 +156,31 @@ struct SessionListPresentationTests {
     }
 
     @Test
+    func projectGroupsPreferServerProvidedDisplayPathVerbatim() {
+        let groups = SessionListPresentationBuilder.projectGroups(
+            sessions: [],
+            upstreamSessions: [],
+            projects: [
+                SessionMachineProject(
+                    machineID: "machine-1",
+                    machineDisplayName: "Phone",
+                    summary: APIMachineProjectSummary(
+                        path: "~/Downloads/shadow-client",
+                        displayPath: "~/Downloads/shadow-client",
+                        latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                        codexThreadCount: 0,
+                        claudeSessionCount: 0,
+                        openedExplicitly: true
+                    )
+                )
+            ]
+        )
+
+        #expect(groups.first?.projectPath == "~/Downloads/shadow-client")
+        #expect(groups.first?.projectDisplayPath == "~/Downloads/shadow-client")
+    }
+
+    @Test
     func projectGroupResolvesUpdatedRowsForExistingID() {
         let project = SessionMachineProject(
             machineID: "machine-1",
