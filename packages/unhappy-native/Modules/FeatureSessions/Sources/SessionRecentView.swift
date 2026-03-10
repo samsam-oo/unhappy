@@ -27,7 +27,20 @@ public struct SessionRecentView: View {
         )
 
         List {
-            if sections.isEmpty {
+            if viewModel.isLoadingRecentCatalogSessions && sections.isEmpty {
+                ProgressView("Loading recent sessions…")
+                    .foregroundStyle(.secondary)
+            } else if let error = viewModel.recentCatalogSessionsErrorMessage,
+                      sections.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Unable to load recent sessions")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            } else if sections.isEmpty {
                 Text("No recent sessions")
                     .foregroundStyle(.secondary)
             } else {
@@ -42,6 +55,12 @@ public struct SessionRecentView: View {
         }
         .navigationTitle("Recent Sessions")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await viewModel.loadRecentCatalogSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
         .alert(
             "Couldn't Archive Session",
             isPresented: Binding(
@@ -60,7 +79,7 @@ public struct SessionRecentView: View {
             Text(archiveErrorMessage ?? "")
         }
         .refreshable {
-            await viewModel.load(
+            await viewModel.loadRecentCatalogSessions(
                 serverURLString: serverURLString,
                 token: token
             )
@@ -80,7 +99,7 @@ public struct SessionRecentView: View {
                     },
                     onArchived: {
                         Task {
-                            await viewModel.loadUpstreamSessions(
+                            await viewModel.loadRecentCatalogSessions(
                                 serverURLString: serverURLString,
                                 token: token
                             )

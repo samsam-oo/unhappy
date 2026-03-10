@@ -20,6 +20,9 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var removingProjectID: String?
     @Published public private(set) var archivingUpstreamSessionID: String?
     @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
+    @Published public private(set) var recentCatalogSessions: [SessionLinkedUpstreamSession] = []
+    @Published public private(set) var isLoadingRecentCatalogSessions = false
+    @Published public private(set) var recentCatalogSessionsErrorMessage: String?
     @Published public private(set) var isLoadingUpstreamSessions = false
     @Published public private(set) var upstreamSessionsErrorMessage: String?
     private var attemptedDuplicateCleanupSessionIDs: Set<String> = []
@@ -32,6 +35,7 @@ public final class SessionsViewModel: ObservableObject {
     private let projectOpener: (any SessionProjectOpeningAction)?
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
+    private let recentCatalogSessionsLoader: (any SessionRecentCatalogLoadingAction)?
     private let upstreamSessionArchiver: (any DirectSessionArchivingAction)?
     private let deleteUseCase: any SessionDeletingAction
     private var nextCursor: String?
@@ -57,6 +61,7 @@ public final class SessionsViewModel: ObservableObject {
         projectOpener: (any SessionProjectOpeningAction)? = nil,
         projectRemover: (any SessionProjectRemovingAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
+        recentCatalogSessionsLoader: (any SessionRecentCatalogLoadingAction)? = nil,
         upstreamSessionArchiver: (any DirectSessionArchivingAction)? = nil,
         deleteUseCase: any SessionDeletingAction
     ) {
@@ -68,6 +73,7 @@ public final class SessionsViewModel: ObservableObject {
         self.projectOpener = projectOpener
         self.projectRemover = projectRemover
         self.upstreamSessionsLoader = upstreamSessionsLoader
+        self.recentCatalogSessionsLoader = recentCatalogSessionsLoader
         self.upstreamSessionArchiver = upstreamSessionArchiver
         self.deleteUseCase = deleteUseCase
     }
@@ -176,7 +182,50 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     public var aggregatedRecentSessions: [SessionLinkedUpstreamSession] {
-        aggregatedProjectRows
+        var rowsByID: [String: SessionLinkedUpstreamSession] = [:]
+        for row in aggregatedProjectRows {
+            rowsByID[row.id] = row
+        }
+        for row in recentCatalogSessions {
+            let existing = rowsByID[row.id]
+            if let existing, existing.sortTimestamp >= row.sortTimestamp {
+                continue
+            }
+            rowsByID[row.id] = row
+        }
+        return rowsByID.values.sorted { lhs, rhs in
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    public func loadRecentCatalogSessions(
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let recentCatalogSessionsLoader else { return }
+        guard !isLoadingRecentCatalogSessions else { return }
+
+        isLoadingRecentCatalogSessions = true
+        defer { isLoadingRecentCatalogSessions = false }
+
+        do {
+            let rows = try await recentCatalogSessionsLoader.loadRecentSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            if recentCatalogSessions != rows {
+                recentCatalogSessions = rows
+            }
+            recentCatalogSessionsErrorMessage = nil
+        } catch {
+            recentCatalogSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     public func load(serverURLString: String, token: String) async {

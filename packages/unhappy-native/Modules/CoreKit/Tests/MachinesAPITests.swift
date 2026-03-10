@@ -134,6 +134,24 @@ struct MachinesAPITests {
     }
 
     @Test
+    func recentSessionCatalogRequestUsesExpectedPathAndQuery() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeRecentSessionCatalogRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            limit: 80,
+            cursor: "12"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/session-catalog/recent?limit=80&cursor=12"
+        )
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
     func codexThreadsRequestUsesExpectedPathAndQuery() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try MachinesAPI.makeCodexThreadsRequest(
