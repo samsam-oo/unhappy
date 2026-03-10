@@ -348,6 +348,36 @@ public final class SessionsViewModel: ObservableObject {
         token: String,
         projectsToSync: [SessionMachineProject]
     ) async {
+        if let projectSessionsLoader {
+            let acceptedProjects = beginUpstreamLoad(for: projectsToSync)
+            guard !acceptedProjects.isEmpty else {
+                upstreamSessionsErrorMessage = nil
+                isLoadingUpstreamSessions = false
+                return
+            }
+            defer { endUpstreamLoad(for: acceptedProjects) }
+
+            var firstErrorMessage: String?
+            for project in acceptedProjects {
+                await refreshProjectScopedSessions(
+                    project: project,
+                    loader: projectSessionsLoader,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                if firstErrorMessage == nil,
+                   let error = projectSessionsError(
+                    machineID: project.machineID,
+                    projectPath: project.summary.path
+                   ),
+                   !error.isEmpty {
+                    firstErrorMessage = error
+                }
+            }
+            upstreamSessionsErrorMessage = firstErrorMessage
+            return
+        }
+
         guard let upstreamSessionsLoader else {
             upstreamSessions = []
             upstreamSessionsErrorMessage = nil
@@ -478,7 +508,10 @@ public final class SessionsViewModel: ObservableObject {
 
         let usesIncrementalSupportingStreams =
             (projectsLoader as? any SessionProjectsStreamingAction) != nil &&
-            (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
+            (
+                projectSessionsLoader != nil ||
+                (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
+            )
 
         await loadProjects(
             serverURLString: serverURLString,
@@ -957,12 +990,31 @@ public final class SessionsViewModel: ObservableObject {
             }
             return allowedScopeIDs.contains(scopeID)
         }
-        guard projects != nextProjects || filteredUpstreamRows != upstreamSessions else { return }
+        let filteredProjectScopedSessions = projectScopedSessions.filter { allowedScopeIDs.contains($0.key) }
+        let filteredProjectScopedSessionErrors = projectScopedSessionErrors.filter { allowedScopeIDs.contains($0.key) }
+        let filteredResolvedProjectSessionScopeIDs = resolvedProjectSessionScopeIDs.intersection(allowedScopeIDs)
+
+        guard
+            projects != nextProjects ||
+            filteredUpstreamRows != upstreamSessions ||
+            filteredProjectScopedSessions != projectScopedSessions ||
+            filteredProjectScopedSessionErrors != projectScopedSessionErrors ||
+            filteredResolvedProjectSessionScopeIDs != resolvedProjectSessionScopeIDs
+        else { return }
         if projects != nextProjects {
             projects = nextProjects
         }
         if filteredUpstreamRows != upstreamSessions {
             upstreamSessions = filteredUpstreamRows
+        }
+        if filteredProjectScopedSessions != projectScopedSessions {
+            projectScopedSessions = filteredProjectScopedSessions
+        }
+        if filteredProjectScopedSessionErrors != projectScopedSessionErrors {
+            projectScopedSessionErrors = filteredProjectScopedSessionErrors
+        }
+        if filteredResolvedProjectSessionScopeIDs != resolvedProjectSessionScopeIDs {
+            resolvedProjectSessionScopeIDs = filteredResolvedProjectSessionScopeIDs
         }
     }
 
