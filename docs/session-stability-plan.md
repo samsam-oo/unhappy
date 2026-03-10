@@ -121,6 +121,22 @@ That would remove one whole layer of app-side derivation.
 
 ## Stabilization phases
 
+### Phase 0: Stabilize the current transport enough to ship
+
+In parallel with catalog work, the native client still needs a reliable machine data-plane transport.
+
+Current rule:
+
+- do not keep expanding app behavior on top of `URLSessionWebSocketTask` regressions
+- prefer a custom `Network.framework` transport over additional third-party websocket layers
+- keep the transport abstraction small so read-plane migration can later remove most of its list-screen usage
+
+Current work in this phase:
+
+1. replace `URLSessionWebSocketTask`-specific machine data-plane code with a custom transport abstraction
+2. move the implementation to `Network.framework` (`NWConnection` + `NWProtocolWebSocket`) instead of piling more retries on the old path
+3. keep background reconnects and prewarm work tightly scoped so dead sockets do not flood logs or stall screens
+
 ### Phase 1: Remove misleading states
 
 Completed or in progress:
@@ -129,6 +145,7 @@ Completed or in progress:
 - preserve transcript scroll position when older message pages prepend
 - strip inline image wrapper tags at the adapter layer instead of patching SwiftUI
 - make command status readable at a glance in the transcript UI
+- move machine data-plane transport work behind a custom abstraction so list-screen stabilization and later catalog migration do not depend on `URLSessionWebSocketTask`
 
 ### Phase 2: Narrow screen contracts
 
