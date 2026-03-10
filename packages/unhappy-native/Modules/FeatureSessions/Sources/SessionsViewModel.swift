@@ -38,6 +38,7 @@ public final class SessionsViewModel: ObservableObject {
     private var lastSupportingDataFingerprint: String?
     private var multiAgentInProgressCountCache = 0
     private var activeUpstreamScopeIDs: Set<String> = []
+    private var resolvedUpstreamScopeIDs: Set<String> = []
     private var activeUpstreamLoadCount = 0
     private var supportingDataTask: Task<Void, Never>?
     private var lastPrimarySessionLoadAt: TimeInterval?
@@ -100,6 +101,26 @@ public final class SessionsViewModel: ObservableObject {
 
     public var multiAgentInProgressCount: Int {
         multiAgentInProgressCountCache
+    }
+
+    public func isProjectSessionsLoading(
+        machineID: String,
+        projectPath: String
+    ) -> Bool {
+        guard let scopeID = canonicalProjectID(machineID: machineID, projectPath: projectPath) else {
+            return false
+        }
+        return activeUpstreamScopeIDs.contains(scopeID)
+    }
+
+    public func hasLoadedProjectSessions(
+        machineID: String,
+        projectPath: String
+    ) -> Bool {
+        guard let scopeID = canonicalProjectID(machineID: machineID, projectPath: projectPath) else {
+            return false
+        }
+        return resolvedUpstreamScopeIDs.contains(scopeID)
     }
 
     public func load(serverURLString: String, token: String) async {
@@ -803,6 +824,7 @@ public final class SessionsViewModel: ObservableObject {
                 projectPath: project.summary.path
             ) {
                 activeUpstreamScopeIDs.remove(scopeID)
+                resolvedUpstreamScopeIDs.insert(scopeID)
             }
         }
         activeUpstreamLoadCount = max(0, activeUpstreamLoadCount - 1)

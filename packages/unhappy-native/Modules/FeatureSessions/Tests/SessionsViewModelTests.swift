@@ -669,6 +669,50 @@ struct SessionsViewModelTests {
         #expect(requestedProjects.map { $0.map(\.id) } == [[projectOne.id], [projectTwo.id]])
     }
 
+    @Test
+    func projectSessionScopeIsMarkedLoadingUntilRefreshFinishes() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamLoader = DelayedStreamingUpstreamSessionsLoader(delay: .milliseconds(150))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+
+        let refreshTask = Task {
+            await model.refreshProject(
+                machineID: "machine-1",
+                projectPath: "/repo/one",
+                serverURLString: "https://api.unhappy.im",
+                token: "token"
+            )
+        }
+
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(model.isProjectSessionsLoading(machineID: "machine-1", projectPath: "/repo/one"))
+        #expect(!model.hasLoadedProjectSessions(machineID: "machine-1", projectPath: "/repo/one"))
+
+        _ = await refreshTask.value
+
+        #expect(!model.isProjectSessionsLoading(machineID: "machine-1", projectPath: "/repo/one"))
+        #expect(model.hasLoadedProjectSessions(machineID: "machine-1", projectPath: "/repo/one"))
+    }
+
 
     @Test
     func loadMoreAppendsNextPageRows() async throws {
