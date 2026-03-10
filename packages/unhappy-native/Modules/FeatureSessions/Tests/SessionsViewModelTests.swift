@@ -992,6 +992,44 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadUpstreamSessionsBecomesNoOpWhenCatalogBackedScreensAreEnabled() async throws {
+        let upstreamLoader = RecordingUpstreamSessionsLoader(result: .success([
+            SessionLinkedUpstreamSession(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIUpstreamSessionSummary(
+                    id: "thread-1",
+                    provider: .codex,
+                    title: "Thread",
+                    cwd: "/repo/app",
+                    updatedAt: "2026-03-06T05:00:00.000Z",
+                    createdAt: "2026-03-06T04:00:00.000Z",
+                    archived: false
+                )
+            )
+        ]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectSessionsLoader: RecordingProjectSessionsLoader(result: .success([])),
+            upstreamSessionsLoader: upstreamLoader,
+            recentCatalogSessionsLoader: RecordingRecentCatalogSessionsLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadUpstreamSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(await upstreamLoader.callCount() == 0)
+        #expect(model.upstreamSessions.isEmpty)
+        #expect(model.upstreamSessionsErrorMessage == nil)
+        #expect(model.isLoadingUpstreamSessions == false)
+    }
+
+    @Test
     func aggregatedProjectRowsPreferProjectScopedRowsOverOlderGlobalRows() async throws {
         let olderGlobalRow = SessionLinkedUpstreamSession(
             machineID: "machine-1",

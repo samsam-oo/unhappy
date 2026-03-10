@@ -113,15 +113,15 @@ public struct SessionRecentView: View {
                 if identity.provider == .codex {
                     Button(role: .destructive) {
                         Task {
-                            let archived = await viewModel.archiveUpstreamSession(
-                                identity,
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                            guard !archived else { return }
-                            archiveErrorMessage = viewModel.upstreamSessionsErrorMessage ?? "Failed to archive session"
-                        }
-                    } label: {
+                        let archived = await viewModel.archiveUpstreamSession(
+                            identity,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        guard !archived else { return }
+                        archiveErrorMessage = "Failed to archive session"
+                    }
+                } label: {
                         Label("Archive", systemImage: "archivebox")
                     }
                     .disabled(viewModel.isArchiving(upstreamSessionID: identity.id))
