@@ -162,6 +162,85 @@ struct SessionUpstreamSessionsLoadUseCaseTests {
     }
 
     @Test
+    func loadUpstreamSessionsIgnoresStaleActiveMachines() async throws {
+        let now = Date.now.timeIntervalSince1970
+        let project = SessionMachineProject(
+            machineID: "machine-fresh",
+            machineDisplayName: "Fresh Mac",
+            summary: APIMachineProjectSummary(
+                path: "/tmp/fresh",
+                latestUpdatedAt: "2026-03-06T05:00:00.000Z",
+                codexThreadCount: 0,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let service = MockUpstreamMachinesService(
+            machines: [
+                APIMachine(
+                    id: "machine-fresh",
+                    active: true,
+                    activeAt: now - 5,
+                    createdAt: 1,
+                    updatedAt: now - 5,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Fresh Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                ),
+                APIMachine(
+                    id: "machine-stale",
+                    active: true,
+                    activeAt: now - 120,
+                    createdAt: 1,
+                    updatedAt: now - 120,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Stale Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                )
+            ],
+            codexThreadsByMachineAndPath: [
+                "machine-fresh|/tmp/fresh": [
+                    APICodexThreadSummary(
+                        id: "thread-fresh",
+                        name: "Fresh Thread",
+                        cwd: "/tmp/fresh",
+                        updatedAt: "2026-03-06T05:00:00.000Z",
+                        createdAt: "2026-03-06T04:00:00.000Z",
+                        archived: false
+                    )
+                ],
+                "machine-stale|/tmp/stale": [
+                    APICodexThreadSummary(
+                        id: "thread-stale",
+                        name: "Stale Thread",
+                        cwd: "/tmp/stale",
+                        updatedAt: "2026-03-06T06:00:00.000Z",
+                        createdAt: "2026-03-06T05:00:00.000Z",
+                        archived: false
+                    )
+                ]
+            ],
+            claudeSessionsByMachineAndPath: [:],
+            geminiSessionsByMachineAndPath: [:]
+        )
+        let useCase = SessionUpstreamSessionsLoadUseCase(service: service)
+
+        let rows = try await useCase.loadUpstreamSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            projects: [project]
+        )
+
+        #expect(rows.count == 1)
+        #expect(rows.first?.machineID == "machine-fresh")
+        #expect(rows.first?.summary.id == "thread-fresh")
+    }
+
+    @Test
     func loadUpstreamSessionsDeduplicatesProjectPathsPerMachineBeforeFetching() async throws {
         let duplicateProjects = [
             SessionMachineProject(
