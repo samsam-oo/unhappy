@@ -356,6 +356,22 @@ struct MachinesAPITests {
     }
 
     @Test
+    func codexUpstreamSummaryFallsBackToPreviewBeforeUntitled() {
+        let summary = APICodexThreadSummary(
+            id: "thread-1",
+            name: nil,
+            cwd: "/repo",
+            updatedAt: nil,
+            createdAt: nil,
+            archived: false,
+            preview: "Use preview title"
+        )
+
+        #expect(summary.displayTitle == "Use preview title")
+        #expect(summary.upstreamSummary.title == "Use preview title")
+    }
+
+    @Test
     func decodeClaudeSessionsResponseParsesRows() throws {
         let json = """
         {
@@ -363,6 +379,7 @@ struct MachinesAPITests {
           "sessions": [
             {
               "id": "c7a2f5d1-1111-2222-3333-444444444444",
+              "title": "Claude Session Preview",
               "cwd": "/repo",
               "updatedAt": "2026-02-26T01:23:45.000Z",
               "createdAt": "2026-02-26T01:00:00.000Z"
@@ -375,7 +392,22 @@ struct MachinesAPITests {
 
         #expect(rows.count == 1)
         #expect(rows.first?.id == "c7a2f5d1-1111-2222-3333-444444444444")
+        #expect(rows.first?.title == "Claude Session Preview")
         #expect(rows.first?.cwd == "/repo")
+    }
+
+    @Test
+    func claudeUpstreamSummaryPrefersDecodedTitle() {
+        let summary = APIClaudeSessionSummary(
+            id: "claude-session-1",
+            title: "Claude Session Preview",
+            cwd: "/repo",
+            updatedAt: nil,
+            createdAt: nil
+        )
+
+        #expect(summary.displayTitle == "Claude Session Preview")
+        #expect(summary.upstreamSummary.title == "Claude Session Preview")
     }
 
     @Test

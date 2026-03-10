@@ -2,13 +2,12 @@
     "name": "monorepo",
     "private": true,
     "scripts": {
-        "cli:global:install": "npm run --workspace=packages/unhappy-cli build && node ./scripts/cli-global-install.cjs",
-        "cli:global:reinstall": "npm uninstall -g unhappy-cli || true && npm run cli:global:install",
-        "cli:global:uninstall": "npm uninstall -g unhappy-cli"
+        "cli:global:install": "cargo run --manifest-path packages/unhappy-cli/Cargo.toml -- global install",
+        "cli:global:reinstall": "cargo run --manifest-path packages/unhappy-cli/Cargo.toml -- global reinstall",
+        "cli:global:uninstall": "cargo run --manifest-path packages/unhappy-cli/Cargo.toml -- global uninstall"
     },
     "workspaces": {
         "packages": [
-            "packages/unhappy-cli",
             "packages/unhappy-server"
         ]
     },

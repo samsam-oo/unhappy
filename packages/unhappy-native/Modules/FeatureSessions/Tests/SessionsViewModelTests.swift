@@ -437,7 +437,7 @@ struct SessionsViewModelTests {
 
         await model.removeProject(
             machineID: "machine-1",
-            projectPath: "/repo/app",
+            projectPath: "/repo/app/../app",
             wrappedMachineDataEncryptionKey: nil,
             serverURLString: "https://api.unhappy.im",
             token: "token"
@@ -446,6 +446,120 @@ struct SessionsViewModelTests {
         #expect(model.projects.isEmpty)
         #expect(model.removingProjectID == nil)
         #expect(model.projectsErrorMessage == nil)
+    }
+
+    @Test
+    func removeProjectClearsScopedUpstreamRowsImmediately() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote Session",
+                cwd: "/repo/app",
+                updatedAt: "2026-03-06T01:00:00.000Z",
+                createdAt: "2026-03-06T00:30:00.000Z",
+                archived: false
+            )
+        )
+        let projectsLoader = SequenceProjectsLoader(
+            results: [
+                .success([project]),
+                .success([]),
+            ]
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: projectsLoader,
+            projectRemover: MockProjectRemover(result: .success(project)),
+            upstreamSessionsLoader: MockUpstreamSessionsLoader(result: .success([upstreamRow])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
+        #expect(model.upstreamSessions.map(\.id) == ["machine-1|codex|thread-1"])
+
+        await model.removeProject(
+            machineID: "machine-1",
+            projectPath: "/repo/app",
+            wrappedMachineDataEncryptionKey: nil,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.projects.isEmpty)
+        #expect(model.upstreamSessions.isEmpty)
+    }
+
+    @Test
+    func archiveUpstreamSessionRemovesRowAndClearsArchivingState() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote Session",
+                cwd: "/repo/app",
+                path: "/tmp/thread.jsonl",
+                updatedAt: "2026-03-06T01:00:00.000Z",
+                createdAt: "2026-03-06T00:30:00.000Z",
+                archived: false
+            )
+        )
+        let identity = DirectSessionIdentityResolver.resolve(from: upstreamRow)
+        #expect(identity != nil)
+
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            upstreamSessionsLoader: MockUpstreamSessionsLoader(result: .success([upstreamRow])),
+            upstreamSessionArchiver: MockUpstreamSessionArchiver(result: .success(())),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
+        #expect(model.upstreamSessions.map(\.id) == ["machine-1|codex|thread-1"])
+
+        let didArchive = await model.archiveUpstreamSession(
+            identity!,
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(didArchive == true)
+        #expect(model.upstreamSessions.isEmpty)
+        #expect(model.archivingUpstreamSessionID == nil)
+        #expect(model.upstreamSessionsErrorMessage == nil)
     }
 
     @Test

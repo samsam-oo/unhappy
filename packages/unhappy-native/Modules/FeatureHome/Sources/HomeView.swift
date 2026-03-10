@@ -176,9 +176,7 @@ public struct HomeView: View {
     private var accountSecretRequiredHome: some View {
         NavigationStack {
             VStack(spacing: 18) {
-                Image(systemName: "key.slash")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                brandedMark(size: 72, cornerRadius: 20)
 
                 Text("Account Secret Required")
                     .font(.title3.weight(.semibold))
@@ -245,12 +243,11 @@ public struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Image(systemName: "bolt.shield.fill")
-                        .foregroundStyle(.blue)
+                    brandedMark(size: 28, cornerRadius: 8)
                 }
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 1) {
-                        Text("Sessions")
+                        Text("Unhappy")
                             .font(.headline)
                         if let subtitle = customServerSubtitle {
                             Text(subtitle)
@@ -323,12 +320,10 @@ public struct HomeView: View {
 
     private var onboardingBranding: some View {
         VStack(spacing: 10) {
-            Image(systemName: "bolt.shield.fill")
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundStyle(.blue)
-            Text("Unhappy Coder")
+            brandedMark(size: 88, cornerRadius: 24)
+            Text("Unhappy")
                 .font(.system(size: 32, weight: .bold, design: .rounded))
-            Text("Launch your first secure session in seconds.")
+            Text("Keep projects, sessions, and approvals in one place.")
                 .font(.subheadline)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -337,12 +332,29 @@ public struct HomeView: View {
 
     private var featureBadgesRow: some View {
         HStack(spacing: 8) {
-            featureBadge(title: "Encrypted", systemImage: "lock.fill")
-            featureBadge(title: "Cross Platform", systemImage: "globe")
-            featureBadge(title: "Fast Restore", systemImage: "bolt.fill")
+            featureBadge(title: "Private Keys", systemImage: "lock.fill")
+            featureBadge(title: "Project Sync", systemImage: "folder.fill")
+            featureBadge(title: "Direct Resume", systemImage: "arrow.clockwise")
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.horizontal, 6)
+    }
+
+    private func brandedMark(size: CGFloat, cornerRadius: CGFloat) -> some View {
+        Image("UnhappyMark")
+            .renderingMode(.template)
+            .resizable()
+            .interpolation(.high)
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .foregroundStyle(colorScheme == .dark ? .white : .black)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.18), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 12, y: 6)
+            .accessibilityHidden(true)
     }
 
     private var serverInput: some View {

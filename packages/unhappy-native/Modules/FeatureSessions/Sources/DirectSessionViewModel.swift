@@ -15,6 +15,8 @@ public final class DirectSessionViewModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isSending = false
     @Published public private(set) var sendErrorMessage: String?
+    @Published public private(set) var isArchiving = false
+    @Published public private(set) var archiveErrorMessage: String?
     @Published public private(set) var availableModelOptions: [NewSessionModelOption] = []
     @Published public private(set) var availableReasoningEfforts: [NewSessionReasoningEffort] = []
     @Published public private(set) var isLoadingCapabilities = false
@@ -38,6 +40,7 @@ public final class DirectSessionViewModel: ObservableObject {
 
     private let loader: any DirectSessionMessagesLoadingAction
     private let sender: any DirectSessionMessageSendingAction
+    private let archiver: (any DirectSessionArchivingAction)?
     private let capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)?
     private let fileLoader: (any DirectSessionFileLoadingAction)?
     private let reviewLoader: (any DirectSessionReviewLoadingAction)?
@@ -52,6 +55,7 @@ public final class DirectSessionViewModel: ObservableObject {
         identity: DirectSessionIdentity,
         loader: any DirectSessionMessagesLoadingAction,
         sender: any DirectSessionMessageSendingAction,
+        archiver: (any DirectSessionArchivingAction)? = nil,
         capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)? = nil,
         fileLoader: (any DirectSessionFileLoadingAction)? = nil,
         reviewLoader: (any DirectSessionReviewLoadingAction)? = nil,
@@ -60,6 +64,7 @@ public final class DirectSessionViewModel: ObservableObject {
         self.identity = identity
         self.loader = loader
         self.sender = sender
+        self.archiver = archiver
         self.capabilitiesLoader = capabilitiesLoader
         self.fileLoader = fileLoader
         self.reviewLoader = reviewLoader
@@ -178,6 +183,41 @@ public final class DirectSessionViewModel: ObservableObject {
             sendErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
         }
+    }
+
+    public var canArchiveCurrentSession: Bool {
+        identity.provider == .codex && archiver != nil
+    }
+
+    public func archiveSession(
+        serverURLString: String,
+        token: String
+    ) async -> Bool {
+        guard let archiver else {
+            archiveErrorMessage = "Session archiving is unavailable in this build"
+            return false
+        }
+        guard !isArchiving else { return false }
+
+        isArchiving = true
+        archiveErrorMessage = nil
+        defer { isArchiving = false }
+
+        do {
+            try await archiver.archiveSession(
+                serverURLString: serverURLString,
+                token: token,
+                identity: identity
+            )
+            return true
+        } catch {
+            archiveErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
+    public func clearArchiveError() {
+        archiveErrorMessage = nil
     }
 
     public func loadCapabilities(

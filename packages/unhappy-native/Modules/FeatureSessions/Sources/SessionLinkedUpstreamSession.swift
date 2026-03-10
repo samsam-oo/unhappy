@@ -41,21 +41,22 @@ public struct SessionLinkedUpstreamSession: Identifiable, Equatable, Sendable {
     }
 
     private static func parseISO8601(_ raw: String) -> Date? {
-        if let date = fractionalFormatter.date(from: raw) {
+        if let date = makeFractionalFormatter().date(from: raw) {
             return date
         }
-        return internetFormatter.date(from: raw)
+        return makeInternetFormatter().date(from: raw)
     }
 
-    nonisolated(unsafe) private static let fractionalFormatter: ISO8601DateFormatter = {
+    private static func makeFractionalFormatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter
-    }()
+    }
 
-    nonisolated(unsafe) private static let internetFormatter: ISO8601DateFormatter = {
+    private static func makeInternetFormatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter
-    }()
+    }
+
 }

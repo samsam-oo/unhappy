@@ -115,7 +115,7 @@ struct HomeRegularProjectsTab: View {
             } else if isPreparingProjectsFromLoadedSessions {
                 ProgressView("Preparing projects…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty {
+            } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty, !showsSessionSidebarList {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Unable to load sessions")
@@ -323,13 +323,6 @@ struct HomeRegularProjectsTab: View {
         }
     }
 
-    private var visibleSessions: [APISession] {
-        if hideInactiveSessions {
-            return viewModel.sessions.filter(\.active)
-        }
-        return viewModel.sessions
-    }
-
     private var showsSessionSidebarList: Bool {
         !projectGroups.isEmpty
     }
@@ -356,7 +349,6 @@ struct HomeRegularProjectsTab: View {
 
     private var projectGroups: [SessionProjectGroup] {
         SessionListPresentationBuilder.projectGroups(
-            sessions: visibleSessions,
             upstreamSessions: viewModel.upstreamSessions,
             projects: viewModel.projects
         )

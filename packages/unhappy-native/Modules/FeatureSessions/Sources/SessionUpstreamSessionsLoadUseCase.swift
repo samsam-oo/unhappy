@@ -97,13 +97,16 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
         projects: [SessionMachineProject]
     ) async -> AsyncStream<SessionUpstreamSessionsLoadSnapshot> {
         AsyncStream { continuation in
-            Task {
+            let task = Task {
                 await self.streamUpstreamSessions(
                     serverURLString: serverURLString,
                     token: token,
                     projects: projects,
                     continuation: continuation
                 )
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }
@@ -135,6 +138,10 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
 
         do {
             let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
+            guard !Task.isCancelled else {
+                continuation.finish()
+                return
+            }
             let activeMachines = machines.filter(\.active)
             let projectPathsByMachineID = groupedProjectPathsByMachineID(from: projects)
             var rows: [SessionLinkedUpstreamSession] = []
@@ -224,6 +231,10 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                 }
 
                 for await snapshot in group {
+                    if Task.isCancelled {
+                        group.cancelAll()
+                        break
+                    }
                     for row in snapshot.rows where seenRowIDs.insert(row.id).inserted {
                         rows.append(row)
                     }

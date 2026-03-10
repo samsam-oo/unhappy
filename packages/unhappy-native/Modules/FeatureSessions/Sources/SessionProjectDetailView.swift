@@ -6,18 +6,18 @@ import UIFoundation
 @MainActor
 public struct SessionProjectDetailView: View {
     private enum SessionListEntry: Identifiable {
-        case direct(DirectSessionIdentity, updatedAt: TimeInterval)
+        case direct(SessionLinkedUpstreamSession, DirectSessionIdentity, updatedAt: TimeInterval)
 
         var id: String {
             switch self {
-            case .direct(let identity, _):
+            case .direct(_, let identity, _):
                 return "direct:\(identity.machineID)|\(identity.provider.rawValue)|\(identity.upstreamSessionID)"
             }
         }
 
         var sortTimestamp: TimeInterval {
             switch self {
-            case .direct(_, let updatedAt):
+            case .direct(_, _, let updatedAt):
                 return updatedAt
             }
         }
@@ -36,6 +36,7 @@ public struct SessionProjectDetailView: View {
     @State private var isPresentingNewSession = false
     @State private var isPresentingProjectActions = false
     @State private var spawnedDirectSessionIdentity: DirectSessionIdentity?
+    @State private var archiveErrorMessage: String?
 
     public init(
         group: SessionProjectGroup,
@@ -108,12 +109,39 @@ public struct SessionProjectDetailView: View {
         .navigationTitle(group.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { projectActionsToolbar }
+        .alert(
+            "Couldn't Archive Session",
+            isPresented: Binding(
+                get: { archiveErrorMessage?.isEmpty == false },
+                set: { isPresented in
+                    if !isPresented {
+                        archiveErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                archiveErrorMessage = nil
+            }
+        } message: {
+            Text(archiveErrorMessage ?? "")
+        }
         .navigationDestination(item: $spawnedDirectSessionIdentity) { identity in
             DirectSessionDetailView(
                 serverURLString: serverURLString,
                 token: token,
                 makeViewModel: {
                     makeDirectSessionViewModel(identity)
+                },
+                onArchived: {
+                    Task {
+                        await viewModel.refreshProject(
+                            machineID: group.machineID,
+                            projectPath: group.projectPath,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                    }
                 }
             )
         }
@@ -237,17 +265,9 @@ public struct SessionProjectDetailView: View {
     private var group: SessionProjectGroup {
         SessionListPresentationBuilder.projectGroup(
             id: initialGroup.id,
-            sessions: visibleSessions,
             upstreamSessions: viewModel.upstreamSessions,
             projects: viewModel.projects
         ) ?? initialGroup
-    }
-
-    private var visibleSessions: [APISession] {
-        if hideInactiveSessions {
-            return viewModel.sessions.filter(\.active)
-        }
-        return viewModel.sessions
     }
 
     private var summaryCard: some View {
@@ -279,7 +299,7 @@ public struct SessionProjectDetailView: View {
             guard let identity = DirectSessionIdentityResolver.resolve(from: row) else {
                 return nil
             }
-            return SessionListEntry.direct(identity, updatedAt: row.sortTimestamp)
+            return SessionListEntry.direct(row, identity, updatedAt: row.sortTimestamp)
         }
         return directEntries.sorted { lhs, rhs in
             if lhs.sortTimestamp != rhs.sortTimestamp {
@@ -292,18 +312,52 @@ public struct SessionProjectDetailView: View {
     @ViewBuilder
     private func sessionRow(for entry: SessionListEntry) -> some View {
         switch entry {
-        case .direct(let identity, let updatedAt):
+        case .direct(let row, let identity, let updatedAt):
             NavigationLink {
                 DirectSessionDetailView(
                     serverURLString: serverURLString,
                     token: token,
                     makeViewModel: {
                         makeDirectSessionViewModel(identity)
+                    },
+                    onArchived: {
+                        Task {
+                            await viewModel.refreshProject(
+                                machineID: group.machineID,
+                                projectPath: group.projectPath,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
                     }
                 )
             } label: {
                 ProjectDirectSessionRow(identity: identity, updatedAt: updatedAt)
             }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if row.summary.provider == .codex {
+                    Button(role: .destructive) {
+                        Task {
+                            await archiveSession(identity: identity)
+                        }
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                    }
+                    .disabled(viewModel.isArchiving(upstreamSessionID: identity.id))
+                }
+            }
+        }
+    }
+
+    private func archiveSession(identity: DirectSessionIdentity) async {
+        let archived = await viewModel.archiveUpstreamSession(
+            identity,
+            serverURLString: serverURLString,
+            token: token
+        )
+        guard archived else {
+            archiveErrorMessage = viewModel.upstreamSessionsErrorMessage ?? "Failed to archive session"
+            return
         }
     }
 }

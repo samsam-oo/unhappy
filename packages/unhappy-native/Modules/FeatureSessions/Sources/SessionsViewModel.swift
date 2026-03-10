@@ -18,6 +18,7 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var projectsErrorMessage: String?
     @Published public private(set) var openingProjectID: String?
     @Published public private(set) var removingProjectID: String?
+    @Published public private(set) var archivingUpstreamSessionID: String?
     @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
     @Published public private(set) var isLoadingUpstreamSessions = false
     @Published public private(set) var upstreamSessionsErrorMessage: String?
@@ -30,6 +31,7 @@ public final class SessionsViewModel: ObservableObject {
     private let projectOpener: (any SessionProjectOpeningAction)?
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
+    private let upstreamSessionArchiver: (any DirectSessionArchivingAction)?
     private let deleteUseCase: any SessionDeletingAction
     private var nextCursor: String?
     private var lastSupportingDataSyncAt: TimeInterval?
@@ -48,6 +50,7 @@ public final class SessionsViewModel: ObservableObject {
         projectOpener: (any SessionProjectOpeningAction)? = nil,
         projectRemover: (any SessionProjectRemovingAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
+        upstreamSessionArchiver: (any DirectSessionArchivingAction)? = nil,
         deleteUseCase: any SessionDeletingAction
     ) {
         self.loader = loader
@@ -57,6 +60,7 @@ public final class SessionsViewModel: ObservableObject {
         self.projectOpener = projectOpener
         self.projectRemover = projectRemover
         self.upstreamSessionsLoader = upstreamSessionsLoader
+        self.upstreamSessionArchiver = upstreamSessionArchiver
         self.deleteUseCase = deleteUseCase
     }
 
@@ -78,6 +82,10 @@ public final class SessionsViewModel: ObservableObject {
 
     public func isRemoving(projectID: String) -> Bool {
         removingProjectID == projectID
+    }
+
+    public func isArchiving(upstreamSessionID: String) -> Bool {
+        archivingUpstreamSessionID == upstreamSessionID
     }
 
     public func isTrackedProject(
@@ -120,6 +128,11 @@ public final class SessionsViewModel: ObservableObject {
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             isLoading = false
+            scheduleSupportingDataRefresh(
+                serverURLString: serverURLString,
+                token: token,
+                force: true
+            )
         }
     }
 
@@ -284,7 +297,12 @@ public final class SessionsViewModel: ObservableObject {
             return
         }
         let acceptedProjects = beginUpstreamLoad(for: projectsToSync)
-        guard !acceptedProjects.isEmpty else { return }
+        guard !acceptedProjects.isEmpty else {
+            setUpstreamSessionsIfChanged([])
+            upstreamSessionsErrorMessage = nil
+            isLoadingUpstreamSessions = false
+            return
+        }
         defer { endUpstreamLoad(for: acceptedProjects) }
 
         if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
@@ -474,6 +492,10 @@ public final class SessionsViewModel: ObservableObject {
         }
 
         let projectID = "\(machineID)|\(projectPath)"
+        let targetCanonicalProjectID = canonicalProjectID(
+            machineID: machineID,
+            projectPath: projectPath
+        )
         removingProjectID = projectID
         defer {
             if removingProjectID == projectID {
@@ -489,9 +511,17 @@ public final class SessionsViewModel: ObservableObject {
                 path: projectPath,
                 wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
             )
-            if projects.contains(where: { $0.id == projectID }) {
-                projects.removeAll { $0.id == projectID }
-            }
+            setProjectsIfChanged(
+                projects.filter { project in
+                    guard let targetCanonicalProjectID else {
+                        return project.id != projectID
+                    }
+                    return canonicalProjectID(
+                        machineID: project.machineID,
+                        projectPath: project.summary.path
+                    ) != targetCanonicalProjectID
+                }
+            )
             projectsErrorMessage = nil
             await refreshSupportingProjectContent(
                 serverURLString: serverURLString,
@@ -501,6 +531,48 @@ public final class SessionsViewModel: ObservableObject {
             return true
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    public func archiveUpstreamSession(
+        _ identity: DirectSessionIdentity,
+        serverURLString: String,
+        token: String
+    ) async -> Bool {
+        guard let upstreamSessionArchiver else {
+            upstreamSessionsErrorMessage = "Session archiving is unavailable in this build"
+            return false
+        }
+
+        let upstreamSessionID = identity.id
+        archivingUpstreamSessionID = upstreamSessionID
+        defer {
+            if archivingUpstreamSessionID == upstreamSessionID {
+                archivingUpstreamSessionID = nil
+            }
+        }
+
+        do {
+            try await upstreamSessionArchiver.archiveSession(
+                serverURLString: serverURLString,
+                token: token,
+                identity: identity
+            )
+            if upstreamSessions.contains(where: { $0.id == upstreamSessionID }) {
+                upstreamSessions.removeAll { $0.id == upstreamSessionID }
+            }
+            upstreamSessionsErrorMessage = nil
+            await refreshProject(
+                machineID: identity.machineID,
+                projectPath: identity.cwd,
+                serverURLString: serverURLString,
+                token: token
+            )
+            return true
+        } catch {
+            upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             return false
         }
     }
@@ -758,14 +830,41 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     private func setSessionsIfChanged(_ nextSessions: [APISession]) {
-        guard sessions != nextSessions else { return }
-        sessions = nextSessions
-        multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(nextSessions)
+        let filteredSessions = nextSessions.filter { session in
+            SessionUpstreamIdentity(session: session) == nil
+        }
+        guard sessions != filteredSessions else { return }
+        sessions = filteredSessions
+        multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(filteredSessions)
     }
 
     private func setProjectsIfChanged(_ nextProjects: [SessionMachineProject]) {
-        guard projects != nextProjects else { return }
-        projects = nextProjects
+        let allowedScopeIDs = Set(
+            nextProjects
+                .filter(\.summary.openedExplicitly)
+                .compactMap { project in
+                    canonicalProjectID(
+                        machineID: project.machineID,
+                        projectPath: project.summary.path
+                    )
+                }
+        )
+        let filteredUpstreamRows = upstreamSessions.filter { row in
+            guard let scopeID = canonicalProjectID(
+                machineID: row.machineID,
+                projectPath: row.summary.cwd ?? ""
+            ) else {
+                return false
+            }
+            return allowedScopeIDs.contains(scopeID)
+        }
+        guard projects != nextProjects || filteredUpstreamRows != upstreamSessions else { return }
+        if projects != nextProjects {
+            projects = nextProjects
+        }
+        if filteredUpstreamRows != upstreamSessions {
+            upstreamSessions = filteredUpstreamRows
+        }
     }
 
     private func setUpstreamSessionsIfChanged(_ nextRows: [SessionLinkedUpstreamSession]) {
@@ -812,5 +911,13 @@ public final class SessionsViewModel: ObservableObject {
                 force: force
             )
         }
+    }
+
+}
+
+private extension String {
+    var nonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

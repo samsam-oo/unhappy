@@ -2,6 +2,42 @@ import SwiftUI
 import CoreKit
 import UIFoundation
 
+enum SessionTranscriptLogLineDisplayMode: Equatable {
+    case systemEvent
+    case collapsibleReference
+    case mainMessage
+    case plainText
+
+    static func resolve(for entry: SessionTranscriptEntry) -> Self {
+        if entry.role == .system && entry.kind == .event {
+            return .systemEvent
+        }
+
+        if entry.kind == .toolCall || entry.kind == .toolResult || entry.kind == .raw || isEditFilesEntry(entry) {
+            return .collapsibleReference
+        }
+
+        if (entry.role == .user || entry.role == .agent) &&
+            (entry.kind == .text || entry.kind == .thinking) {
+            return .mainMessage
+        }
+
+        return .plainText
+    }
+
+    static func isEditFilesEntry(_ entry: SessionTranscriptEntry) -> Bool {
+        let normalizedTitle = (entry.title ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalizedTitle.contains("edit files") {
+            return true
+        }
+
+        let normalizedBody = entry.body.lowercased()
+        return normalizedBody.contains("apply_patch") || normalizedBody.contains("*** begin patch")
+    }
+}
+
 struct MessagesSectionRows: View {
     let isLoading: Bool
     let errorMessage: String?
@@ -228,8 +264,12 @@ struct SessionTranscriptLogLine: View {
     let onFileLinkTap: (String) -> Void
     @State private var isExpanded = false
 
+    private var displayMode: SessionTranscriptLogLineDisplayMode {
+        SessionTranscriptLogLineDisplayMode.resolve(for: entry)
+    }
+
     var body: some View {
-        if isSystemEvent {
+        if displayMode == .systemEvent {
             HStack(spacing: 6) {
                 Image(systemName: "info.circle")
                     .font(.caption)
@@ -247,11 +287,7 @@ struct SessionTranscriptLogLine: View {
             )
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
-        } else if isCommandExecutionEntry {
-            SessionTranscriptToolRichContentView(entry: entry)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 1)
-        } else if isCollapsibleReferenceLogEntry {
+        } else if displayMode == .collapsibleReference {
             VStack(alignment: .leading, spacing: 4) {
                 Button {
                     onReferenceToggle?()
@@ -294,7 +330,7 @@ struct SessionTranscriptLogLine: View {
             .padding(.horizontal, 2)
             .padding(.vertical, 0)
             .frame(maxWidth: .infinity, alignment: .leading)
-        } else if isMainMessageEntry {
+        } else if displayMode == .mainMessage {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 7) {
                     Circle()
@@ -375,33 +411,11 @@ struct SessionTranscriptLogLine: View {
         entry.role == .user ? AppPalette.terminalLineUser : AppPalette.terminalLineAgent
     }
 
-    private var isCollapsibleToolEntry: Bool {
-        entry.kind == .toolCall || entry.kind == .toolResult || isEditFilesEntry
-    }
-
-    private var isCollapsibleReferenceLogEntry: Bool {
-        isCollapsibleToolEntry || entry.kind == .raw
-    }
-
-    private var isMainMessageEntry: Bool {
-        guard entry.role == .user || entry.role == .agent else { return false }
-        switch entry.kind {
-        case .text, .thinking:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private var isCommandExecutionEntry: Bool {
-        SessionTranscriptRichContentParser.commandPresentation(for: entry) != nil
-    }
-
     private var collapsibleTitle: String {
         if let summaryTitle = SessionTranscriptRichContentParser.summaryTitle(for: entry) {
             return summaryTitle
         }
-        if isEditFilesEntry {
+        if SessionTranscriptLogLineDisplayMode.isEditFilesEntry(entry) {
             return "Edit files"
         }
         if let title = entry.title, !title.isEmpty {
@@ -415,18 +429,6 @@ struct SessionTranscriptLogLine: View {
         default:
             return "Details"
         }
-    }
-
-    private var isEditFilesEntry: Bool {
-        let normalizedTitle = (entry.title ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-        if normalizedTitle.contains("edit files") {
-            return true
-        }
-
-        let normalizedBody = entry.body.lowercased()
-        return normalizedBody.contains("apply_patch") || normalizedBody.contains("*** begin patch")
     }
 
     private var bodyFont: Font {

@@ -82,6 +82,14 @@ public protocol DirectSessionMessageSendingAction: Sendable {
     ) async throws -> APISessionSendMessageResult
 }
 
+public protocol DirectSessionArchivingAction: Sendable {
+    func archiveSession(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws
+}
+
 public protocol DirectSessionFileLoadingAction: Sendable {
     func loadFile(
         serverURLString: String,
@@ -378,6 +386,43 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
             return result
         }
         throw MachinesAPIError.rpcCallFailed(result.error ?? "Failed to send message")
+    }
+}
+
+public actor DirectSessionArchiveUseCase: DirectSessionArchivingAction {
+    private let codexService: any MachineCodexThreadArchiving
+
+    public init(codexService: any MachineCodexThreadArchiving) {
+        self.codexService = codexService
+    }
+
+    public func archiveSession(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws {
+        guard identity.provider == .codex else {
+            throw DirectSessionUseCaseError.failed(message: "Archiving is only available for Codex sessions")
+        }
+
+        let serverURL = try validatedServerURL(from: serverURLString)
+        let normalizedToken = try validatedToken(token)
+        let normalizedMachineID = try validatedMachineID(identity.machineID)
+        let normalizedUpstreamSessionID = try validatedUpstreamSessionID(identity.upstreamSessionID)
+
+        let result = try await codexService.archiveCodexThread(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            threadID: normalizedUpstreamSessionID,
+            transcriptPath: identity.transcriptPath,
+            wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
+        )
+        guard result.success else {
+            throw DirectSessionUseCaseError.failed(
+                message: result.error ?? result.message
+            )
+        }
     }
 }
 
@@ -678,6 +723,14 @@ private func validatedMachineID(_ rawValue: String) throws -> String {
         throw DirectSessionUseCaseError.missingMachineID
     }
     return normalizedMachineID
+}
+
+private func validatedUpstreamSessionID(_ rawValue: String) throws -> String {
+    let normalizedSessionID = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !normalizedSessionID.isEmpty else {
+        throw DirectSessionUseCaseError.missingUpstreamSessionID
+    }
+    return normalizedSessionID
 }
 
 private func validatedCWD(_ rawValue: String) throws -> String {
