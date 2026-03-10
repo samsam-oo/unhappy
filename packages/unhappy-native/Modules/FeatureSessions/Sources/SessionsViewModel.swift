@@ -31,6 +31,7 @@ public final class SessionsViewModel: ObservableObject {
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
     private let deleteUseCase: any SessionDeletingAction
+    private var allSessions: [APISession] = []
     private var nextCursor: String?
     private var lastSupportingDataSyncAt: TimeInterval?
     private var lastSupportingDataFingerprint: String?
@@ -148,7 +149,7 @@ public final class SessionsViewModel: ObservableObject {
                 interval: interval
             )
             for try await rows in stream {
-                setSessionsIfChanged(mergeLatestRows(rows, into: sessions))
+                setSessionsIfChanged(mergeLatestRows(rows, into: allSessions))
                 lastPrimarySessionLoadAt = Date().timeIntervalSince1970
                 scheduleSupportingDataRefresh(
                     serverURLString: serverURLString,
@@ -184,15 +185,7 @@ public final class SessionsViewModel: ObservableObject {
                 cursor: nextCursor,
                 limit: 50
             )
-            setSessionsIfChanged(mergeLatestRows(page.sessions, into: sessions))
-            await cleanupProviderBackedSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
-            await cleanupMirroredDuplicateSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
+            setSessionsIfChanged(mergeLatestRows(page.sessions, into: allSessions))
             self.nextCursor = page.nextCursor
             hasMoreSessions = page.hasNext
             errorMessage = nil
@@ -210,11 +203,9 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async {
-        await loadUpstreamSessions(
-            serverURLString: serverURLString,
-            token: token,
-            projectsToSync: projectsForUpstreamSync()
-        )
+        setUpstreamSessionsIfChanged(derivedUpstreamSessions(from: allSessions))
+        upstreamSessionsErrorMessage = nil
+        isLoadingUpstreamSessions = false
     }
 
     public func refreshProject(
@@ -223,59 +214,15 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async {
-        guard let targetProject = matchingTrackedProject(
+        guard let _ = matchingTrackedProject(
             machineID: machineID,
             projectPath: projectPath
         ) else {
             return
         }
-        guard let upstreamSessionsLoader else { return }
-        let acceptedProjects = beginUpstreamLoad(for: [targetProject])
-        guard !acceptedProjects.isEmpty else { return }
-        defer { endUpstreamLoad(for: acceptedProjects) }
-
-        if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
-            for await snapshot in await streamingLoader.loadUpstreamSessionsStream(
-                serverURLString: serverURLString,
-                token: token,
-                projects: acceptedProjects
-            ) {
-                if let machineID = snapshot.machineID,
-                   let scopedProjectPath = snapshot.projectPath {
-                    setUpstreamSessionsIfChanged(
-                        mergeProjectScopedUpstreamRows(
-                            existing: upstreamSessions,
-                            refreshed: snapshot.rows,
-                            machineID: machineID,
-                            projectPath: scopedProjectPath
-                        )
-                    )
-                }
-                if snapshot.errorMessage?.isEmpty == false {
-                    upstreamSessionsErrorMessage = snapshot.errorMessage
-                } else if snapshot.machineID != nil || snapshot.isFinal {
-                    upstreamSessionsErrorMessage = nil
-                }
-            }
-            return
-        }
-
-        do {
-            let refreshedRows = try await upstreamSessionsLoader.loadUpstreamSessions(
-                serverURLString: serverURLString,
-                token: token,
-                projects: acceptedProjects
-            )
-            setUpstreamSessionsIfChanged(mergeProjectScopedUpstreamRows(
-                existing: upstreamSessions,
-                refreshed: refreshedRows,
-                machineID: targetProject.machineID,
-                projectPath: targetProject.summary.path
-            ))
-            upstreamSessionsErrorMessage = nil
-        } catch {
-            upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
+        setUpstreamSessionsIfChanged(derivedUpstreamSessions(from: allSessions))
+        upstreamSessionsErrorMessage = nil
+        isLoadingUpstreamSessions = false
     }
 
     private func loadUpstreamSessions(
@@ -283,52 +230,12 @@ public final class SessionsViewModel: ObservableObject {
         token: String,
         projectsToSync: [SessionMachineProject]
     ) async {
-        guard let upstreamSessionsLoader else {
-            upstreamSessions = []
-            upstreamSessionsErrorMessage = nil
-            return
-        }
-        let acceptedProjects = beginUpstreamLoad(for: projectsToSync)
-        guard !acceptedProjects.isEmpty else { return }
-        defer { endUpstreamLoad(for: acceptedProjects) }
-
-        if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
-            for await snapshot in await streamingLoader.loadUpstreamSessionsStream(
-                serverURLString: serverURLString,
-                token: token,
-                projects: acceptedProjects
-            ) {
-                if let machineID = snapshot.machineID,
-                   let projectPath = snapshot.projectPath {
-                    setUpstreamSessionsIfChanged(
-                        mergeProjectScopedUpstreamRows(
-                            existing: upstreamSessions,
-                            refreshed: snapshot.rows,
-                            machineID: machineID,
-                            projectPath: projectPath
-                        )
-                    )
-                }
-                if snapshot.errorMessage?.isEmpty == false {
-                    upstreamSessionsErrorMessage = snapshot.errorMessage
-                } else if snapshot.machineID != nil || snapshot.isFinal {
-                    upstreamSessionsErrorMessage = nil
-                }
-            }
-            return
-        }
-
-        do {
-            let rows = try await upstreamSessionsLoader.loadUpstreamSessions(
-                serverURLString: serverURLString,
-                token: token,
-                projects: acceptedProjects
-            )
-            setUpstreamSessionsIfChanged(rows)
-            upstreamSessionsErrorMessage = nil
-        } catch {
-            upstreamSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        }
+        _ = serverURLString
+        _ = token
+        _ = projectsToSync
+        setUpstreamSessionsIfChanged(derivedUpstreamSessions(from: allSessions))
+        upstreamSessionsErrorMessage = nil
+        isLoadingUpstreamSessions = false
     }
 
     public func loadProjects(
@@ -569,66 +476,6 @@ public final class SessionsViewModel: ObservableObject {
         return "\(machineID)|\(normalizedPath)"
     }
 
-    private func cleanupMirroredDuplicateSessions(
-        serverURLString: String,
-        token: String
-    ) async {
-        let duplicateSessionIDs = redundantMirroredSessionIDs().filter { sessionID in
-            !attemptedDuplicateCleanupSessionIDs.contains(sessionID)
-        }
-        guard !duplicateSessionIDs.isEmpty else { return }
-
-        for sessionID in duplicateSessionIDs {
-            attemptedDuplicateCleanupSessionIDs.insert(sessionID)
-            await silentlyDeleteDuplicateSession(
-                sessionID: sessionID,
-                serverURLString: serverURLString,
-                token: token
-            )
-        }
-    }
-
-    private func cleanupProviderBackedSessions(
-        serverURLString: String,
-        token: String
-    ) async {
-        let sessionIDs = sessions.compactMap { session -> String? in
-            guard SessionUpstreamIdentity(session: session) != nil else { return nil }
-            guard !attemptedDuplicateCleanupSessionIDs.contains(session.id) else { return nil }
-            return session.id
-        }
-        guard !sessionIDs.isEmpty else { return }
-
-        for sessionID in sessionIDs {
-            attemptedDuplicateCleanupSessionIDs.insert(sessionID)
-            await silentlyDeleteDuplicateSession(
-                sessionID: sessionID,
-                serverURLString: serverURLString,
-                token: token
-            )
-        }
-    }
-
-    private func redundantMirroredSessionIDs() -> [String] {
-        let groupedSessions = Dictionary(
-            grouping: sessions.compactMap { session -> (String, APISession)? in
-                guard let key = SessionUpstreamIdentity(session: session)?.key else {
-                    return nil
-                }
-                return (key, session)
-            },
-            by: \.0
-        )
-
-        return groupedSessions.values.flatMap { entries -> [String] in
-            let sortedSessions = entries
-                .map(\.1)
-                .sorted(by: compareMirroredDuplicateSessions)
-            guard sortedSessions.count > 1 else { return [] }
-            return Array(sortedSessions.dropFirst().map(\.id))
-        }
-    }
-
     private func compareMirroredDuplicateSessions(
         _ lhs: APISession,
         _ rhs: APISession
@@ -653,9 +500,9 @@ public final class SessionsViewModel: ObservableObject {
                 token: token,
                 sessionID: sessionID
             )
-            if sessions.contains(where: { $0.id == sessionID }) {
-                sessions.removeAll { $0.id == sessionID }
-                multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(sessions)
+            if allSessions.contains(where: { $0.id == sessionID }) {
+                let nextSessions = allSessions.filter { $0.id != sessionID }
+                setSessionsIfChanged(nextSessions)
             }
         } catch {
             // Ignore best-effort cleanup failures to avoid blocking the main session list.
@@ -663,8 +510,8 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     private func replaceSession(_ session: APISession) {
-        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
-        var nextSessions = sessions
+        guard let index = allSessions.firstIndex(where: { $0.id == session.id }) else { return }
+        var nextSessions = allSessions
         nextSessions[index] = session
         setSessionsIfChanged(nextSessions)
     }
@@ -763,11 +610,16 @@ public final class SessionsViewModel: ObservableObject {
     }
 
     private func setSessionsIfChanged(_ nextSessions: [APISession]) {
+        let nextUpstreamSessions = derivedUpstreamSessions(from: nextSessions)
         let filteredSessions = nextSessions.filter { session in
             SessionUpstreamIdentity(session: session) == nil
         }
-        guard sessions != filteredSessions else { return }
+        guard allSessions != nextSessions ||
+                sessions != filteredSessions ||
+                upstreamSessions != nextUpstreamSessions else { return }
+        allSessions = nextSessions
         sessions = filteredSessions
+        upstreamSessions = nextUpstreamSessions
         multiAgentInProgressCountCache = sessionsMultiAgentInProgressCount(filteredSessions)
     }
 
@@ -805,14 +657,6 @@ public final class SessionsViewModel: ObservableObject {
         supportingDataTask = Task { [weak self] in
             guard let self else { return }
             defer { self.supportingDataTask = nil }
-            await self.cleanupProviderBackedSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
-            await self.cleanupMirroredDuplicateSessions(
-                serverURLString: serverURLString,
-                token: token
-            )
             guard !Task.isCancelled else { return }
             await self.refreshSupportingProjectContent(
                 serverURLString: serverURLString,
@@ -820,5 +664,38 @@ public final class SessionsViewModel: ObservableObject {
                 force: force
             )
         }
+    }
+
+    private func derivedUpstreamSessions(
+        from sessions: [APISession]
+    ) -> [SessionLinkedUpstreamSession] {
+        let grouped = Dictionary(
+            grouping: sessions.compactMap { session -> (String, APISession)? in
+                guard let row = SessionLinkedUpstreamSession(session: session) else {
+                    return nil
+                }
+                return (row.id, session)
+            },
+            by: \.0
+        )
+
+        return grouped.values.compactMap { entries in
+            entries
+                .map(\.1)
+                .sorted(by: compareMirroredDuplicateSessions)
+                .first
+                .flatMap(SessionLinkedUpstreamSession.init(session:))
+        }
+        .sorted(by: compareUpstreamSessions)
+    }
+
+    private func compareUpstreamSessions(
+        _ lhs: SessionLinkedUpstreamSession,
+        _ rhs: SessionLinkedUpstreamSession
+    ) -> Bool {
+        if lhs.sortTimestamp != rhs.sortTimestamp {
+            return lhs.sortTimestamp > rhs.sortTimestamp
+        }
+        return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
     }
 }
