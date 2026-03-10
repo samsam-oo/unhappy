@@ -87,6 +87,11 @@ public struct SettingsView: View {
 
             Section("Preferences") {
                 NavigationLink {
+                    AboutView()
+                } label: {
+                    Label("About", systemImage: "face.smiling.inverse")
+                }
+                NavigationLink {
                     LanguageSettingsView(viewModel: viewModel)
                 } label: {
                     Label("Language", systemImage: "globe")
@@ -149,12 +154,18 @@ public struct SettingsView: View {
 
     private var splitDetailPlaceholder: some View {
         VStack(spacing: 10) {
-            Image(systemName: "gearshape.2.fill")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(.secondary)
+            Image("UnhappyMark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 74, height: 74)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
             Text("Select a Setting")
                 .font(.headline)
-            Text("Choose an item from the left panel to open details.")
+            Text("Choose an item from the left panel to manage Unhappy.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -239,7 +250,7 @@ private struct ChangelogRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Label("Changelog", systemImage: "text.book.closed")
+            Label("Changelog", systemImage: "text.book.closed.fill")
             Spacer()
             if hasUnread {
                 Text("NEW")
