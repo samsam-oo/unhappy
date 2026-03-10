@@ -1198,13 +1198,14 @@ public actor URLSessionMachinesService:
         let wrappedMachineDataEncryptionKey: String
     }
 
-    enum MachineDataPlanePrewarmPolicy {
+    enum MachineDataPlanePrewarmConfig {
         static let throttleInterval: TimeInterval = 20
         static let recentActivityInterval: TimeInterval = 30
     }
 
     let httpClient: any MachineHTTPClient
     let rpcDirectoryService: any MachineRPCDirectoryListing
+    let prewarmPolicy: any MachineDataPlanePrewarmPolicy
     var machinesCache: [MachinesCacheKey: MachinesCacheEntry] = [:]
     var inFlightMachineFetches: [MachinesCacheKey: Task<[APIMachine], Error>] = [:]
     var projectsCache: [ProjectsCacheKey: ProjectsCacheEntry] = [:]
@@ -1213,9 +1214,11 @@ public actor URLSessionMachinesService:
 
     public init(
         httpClient: any MachineHTTPClient = URLSessionMachineHTTPClient(),
-        rpcDirectoryService: any MachineRPCDirectoryListing = SocketIOMachineRPCDirectoryService()
+        rpcDirectoryService: any MachineRPCDirectoryListing = SocketIOMachineRPCDirectoryService(),
+        prewarmPolicy: any MachineDataPlanePrewarmPolicy = DefaultMachineDataPlanePrewarmPolicy.shared
     ) {
         self.httpClient = httpClient
         self.rpcDirectoryService = rpcDirectoryService
+        self.prewarmPolicy = prewarmPolicy
     }
 }
