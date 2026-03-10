@@ -1239,60 +1239,65 @@ struct SessionTranscriptToolRichContentView: View {
                             .foregroundStyle(AppPalette.secondaryText)
                     }
                 }
-                SessionTranscriptMonospaceBlock(
-                    text: "$ " + command.command,
-                    language: "shell",
-                    accentColor: commandStatusTint(command.status)
-                )
-
-                if let cwd = command.cwd {
-                    LabeledContent {
-                        Text(cwd)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .textSelection(.enabled)
-                            .lineLimit(2)
-                    } label: {
-                        Text("Shell")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(AppPalette.secondaryText)
-                    }
-                }
-
-                if let summary = command.summary {
-                    Text(summary)
-                        .font(.caption)
-                        .foregroundStyle(AppPalette.secondaryText)
-                } else if command.logs?.isEmpty != false {
-                    Text(command.waitingDescription)
-                        .font(.caption)
-                        .foregroundStyle(AppPalette.secondaryText)
-                }
-
-                if let logs = command.logs, !logs.isEmpty {
-                    SessionTranscriptMonospaceBlock(
-                        text: logs,
-                        language: nil,
-                        accentColor: commandStatusTint(command.status)
-                    )
-                }
-
-                if !command.supplementalEntries.isEmpty {
+                ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 10) {
-                        ForEach(command.supplementalEntries) { item in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.title)
-                                    .font(.caption2.monospaced().weight(.semibold))
+                        SessionTranscriptMonospaceBlock(
+                            text: "$ " + command.command,
+                            language: "shell",
+                            accentColor: commandStatusTint(command.status)
+                        )
+
+                        if let cwd = command.cwd {
+                            LabeledContent {
+                                Text(cwd)
+                                    .font(.caption.monospaced())
                                     .foregroundStyle(AppPalette.secondaryText)
-                                SessionTranscriptMonospaceBlock(
-                                    text: item.body,
-                                    language: nil,
-                                    accentColor: item.kind == .stdin ? AppPalette.accent : commandStatusTint(command.status)
-                                )
+                                    .textSelection(.enabled)
+                                    .lineLimit(2)
+                            } label: {
+                                Text("Shell")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(AppPalette.secondaryText)
+                            }
+                        }
+
+                        if let summary = command.summary {
+                            Text(summary)
+                                .font(.caption)
+                                .foregroundStyle(AppPalette.secondaryText)
+                        } else if command.logs?.isEmpty != false {
+                            Text(command.waitingDescription)
+                                .font(.caption)
+                                .foregroundStyle(AppPalette.secondaryText)
+                        }
+
+                        if let logs = command.logs, !logs.isEmpty {
+                            SessionTranscriptMonospaceBlock(
+                                text: logs,
+                                language: nil,
+                                accentColor: commandStatusTint(command.status)
+                            )
+                        }
+
+                        if !command.supplementalEntries.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(command.supplementalEntries) { item in
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(item.title)
+                                            .font(.caption2.monospaced().weight(.semibold))
+                                            .foregroundStyle(AppPalette.secondaryText)
+                                        SessionTranscriptMonospaceBlock(
+                                            text: item.body,
+                                            language: nil,
+                                            accentColor: item.kind == .stdin ? AppPalette.accent : commandStatusTint(command.status)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
+                .frame(maxHeight: 320)
             }
             .padding(12)
         }
