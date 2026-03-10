@@ -18,7 +18,7 @@ pub async fn list_models(config: &Config, agent: Option<&str>) -> Result<Value> 
     match agent.unwrap_or_default().trim() {
         "codex" => list_codex_models(config).await,
         "claude" => list_claude_models(config).await,
-        "gemini" => Ok(gemini_model_payload()),
+        "gemini" => list_gemini_models(config).await,
         _ => Ok(json!({
             "success": false,
             "error": "Agent is required. Choose one of: 'claude', 'codex', 'gemini'."
@@ -507,21 +507,231 @@ fn claude_model_metadata() -> Vec<Value> {
     ]
 }
 
-fn gemini_model_payload() -> Value {
+async fn list_gemini_models(config: &Config) -> Result<Value> {
+    if let Some(models_js_path) = find_gemini_models_js(config) {
+        if let Ok(source) = fs::read_to_string(&models_js_path).await {
+            if let Some(payload) = parse_gemini_model_payload(&source) {
+                return Ok(payload);
+            }
+        }
+    }
+    Ok(gemini_model_payload_fallback())
+}
+
+fn gemini_model_payload_fallback() -> Value {
     json!({
         "success": true,
-        "models": ["auto"],
+        "models": ["auto", "auto-gemini-3", "gemini-3.1-pro-preview", "gemini-3-flash-preview"],
         "reasoningEfforts": ["auto"],
         "modelMetadata": [
             {
                 "id": "auto",
                 "model": "auto",
                 "displayName": "Auto",
-                "description": "Let Gemini CLI choose the current Gemini model family for the active account.",
+                "description": "Let Gemini CLI choose the current stable Gemini model family for the active account.",
                 "isDefault": true
+            },
+            {
+                "id": "auto-gemini-3",
+                "model": "auto-gemini-3",
+                "displayName": "Auto Gemini 3",
+                "description": "Installed Gemini CLI preview auto selector. Routes across Gemini 3 preview models."
+            },
+            {
+                "id": "gemini-3.1-pro-preview",
+                "model": "gemini-3.1-pro-preview",
+                "displayName": "Gemini 3.1 Pro Preview",
+                "description": "Installed Gemini CLI preview Pro model constant."
+            },
+            {
+                "id": "gemini-3-flash-preview",
+                "model": "gemini-3-flash-preview",
+                "displayName": "Gemini 3 Flash Preview",
+                "description": "Installed Gemini CLI preview Flash model constant."
             }
         ]
     })
+}
+
+fn find_gemini_models_js(config: &Config) -> Option<PathBuf> {
+    let configured_command = config.provider_commands.resolve(Provider::Gemini);
+    let executable = if configured_command.executable() == "unhappy" {
+        "gemini"
+    } else {
+        configured_command.executable()
+    };
+    let executable_path = resolve_executable_path(executable)?;
+
+    let mut candidates = Vec::<PathBuf>::new();
+    for ancestor in executable_path.ancestors() {
+        candidates.push(
+            ancestor.join("node_modules")
+                .join("@google")
+                .join("gemini-cli-core")
+                .join("dist")
+                .join("src")
+                .join("config")
+                .join("models.js"),
+        );
+        candidates.push(
+            ancestor.join("node_modules")
+                .join("@google")
+                .join("gemini-cli")
+                .join("node_modules")
+                .join("@google")
+                .join("gemini-cli-core")
+                .join("dist")
+                .join("src")
+                .join("config")
+                .join("models.js"),
+        );
+        candidates.push(
+            ancestor.join("libexec")
+                .join("lib")
+                .join("node_modules")
+                .join("@google")
+                .join("gemini-cli")
+                .join("node_modules")
+                .join("@google")
+                .join("gemini-cli-core")
+                .join("dist")
+                .join("src")
+                .join("config")
+                .join("models.js"),
+        );
+    }
+
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn resolve_executable_path(executable: &str) -> Option<PathBuf> {
+    let candidate = PathBuf::from(executable);
+    if candidate.is_absolute() || executable.contains(std::path::MAIN_SEPARATOR) {
+        return std::fs::canonicalize(candidate).ok();
+    }
+
+    let path_env = env::var_os("PATH")?;
+    env::split_paths(&path_env)
+        .map(|directory| directory.join(executable))
+        .find_map(|path| std::fs::canonicalize(path).ok())
+}
+
+fn parse_gemini_model_payload(source: &str) -> Option<Value> {
+    let constants = parse_exported_string_constants(source);
+    let preview_pro = constants
+        .get("PREVIEW_GEMINI_3_1_MODEL")
+        .or_else(|| constants.get("PREVIEW_GEMINI_MODEL"))
+        .cloned();
+    let preview_auto = constants.get("PREVIEW_GEMINI_MODEL_AUTO").cloned();
+    let preview_flash = constants.get("PREVIEW_GEMINI_FLASH_MODEL").cloned();
+    let default_auto = constants.get("DEFAULT_GEMINI_MODEL_AUTO").cloned();
+    let default_pro = constants.get("DEFAULT_GEMINI_MODEL").cloned();
+    let default_flash = constants.get("DEFAULT_GEMINI_FLASH_MODEL").cloned();
+    let default_flash_lite = constants.get("DEFAULT_GEMINI_FLASH_LITE_MODEL").cloned();
+
+    let mut metadata = Vec::<Value>::new();
+    metadata.push(json!({
+        "id": "auto",
+        "model": "auto",
+        "displayName": "Auto",
+        "description": "Gemini CLI convenience alias that resolves through the installed package defaults.",
+        "isDefault": true
+    }));
+
+    if let Some(value) = preview_auto {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Auto Gemini 3",
+            "description": "Installed Gemini CLI preview auto selector."
+        }));
+    }
+    if let Some(value) = preview_pro {
+        let display_name = if value.contains("3.1") {
+            "Gemini 3.1 Pro Preview"
+        } else {
+            "Gemini 3 Pro Preview"
+        };
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": display_name,
+            "description": "Installed Gemini CLI preview Pro model constant."
+        }));
+    }
+    if let Some(value) = preview_flash {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 3 Flash Preview",
+            "description": "Installed Gemini CLI preview Flash model constant."
+        }));
+    }
+    if let Some(value) = default_auto {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Auto Gemini 2.5",
+            "description": "Installed Gemini CLI stable auto selector."
+        }));
+    }
+    if let Some(value) = default_pro {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 2.5 Pro",
+            "description": "Installed Gemini CLI stable Pro model constant."
+        }));
+    }
+    if let Some(value) = default_flash {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 2.5 Flash",
+            "description": "Installed Gemini CLI stable Flash model constant."
+        }));
+    }
+    if let Some(value) = default_flash_lite {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 2.5 Flash Lite",
+            "description": "Installed Gemini CLI stable Flash Lite model constant."
+        }));
+    }
+
+    let mut models = metadata
+        .iter()
+        .filter_map(|row| row.get("id").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
+
+    (!models.is_empty()).then(|| {
+        json!({
+            "success": true,
+            "models": models,
+            "reasoningEfforts": ["auto"],
+            "modelMetadata": metadata
+        })
+    })
+}
+
+fn parse_exported_string_constants(source: &str) -> std::collections::HashMap<String, String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let remainder = trimmed.strip_prefix("export const ")?;
+            let (name, value) = remainder.split_once(" = ")?;
+            let value = value.trim_end_matches(';').trim();
+            let value = value
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))?;
+            Some((name.trim().to_string(), value.to_string()))
+        })
+        .collect()
 }
 
 async fn detect_claude_reasoning_efforts(config: &Config) -> Vec<String> {
@@ -749,12 +959,31 @@ mod tests {
     }
 
     #[test]
-    fn gemini_model_list_uses_current_documented_models() {
-        let payload = gemini_model_payload();
+    fn parse_gemini_model_payload_reads_installed_package_constants() {
+        let payload = parse_gemini_model_payload(
+            "export const PREVIEW_GEMINI_MODEL = 'gemini-3-pro-preview';\n\
+             export const PREVIEW_GEMINI_3_1_MODEL = 'gemini-3.1-pro-preview';\n\
+             export const PREVIEW_GEMINI_FLASH_MODEL = 'gemini-3-flash-preview';\n\
+             export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';\n\
+             export const DEFAULT_GEMINI_FLASH_MODEL = 'gemini-2.5-flash';\n\
+             export const DEFAULT_GEMINI_FLASH_LITE_MODEL = 'gemini-2.5-flash-lite';\n\
+             export const PREVIEW_GEMINI_MODEL_AUTO = 'auto-gemini-3';\n\
+             export const DEFAULT_GEMINI_MODEL_AUTO = 'auto-gemini-2.5';\n",
+        )
+        .expect("payload");
 
         assert_eq!(
             payload["models"].as_array().expect("models"),
-            &vec![Value::String("auto".to_string())]
+            &vec![
+                Value::String("auto".to_string()),
+                Value::String("auto-gemini-2.5".to_string()),
+                Value::String("auto-gemini-3".to_string()),
+                Value::String("gemini-2.5-flash".to_string()),
+                Value::String("gemini-2.5-flash-lite".to_string()),
+                Value::String("gemini-2.5-pro".to_string()),
+                Value::String("gemini-3-flash-preview".to_string()),
+                Value::String("gemini-3.1-pro-preview".to_string()),
+            ]
         );
         assert_eq!(
             payload["reasoningEfforts"].as_array().expect("reasoning"),
