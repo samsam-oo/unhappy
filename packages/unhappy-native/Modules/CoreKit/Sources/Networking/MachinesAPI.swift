@@ -115,6 +115,19 @@ public enum MachinesAPI {
         return try makeRequest(url: url, method: "GET", token: token)
     }
 
+    public static func makeProjectCatalogProjectsRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let projectsURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/project-catalog/projects")
+        return try makeRequest(url: projectsURL, method: "GET", token: token)
+    }
+
     public static func makeOpenProjectRequest(
         serverURL: URL,
         token: String,

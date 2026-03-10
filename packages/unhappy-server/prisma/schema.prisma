@@ -51,6 +51,7 @@ model Account {
     Artifact            Artifact[]
     AccessKey           AccessKey[]
     MachineSessionCatalogEntry MachineSessionCatalogEntry[]
+    MachineProjectCatalogEntry MachineProjectCatalogEntry[]
     UserFeedItem        UserFeedItem[]
     UserKVStore         UserKVStore[]
 }
@@ -220,9 +221,29 @@ model Machine {
     updatedAt          DateTime    @updatedAt
     accessKeys         AccessKey[]
     sessionCatalogEntries MachineSessionCatalogEntry[]
+    projectCatalogEntries MachineProjectCatalogEntry[]
 
     @@unique([accountId, id])
     @@index([accountId])
+}
+
+model MachineProjectCatalogEntry {
+    id                String   @id @default(cuid())
+    accountId         String
+    machineId         String
+    machine           Machine  @relation(fields: [accountId, machineId], references: [accountId, id], onDelete: Cascade)
+    account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    projectPath       String
+    displayPath       String?
+    openedExplicitly  Boolean  @default(true)
+    latestUpdatedAt   DateTime @default(now())
+    lastObservedAt    DateTime @default(now())
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    @@unique([accountId, machineId, projectPath])
+    @@index([accountId, latestUpdatedAt(sort: Desc)])
+    @@index([accountId, machineId, latestUpdatedAt(sort: Desc)])
 }
 
 model MachineSessionCatalogEntry {

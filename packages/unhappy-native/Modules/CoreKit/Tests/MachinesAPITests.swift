@@ -152,6 +152,20 @@ struct MachinesAPITests {
     }
 
     @Test
+    func projectCatalogProjectsRequestUsesExpectedPath() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeProjectCatalogProjectsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            machineID: "machine-1"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/machines/machine-1/project-catalog/projects")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
     func codexThreadsRequestUsesExpectedPathAndQuery() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try MachinesAPI.makeCodexThreadsRequest(
