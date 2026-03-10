@@ -288,6 +288,18 @@ private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
         []
     }
 
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        APIProjectSessionsPage(sessions: [], nextCursor: nil, hasNext: false)
+    }
+
     func openProject(
         serverURL: URL,
         token: String,
@@ -491,6 +503,18 @@ private actor CountingProjectRPCDirectoryService: MachineRPCDirectoryListing {
     ) async throws -> [APIMachineProjectSummary] {
         fetchProjectsCount += 1
         return projects
+    }
+
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        APIProjectSessionsPage(sessions: [], nextCursor: nil, hasNext: false)
     }
 
     func openProject(
@@ -698,6 +722,18 @@ private actor PrewarmingMachineRPCDirectoryService: MachineRPCDirectoryListing {
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
         []
+    }
+
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        APIProjectSessionsPage(sessions: [], nextCursor: nil, hasNext: false)
     }
 
     func openProject(

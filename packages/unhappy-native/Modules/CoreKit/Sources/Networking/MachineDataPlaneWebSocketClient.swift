@@ -24,6 +24,7 @@ public actor MachineDataPlaneWebSocketClient {
             case .codexListMessages,
                  .claudeListMessages,
                  .geminiListMessages,
+                 .projectSessions,
                  .codexListThreads,
                  .claudeListSessions,
                  .geminiListSessions:

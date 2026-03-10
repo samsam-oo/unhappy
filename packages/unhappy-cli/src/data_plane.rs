@@ -407,6 +407,7 @@ fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
         MachineDataPlaneOperation::DaemonUpdate => "daemon.update",
         MachineDataPlaneOperation::ProviderSpawn => "provider.spawn",
         MachineDataPlaneOperation::ProjectList => "project.list",
+        MachineDataPlaneOperation::ProjectSessions => "project.sessions",
         MachineDataPlaneOperation::ProjectOpen => "project.open",
         MachineDataPlaneOperation::ProjectRemove => "project.remove",
         MachineDataPlaneOperation::CodexListThreads => "codex.listThreads",
@@ -438,7 +439,9 @@ fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -
                 fields.push(format!("explicit_only={explicit_only}"));
             }
         }
-        MachineDataPlaneOperation::ProjectOpen | MachineDataPlaneOperation::ProjectRemove => {
+        MachineDataPlaneOperation::ProjectSessions
+        | MachineDataPlaneOperation::ProjectOpen
+        | MachineDataPlaneOperation::ProjectRemove => {
             if let Some(path) = payload.get("path").and_then(Value::as_str) {
                 fields.push(format!("path={}", path.replace('\n', "\\n")));
             }
@@ -504,6 +507,9 @@ async fn dispatch_request(
             "success": true,
             "projects": explicit_project_summaries(state.list_opened_projects().await)
         })),
+        MachineDataPlaneOperation::ProjectSessions => {
+            list_project_scoped_sessions(config, &state, &payload).await
+        }
         MachineDataPlaneOperation::ProjectOpen => {
             let path = payload
                 .get("path")
@@ -721,6 +727,189 @@ async fn active_provider_sessions_for(
         .collect()
 }
 
+async fn list_project_scoped_sessions(
+    config: &Config,
+    state: &SharedDaemonState,
+    payload: &Value,
+) -> Result<Value> {
+    let path = payload
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("path is required"))?;
+    let normalized_path = resolve_project_path(path);
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value.clamp(1, 200) as usize)
+        .unwrap_or(100);
+    let cursor = payload
+        .get("cursor")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0);
+
+    let mut first_error: Option<String> = None;
+    let mut unified_rows: Vec<Value> = Vec::new();
+
+    let codex_response = provider_session_ops::list_provider_sessions(
+        crate::provider::Provider::Codex,
+        config,
+        &json!({
+            "cwd": normalized_path,
+            "limit": 200
+        }),
+        &[],
+    )
+    .await;
+    match codex_response {
+        Ok(response) => {
+            if let Some(rows) = response.get("threads").and_then(Value::as_array) {
+                unified_rows.extend(rows.iter().map(make_project_scoped_codex_row));
+            }
+        }
+        Err(error) => {
+            first_error = Some(error.to_string());
+        }
+    }
+
+    let active_claude_sessions =
+        active_provider_sessions_for(state, crate::provider::Provider::Claude).await;
+    let claude_response = provider_session_ops::list_provider_sessions(
+        crate::provider::Provider::Claude,
+        config,
+        &json!({
+            "cwd": normalized_path,
+            "limit": 200
+        }),
+        &active_claude_sessions,
+    )
+    .await;
+    match claude_response {
+        Ok(response) => {
+            if let Some(rows) = response.get("sessions").and_then(Value::as_array) {
+                unified_rows.extend(rows.iter().map(make_project_scoped_claude_row));
+            }
+        }
+        Err(error) => {
+            if first_error.is_none() {
+                first_error = Some(error.to_string());
+            }
+        }
+    }
+
+    let active_gemini_sessions =
+        active_provider_sessions_for(state, crate::provider::Provider::Gemini).await;
+    let gemini_response = provider_session_ops::list_provider_sessions(
+        crate::provider::Provider::Gemini,
+        config,
+        &json!({
+            "cwd": normalized_path,
+            "limit": 200
+        }),
+        &active_gemini_sessions,
+    )
+    .await;
+    match gemini_response {
+        Ok(response) => {
+            if let Some(rows) = response.get("sessions").and_then(Value::as_array) {
+                unified_rows.extend(rows.iter().map(make_project_scoped_gemini_row));
+            }
+        }
+        Err(error) => {
+            if first_error.is_none() {
+                first_error = Some(error.to_string());
+            }
+        }
+    }
+
+    unified_rows.sort_by(|lhs, rhs| {
+        rhs.get("updatedAt")
+            .and_then(Value::as_str)
+            .cmp(&lhs.get("updatedAt").and_then(Value::as_str))
+    });
+
+    let start = cursor.min(unified_rows.len());
+    let end = (start + limit).min(unified_rows.len());
+    let has_next = end < unified_rows.len();
+
+    Ok(json!({
+        "success": first_error.is_none() || !unified_rows.is_empty(),
+        "sessions": unified_rows[start..end].to_vec(),
+        "hasNext": has_next,
+        "nextCursor": if has_next { Some(end.to_string()) } else { None::<String> },
+        "error": if unified_rows.is_empty() { first_error } else { None::<String> }
+    }))
+}
+
+fn make_project_scoped_codex_row(row: &Value) -> Value {
+    json!({
+        "id": row.get("id").cloned().unwrap_or(Value::Null),
+        "provider": "codex",
+        "title": row.get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| row.get("preview").and_then(Value::as_str))
+            .unwrap_or("Untitled"),
+        "cwd": row.get("cwd").cloned().unwrap_or(Value::Null),
+        "path": row.get("path").cloned().unwrap_or(Value::Null),
+        "updatedAt": row.get("updatedAt").cloned().unwrap_or(Value::Null),
+        "createdAt": row.get("createdAt").cloned().unwrap_or(Value::Null),
+        "archived": row.get("archived").cloned().unwrap_or(Value::Bool(false)),
+        "model": row.get("model").cloned().unwrap_or(Value::Null),
+        "effort": row.get("effort").cloned().unwrap_or(Value::Null),
+        "preview": row.get("preview").cloned().unwrap_or(Value::Null),
+        "statusType": row.get("statusType").cloned().unwrap_or(Value::Null),
+    })
+}
+
+fn make_project_scoped_claude_row(row: &Value) -> Value {
+    json!({
+        "id": row.get("id").cloned().unwrap_or(Value::Null),
+        "provider": "claude",
+        "title": row.get("title")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| row.get("preview").and_then(Value::as_str))
+            .unwrap_or("Claude Session"),
+        "cwd": row.get("cwd").cloned().unwrap_or(Value::Null),
+        "path": Value::Null,
+        "updatedAt": row.get("updatedAt").cloned().unwrap_or(Value::Null),
+        "createdAt": row.get("createdAt").cloned().unwrap_or(Value::Null),
+        "archived": Value::Null,
+        "model": Value::Null,
+        "effort": Value::Null,
+        "preview": row.get("preview").cloned().unwrap_or(Value::Null),
+        "statusType": Value::Null,
+    })
+}
+
+fn make_project_scoped_gemini_row(row: &Value) -> Value {
+    json!({
+        "id": row.get("id").cloned().unwrap_or(Value::Null),
+        "provider": "gemini",
+        "title": row.get("title")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Gemini Session"),
+        "cwd": row.get("cwd").cloned().unwrap_or(Value::Null),
+        "path": Value::Null,
+        "updatedAt": row.get("updatedAt").cloned().unwrap_or(Value::Null),
+        "createdAt": row.get("createdAt").cloned().unwrap_or(Value::Null),
+        "archived": Value::Null,
+        "model": row.get("model").cloned().unwrap_or(Value::Null),
+        "effort": Value::Null,
+        "preview": row.get("preview").cloned().unwrap_or(Value::Null),
+        "statusType": Value::Null,
+    })
+}
+
 fn metadata_timestamp_to_rfc3339(value: &Value) -> Option<String> {
     match value {
         Value::String(raw) => {
@@ -751,6 +940,20 @@ fn normalize_timestamp_millis(raw: f64) -> u64 {
         raw * 1_000.0
     };
     millis.max(0.0).round() as u64
+}
+
+fn resolve_project_path(raw: &str) -> String {
+    let path = std::path::PathBuf::from(raw.trim());
+    if path.is_absolute() {
+        path.to_string_lossy().to_string()
+    } else {
+        std::env::var("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join(raw.trim())
+            .to_string_lossy()
+            .to_string()
+    }
 }
 
 async fn spawn_daemon_update(_config: &Config) -> Result<()> {

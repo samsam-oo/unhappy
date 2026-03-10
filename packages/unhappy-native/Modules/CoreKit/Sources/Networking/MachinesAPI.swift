@@ -361,6 +361,21 @@ public enum MachinesAPI {
         )
     }
 
+    public static func decodeProjectSessionsPageResponse(_ data: Data) throws -> APIProjectSessionsPage {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(MachinesProjectSessionsResponse.self, from: data)
+        let nextCursor = response.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+        let hasNext = response.hasNext ?? (normalizedCursor != nil)
+        let normalizedError = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return APIProjectSessionsPage(
+            sessions: response.sessions ?? [],
+            nextCursor: normalizedCursor,
+            hasNext: hasNext,
+            error: normalizedError?.isEmpty == false ? normalizedError : nil
+        )
+    }
+
     public static func decodeAgentCapabilitiesResponse(_ data: Data) throws -> APIMachineAgentCapabilities {
         let decoder = JSONDecoder()
         let response = try decoder.decode(MachinesListModelsResponse.self, from: data)
@@ -530,6 +545,14 @@ private struct MachinesGeminiSessionsResponse: Decodable {
     let sessions: [APIGeminiSessionSummary]?
     let nextCursor: String?
     let hasNext: Bool?
+}
+
+private struct MachinesProjectSessionsResponse: Decodable {
+    let success: Bool
+    let sessions: [APIUpstreamSessionSummary]?
+    let nextCursor: String?
+    let hasNext: Bool?
+    let error: String?
 }
 
 private struct MachinesListModelsResponse: Decodable {
@@ -969,6 +992,18 @@ public protocol MachineGeminiSessionsFetching: Sendable {
     ) async throws -> [APIGeminiSessionSummary]
 }
 
+public protocol MachineProjectSessionsFetching: Sendable {
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage
+}
+
 public protocol MachineGeminiSessionMessagesFetching: Sendable {
     func fetchGeminiSessionMessages(
         serverURL: URL,
@@ -1123,6 +1158,7 @@ public actor URLSessionMachinesService:
     MachineClaudeSessionMessagesFetching,
     MachineClaudeSessionMessaging,
     MachineGeminiSessionsFetching,
+    MachineProjectSessionsFetching,
     MachineGeminiSessionMessagesFetching,
     MachineGeminiSessionMessaging,
     MachineModelsListing,

@@ -561,7 +561,7 @@ public enum APIUpstreamSessionProvider: String, Codable, CaseIterable, Sendable 
     }
 }
 
-public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
+public struct APIUpstreamSessionSummary: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let provider: APIUpstreamSessionProvider
     public let title: String
@@ -601,6 +601,25 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
         self.effort = effort
         self.preview = preview
         self.statusType = statusType
+    }
+}
+
+public struct APIProjectSessionsPage: Decodable, Equatable, Sendable {
+    public let sessions: [APIUpstreamSessionSummary]
+    public let nextCursor: String?
+    public let hasNext: Bool
+    public let error: String?
+
+    public init(
+        sessions: [APIUpstreamSessionSummary],
+        nextCursor: String?,
+        hasNext: Bool,
+        error: String? = nil
+    ) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
+        self.error = error
     }
 }
 

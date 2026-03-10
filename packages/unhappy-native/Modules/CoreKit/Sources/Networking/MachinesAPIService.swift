@@ -143,6 +143,26 @@ extension URLSessionMachinesService {
         return projects
     }
 
+    public func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        try await rpcDirectoryService.fetchProjectSessionsPage(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            projectPath: projectPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            limit: limit,
+            cursor: cursor
+        )
+    }
+
     public func openProject(
         serverURL: URL,
         token: String,
