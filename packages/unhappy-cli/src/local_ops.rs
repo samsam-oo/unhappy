@@ -17,11 +17,7 @@ use tokio::{
 pub async fn list_models(config: &Config, agent: Option<&str>) -> Result<Value> {
     match agent.unwrap_or_default().trim() {
         "codex" => list_codex_models(config).await,
-        "claude" => Ok(json!({
-            "success": true,
-            "models": ["claude-opus-4-6", "claude-sonnet-4-5", "claude-haiku-4-5"],
-            "reasoningEfforts": ["auto", "low", "medium", "high", "max"],
-        })),
+        "claude" => list_claude_models(config).await,
         "gemini" => Ok(json!({
             "success": true,
             "models": ["auto", "gemini-3-flash-preview", "gemini-3-pro-preview"],
@@ -375,6 +371,23 @@ async fn list_codex_models(config: &Config) -> Result<Value> {
     Ok(normalize_codex_model_list(result))
 }
 
+async fn list_claude_models(config: &Config) -> Result<Value> {
+    let reasoning_efforts = detect_claude_reasoning_efforts(config).await;
+    let model_metadata = claude_model_metadata();
+    let models = model_metadata
+        .iter()
+        .filter_map(|row| row.get("id").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "success": true,
+        "models": models,
+        "reasoningEfforts": reasoning_efforts,
+        "modelMetadata": model_metadata,
+    }))
+}
+
 fn normalize_codex_model_list(result: Value) -> Value {
     let top_level_reasoning = result
         .get("reasoningEfforts")
@@ -476,6 +489,104 @@ fn normalized_reasoning_effort_value(value: &Value) -> Option<String> {
             .map(ToOwned::to_owned),
         _ => None,
     }
+}
+
+fn claude_model_metadata() -> Vec<Value> {
+    vec![
+        json!({
+            "id": "default",
+            "model": "default",
+            "displayName": "Default",
+            "description": "Use Claude Code's current default model alias.",
+            "isDefault": true,
+        }),
+        json!({
+            "id": "sonnet",
+            "model": "sonnet",
+            "displayName": "Sonnet",
+            "description": "Claude Code Sonnet alias from the official model configuration docs.",
+        }),
+        json!({
+            "id": "opus",
+            "model": "opus",
+            "displayName": "Opus",
+            "description": "Claude Code Opus alias from the official model configuration docs.",
+        }),
+        json!({
+            "id": "haiku",
+            "model": "haiku",
+            "displayName": "Haiku",
+            "description": "Claude Code Haiku alias from the official model configuration docs.",
+        }),
+        json!({
+            "id": "sonnet[1m]",
+            "model": "sonnet[1m]",
+            "displayName": "Sonnet 1M",
+            "description": "Claude Code Sonnet alias with 1M context from the official model configuration docs.",
+        }),
+        json!({
+            "id": "opusplan",
+            "model": "opusplan",
+            "displayName": "Opus Plan",
+            "description": "Claude Code Opus Plan alias from the official model configuration docs.",
+        }),
+    ]
+}
+
+async fn detect_claude_reasoning_efforts(config: &Config) -> Vec<String> {
+    let configured_command = config.provider_commands.resolve(Provider::Claude);
+    let executable = if configured_command.executable() == "unhappy" {
+        "claude"
+    } else {
+        configured_command.executable()
+    };
+    let output = Command::new(executable)
+        .arg("--help")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await;
+    let help_text = match output {
+        Ok(output) if output.status.success() => String::from_utf8_lossy(&output.stdout).to_string(),
+        _ => String::new(),
+    };
+    let mut efforts = extract_claude_effort_choices(&help_text);
+    if !efforts.iter().any(|value| value == "auto") {
+        efforts.insert(0, "auto".to_string());
+    }
+    efforts
+}
+
+fn extract_claude_effort_choices(help_text: &str) -> Vec<String> {
+    let mut efforts = help_text
+        .lines()
+        .find_map(|line| {
+            if !line.contains("--effort") {
+                return None;
+            }
+            let start = line.rfind('(')?;
+            let end = line.rfind(')')?;
+            (end > start).then(|| {
+                line[start + 1..end]
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+        })
+        .unwrap_or_else(|| {
+            vec![
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+                "max".to_string(),
+            ]
+        });
+    efforts.sort();
+    efforts.dedup();
+    efforts
 }
 
 fn build_tree_node(path: &Path, max_depth: usize) -> Result<Value> {
@@ -614,5 +725,35 @@ mod tests {
             ]
         );
         assert_eq!(result["modelMetadata"].as_array().map(Vec::len), Some(2));
+    }
+
+    #[test]
+    fn extract_claude_effort_choices_reads_choices_from_help_output() {
+        let help = "  --effort <level>  Effort level for the current session (low, medium, high, max)";
+        let efforts = extract_claude_effort_choices(help);
+
+        assert_eq!(
+            efforts,
+            vec![
+                "high".to_string(),
+                "low".to_string(),
+                "max".to_string(),
+                "medium".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn claude_model_metadata_uses_documented_aliases() {
+        let metadata = claude_model_metadata();
+        let ids = metadata
+            .iter()
+            .filter_map(|row| row.get("id").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec!["default", "sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"]
+        );
     }
 }
