@@ -82,6 +82,7 @@ struct MachinesServiceCachingTests {
 
     @Test
     func fetchMachinesPrewarmsActiveMachineDataPlane() async throws {
+        let activeAt = Date().timeIntervalSince1970
         let httpClient = CountingMachineHTTPClient(
             responseData: Data(
                 """
@@ -89,7 +90,7 @@ struct MachinesServiceCachingTests {
                   {
                     "id": "machine-1",
                     "active": true,
-                    "activeAt": 1,
+                    "activeAt": \(activeAt),
                     "createdAt": 1,
                     "updatedAt": 1,
                     "metadataVersion": 1,
@@ -101,7 +102,7 @@ struct MachinesServiceCachingTests {
                   {
                     "id": "machine-2",
                     "active": false,
-                    "activeAt": 1,
+                    "activeAt": \(activeAt),
                     "createdAt": 1,
                     "updatedAt": 1,
                     "metadataVersion": 1,
@@ -131,7 +132,50 @@ struct MachinesServiceCachingTests {
     }
 
     @Test
-    func fetchMachinesPrewarmsActiveMachineDataPlaneOnCacheHit() async throws {
+    func fetchMachinesDoesNotRepeatPrewarmOnCacheHit() async throws {
+        let activeAt = Date().timeIntervalSince1970
+        let httpClient = CountingMachineHTTPClient(
+            responseData: Data(
+                """
+                [
+                  {
+                    "id": "machine-1",
+                    "active": true,
+                    "activeAt": \(activeAt),
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                    "metadataVersion": 1,
+                    "metadata": "{}",
+                    "daemonStateVersion": 1,
+                    "daemonState": "{}",
+                    "dataEncryptionKey": "wrapped-key"
+                  }
+                ]
+                """.utf8
+            )
+        )
+        let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
+        let service = URLSessionMachinesService(
+            httpClient: httpClient,
+            rpcDirectoryService: rpcDirectoryService
+        )
+
+        _ = try await service.fetchMachines(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token"
+        )
+        _ = try await service.fetchMachines(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token"
+        )
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let prewarmedMachineIDs = await rpcDirectoryService.prewarmedMachineIDs
+        #expect(prewarmedMachineIDs == ["machine-1"])
+    }
+
+    @Test
+    func fetchMachinesSkipsPrewarmForStaleActiveMachine() async throws {
         let httpClient = CountingMachineHTTPClient(
             responseData: Data(
                 """
@@ -162,14 +206,10 @@ struct MachinesServiceCachingTests {
             serverURL: URL(string: "https://api.unhappy.im")!,
             token: "token"
         )
-        _ = try await service.fetchMachines(
-            serverURL: URL(string: "https://api.unhappy.im")!,
-            token: "token"
-        )
         try? await Task.sleep(for: .milliseconds(50))
 
         let prewarmedMachineIDs = await rpcDirectoryService.prewarmedMachineIDs
-        #expect(prewarmedMachineIDs == ["machine-1", "machine-1"])
+        #expect(prewarmedMachineIDs.isEmpty)
     }
 
     @Test
@@ -366,6 +406,17 @@ private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
         cursor: String?
     ) async throws -> APICodexThreadsPage {
         APICodexThreadsPage(threads: [], nextCursor: nil, hasNext: false)
+    }
+
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        APIMachineCommandResult(success: true, message: "ok", error: nil)
     }
 
     func fetchClaudeSessionsPage(
@@ -585,6 +636,17 @@ private actor CountingProjectRPCDirectoryService: MachineRPCDirectoryListing {
         APICodexThreadsPage(threads: [], nextCursor: nil, hasNext: false)
     }
 
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        APIMachineCommandResult(success: true, message: "ok", error: nil)
+    }
+
     func fetchClaudeSessionsPage(
         serverURL: URL,
         token: String,
@@ -802,6 +864,17 @@ private actor PrewarmingMachineRPCDirectoryService: MachineRPCDirectoryListing {
         cursor: String?
     ) async throws -> APICodexThreadsPage {
         APICodexThreadsPage(threads: [], nextCursor: nil, hasNext: false)
+    }
+
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        APIMachineCommandResult(success: true, message: "ok", error: nil)
     }
 
     func fetchClaudeSessionsPage(

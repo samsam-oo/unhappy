@@ -216,11 +216,6 @@ extension URLSessionMachinesService {
 
         if let cached = machinesCache[cacheKey],
            Date().timeIntervalSince1970 - cached.cachedAt < MachinesCachePolicy.ttl {
-            scheduleMachineDataPlanePrewarm(
-                machines: cached.machines,
-                serverURL: serverURL,
-                token: normalizedToken
-            )
             return cached.machines
         }
 
@@ -279,18 +274,42 @@ extension URLSessionMachinesService {
         token: String
     ) {
         let rpcDirectoryService = self.rpcDirectoryService
-        let activeMachines = machines.filter(\.active)
-        guard !activeMachines.isEmpty else { return }
+        let now = Date().timeIntervalSince1970
+        let eligibleMachines = machines.compactMap { machine -> (APIMachine, String)? in
+            guard machine.active else { return nil }
+            guard machine.activeAt > 0 else { return nil }
+            guard now - machine.activeAt <= MachineDataPlanePrewarmPolicy.recentActivityInterval else {
+                return nil
+            }
+            guard let wrappedKey = machine.dataEncryptionKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  wrappedKey.isEmpty == false else {
+                return nil
+            }
 
-        Task(priority: .userInitiated) {
+            let prewarmKey = MachineDataPlanePrewarmKey(
+                serverURLString: serverURL.absoluteString,
+                token: token,
+                machineID: machine.id,
+                wrappedMachineDataEncryptionKey: wrappedKey
+            )
+            if let lastPrewarmAt = lastMachineDataPlanePrewarmAt[prewarmKey],
+               now - lastPrewarmAt < MachineDataPlanePrewarmPolicy.throttleInterval {
+                return nil
+            }
+            lastMachineDataPlanePrewarmAt[prewarmKey] = now
+            return (machine, wrappedKey)
+        }
+        guard !eligibleMachines.isEmpty else { return }
+
+        Task(priority: .utility) {
             await withTaskGroup(of: Void.self) { group in
-                for machine in activeMachines where machine.dataEncryptionKey?.isEmpty == false {
+                for (machine, wrappedKey) in eligibleMachines {
                     group.addTask {
                         await rpcDirectoryService.prewarmMachineDataPlane(
                             serverURL: serverURL,
                             token: token,
                             machineID: machine.id,
-                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
+                            wrappedMachineDataEncryptionKey: wrappedKey
                         )
                     }
                 }

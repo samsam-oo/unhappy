@@ -61,6 +61,7 @@ public actor MachineDataPlaneWebSocketClient {
         var liveConnection: LiveConnection?
         var queuedRequests: [QueuedRequest] = []
         var isProcessing = false
+        var lastConnectionFailureAt: TimeInterval?
     }
 
     private struct RetryableRequestError: Error {
@@ -70,6 +71,7 @@ public actor MachineDataPlaneWebSocketClient {
     private let session: URLSession
     private let requestTimeoutInterval: TimeInterval
     private let staleConnectionProbeInterval: TimeInterval
+    private let backgroundReconnectBackoffInterval: TimeInterval
     private let retryableErrorRetryDelay: Duration
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
     private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
@@ -78,11 +80,13 @@ public actor MachineDataPlaneWebSocketClient {
         session: URLSession = .shared,
         requestTimeoutInterval: TimeInterval = 8,
         staleConnectionProbeInterval: TimeInterval = 5,
+        backgroundReconnectBackoffInterval: TimeInterval = 10,
         retryableErrorRetryDelay: Duration = .milliseconds(350)
     ) {
         self.session = session
         self.requestTimeoutInterval = requestTimeoutInterval
         self.staleConnectionProbeInterval = staleConnectionProbeInterval
+        self.backgroundReconnectBackoffInterval = backgroundReconnectBackoffInterval
         self.retryableErrorRetryDelay = retryableErrorRetryDelay
     }
 
@@ -241,7 +245,7 @@ public actor MachineDataPlaneWebSocketClient {
                     request,
                     for: key,
                     serverURL: serverURL,
-                    allowReconnectRetry: true
+                    allowReconnectRetry: request.priority != .background
                 )
                 request.continuation.resume(returning: response)
             } catch {
@@ -256,6 +260,10 @@ public actor MachineDataPlaneWebSocketClient {
         serverURL: URL,
         allowReconnectRetry: Bool
     ) async throws -> Data {
+        if request.priority == .background,
+           shouldThrottleBackgroundReconnect(for: key) {
+            throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
+        }
         do {
             let liveConnection = try await liveConnection(for: key, serverURL: serverURL)
             return try await performRequest(
@@ -277,6 +285,7 @@ public actor MachineDataPlaneWebSocketClient {
                     allowReconnectRetry: false
                 )
             }
+            recordConnectionFailure(for: key)
             invalidateConnection(for: key)
             throw mappedError
         }
@@ -292,12 +301,14 @@ public actor MachineDataPlaneWebSocketClient {
                 do {
                     try await sendPing(task: existingConnection.task)
                 } catch {
+                    recordConnectionFailure(for: key)
                     invalidateConnection(for: key)
                 }
             } else {
                 var refreshed = existingConnection
                 refreshed.lastActivityAt = now
                 connectionStates[key]?.liveConnection = refreshed
+                clearRecordedConnectionFailure(for: key)
                 return refreshed
             }
 
@@ -305,6 +316,7 @@ public actor MachineDataPlaneWebSocketClient {
                 var refreshed = refreshedConnection
                 refreshed.lastActivityAt = now
                 connectionStates[key]?.liveConnection = refreshed
+                clearRecordedConnectionFailure(for: key)
                 return refreshed
             }
         }
@@ -365,6 +377,7 @@ public actor MachineDataPlaneWebSocketClient {
         var updatedConnection = liveConnection
         updatedConnection.lastActivityAt = Date().timeIntervalSince1970
         connectionStates[key]?.liveConnection = updatedConnection
+        clearRecordedConnectionFailure(for: key)
         return updatedConnection
     }
 
@@ -443,6 +456,25 @@ public actor MachineDataPlaneWebSocketClient {
         default:
             return false
         }
+    }
+
+    private func shouldThrottleBackgroundReconnect(for key: ConnectionKey) -> Bool {
+        guard let lastFailureAt = connectionStates[key]?.lastConnectionFailureAt else {
+            return false
+        }
+        return Date().timeIntervalSince1970 - lastFailureAt < backgroundReconnectBackoffInterval
+    }
+
+    private func recordConnectionFailure(for key: ConnectionKey) {
+        guard var state = connectionStates[key] else { return }
+        state.lastConnectionFailureAt = Date().timeIntervalSince1970
+        connectionStates[key] = state
+    }
+
+    private func clearRecordedConnectionFailure(for key: ConnectionKey) {
+        guard var state = connectionStates[key] else { return }
+        state.lastConnectionFailureAt = nil
+        connectionStates[key] = state
     }
 
     private func send<T: Encodable>(frame: T, task: URLSessionWebSocketTask) async throws {
