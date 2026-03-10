@@ -16,7 +16,7 @@ use serde_json::Value;
 use std::{
     collections::HashMap,
     fs,
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
     process,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
@@ -182,15 +182,14 @@ impl DaemonState {
     }
 
     pub async fn open_project(&self, path: &str) -> Result<()> {
-        let normalized = path.trim();
-        if normalized.is_empty() {
+        let Some(normalized) = normalize_project_path(path, &home_dir()) else {
             return Ok(());
-        }
+        };
         let snapshot = {
             let mut inner = self.inner.write().await;
             inner.opened_projects.retain(|entry| entry.path != normalized);
             inner.opened_projects.push(OpenedProject {
-                path: normalized.to_string(),
+                path: normalized.clone(),
                 opened_at: Some(now_millis()),
             });
             self.snapshot_from_inner(&inner)
@@ -199,10 +198,9 @@ impl DaemonState {
     }
 
     pub async fn remove_project(&self, path: &str) -> Result<()> {
-        let normalized = path.trim();
-        if normalized.is_empty() {
+        let Some(normalized) = normalize_project_path(path, &home_dir()) else {
             return Ok(());
-        }
+        };
         let snapshot = {
             let mut inner = self.inner.write().await;
             inner.opened_projects.retain(|entry| entry.path != normalized);
@@ -583,16 +581,16 @@ fn normalize_opened_projects<'a>(
 ) -> Vec<OpenedProject> {
     let mut restored = Vec::new();
     let fallback_opened_at = now_millis();
+    let current_home = home_dir();
     for (path, opened_at) in paths {
-        let normalized = path.trim();
-        if normalized.is_empty() {
+        let Some(normalized) = normalize_project_path(path, &current_home) else {
             continue;
-        }
+        };
         if restored.iter().any(|entry: &OpenedProject| entry.path == normalized) {
             continue;
         }
         restored.push(OpenedProject {
-            path: normalized.to_string(),
+            path: normalized,
             opened_at: Some(opened_at.unwrap_or(fallback_opened_at)),
         });
     }
@@ -621,10 +619,9 @@ fn restore_opened_projects_from_codex_resume(config: &Config) -> Vec<OpenedProje
 }
 
 fn path_looks_like_project_root(path: &str) -> bool {
-    let normalized = path.trim();
-    if normalized.is_empty() {
+    let Some(normalized) = normalize_project_path(path, &home_dir()) else {
         return false;
-    }
+    };
 
     let candidate = PathBuf::from(normalized);
     if !candidate.is_dir() {
@@ -672,6 +669,53 @@ fn parse_pid_fallback(session_id: &str) -> Option<u32> {
     session_id
         .strip_prefix("PID-")
         .and_then(|pid| pid.parse::<u32>().ok())
+}
+
+fn normalize_project_path(raw: &str, home_dir: &Path) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let expanded = if trimmed == "~" {
+        home_dir.to_path_buf()
+    } else if let Some(suffix) = trimmed.strip_prefix("~/") {
+        home_dir.join(suffix)
+    } else {
+        let candidate = PathBuf::from(trimmed);
+        if candidate.is_absolute() {
+            candidate
+        } else {
+            home_dir.join(trimmed)
+        }
+    };
+
+    let resolved = fs::canonicalize(&expanded).unwrap_or_else(|_| lexical_normalize(&expanded));
+    let normalized = resolved.to_string_lossy().trim().to_string();
+    if normalized.is_empty() {
+        return None;
+    }
+    Some(normalized)
+}
+
+fn lexical_normalize(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            _ => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn home_dir() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn extract_host_pid(metadata: &Value) -> Option<u32> {
@@ -869,7 +913,37 @@ mod tests {
 
         let opened = state.list_opened_projects().await;
         assert_eq!(opened.len(), 1);
-        assert_eq!(opened[0].path, project_dir.display().to_string());
+        assert_eq!(
+            opened[0].path,
+            std::fs::canonicalize(&project_dir)
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        );
         assert!(opened[0].opened_at.is_some());
+    }
+
+    #[test]
+    fn normalize_project_path_expands_home_relative_input() {
+        let home_dir = PathBuf::from("/Users/dstadmin");
+
+        let normalized = normalize_project_path("~/Downloads/unhappy", &home_dir);
+
+        assert_eq!(
+            normalized.as_deref(),
+            Some("/Users/dstadmin/Downloads/unhappy")
+        );
+    }
+
+    #[test]
+    fn normalize_project_path_resolves_relative_segments_against_home() {
+        let home_dir = PathBuf::from("/Users/dstadmin");
+
+        let normalized = normalize_project_path("Downloads/../Downloads/unhappy", &home_dir);
+
+        assert_eq!(
+            normalized.as_deref(),
+            Some("/Users/dstadmin/Downloads/unhappy")
+        );
     }
 }
