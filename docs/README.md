@@ -10,6 +10,7 @@ This folder documents how Unhappy works internally, with a focus on protocol, ba
 - backend-architecture.md: Internal backend structure, data flow, and key subsystems.
 - deployment.md: How to deploy the backend and required infrastructure.
 - cli-architecture.md: CLI and daemon architecture and how they interact with the server.
+- session-stability-plan.md: Stabilization plan for project/session loading, scope ownership, and UI loading contracts.
 - codex-appserver-compatibility.md: Codex AppServer baseline, upgrade checklist, and release gate criteria.
 - agent-permission-mode-compatibility.md: Cross-agent permission mode compatibility contract and official source references.
 
