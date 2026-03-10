@@ -303,4 +303,31 @@ struct SessionTranscriptRichContentTests {
         #expect(tool.fields.contains(where: { $0.label == "Timeout Ms" && $0.value == "30000 ms" }))
         #expect(tool.fields.contains(where: { $0.label == "Ids" && $0.value == "agent-1, agent-2" }))
     }
+
+    @Test
+    func markdownParserTreatsStandaloneImageAsImageBlock() {
+        let blocks = SessionTranscriptRichContentParser.markdownBlocks(
+            from: "![Screenshot](/tmp/screenshot.png)"
+        )
+
+        #expect(blocks.count == 1)
+        guard case .image(let altText, let source) = blocks[0] else {
+            Issue.record("Expected image block")
+            return
+        }
+        #expect(altText == "Screenshot")
+        #expect(source == "/tmp/screenshot.png")
+    }
+
+    @Test
+    func attributedInlineMarkdownNormalizesSkillLinksToReadableMentions() {
+        let attributed = SessionTranscriptRichContentParser.attributedInlineMarkdown(
+            "Use [$openai-docs](/Users/test/.codex/skills/openai-docs/SKILL.md) for the API docs."
+        )
+        let plainText = attributed.map { String($0.characters) } ?? ""
+
+        #expect(attributed != nil)
+        #expect(plainText.contains("$openai-docs"))
+        #expect(plainText.contains("SKILL.md") == false)
+    }
 }
