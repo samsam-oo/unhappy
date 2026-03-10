@@ -50,6 +50,7 @@ model Account {
     RelationshipsTo     UserRelationship[]    @relation("RelationshipsTo")
     Artifact            Artifact[]
     AccessKey           AccessKey[]
+    MachineSessionCatalogEntry MachineSessionCatalogEntry[]
     UserFeedItem        UserFeedItem[]
     UserKVStore         UserKVStore[]
 }
@@ -218,9 +219,36 @@ model Machine {
     createdAt          DateTime    @default(now())
     updatedAt          DateTime    @updatedAt
     accessKeys         AccessKey[]
+    sessionCatalogEntries MachineSessionCatalogEntry[]
 
     @@unique([accountId, id])
     @@index([accountId])
+}
+
+model MachineSessionCatalogEntry {
+    id                String   @id @default(cuid())
+    accountId         String
+    machineId         String
+    machine           Machine  @relation(fields: [accountId, machineId], references: [accountId, id], onDelete: Cascade)
+    account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    provider          String
+    projectPath       String
+    providerSessionId String
+    title             String
+    preview           String?
+    cwd               String?
+    transcriptPath    String?
+    model             String?
+    archived          Boolean  @default(false)
+    providerCreatedAt DateTime?
+    providerUpdatedAt DateTime
+    lastObservedAt    DateTime @default(now())
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    @@unique([accountId, machineId, provider, projectPath, providerSessionId])
+    @@index([accountId, machineId, projectPath, providerUpdatedAt(sort: Desc)])
+    @@index([accountId, providerUpdatedAt(sort: Desc)])
 }
 
 model UploadedFile {
