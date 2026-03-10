@@ -105,4 +105,16 @@ extension KeyedDecodingContainer {
         }
         return nil
     }
+
+    func decodeFlexibleTimestampStringIfPresent(forKey key: Key) -> String? {
+        if let raw = try? decodeIfPresent(String.self, forKey: key) {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        if let value = decodeFlexibleTimeIntervalIfPresent(forKey: key) {
+            guard value > 0 else { return nil }
+            return Date(timeIntervalSince1970: value).ISO8601Format()
+        }
+        return nil
+    }
 }
