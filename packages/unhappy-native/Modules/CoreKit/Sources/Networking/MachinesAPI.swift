@@ -171,6 +171,30 @@ public enum MachinesAPI {
         return try makeRequest(url: url, method: "GET", token: token)
     }
 
+    public static func makeRecentSessionCatalogRequest(
+        serverURL: URL,
+        token: String,
+        limit: Int = 100,
+        cursor: String? = nil
+    ) throws -> URLRequest {
+        let recentURL = serverURL.appending(path: "v1/session-catalog/recent")
+        guard var components = URLComponents(url: recentURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: "\(min(max(limit, 1), 200))"),
+        ]
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: normalizedCursor))
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(url: url, method: "GET", token: token)
+    }
+
     public static func makeRemoveProjectRequest(
         serverURL: URL,
         token: String,
@@ -412,6 +436,19 @@ public enum MachinesAPI {
         )
     }
 
+    public static func decodeRecentCatalogSessionsPageResponse(_ data: Data) throws -> APIRecentCatalogSessionsPage {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(MachinesRecentCatalogSessionsResponse.self, from: data)
+        let nextCursor = response.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+        let hasNext = response.hasNext ?? (normalizedCursor != nil)
+        return APIRecentCatalogSessionsPage(
+            sessions: response.sessions ?? [],
+            nextCursor: normalizedCursor,
+            hasNext: hasNext
+        )
+    }
+
     public static func decodeAgentCapabilitiesResponse(_ data: Data) throws -> APIMachineAgentCapabilities {
         let decoder = JSONDecoder()
         let response = try decoder.decode(MachinesListModelsResponse.self, from: data)
@@ -589,6 +626,13 @@ private struct MachinesProjectSessionsResponse: Decodable {
     let nextCursor: String?
     let hasNext: Bool?
     let error: String?
+}
+
+private struct MachinesRecentCatalogSessionsResponse: Decodable {
+    let success: Bool
+    let sessions: [APICatalogSessionSummary]?
+    let nextCursor: String?
+    let hasNext: Bool?
 }
 
 private struct MachinesListModelsResponse: Decodable {
@@ -1040,6 +1084,15 @@ public protocol MachineProjectSessionsFetching: Sendable {
     ) async throws -> APIProjectSessionsPage
 }
 
+public protocol MachineRecentSessionCatalogFetching: Sendable {
+    func fetchRecentSessionCatalogPage(
+        serverURL: URL,
+        token: String,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIRecentCatalogSessionsPage
+}
+
 public protocol MachineGeminiSessionMessagesFetching: Sendable {
     func fetchGeminiSessionMessages(
         serverURL: URL,
@@ -1195,6 +1248,7 @@ public actor URLSessionMachinesService:
     MachineClaudeSessionMessaging,
     MachineGeminiSessionsFetching,
     MachineProjectSessionsFetching,
+    MachineRecentSessionCatalogFetching,
     MachineGeminiSessionMessagesFetching,
     MachineGeminiSessionMessaging,
     MachineModelsListing,

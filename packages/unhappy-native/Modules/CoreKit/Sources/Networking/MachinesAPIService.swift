@@ -171,6 +171,29 @@ extension URLSessionMachinesService {
         return try MachinesAPI.decodeProjectSessionsPageResponse(data)
     }
 
+    public func fetchRecentSessionCatalogPage(
+        serverURL: URL,
+        token: String,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIRecentCatalogSessionsPage {
+        let request = try MachinesAPI.makeRecentSessionCatalogRequest(
+            serverURL: serverURL,
+            token: token,
+            limit: limit,
+            cursor: cursor
+        )
+        let (data, http) = try await httpClient.data(for: request)
+        guard (200..<300).contains(http.statusCode) else {
+            let errorMessage = parseServerErrorMessage(from: data)
+            if let errorMessage {
+                throw MachinesAPIError.rpcCallFailed(errorMessage)
+            }
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+        return try MachinesAPI.decodeRecentCatalogSessionsPageResponse(data)
+    }
+
     public func openProject(
         serverURL: URL,
         token: String,

@@ -44,6 +44,7 @@ export function machinesRoutes(app: Fastify) {
 
     function buildProjectSessionCatalogResponseRow(row: {
         provider: string;
+        machineId?: string;
         providerSessionId: string;
         title: string;
         preview: string | null;
@@ -55,6 +56,7 @@ export function machinesRoutes(app: Fastify) {
         providerUpdatedAt: Date;
     }) {
         return {
+            machineId: row.machineId,
             id: row.providerSessionId,
             provider: row.provider,
             title: row.title,
@@ -571,7 +573,69 @@ export function machinesRoutes(app: Fastify) {
 
         return reply.send({
             success: true,
-            sessions: pageRows.map(buildProjectSessionCatalogResponseRow),
+            sessions: pageRows.map((row) => buildProjectSessionCatalogResponseRow({
+                machineId: row.machineId,
+                provider: row.provider,
+                providerSessionId: row.providerSessionId,
+                title: row.title,
+                preview: row.preview,
+                cwd: row.cwd,
+                transcriptPath: row.transcriptPath,
+                model: row.model,
+                archived: row.archived,
+                providerCreatedAt: row.providerCreatedAt,
+                providerUpdatedAt: row.providerUpdatedAt,
+            })),
+            hasNext,
+            nextCursor: hasNext ? String(offset + limit) : null,
+        });
+    });
+
+    app.get('/v1/session-catalog/recent', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                limit: z.coerce.number().int().min(1).max(200).default(100),
+                cursor: z.string().optional()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const limit = request.query.limit;
+        const cursor = Number.parseInt((request.query.cursor ?? '').trim(), 10);
+        const offset = Number.isFinite(cursor) && cursor >= 0 ? cursor : 0;
+
+        const rows = await db.machineSessionCatalogEntry.findMany({
+            where: {
+                accountId: userId,
+            },
+            orderBy: [
+                { providerUpdatedAt: 'desc' },
+                { machineId: 'asc' },
+                { providerSessionId: 'asc' },
+            ],
+            skip: offset,
+            take: limit + 1,
+        });
+
+        const hasNext = rows.length > limit;
+        const pageRows = hasNext ? rows.slice(0, limit) : rows;
+
+        return reply.send({
+            success: true,
+            sessions: pageRows.map((row) => buildProjectSessionCatalogResponseRow({
+                machineId: row.machineId,
+                provider: row.provider,
+                providerSessionId: row.providerSessionId,
+                title: row.title,
+                preview: row.preview,
+                cwd: row.cwd,
+                transcriptPath: row.transcriptPath,
+                model: row.model,
+                archived: row.archived,
+                providerCreatedAt: row.providerCreatedAt,
+                providerUpdatedAt: row.providerUpdatedAt,
+            })),
             hasNext,
             nextCursor: hasNext ? String(offset + limit) : null,
         });

@@ -971,6 +971,43 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadRecentCatalogSessionsPublishesCatalogRows() async throws {
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Recent Thread",
+                cwd: "/repo/app",
+                path: "/tmp/thread.jsonl",
+                updatedAt: "2026-03-11T00:00:00.000Z",
+                createdAt: "2026-03-10T23:00:00.000Z",
+                archived: false
+            )
+        )
+        let recentLoader = RecordingRecentCatalogSessionsLoader(result: .success([row]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            recentCatalogSessionsLoader: recentLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadRecentCatalogSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(await recentLoader.callCount() == 1)
+        #expect(model.recentCatalogSessions.map(\.id) == [row.id])
+        #expect(model.aggregatedRecentSessions.map(\.id) == [row.id])
+        #expect(model.recentCatalogSessionsErrorMessage == nil)
+    }
+
+    @Test
     func aggregatedProjectRowsPreferProjectScopedRowsOverOlderGlobalRows() async throws {
         let olderGlobalRow = SessionLinkedUpstreamSession(
             machineID: "machine-1",

@@ -250,6 +250,36 @@ actor RecordingProjectSessionsLoader: SessionProjectSessionsLoadingAction {
     }
 }
 
+actor RecordingRecentCatalogSessionsLoader: SessionRecentCatalogLoadingAction {
+    private var calls = 0
+    let result: Result<[SessionLinkedUpstreamSession], MockRecentCatalogSessionsLoaderError>
+
+    init(result: Result<[SessionLinkedUpstreamSession], MockRecentCatalogSessionsLoaderError>) {
+        self.result = result
+    }
+
+    func loadRecentSessions(
+        serverURLString: String,
+        token: String
+    ) async throws -> [SessionLinkedUpstreamSession] {
+        calls += 1
+        switch result {
+        case .success(let rows):
+            return rows
+        case .failure(let error):
+            throw error
+        }
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+}
+
+enum MockRecentCatalogSessionsLoaderError: Error, Sendable {
+    case failed
+}
+
 actor StreamingRecordingUpstreamSessionsLoader: SessionUpstreamSessionsLoadingAction, SessionUpstreamSessionsStreamingAction {
     private var calls = 0
     private var requestedProjects: [[SessionMachineProject]] = []
