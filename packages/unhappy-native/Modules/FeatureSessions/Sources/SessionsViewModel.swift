@@ -289,7 +289,12 @@ public final class SessionsViewModel: ObservableObject {
             return
         }
         let acceptedProjects = beginUpstreamLoad(for: projectsToSync)
-        guard !acceptedProjects.isEmpty else { return }
+        guard !acceptedProjects.isEmpty else {
+            setUpstreamSessionsIfChanged([])
+            upstreamSessionsErrorMessage = nil
+            isLoadingUpstreamSessions = false
+            return
+        }
         defer { endUpstreamLoad(for: acceptedProjects) }
 
         if let streamingLoader = upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction {
@@ -774,6 +779,28 @@ public final class SessionsViewModel: ObservableObject {
     private func setProjectsIfChanged(_ nextProjects: [SessionMachineProject]) {
         guard projects != nextProjects else { return }
         projects = nextProjects
+        let allowedScopeIDs = Set(
+            nextProjects
+                .filter(\.summary.openedExplicitly)
+                .compactMap { project in
+                    canonicalProjectID(
+                        machineID: project.machineID,
+                        projectPath: project.summary.path
+                    )
+                }
+        )
+        let filteredUpstreamRows = upstreamSessions.filter { row in
+            guard let scopeID = canonicalProjectID(
+                machineID: row.machineID,
+                projectPath: row.summary.cwd ?? ""
+            ) else {
+                return false
+            }
+            return allowedScopeIDs.contains(scopeID)
+        }
+        if filteredUpstreamRows != upstreamSessions {
+            upstreamSessions = filteredUpstreamRows
+        }
     }
 
     private func setUpstreamSessionsIfChanged(_ nextRows: [SessionLinkedUpstreamSession]) {
