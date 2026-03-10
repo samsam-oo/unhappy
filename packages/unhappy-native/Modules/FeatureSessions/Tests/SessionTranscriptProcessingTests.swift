@@ -129,6 +129,83 @@ struct SessionTranscriptProcessingTests {
         #expect(command.durationText == "11s")
     }
 
+    @Test
+    func plainExecCommandToolResultFinalizesCommandCard() {
+        let callEntry = makeEntry(
+            id: "exec-call",
+            kind: .toolCall,
+            title: "Ran command",
+            body: #"{"command":"git status","cwd":"/tmp/project"}"#,
+            sourceType: "tool-call",
+            toolName: "exec_command"
+        )
+        let resultEntry = makeEntry(
+            id: "exec-result",
+            kind: .toolResult,
+            title: "Ran command Result",
+            body: "Process exited with code 0",
+            sourceType: "tool_result",
+            toolName: "exec_command"
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: callEntry),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 108, createdAtText: "10:08", entry: resultEntry),
+        ])
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected command execution card")
+            return
+        }
+
+        #expect(command.status == .succeeded)
+        #expect(command.supplementalEntries.map(\.title) == ["Ran command Result"])
+    }
+
+    @Test
+    func writeStdinEventsAreNestedInsideOpenCommandCard() {
+        let callEntry = makeEntry(
+            id: "call-nested",
+            kind: .toolCall,
+            title: "Ran command",
+            body: #"{"command":"npm test","cwd":"/tmp/project"}"#,
+            sourceType: "tool-call",
+            toolName: "exec_command"
+        )
+        let stdinEntry = makeEntry(
+            id: "stdin-call",
+            kind: .toolCall,
+            title: "write_stdin",
+            body: #"{"chars":"q"}"#,
+            sourceType: "tool-call",
+            toolName: "write_stdin"
+        )
+        let stdinResult = makeEntry(
+            id: "stdin-result",
+            kind: .toolResult,
+            title: "write_stdin Result",
+            body: "polling",
+            sourceType: "tool_result",
+            toolName: "write_stdin"
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: callEntry),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: stdinEntry),
+            makePresentation(messageID: "msg-3", sequenceText: "3", createdAt: 102, createdAtText: "10:02", entry: stdinResult),
+        ])
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected command execution card")
+            return
+        }
+
+        #expect(command.supplementalEntries.map(\.kind) == [.stdin, .toolResult])
+        #expect(command.status == .running)
+    }
+
     private func makeCommandPresentations() -> [SessionTranscriptMessagePresentation] {
         let commandBody = """
         {"command":"corepack yarn test","cwd":"/tmp/project","commandActions":[{"type":"read","path":"README.md"},{"type":"search","query":"TODO"}]}
