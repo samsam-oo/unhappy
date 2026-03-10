@@ -510,15 +510,27 @@ fn claude_model_metadata() -> Vec<Value> {
 fn gemini_model_payload() -> Value {
     json!({
         "success": true,
-        "models": ["auto"],
+        "models": ["auto", "gemini-2.5-pro", "gemini-2.5-flash"],
         "reasoningEfforts": ["auto"],
         "modelMetadata": [
             {
                 "id": "auto",
                 "model": "auto",
                 "displayName": "Auto",
-                "description": "Let Gemini CLI choose the current Gemini model family for the active account.",
+                "description": "Let Gemini CLI choose the best available Gemini model family for the current account.",
                 "isDefault": true
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "model": "gemini-2.5-pro",
+                "displayName": "Gemini 2.5 Pro",
+                "description": "Current Gemini CLI default family according to the official Gemini CLI documentation."
+            },
+            {
+                "id": "gemini-2.5-flash",
+                "model": "gemini-2.5-flash",
+                "displayName": "Gemini 2.5 Flash",
+                "description": "Official Gemini CLI example model for explicit model selection."
             }
         ]
     })
@@ -754,7 +766,11 @@ mod tests {
 
         assert_eq!(
             payload["models"].as_array().expect("models"),
-            &vec![Value::String("auto".to_string())]
+            &vec![
+                Value::String("auto".to_string()),
+                Value::String("gemini-2.5-pro".to_string()),
+                Value::String("gemini-2.5-flash".to_string()),
+            ]
         );
         assert_eq!(
             payload["reasoningEfforts"].as_array().expect("reasoning"),
