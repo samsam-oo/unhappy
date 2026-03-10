@@ -1191,12 +1191,25 @@ public actor URLSessionMachinesService:
         let cachedAt: TimeInterval
     }
 
+    struct MachineDataPlanePrewarmKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let machineID: String
+        let wrappedMachineDataEncryptionKey: String
+    }
+
+    enum MachineDataPlanePrewarmPolicy {
+        static let throttleInterval: TimeInterval = 20
+        static let recentActivityInterval: TimeInterval = 30
+    }
+
     let httpClient: any MachineHTTPClient
     let rpcDirectoryService: any MachineRPCDirectoryListing
     var machinesCache: [MachinesCacheKey: MachinesCacheEntry] = [:]
     var inFlightMachineFetches: [MachinesCacheKey: Task<[APIMachine], Error>] = [:]
     var projectsCache: [ProjectsCacheKey: ProjectsCacheEntry] = [:]
     var inFlightProjectFetches: [ProjectsCacheKey: Task<[APIMachineProjectSummary], Error>] = [:]
+    var lastMachineDataPlanePrewarmAt: [MachineDataPlanePrewarmKey: TimeInterval] = [:]
 
     public init(
         httpClient: any MachineHTTPClient = URLSessionMachineHTTPClient(),
