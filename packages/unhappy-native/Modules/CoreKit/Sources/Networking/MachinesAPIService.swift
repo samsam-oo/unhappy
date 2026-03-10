@@ -152,15 +152,23 @@ extension URLSessionMachinesService {
         limit: Int,
         cursor: String?
     ) async throws -> APIProjectSessionsPage {
-        try await rpcDirectoryService.fetchProjectSessionsPage(
+        let request = try MachinesAPI.makeProjectSessionsCatalogRequest(
             serverURL: serverURL,
             token: token,
             machineID: machineID,
-            projectPath: projectPath,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            path: projectPath,
             limit: limit,
             cursor: cursor
         )
+        let (data, http) = try await httpClient.data(for: request)
+        guard (200..<300).contains(http.statusCode) else {
+            let errorMessage = parseServerErrorMessage(from: data)
+            if let errorMessage {
+                throw MachinesAPIError.rpcCallFailed(errorMessage)
+            }
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+        return try MachinesAPI.decodeProjectSessionsPageResponse(data)
     }
 
     public func openProject(
