@@ -219,10 +219,38 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
 }
 
 struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
+    enum StatusTone: Equatable, Sendable {
+        case running
+        case success
+        case failure
+    }
+
     enum Status: Equatable, Sendable {
         case running
         case succeeded
         case failed
+
+        var badgeLabel: String {
+            switch self {
+            case .running:
+                return "Running"
+            case .succeeded:
+                return "Success"
+            case .failed:
+                return "Failed"
+            }
+        }
+
+        var tone: StatusTone {
+            switch self {
+            case .running:
+                return .running
+            case .succeeded:
+                return .success
+            case .failed:
+                return .failure
+            }
+        }
     }
 
     let command: String
@@ -2002,45 +2030,44 @@ struct SessionTranscriptToolRichContentView: View {
     private func statusBadge(
         for command: SessionTranscriptCommandRunPresentation
     ) -> some View {
-        switch command.status {
-        case .running:
-            HStack(spacing: 6) {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(AppPalette.accent)
-                Text("Running")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(AppPalette.secondaryText)
-            }
-        case .succeeded:
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark")
-                    .font(.caption.weight(.bold))
-                Text("Success")
-                    .font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(.green)
-        case .failed:
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption.weight(.bold))
-                Text("Failed")
-                    .font(.caption.weight(.semibold))
-            }
-            .foregroundStyle(.red)
+        HStack(spacing: 6) {
+            statusDot(for: command.status)
+            Text(command.status.badgeLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(commandStatusTint(command.status))
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(commandStatusTint(command.status).opacity(0.12))
+        )
     }
 
     private func commandStatusTint(
         _ status: SessionTranscriptCommandRunPresentation.Status
     ) -> Color {
-        switch status {
+        switch status.tone {
         case .running:
             return AppPalette.accent
-        case .succeeded:
+        case .success:
             return .green
-        case .failed:
+        case .failure:
             return .red
+        }
+    }
+
+    @ViewBuilder
+    private func statusDot(
+        for status: SessionTranscriptCommandRunPresentation.Status
+    ) -> some View {
+        switch status.tone {
+        case .running:
+            LivePulseDot(size: 8)
+        case .success, .failure:
+            Circle()
+                .fill(commandStatusTint(status))
+                .frame(width: 8, height: 8)
         }
     }
 
