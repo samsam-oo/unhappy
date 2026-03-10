@@ -721,12 +721,15 @@ public struct DirectSessionDetailView: View {
     }
 
     private func refreshTranscriptPresentations() {
-        let nextPresentations = viewModel.messages.map {
+        let parsedPresentations = viewModel.messages.map {
             SessionTranscriptPresentationBuilder.make(
                 from: $0,
                 dataEncryptionKey: nil
             )
         }
+        let nextPresentations = SessionTranscriptProcessing.coalesceStreamingEntries(
+            in: parsedPresentations
+        )
         guard cachedTranscriptPresentations != nextPresentations else { return }
         cachedTranscriptPresentations = nextPresentations
     }
