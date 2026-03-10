@@ -230,6 +230,18 @@ struct SessionTranscriptRichContentTests {
     }
 
     @Test
+    func commandStatusPresentationUsesReadableLabelsAndTones() {
+        #expect(SessionTranscriptCommandRunPresentation.Status.running.badgeLabel == "Running")
+        #expect(SessionTranscriptCommandRunPresentation.Status.running.tone == .running)
+
+        #expect(SessionTranscriptCommandRunPresentation.Status.succeeded.badgeLabel == "Success")
+        #expect(SessionTranscriptCommandRunPresentation.Status.succeeded.tone == .success)
+
+        #expect(SessionTranscriptCommandRunPresentation.Status.failed.badgeLabel == "Failed")
+        #expect(SessionTranscriptCommandRunPresentation.Status.failed.tone == .failure)
+    }
+
+    @Test
     func genericToolParserBuildsSpawnAgentCard() {
         let entry = SessionTranscriptEntry(
             id: "spawn-agent",
