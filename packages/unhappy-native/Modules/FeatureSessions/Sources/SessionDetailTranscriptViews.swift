@@ -380,12 +380,21 @@ struct SessionTranscriptLogLine: View {
                     Spacer(minLength: 0)
                 }
 
-                SessionTranscriptMarkdownView(
-                    markdown: entry.body,
-                    role: entry.role,
-                    kind: entry.kind,
-                    onOpenFilePath: onFileLinkTap
-                )
+                if let attachmentDataURL = entry.attachmentDataURL {
+                    SessionTranscriptInlineImageView(
+                        source: attachmentDataURL,
+                        altText: imageAltText
+                    )
+                }
+
+                if shouldRenderMessageBody {
+                    SessionTranscriptMarkdownView(
+                        markdown: entry.body,
+                        role: entry.role,
+                        kind: entry.kind,
+                        onOpenFilePath: onFileLinkTap
+                    )
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -515,6 +524,96 @@ struct SessionTranscriptLogLine: View {
         default:
             return .subheadline
         }
+    }
+
+    private var shouldRenderMessageBody: Bool {
+        guard entry.attachmentDataURL != nil else { return true }
+        return entry.body != imageAltText
+    }
+
+    private var imageAltText: String {
+        let trimmed = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Image" : trimmed
+    }
+}
+
+struct SessionTranscriptInlineImageView: View {
+    let source: String
+    let altText: String
+
+    private var image: UIImage? {
+        Self.resolveImage(from: source)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(AppPalette.chromeSurfaceStroke, lineWidth: 1)
+                    }
+                    .frame(maxWidth: min(UIScreen.main.bounds.width * 0.72, 320), maxHeight: 240, alignment: .leading)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "photo")
+                        .foregroundStyle(AppPalette.secondaryText)
+                    Text(altText)
+                        .font(.caption)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AppPalette.chatToolBackground)
+                )
+            }
+
+            if !altText.isEmpty {
+                Text(altText)
+                    .font(.caption2)
+                    .foregroundStyle(AppPalette.secondaryText)
+            }
+        }
+    }
+
+    private static func resolveImage(from source: String) -> UIImage? {
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if trimmed.hasPrefix("data:image/"),
+           let commaIndex = trimmed.firstIndex(of: ",") {
+            let encoded = String(trimmed[trimmed.index(after: commaIndex)...])
+            if let data = decodeBase64(encoded) {
+                return UIImage(data: data)
+            }
+        }
+
+        if trimmed.hasPrefix("file://"),
+           let url = URL(string: trimmed) {
+            return UIImage(contentsOfFile: url.path)
+        }
+
+        if trimmed.hasPrefix("/") {
+            return UIImage(contentsOfFile: trimmed)
+        }
+
+        return nil
+    }
+
+    private static func decodeBase64(_ raw: String) -> Data? {
+        if let direct = Data(base64Encoded: raw) {
+            return direct
+        }
+        let replaced = raw
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let paddingCount = (4 - (replaced.count % 4)) % 4
+        let padded = replaced + String(repeating: "=", count: paddingCount)
+        return Data(base64Encoded: padded)
     }
 }
 

@@ -33,11 +33,38 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
     let kind: SessionTranscriptEntryKind
     let title: String?
     let body: String
+    let attachmentDataURL: String?
     let toolUseID: String?
     let sourceType: String?
     let toolName: String?
     let isSidechain: Bool
     let threadID: String?
+
+    init(
+        id: String,
+        role: SessionTranscriptEntryRole,
+        kind: SessionTranscriptEntryKind,
+        title: String?,
+        body: String,
+        attachmentDataURL: String? = nil,
+        toolUseID: String? = nil,
+        sourceType: String? = nil,
+        toolName: String? = nil,
+        isSidechain: Bool,
+        threadID: String?
+    ) {
+        self.id = id
+        self.role = role
+        self.kind = kind
+        self.title = title
+        self.body = body
+        self.attachmentDataURL = attachmentDataURL
+        self.toolUseID = toolUseID
+        self.sourceType = sourceType
+        self.toolName = toolName
+        self.isSidechain = isSidechain
+        self.threadID = threadID
+    }
 }
 
 struct SessionTranscriptMessagePresentation: Equatable, Sendable {

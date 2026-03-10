@@ -355,20 +355,22 @@ public struct DirectSessionDetailView: View {
                 ProgressView("Loading earlier messages…")
                     .font(.footnote)
             } else {
-                Color.clear
-                    .frame(height: 1)
-                    .onAppear {
-                        guard !shouldFollowTranscript else { return }
-                        let anchorMessageID = transcriptPresentations.first?.messageID
-                        Task {
-                            await viewModel.loadOlderMessages(
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                            guard let anchorMessageID else { return }
-                            scrollToMessage(anchorMessageID, using: proxy)
-                        }
+                Button {
+                    shouldFollowTranscript = false
+                    let anchorMessageID = transcriptPresentations.first?.messageID
+                    Task {
+                        await viewModel.loadOlderMessages(
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        guard let anchorMessageID else { return }
+                        scrollToMessage(anchorMessageID, using: proxy)
                     }
+                } label: {
+                    Label("Load earlier messages", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        .font(.footnote.weight(.semibold))
+                }
+                .buttonStyle(.plain)
             }
             Spacer()
         }

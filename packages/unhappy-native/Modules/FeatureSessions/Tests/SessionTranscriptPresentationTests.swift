@@ -460,6 +460,7 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries[0].role == .user)
         #expect(presentation.entries[0].kind == .text)
         #expect(presentation.entries[0].body == "[Image #1]")
+        #expect(presentation.entries[0].attachmentDataURL == "data:image/png;base64,AAAA")
         #expect(presentation.entries[1].body == "Please inspect this screenshot.")
     }
 

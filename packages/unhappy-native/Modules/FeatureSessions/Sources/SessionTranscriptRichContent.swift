@@ -47,6 +47,7 @@ enum SessionMarkdownBlock: Equatable, Sendable {
     case quote(String)
     case code(language: String?, code: String)
     case list([SessionMarkdownListItem])
+    case image(altText: String, source: String)
 }
 
 enum SessionTranscriptFileChangeKind: String, Equatable, Sendable {
@@ -303,6 +304,12 @@ enum SessionTranscriptRichContentParser {
                 continue
             }
 
+            if let image = parseMarkdownImage(trimmed) {
+                blocks.append(.image(altText: image.altText, source: image.source))
+                index += 1
+                continue
+            }
+
             if isQuoteLine(trimmed) {
                 var quoteLines: [String] = []
                 while index < lines.count {
@@ -335,6 +342,7 @@ enum SessionTranscriptRichContentParser {
                 if candidateTrimmed.isEmpty ||
                     candidateTrimmed.hasPrefix("```") ||
                     parseHeading(candidateTrimmed) != nil ||
+                    parseMarkdownImage(candidateTrimmed) != nil ||
                     isQuoteLine(candidateTrimmed) ||
                     parseListItem(candidate) != nil {
                     break
@@ -493,7 +501,7 @@ enum SessionTranscriptRichContentParser {
     }
 
     static func attributedInlineMarkdown(_ raw: String) -> AttributedString? {
-        let normalized = normalizeMarkdownLinks(in: raw)
+        let normalized = normalizeAppMentions(in: normalizeMarkdownLinks(in: raw))
         return try? AttributedString(
             markdown: normalized,
             options: AttributedString.MarkdownParsingOptions(
@@ -770,6 +778,23 @@ enum SessionTranscriptRichContentParser {
         let remainder = line.dropFirst(prefixCount).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !remainder.isEmpty else { return nil }
         return (prefixCount, remainder)
+    }
+
+    private static func parseMarkdownImage(_ line: String) -> (altText: String, source: String)? {
+        let pattern = #"^!\[(.*?)\]\((.+)\)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(line.startIndex..<line.endIndex, in: line)
+        guard let match = regex.firstMatch(in: line, options: [], range: range),
+              match.numberOfRanges == 3,
+              let altRange = Range(match.range(at: 1), in: line),
+              let sourceRange = Range(match.range(at: 2), in: line) else {
+            return nil
+        }
+
+        let altText = String(line[altRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = String(line[sourceRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty else { return nil }
+        return (altText, source)
     }
 
     private static func isQuoteLine(_ line: String) -> Bool {
@@ -1223,6 +1248,23 @@ enum SessionTranscriptRichContentParser {
         )
     }
 
+    private static func normalizeAppMentions(in raw: String) -> String {
+        let pattern = #"\[(\$[^\]]+)\]\((?:app://[^)]+|file://[^)]+|/[^)]+SKILL\.md)\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return raw }
+        let matches = regex.matches(in: raw, range: NSRange(raw.startIndex..., in: raw))
+        guard !matches.isEmpty else { return raw }
+
+        var result = raw
+        for match in matches.reversed() {
+            guard let fullRange = Range(match.range(at: 0), in: result),
+                  let labelRange = Range(match.range(at: 1), in: result) else {
+                continue
+            }
+            result.replaceSubrange(fullRange, with: "`\(result[labelRange])`")
+        }
+        return result
+    }
+
     static func fileName(from path: String) -> String {
         let normalized = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return path }
@@ -1622,6 +1664,11 @@ struct SessionTranscriptMarkdownView: View {
                     }
                 }
             }
+        case .image(let altText, let source):
+            SessionTranscriptInlineImageView(
+                source: source,
+                altText: altText.isEmpty ? "Image" : altText
+            )
         }
     }
 

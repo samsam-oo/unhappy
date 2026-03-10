@@ -360,6 +360,7 @@ extension SessionTranscriptPresentationBuilder {
                                 kind: .text,
                                 title: nil,
                                 body: imagePlaceholderText(index: imageIndex),
+                                attachmentDataURL: extractImageDataURL(from: chunk),
                                 isSidechain: isSidechain
                             )
                         )

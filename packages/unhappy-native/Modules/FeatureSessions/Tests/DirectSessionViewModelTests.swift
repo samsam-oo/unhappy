@@ -107,6 +107,30 @@ struct DirectSessionViewModelTests {
         #expect(recordedLimits == [120, 40])
     }
 
+    @Test
+    func loadOlderMessagesStopsWhenBackendRepeatsCursor() async {
+        let loader = RepeatingOlderCursorLoader()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: SuccessfulSender()
+        )
+
+        await viewModel.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        #expect(viewModel.hasOlderMessages == true)
+
+        await viewModel.loadOlderMessages(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.hasOlderMessages == false)
+        #expect(await loader.recordedCursors == [nil, "cursor-1"])
+    }
+
     private func makeIdentity() -> DirectSessionIdentity {
         DirectSessionIdentity(
             machineID: "machine-1",
@@ -180,5 +204,50 @@ private actor SuccessfulSender: DirectSessionMessageSendingAction {
         permissionMode: APISessionMessagePermissionMode?
     ) async throws -> APISessionSendMessageResult {
         APISessionSendMessageResult(success: true, queueCount: 1, queuedMessages: [text], error: nil)
+    }
+}
+
+private actor RepeatingOlderCursorLoader: DirectSessionMessagesLoadingAction {
+    private(set) var recordedCursors: [String?] = []
+
+    func loadMessages(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
+        recordedCursors.append(cursor)
+        if cursor == nil {
+            return APISessionMessagesPage(
+                messages: [
+                    APISessionMessage(
+                        id: "latest",
+                        seq: 2,
+                        localId: nil,
+                        content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                        createdAt: 2,
+                        updatedAt: 2
+                    )
+                ],
+                nextCursor: "cursor-1",
+                hasNext: true
+            )
+        }
+
+        return APISessionMessagesPage(
+            messages: [
+                APISessionMessage(
+                    id: "older",
+                    seq: 1,
+                    localId: nil,
+                    content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                    createdAt: 1,
+                    updatedAt: 1
+                )
+            ],
+            nextCursor: "cursor-1",
+            hasNext: true
+        )
     }
 }
