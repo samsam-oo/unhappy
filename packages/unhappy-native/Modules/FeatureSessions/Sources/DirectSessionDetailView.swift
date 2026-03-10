@@ -45,18 +45,22 @@ public struct DirectSessionDetailView: View {
     @State private var shouldFollowTranscript = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var regularTranscriptHorizontalPadding: CGFloat = 14
     @ScaledMetric(relativeTo: .body) private var transcriptTopSpacing: CGFloat = 12
     @FocusState private var focusedComposerField: ComposerFocusField?
+    private let onArchived: (() -> Void)?
 
     public init(
         serverURLString: String,
         token: String,
-        makeViewModel: @escaping @MainActor () -> DirectSessionViewModel
+        makeViewModel: @escaping @MainActor () -> DirectSessionViewModel,
+        onArchived: (() -> Void)? = nil
     ) {
         self.serverURLString = serverURLString
         self.token = token
+        self.onArchived = onArchived
         _viewModel = StateObject(wrappedValue: makeViewModel())
     }
 
@@ -138,6 +142,20 @@ public struct DirectSessionDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    if viewModel.canArchiveCurrentSession {
+                        Button("Archive Session", role: .destructive) {
+                            Task {
+                                let archived = await viewModel.archiveSession(
+                                    serverURLString: serverURLString,
+                                    token: token
+                                )
+                                guard archived else { return }
+                                onArchived?()
+                                dismiss()
+                            }
+                        }
+                        .disabled(viewModel.isArchiving)
+                    }
                     Button("Session Info") {
                         presentedQuickSurface = QuickSurface(kind: .info, filterPath: nil)
                     }
@@ -229,6 +247,25 @@ public struct DirectSessionDetailView: View {
             },
             message: {
                 Text("Pick a model and reasoning level in the bottom dock before sending a message.")
+            }
+        )
+        .alert(
+            "Couldn't Archive Session",
+            isPresented: Binding(
+                get: { viewModel.archiveErrorMessage?.isEmpty == false },
+                set: { isPresented in
+                    if !isPresented {
+                        viewModel.clearArchiveError()
+                    }
+                }
+            ),
+            actions: {
+                Button("OK", role: .cancel) {
+                    viewModel.clearArchiveError()
+                }
+            },
+            message: {
+                Text(viewModel.archiveErrorMessage ?? "Failed to archive session.")
             }
         )
         .task {

@@ -47,6 +47,8 @@ pub enum MachineDataPlaneOperation {
     ProjectRemove,
     #[serde(rename = "codex.listThreads")]
     CodexListThreads,
+    #[serde(rename = "codex.archiveThread")]
+    CodexArchiveThread,
     #[serde(rename = "codex.openThread")]
     CodexOpenThread,
     #[serde(rename = "codex.listMessages")]

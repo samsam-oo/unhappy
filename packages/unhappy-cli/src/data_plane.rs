@@ -410,6 +410,7 @@ fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
         MachineDataPlaneOperation::ProjectOpen => "project.open",
         MachineDataPlaneOperation::ProjectRemove => "project.remove",
         MachineDataPlaneOperation::CodexListThreads => "codex.listThreads",
+        MachineDataPlaneOperation::CodexArchiveThread => "codex.archiveThread",
         MachineDataPlaneOperation::CodexOpenThread => "codex.openThread",
         MachineDataPlaneOperation::CodexListMessages => "codex.listMessages",
         MachineDataPlaneOperation::CodexSendMessage => "codex.sendMessage",
@@ -443,6 +444,7 @@ fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -
             }
         }
         MachineDataPlaneOperation::CodexListThreads
+        | MachineDataPlaneOperation::CodexArchiveThread
         | MachineDataPlaneOperation::ClaudeListSessions
         | MachineDataPlaneOperation::GeminiListSessions
         | MachineDataPlaneOperation::FsListDirectory
@@ -536,6 +538,9 @@ async fn dispatch_request(
                 &[],
             )
             .await
+        }
+        MachineDataPlaneOperation::CodexArchiveThread => {
+            provider_session_ops::codex_archive_thread(config, &payload).await
         }
         MachineDataPlaneOperation::CodexOpenThread => {
             provider_session_ops::codex_open_thread(config, &payload).await

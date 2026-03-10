@@ -58,6 +58,7 @@ public protocol SessionProjectRemovingAction: Sendable {
 
 public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionProjectsStreamingAction {
     private struct MachineProjectsBatch: Sendable {
+        let machineID: String
         let projects: [SessionMachineProject]
         let error: Error?
     }
@@ -180,6 +181,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
                                 )
                             }
                             return MachineProjectsBatch(
+                                machineID: machine.id,
                                 projects: machineProjects.map {
                                     SessionMachineProject(
                                         machineID: machine.id,
@@ -192,6 +194,7 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
                             )
                         } catch {
                             return MachineProjectsBatch(
+                                machineID: machine.id,
                                 projects: [],
                                 error: error
                             )
@@ -206,10 +209,10 @@ public actor SessionProjectsLoadUseCase: SessionProjectsLoadingAction, SessionPr
                     }
                     projects.append(contentsOf: batch.projects)
                     projects = sortedProjects(projects)
-                    if batch.projects.isEmpty == false {
+                    if batch.error == nil {
                         continuation.yield(
                             SessionProjectsLoadSnapshot(
-                                machineID: batch.projects.first?.machineID,
+                                machineID: batch.machineID,
                                 projects: batch.projects,
                                 errorMessage: nil,
                                 isFinal: false

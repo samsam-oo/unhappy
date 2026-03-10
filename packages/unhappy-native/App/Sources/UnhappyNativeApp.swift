@@ -102,6 +102,7 @@ struct UnhappyNativeApp: App {
             claudeService: machinesService,
             geminiService: machinesService
         )
+        let directSessionArchiver = DirectSessionArchiveUseCase(codexService: machinesService)
         let directSessionFileLoader = DirectSessionFileLoadUseCase(service: machinesService)
         let directSessionReviewLoader = DirectSessionReviewLoadUseCase(service: machinesService)
         let directSessionWorktreeLoader = DirectSessionWorktreeLoadUseCase(service: machinesService)
@@ -125,6 +126,7 @@ struct UnhappyNativeApp: App {
                 projectOpener: sessionProjectOpener,
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
+                upstreamSessionArchiver: directSessionArchiver,
                 deleteUseCase: sessionDeleteUseCase
             )
         }
@@ -145,6 +147,7 @@ struct UnhappyNativeApp: App {
                 identity: identity,
                 loader: directSessionMessagesLoader,
                 sender: directSessionMessageSender,
+                archiver: directSessionArchiver,
                 capabilitiesLoader: directSessionCapabilitiesLoader,
                 fileLoader: directSessionFileLoader,
                 reviewLoader: directSessionReviewLoader,
