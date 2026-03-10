@@ -328,7 +328,7 @@ struct HomeRegularProjectsTab: View {
     }
 
     private var isRefreshingProjectContent: Bool {
-        viewModel.isLoading || viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions
+        viewModel.isLoading || viewModel.isLoadingProjects
     }
 
     private var shouldShowProjectsStatusRow: Bool {
@@ -344,12 +344,12 @@ struct HomeRegularProjectsTab: View {
     private var isPreparingProjectsFromLoadedSessions: Bool {
         !viewModel.sessions.isEmpty
             && !showsSessionSidebarList
-            && (viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions)
+            && viewModel.isLoadingProjects
     }
 
     private var projectGroups: [SessionProjectGroup] {
         SessionListPresentationBuilder.projectGroups(
-            upstreamSessions: viewModel.aggregatedProjectRows,
+            upstreamSessions: [],
             projects: viewModel.projects
         )
     }

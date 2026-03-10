@@ -241,7 +241,7 @@ public struct SessionsView: View {
     }
 
     private var isRefreshingProjectContent: Bool {
-        viewModel.isLoading || viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions
+        viewModel.isLoading || viewModel.isLoadingProjects
     }
 
     private var shouldShowProjectsStatusRow: Bool {
@@ -257,7 +257,7 @@ public struct SessionsView: View {
     private var isPreparingProjectsFromLoadedSessions: Bool {
         !viewModel.sessions.isEmpty
             && !hasSidebarRows
-            && (viewModel.isLoadingProjects || viewModel.isLoadingUpstreamSessions)
+            && viewModel.isLoadingProjects
     }
 
     @ViewBuilder
@@ -339,7 +339,7 @@ public struct SessionsView: View {
 
     private var projectGroups: [SessionProjectGroup] {
         SessionListPresentationBuilder.projectGroups(
-            upstreamSessions: viewModel.aggregatedProjectRows,
+            upstreamSessions: [],
             projects: viewModel.projects
         )
     }
