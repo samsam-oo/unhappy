@@ -171,14 +171,89 @@ struct MachinesServiceCachingTests {
         let prewarmedMachineIDs = await rpcDirectoryService.prewarmedMachineIDs
         #expect(prewarmedMachineIDs == ["machine-1", "machine-1"])
     }
+
+    @Test
+    func fetchAgentCapabilitiesPrefersRPCWhenLegacyEndpointSaysNotConnected() async throws {
+        let httpClient = CountingMachineHTTPClient(
+            responseData: Data(#"{"success":false,"error":"Machine daemon is not connected"}"#.utf8),
+            statusCode: 409
+        )
+        let rpcDirectoryService = NoopMachineRPCDirectoryService(
+            invokeCommandResult: .success(
+                Data(
+                    """
+                    {
+                      "models": ["gpt-5-codex"],
+                      "reasoningEfforts": ["medium"],
+                      "details": [
+                        { "id": "gpt-5-codex", "label": "GPT-5 Codex" }
+                      ]
+                    }
+                    """.utf8
+                )
+            )
+        )
+        let service = URLSessionMachinesService(
+            httpClient: httpClient,
+            rpcDirectoryService: rpcDirectoryService
+        )
+
+        let capabilities = try await service.fetchAgentCapabilities(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token",
+            machineID: "machine-1",
+            agent: .codex
+        )
+
+        #expect(capabilities.models == ["gpt-5-codex"])
+        #expect(capabilities.reasoningEfforts == ["medium"])
+        #expect(await httpClient.requestCount == 0)
+        #expect(await rpcDirectoryService.invokedCommands == ["list-models"])
+    }
+
+    @Test
+    func fetchAgentCapabilitiesFallsBackToLegacyEndpointWhenRPCFails() async throws {
+        let httpClient = CountingMachineHTTPClient(
+            responseData: Data(
+                """
+                {
+                  "models": ["claude-sonnet-4-5"],
+                  "reasoningEfforts": ["high"]
+                }
+                """.utf8
+            ),
+            statusCode: 200
+        )
+        let rpcDirectoryService = NoopMachineRPCDirectoryService(
+            invokeCommandResult: .failure(MachinesAPIError.rpcTimedOut)
+        )
+        let service = URLSessionMachinesService(
+            httpClient: httpClient,
+            rpcDirectoryService: rpcDirectoryService
+        )
+
+        let capabilities = try await service.fetchAgentCapabilities(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token",
+            machineID: "machine-1",
+            agent: .claude
+        )
+
+        #expect(capabilities.models == ["claude-sonnet-4-5"])
+        #expect(capabilities.reasoningEfforts == ["high"])
+        #expect(await httpClient.requestCount == 1)
+        #expect(await rpcDirectoryService.invokedCommands == ["list-models"])
+    }
 }
 
 private actor CountingMachineHTTPClient: MachineHTTPClient {
     let responseData: Data
+    let statusCode: Int
     private(set) var requestCount = 0
 
-    init(responseData: Data) {
+    init(responseData: Data, statusCode: Int = 200) {
         self.responseData = responseData
+        self.statusCode = statusCode
     }
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -187,7 +262,7 @@ private actor CountingMachineHTTPClient: MachineHTTPClient {
             responseData,
             HTTPURLResponse(
                 url: request.url ?? URL(string: "https://api.unhappy.im")!,
-                statusCode: 200,
+                statusCode: statusCode,
                 httpVersion: nil,
                 headerFields: nil
             )!
@@ -196,6 +271,13 @@ private actor CountingMachineHTTPClient: MachineHTTPClient {
 }
 
 private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
+    private let invokeCommandResult: Result<Data, Error>
+    private(set) var invokedCommands: [String] = []
+
+    init(invokeCommandResult: Result<Data, Error> = .success(Data())) {
+        self.invokeCommandResult = invokeCommandResult
+    }
+
     func fetchProjects(
         serverURL: URL,
         token: String,
@@ -387,7 +469,8 @@ private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
         command: String,
         params: [String : RPCParameterValue]
     ) async throws -> Data {
-        Data()
+        invokedCommands.append(command)
+        return try invokeCommandResult.get()
     }
 }
 
