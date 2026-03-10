@@ -115,6 +115,15 @@ public protocol MachineRPCDirectoryListing: Sendable {
         cursor: String?
     ) async throws -> APICodexThreadsPage
 
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult
+
     func fetchClaudeSessionsPage(
         serverURL: URL,
         token: String,
@@ -381,6 +390,42 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             )
         }
         return try MachinesAPI.decodeCodexThreadsPageResponse(responseData)
+    }
+
+    public func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedThreadID = threadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedThreadID.isEmpty else {
+            throw MachinesAPIError.missingThreadID
+        }
+
+        var bodyObject: [String: Any] = [
+            "threadId": normalizedThreadID,
+        ]
+        let normalizedTranscriptPath = transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedTranscriptPath, !normalizedTranscriptPath.isEmpty {
+            bodyObject["transcriptPath"] = normalizedTranscriptPath
+        }
+
+        let responseData = try await dataPlaneClient.requestJSON(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            operation: .codexArchiveThread,
+            bodyObject: bodyObject
+        )
+        return try JSONDecoder().decode(APIMachineCommandResult.self, from: responseData)
     }
 
     public func fetchClaudeSessionsPage(

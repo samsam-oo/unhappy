@@ -412,3 +412,48 @@ struct MockProjectRemover: SessionProjectRemovingAction {
         }
     }
 }
+
+enum MockUpstreamSessionArchiverError: Error, Sendable {
+    case failed
+}
+
+actor UpstreamSessionArchiveRecorder {
+    private var sessionIDs: [String] = []
+
+    func append(_ sessionID: String) {
+        sessionIDs.append(sessionID)
+    }
+
+    func snapshot() -> [String] {
+        sessionIDs
+    }
+}
+
+struct RecordingUpstreamSessionArchiver: DirectSessionArchivingAction {
+    let recorder: UpstreamSessionArchiveRecorder
+
+    func archiveSession(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws {
+        await recorder.append(identity.upstreamSessionID)
+    }
+}
+
+struct MockUpstreamSessionArchiver: DirectSessionArchivingAction {
+    let result: Result<Void, MockUpstreamSessionArchiverError>
+
+    func archiveSession(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws {
+        switch result {
+        case .success:
+            return
+        case .failure(let error):
+            throw error
+        }
+    }
+}

@@ -440,6 +440,7 @@ public enum MachinesAPI {
 public enum MachinesAPIError: LocalizedError, Equatable {
     case missingToken
     case missingMachineID
+    case missingThreadID
     case missingDirectory
     case missingPath
     case missingCommand
@@ -457,6 +458,8 @@ public enum MachinesAPIError: LocalizedError, Equatable {
             return "API token is required"
         case .missingMachineID:
             return "Machine ID is required"
+        case .missingThreadID:
+            return "Thread ID is required"
         case .missingDirectory:
             return "Directory is required"
         case .missingPath:
@@ -856,6 +859,17 @@ public protocol MachineCodexThreadsFetching: Sendable {
     ) async throws -> [APICodexThreadSummary]
 }
 
+public protocol MachineCodexThreadArchiving: Sendable {
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult
+}
+
 public protocol MachineCodexThreadMessagesFetching: Sendable {
     func fetchCodexThreadMessages(
         serverURL: URL,
@@ -1102,6 +1116,7 @@ public actor URLSessionMachinesService:
     MachineFileReading,
     MachineBashRunning,
     MachineCodexThreadsFetching,
+    MachineCodexThreadArchiving,
     MachineCodexThreadMessagesFetching,
     MachineCodexThreadMessaging,
     MachineClaudeSessionsFetching,

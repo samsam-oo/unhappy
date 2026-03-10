@@ -27,6 +27,7 @@ export const MachineDataPlaneOperationSchema = z.enum([
   'project.open',
   'project.remove',
   'codex.listThreads',
+  'codex.archiveThread',
   'codex.openThread',
   'codex.listMessages',
   'codex.sendMessage',

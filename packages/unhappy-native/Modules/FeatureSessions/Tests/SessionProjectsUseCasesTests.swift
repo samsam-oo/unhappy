@@ -218,6 +218,42 @@ struct SessionProjectsUseCasesTests {
         #expect(finalSnapshot?.machineID == nil)
         #expect(finalSnapshot?.projects.isEmpty == true)
     }
+
+    @Test
+    func loadProjectsStreamYieldsEmptyMachineSnapshotWhenNoExplicitProjectsRemain() async throws {
+        let service = MockProjectsService(
+            machines: [
+                APIMachine(
+                    id: "machine-1",
+                    active: true,
+                    activeAt: 10,
+                    createdAt: 1,
+                    updatedAt: 10,
+                    metadataVersion: 1,
+                    metadata: #"{"displayName":"Work Mac"}"#,
+                    daemonStateVersion: 1,
+                    daemonState: nil,
+                    dataEncryptionKey: nil
+                )
+            ],
+            projectsByMachineID: [
+                "machine-1": []
+            ]
+        )
+        let useCase = SessionProjectsLoadUseCase(service: service)
+        var iterator = await useCase.loadProjectsStream(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        ).makeAsyncIterator()
+
+        let firstSnapshot = await iterator.next()
+        let finalSnapshot = await iterator.next()
+
+        #expect(firstSnapshot?.isFinal == false)
+        #expect(firstSnapshot?.machineID == "machine-1")
+        #expect(firstSnapshot?.projects.isEmpty == true)
+        #expect(finalSnapshot?.isFinal == true)
+    }
 }
 
 private actor MockProjectsService: MachinesFetching, MachineProjectsFetching {

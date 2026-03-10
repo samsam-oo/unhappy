@@ -7,6 +7,7 @@ public struct SessionRecentView: View {
     let serverURLString: String
     let token: String
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
+    @State private var archiveErrorMessage: String?
 
     public init(
         viewModel: SessionsViewModel,
@@ -41,6 +42,23 @@ public struct SessionRecentView: View {
         }
         .navigationTitle("Recent Sessions")
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+            "Couldn't Archive Session",
+            isPresented: Binding(
+                get: { archiveErrorMessage?.isEmpty == false },
+                set: { isPresented in
+                    if !isPresented {
+                        archiveErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                archiveErrorMessage = nil
+            }
+        } message: {
+            Text(archiveErrorMessage ?? "")
+        }
         .refreshable {
             await viewModel.load(
                 serverURLString: serverURLString,
@@ -59,10 +77,36 @@ public struct SessionRecentView: View {
                     token: token,
                     makeViewModel: {
                         makeDirectSessionViewModel(identity)
+                    },
+                    onArchived: {
+                        Task {
+                            await viewModel.loadUpstreamSessions(
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                        }
                     }
                 )
             } label: {
                 RecentDirectSessionRow(identity: identity, updatedAt: entry.updatedAt)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if identity.provider == .codex {
+                    Button(role: .destructive) {
+                        Task {
+                            let archived = await viewModel.archiveUpstreamSession(
+                                identity,
+                                serverURLString: serverURLString,
+                                token: token
+                            )
+                            guard !archived else { return }
+                            archiveErrorMessage = viewModel.upstreamSessionsErrorMessage ?? "Failed to archive session"
+                        }
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                    }
+                    .disabled(viewModel.isArchiving(upstreamSessionID: identity.id))
+                }
             }
         }
     }

@@ -178,6 +178,69 @@ pub async fn codex_open_thread(config: &Config, payload: &Value) -> Result<Value
     }))
 }
 
+pub async fn codex_archive_thread(config: &Config, payload: &Value) -> Result<Value> {
+    let thread_id = required_string(payload, "threadId")?;
+    let transcript_path = payload
+        .get("transcriptPath")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let codex_home = transcript_path
+        .and_then(extract_codex_home_from_transcript_path)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| config.codex_home_dir());
+
+    let mut child = Command::new("codex")
+        .arg("app-server")
+        .env("CODEX_HOME", &codex_home)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .context("failed to spawn codex app-server")?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("missing codex app-server stdin")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("missing codex app-server stdout")?;
+    let mut reader = BufReader::new(stdout).lines();
+
+    let _ = call_rpc(
+        &mut stdin,
+        &mut reader,
+        1,
+        "initialize",
+        json!({
+            "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" },
+            "capabilities": { "experimentalApi": true }
+        }),
+    )
+    .await
+    .context("codex app-server initialize failed")?;
+
+    let _ = call_rpc(
+        &mut stdin,
+        &mut reader,
+        2,
+        "thread/archive",
+        json!({
+            "threadId": thread_id
+        }),
+    )
+    .await
+    .context("codex thread/archive failed")?;
+
+    let _ = child.start_kill();
+    Ok(json!({
+        "success": true,
+        "message": "Archived thread"
+    }))
+}
+
 pub async fn codex_list_messages(payload: &Value) -> Result<Value> {
     let path = required_string(payload, "path")?;
     let limit = payload

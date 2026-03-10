@@ -57,6 +57,7 @@ public enum MachineDataPlaneOperation: String, Codable, CaseIterable, Sendable {
     case projectOpen = "project.open"
     case projectRemove = "project.remove"
     case codexListThreads = "codex.listThreads"
+    case codexArchiveThread = "codex.archiveThread"
     case codexOpenThread = "codex.openThread"
     case codexListMessages = "codex.listMessages"
     case codexSendMessage = "codex.sendMessage"
