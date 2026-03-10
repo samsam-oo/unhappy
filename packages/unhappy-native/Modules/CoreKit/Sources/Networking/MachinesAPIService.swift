@@ -121,15 +121,26 @@ extension URLSessionMachinesService {
             return try await inFlightTask.value
         }
 
-        let rpcDirectoryService = self.rpcDirectoryService
+        let httpClient = self.httpClient
         let task = Task<[APIMachineProjectSummary], Error> {
-            try await rpcDirectoryService.fetchProjects(
+            let request = try MachinesAPI.makeProjectCatalogProjectsRequest(
                 serverURL: serverURL,
                 token: normalizedToken,
-                machineID: normalizedMachineID,
-                explicitOnly: explicitOnly,
-                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+                machineID: normalizedMachineID
             )
+            let (data, http) = try await httpClient.data(for: request)
+            guard (200..<300).contains(http.statusCode) else {
+                let errorMessage = parseServerErrorMessage(from: data)
+                if let errorMessage {
+                    throw MachinesAPIError.rpcCallFailed(errorMessage)
+                }
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+            let projects = try MachinesAPI.decodeProjectsResponse(data)
+            if explicitOnly {
+                return projects.filter(\.openedExplicitly)
+            }
+            return projects
         }
 
         inFlightProjectFetches[cacheKey] = task

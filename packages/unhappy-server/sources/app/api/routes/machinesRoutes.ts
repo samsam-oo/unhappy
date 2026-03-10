@@ -78,8 +78,43 @@ export function machinesRoutes(app: Fastify) {
         const projectPath = scope.projectPath.trim();
         const observedAt = new Date(scope.observedAtMs ?? Date.now());
         const providerSessionIds = scope.sessions.map((session) => session.providerSessionId.trim());
+        const latestUpdatedAt = scope.sessions.reduce<Date>(
+            (currentLatest, session) => {
+                const candidate = new Date(session.providerUpdatedAt);
+                if (Number.isNaN(candidate.getTime())) {
+                    return currentLatest;
+                }
+                return candidate > currentLatest ? candidate : currentLatest;
+            },
+            observedAt
+        );
 
         await db.$transaction(async (tx) => {
+            await tx.machineProjectCatalogEntry.upsert({
+                where: {
+                    accountId_machineId_projectPath: {
+                        accountId: userId,
+                        machineId,
+                        projectPath,
+                    },
+                },
+                create: {
+                    accountId: userId,
+                    machineId,
+                    projectPath,
+                    displayPath: projectPath,
+                    openedExplicitly: true,
+                    latestUpdatedAt,
+                    lastObservedAt: observedAt,
+                },
+                update: {
+                    displayPath: projectPath,
+                    openedExplicitly: true,
+                    latestUpdatedAt,
+                    lastObservedAt: observedAt,
+                },
+            });
+
             await tx.machineSessionCatalogEntry.deleteMany({
                 where: {
                     accountId: userId,
@@ -137,6 +172,69 @@ export function machinesRoutes(app: Fastify) {
                     },
                 });
             }
+        });
+    }
+
+    async function buildMachineProjectCatalogRows(
+        userId: string,
+        machineId: string
+    ) {
+        const projects = await db.machineProjectCatalogEntry.findMany({
+            where: {
+                accountId: userId,
+                machineId,
+                openedExplicitly: true,
+            },
+            orderBy: [
+                { latestUpdatedAt: 'desc' },
+                { projectPath: 'asc' },
+            ],
+        });
+
+        const sessions = await db.machineSessionCatalogEntry.findMany({
+            where: {
+                accountId: userId,
+                machineId,
+                projectPath: {
+                    in: projects.map((project) => project.projectPath),
+                },
+            },
+            select: {
+                projectPath: true,
+                provider: true,
+                providerUpdatedAt: true,
+            },
+        });
+
+        const countsByProject = new Map<string, { codex: number; claude: number; latestUpdatedAt: Date | null }>();
+        for (const session of sessions) {
+            const current = countsByProject.get(session.projectPath) ?? {
+                codex: 0,
+                claude: 0,
+                latestUpdatedAt: null,
+            };
+            if (session.provider === 'codex') {
+                current.codex += 1;
+            } else if (session.provider === 'claude') {
+                current.claude += 1;
+            }
+            if (!current.latestUpdatedAt || session.providerUpdatedAt > current.latestUpdatedAt) {
+                current.latestUpdatedAt = session.providerUpdatedAt;
+            }
+            countsByProject.set(session.projectPath, current);
+        }
+
+        return projects.map((project) => {
+            const counts = countsByProject.get(project.projectPath);
+            const latestUpdatedAt = counts?.latestUpdatedAt ?? project.latestUpdatedAt;
+            return {
+                path: project.projectPath,
+                displayPath: project.displayPath ?? project.projectPath,
+                latestUpdatedAt: latestUpdatedAt.toISOString(),
+                codexThreadCount: counts?.codex ?? 0,
+                claudeSessionCount: counts?.claude ?? 0,
+                openedExplicitly: true,
+            };
         });
     }
 
@@ -588,6 +686,28 @@ export function machinesRoutes(app: Fastify) {
             })),
             hasNext,
             nextCursor: hasNext ? String(offset + limit) : null,
+        });
+    });
+
+    app.get('/v1/machines/:id/project-catalog/projects', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const projects = await buildMachineProjectCatalogRows(userId, id);
+        return reply.send({
+            success: true,
+            projects,
         });
     });
 
