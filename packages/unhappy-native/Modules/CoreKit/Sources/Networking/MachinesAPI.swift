@@ -135,6 +135,42 @@ public enum MachinesAPI {
         return request
     }
 
+    public static func makeProjectSessionsCatalogRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        limit: Int = 100,
+        cursor: String? = nil
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let catalogURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/session-catalog/project-sessions")
+        guard var components = URLComponents(url: catalogURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "path", value: normalizedPath),
+            URLQueryItem(name: "limit", value: "\(min(max(limit, 1), 200))"),
+        ]
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: normalizedCursor))
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(url: url, method: "GET", token: token)
+    }
+
     public static func makeRemoveProjectRequest(
         serverURL: URL,
         token: String,
