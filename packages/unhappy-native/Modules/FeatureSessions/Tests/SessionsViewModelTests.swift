@@ -902,6 +902,74 @@ struct SessionsViewModelTests {
         #expect(model.projectSessionsError(machineID: "machine-1", projectPath: "/repo/one") == nil)
     }
 
+    @Test
+    func aggregatedRecentSessionsPreferProjectScopedRowsOverOlderGlobalRows() async throws {
+        let olderGlobalRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Older Global",
+                cwd: "/repo/one",
+                path: "/tmp/old.jsonl",
+                updatedAt: "2026-03-06T00:00:00Z",
+                createdAt: "2026-03-05T23:00:00Z",
+                archived: false
+            )
+        )
+        let newerProjectRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Newer Scoped",
+                cwd: "/repo/one",
+                path: "/tmp/new.jsonl",
+                updatedAt: "2026-03-06T01:00:00Z",
+                createdAt: "2026-03-06T00:30:00Z",
+                archived: false
+            )
+        )
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            projectSessionsLoader: RecordingProjectSessionsLoader(result: .success([newerProjectRow])),
+            upstreamSessionsLoader: MockUpstreamSessionsLoader(result: .success([olderGlobalRow])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.refreshProject(
+            machineID: "machine-1",
+            projectPath: "/repo/one",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        _ = model.aggregatedRecentSessions
+
+        #expect(model.aggregatedRecentSessions.count == 1)
+        #expect(model.aggregatedRecentSessions.first?.title == "Newer Scoped")
+        #expect(model.aggregatedRecentSessions.first?.summary.path == "/tmp/new.jsonl")
+    }
+
 
     @Test
     func loadMoreAppendsNextPageRows() async throws {

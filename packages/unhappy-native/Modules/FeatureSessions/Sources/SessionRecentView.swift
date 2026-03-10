@@ -23,7 +23,7 @@ public struct SessionRecentView: View {
 
     public var body: some View {
         let sections = SessionRecentPresentationBuilder.make(
-            upstreamSessions: viewModel.upstreamSessions
+            upstreamSessions: viewModel.aggregatedRecentSessions
         )
 
         List {

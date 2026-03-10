@@ -150,6 +150,31 @@ public final class SessionsViewModel: ObservableObject {
         return projectScopedSessionErrors[scopeID]
     }
 
+    public var aggregatedRecentSessions: [SessionLinkedUpstreamSession] {
+        var rowsByID: [String: SessionLinkedUpstreamSession] = [:]
+        for row in upstreamSessions {
+            rowsByID[row.id] = row
+        }
+        for rows in projectScopedSessions.values {
+            for row in rows {
+                let existing = rowsByID[row.id]
+                if let existing, existing.sortTimestamp >= row.sortTimestamp {
+                    continue
+                }
+                rowsByID[row.id] = row
+            }
+        }
+        return rowsByID.values.sorted { lhs, rhs in
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
     public func load(serverURLString: String, token: String) async {
         guard !isLoading else { return }
         isLoading = true
