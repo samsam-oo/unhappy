@@ -6,6 +6,9 @@ enum SessionTimestampPresentation {
         now: Date = .now,
         calendar: Calendar = .current
     ) -> String {
+        guard unixTimeSeconds > 0 else {
+            return "Unknown"
+        }
         let date = Date(timeIntervalSince1970: unixTimeSeconds)
         if calendar.isDateInToday(date) {
             return date.formatted(date: .omitted, time: .shortened)
