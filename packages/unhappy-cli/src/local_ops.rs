@@ -376,6 +376,11 @@ async fn list_codex_models(config: &Config) -> Result<Value> {
 }
 
 fn normalize_codex_model_list(result: Value) -> Value {
+    let top_level_reasoning = result
+        .get("reasoningEfforts")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let rows = result
         .get("data")
         .or_else(|| result.get("items"))
@@ -386,6 +391,12 @@ fn normalize_codex_model_list(result: Value) -> Value {
     let mut models = Vec::<String>::new();
     let mut reasoning = Vec::<String>::new();
     let mut metadata = Vec::<Value>::new();
+
+    for effort in top_level_reasoning {
+        if let Some(value) = normalized_reasoning_effort_value(&effort) {
+            reasoning.push(value);
+        }
+    }
 
     for row in rows {
         if let Some(id) = row
@@ -411,11 +422,20 @@ fn normalize_codex_model_list(result: Value) -> Value {
         if let Some(default_effort) = object
             .get("defaultReasoningEffort")
             .or_else(|| object.get("default_reasoning_effort"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+            .and_then(normalized_reasoning_effort_value)
         {
-            reasoning.push(default_effort.to_string());
+            reasoning.push(default_effort);
+        }
+        if let Some(supported_efforts) = object
+            .get("supportedReasoningEfforts")
+            .or_else(|| object.get("supported_reasoning_efforts"))
+            .and_then(Value::as_array)
+        {
+            for effort in supported_efforts {
+                if let Some(value) = normalized_reasoning_effort_value(effort) {
+                    reasoning.push(value);
+                }
+            }
         }
         metadata.push(row);
     }
@@ -434,6 +454,28 @@ fn normalize_codex_model_list(result: Value) -> Value {
         "reasoningEfforts": reasoning,
         "modelMetadata": metadata
     })
+}
+
+fn normalized_reasoning_effort_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Value::Object(object) => object
+            .get("reasoningEffort")
+            .or_else(|| object.get("reasoning_effort"))
+            .or_else(|| object.get("effort"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|effort| !effort.is_empty())
+            .map(ToOwned::to_owned),
+        _ => None,
+    }
 }
 
 fn build_tree_node(path: &Path, max_depth: usize) -> Result<Value> {
@@ -522,4 +564,55 @@ fn resolve_path(raw: &str) -> PathBuf {
 
 fn home_dir() -> PathBuf {
     PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_codex_model_list_preserves_models_and_supported_reasoning_efforts() {
+        let result = normalize_codex_model_list(json!({
+            "data": [
+                {
+                    "id": "gpt-5.4",
+                    "displayName": "gpt-5.4",
+                    "defaultReasoningEffort": "medium",
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low" },
+                        { "reasoningEffort": "medium" },
+                        { "reasoningEffort": "high" },
+                        { "reasoningEffort": "xhigh" }
+                    ]
+                },
+                {
+                    "id": "gpt-5.3-codex",
+                    "displayName": "gpt-5.3-codex",
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "medium" },
+                        { "reasoningEffort": "xhigh" }
+                    ]
+                }
+            ]
+        }));
+
+        assert_eq!(
+            result["models"].as_array().expect("models"),
+            &vec![
+                Value::String("gpt-5.3-codex".to_string()),
+                Value::String("gpt-5.4".to_string()),
+            ]
+        );
+        assert_eq!(
+            result["reasoningEfforts"].as_array().expect("reasoning"),
+            &vec![
+                Value::String("auto".to_string()),
+                Value::String("high".to_string()),
+                Value::String("low".to_string()),
+                Value::String("medium".to_string()),
+                Value::String("xhigh".to_string()),
+            ]
+        );
+        assert_eq!(result["modelMetadata"].as_array().map(Vec::len), Some(2));
+    }
 }
