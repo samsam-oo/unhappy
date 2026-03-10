@@ -155,11 +155,7 @@ struct CodexThreadRow: View {
     }
 
     private var threadName: String {
-        let trimmed = thread.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let trimmed, !trimmed.isEmpty {
-            return trimmed
-        }
-        return "Untitled"
+        thread.displayTitle
     }
 
     private var dateText: String? {
@@ -179,8 +175,8 @@ struct ClaudeSessionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text(session.id)
-                    .font(.caption.monospaced())
+                Text(session.displayTitle)
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer()
                 if isResuming {
@@ -192,6 +188,10 @@ struct ClaudeSessionRow: View {
                         .foregroundStyle(.blue)
                 }
             }
+            Text(session.id)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             if let cwd = session.cwd, !cwd.isEmpty {
                 Text(cwd)
                     .font(.footnote)

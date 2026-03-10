@@ -240,7 +240,7 @@ private struct CodexThreadSelectionRow: View {
     }
 
     private var title: String {
-        trimmedNonEmpty(thread.name) ?? "Untitled"
+        thread.displayTitle
     }
 }
 
@@ -249,9 +249,15 @@ private struct ClaudeSessionSelectionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(session.id)
+            Text(session.displayTitle)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
+            if session.displayTitle != session.id {
+                Text(session.id)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             if let cwd = trimmedNonEmpty(session.cwd) {
                 Text(cwd)
                     .font(.caption.monospaced())
