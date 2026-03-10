@@ -1,6 +1,8 @@
 import SwiftUI
 
 public struct AboutView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     public init() {}
 
     public var body: some View {
@@ -20,10 +22,16 @@ public struct AboutView: View {
     private var hero: some View {
         VStack(alignment: .leading, spacing: 12) {
             Image("UnhappyMark")
+                .renderingMode(.template)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 84, height: 84)
+                .foregroundStyle(colorScheme == .dark ? .white : .black)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.primary.opacity(colorScheme == .dark ? 0.14 : 0.18), lineWidth: 1)
+                }
             Text("Unhappy")
                 .font(.largeTitle.weight(.bold))
             Text("A focused client for projects, sessions, approvals, and machine sync.")
