@@ -19,36 +19,6 @@ public struct SessionLinkedUpstreamSession: Identifiable, Equatable, Sendable {
         self.summary = summary
     }
 
-    init?(session: APISession) {
-        let context = SessionRuntimeContext(session: session)
-        guard let upstreamIdentity = context.upstreamIdentity else { return nil }
-        guard let provider = context.provider else { return nil }
-        guard let machineDisplayName = context.machineDisplayName, !machineDisplayName.isEmpty else {
-            return nil
-        }
-
-        self.init(
-            machineID: upstreamIdentity.machineID,
-            machineDisplayName: machineDisplayName,
-            wrappedMachineDataEncryptionKey: session.dataEncryptionKey,
-            summary: APIUpstreamSessionSummary(
-                id: upstreamIdentity.upstreamSessionID,
-                provider: provider,
-                title: SessionDisplayTitleResolver.resolvedDisplayTitle(for: session, context: context)
-                    ?? SessionDisplayTitleResolver.fallbackTitle(for: session),
-                cwd: context.workingDirectory,
-                path: upstreamIdentity.transcriptPath,
-                updatedAt: Self.iso8601Timestamp(session.updatedAt),
-                createdAt: Self.iso8601Timestamp(session.createdAt),
-                archived: session.archived,
-                model: context.currentModelLabel,
-                effort: Self.decodeReasoningEffort(context.currentEffortLabel),
-                preview: session.lastMessage?.content?.payload,
-                statusType: session.active ? "running" : nil
-            )
-        )
-    }
-
     public var id: String {
         "\(machineID)|\(summary.provider.rawValue)|\(summary.id)"
     }
@@ -89,26 +59,4 @@ public struct SessionLinkedUpstreamSession: Identifiable, Equatable, Sendable {
         return formatter
     }
 
-    private static func iso8601Timestamp(_ timestamp: TimeInterval) -> String? {
-        guard timestamp > 0 else { return nil }
-        return makeFractionalFormatter().string(from: Date(timeIntervalSince1970: timestamp))
-    }
-
-    private static func decodeReasoningEffort(_ raw: String?) -> APISessionReasoningEffort? {
-        guard let raw else { return nil }
-        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "low":
-            return .low
-        case "medium":
-            return .medium
-        case "high":
-            return .high
-        case "max":
-            return .max
-        case "xhigh":
-            return .xhigh
-        default:
-            return nil
-        }
-    }
 }
