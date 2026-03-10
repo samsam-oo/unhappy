@@ -18,33 +18,7 @@ pub async fn list_models(config: &Config, agent: Option<&str>) -> Result<Value> 
     match agent.unwrap_or_default().trim() {
         "codex" => list_codex_models(config).await,
         "claude" => list_claude_models(config).await,
-        "gemini" => Ok(json!({
-            "success": true,
-            "models": ["auto", "gemini-3-flash-preview", "gemini-3-pro-preview"],
-            "reasoningEfforts": ["auto"],
-            "modelMetadata": [
-                {
-                    "id": "auto",
-                    "model": "auto",
-                    "displayName": "Auto",
-                    "description": "Let Gemini CLI choose the best current model.",
-                    "isDefault": true
-                },
-                {
-                    "id": "gemini-3-flash-preview",
-                    "model": "gemini-3-flash-preview",
-                    "displayName": "Gemini 3 Flash Preview",
-                    "description": "Fast general-purpose Gemini 3 preview model."
-                },
-                {
-                    "id": "gemini-3-pro-preview",
-                    "model": "gemini-3-pro-preview",
-                    "displayName": "Gemini 3 Pro Preview",
-                    "description": "Higher-capability Gemini 3 preview model.",
-                    "upgrade": "preview"
-                }
-            ]
-        })),
+        "gemini" => Ok(gemini_model_payload()),
         _ => Ok(json!({
             "success": false,
             "error": "Agent is required. Choose one of: 'claude', 'codex', 'gemini'."
@@ -533,6 +507,35 @@ fn claude_model_metadata() -> Vec<Value> {
     ]
 }
 
+fn gemini_model_payload() -> Value {
+    json!({
+        "success": true,
+        "models": ["auto", "gemini-2.5-pro", "gemini-2.5-flash"],
+        "reasoningEfforts": ["auto"],
+        "modelMetadata": [
+            {
+                "id": "auto",
+                "model": "auto",
+                "displayName": "Auto",
+                "description": "Let Gemini CLI choose the best available Gemini model family for the current account.",
+                "isDefault": true
+            },
+            {
+                "id": "gemini-2.5-pro",
+                "model": "gemini-2.5-pro",
+                "displayName": "Gemini 2.5 Pro",
+                "description": "Current Gemini CLI default family according to the official Gemini CLI documentation."
+            },
+            {
+                "id": "gemini-2.5-flash",
+                "model": "gemini-2.5-flash",
+                "displayName": "Gemini 2.5 Flash",
+                "description": "Official Gemini CLI example model for explicit model selection."
+            }
+        ]
+    })
+}
+
 async fn detect_claude_reasoning_efforts(config: &Config) -> Vec<String> {
     let configured_command = config.provider_commands.resolve(Provider::Claude);
     let executable = if configured_command.executable() == "unhappy" {
@@ -754,6 +757,24 @@ mod tests {
         assert_eq!(
             ids,
             vec!["default", "sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"]
+        );
+    }
+
+    #[test]
+    fn gemini_model_list_uses_current_documented_models() {
+        let payload = gemini_model_payload();
+
+        assert_eq!(
+            payload["models"].as_array().expect("models"),
+            &vec![
+                Value::String("auto".to_string()),
+                Value::String("gemini-2.5-pro".to_string()),
+                Value::String("gemini-2.5-flash".to_string()),
+            ]
+        );
+        assert_eq!(
+            payload["reasoningEfforts"].as_array().expect("reasoning"),
+            &vec![Value::String("auto".to_string())]
         );
     }
 }
