@@ -417,7 +417,8 @@ fn build_function_call_output_backfill_message(
 fn extract_transcript_text(value: &Value) -> Option<String> {
     match value {
         Value::String(text) => {
-            let trimmed = text.trim();
+            let stripped = strip_inline_image_markup_text(text);
+            let trimmed = stripped.trim();
             (!trimmed.is_empty()).then(|| trimmed.to_string())
         }
         Value::Array(values) => {
@@ -484,31 +485,92 @@ fn normalize_transcript_assistant_content(content: &Value) -> Option<Value> {
 fn normalize_transcript_user_content(content: &Value) -> Value {
     match content {
         Value::Array(items) => {
+            let mut pending_image_alt_text = None::<String>;
             let normalized = items
                 .iter()
-                .filter_map(|item| match item {
-                    Value::Object(_) => Some(item.clone()),
-                    Value::String(text) if !text.trim().is_empty() => {
-                        Some(json!({ "type": "text", "text": text.trim() }))
-                    }
-                    _ => None,
-                })
+                .filter_map(|item| normalize_transcript_user_content_item(item, &mut pending_image_alt_text))
                 .collect::<Vec<_>>();
-            if normalized.is_empty() {
-                content.clone()
-            } else {
-                Value::Array(normalized)
-            }
+            Value::Array(normalized)
         }
         Value::String(text) => {
-            let trimmed = text.trim();
+            let trimmed = strip_inline_image_markup_text(text);
             if trimmed.is_empty() {
-                content.clone()
+                Value::Array(vec![])
             } else {
                 Value::Array(vec![json!({ "type": "text", "text": trimmed })])
             }
         }
+        Value::Object(_) => {
+            let mut pending_image_alt_text = None::<String>;
+            normalize_transcript_user_content_item(content, &mut pending_image_alt_text)
+                .unwrap_or_else(|| Value::Array(vec![]))
+        }
         _ => content.clone(),
+    }
+}
+
+fn normalize_transcript_user_content_item(
+    item: &Value,
+    pending_image_alt_text: &mut Option<String>,
+) -> Option<Value> {
+    match item {
+        Value::Object(object) => {
+            let content_type = object
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+
+            if content_type == "text" || content_type == "input_text" {
+                let raw_text = object
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+                    .or_else(|| object.get("input_text").and_then(Value::as_str).map(ToOwned::to_owned))
+                    .or_else(|| object.get("content").and_then(extract_transcript_text))
+                    .unwrap_or_default();
+                let (stripped_text, extracted_alt_text) =
+                    strip_inline_image_markup_with_name(&raw_text);
+                if pending_image_alt_text.is_none() {
+                    *pending_image_alt_text = extracted_alt_text;
+                }
+                let trimmed = stripped_text.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+
+                let mut normalized = object.clone();
+                if content_type == "input_text" {
+                    normalized.insert("input_text".to_string(), Value::String(trimmed.to_string()));
+                } else {
+                    normalized.insert("text".to_string(), Value::String(trimmed.to_string()));
+                }
+                return Some(Value::Object(normalized));
+            }
+
+            if is_image_content_type(content_type.as_str()) {
+                let mut normalized = object.clone();
+                if let Some(alt_text) = pending_image_alt_text.take() {
+                    normalized.entry("altText".to_string()).or_insert(Value::String(alt_text));
+                }
+                return Some(Value::Object(normalized));
+            }
+
+            Some(item.clone())
+        }
+        Value::String(text) => {
+            let (stripped_text, extracted_alt_text) = strip_inline_image_markup_with_name(text);
+            if pending_image_alt_text.is_none() {
+                *pending_image_alt_text = extracted_alt_text;
+            }
+            let trimmed = stripped_text.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            Some(json!({ "type": "text", "text": trimmed }))
+        }
+        _ => Some(item.clone()),
     }
 }
 
@@ -538,6 +600,69 @@ fn make_resume_backfill_local_id(
         hex.push_str(&format!("{byte:02x}"));
     }
     format!("codex-resume-{hex}")
+}
+
+fn is_image_content_type(content_type: &str) -> bool {
+    matches!(content_type, "image" | "input_image" | "image_url") || content_type.contains("image")
+}
+
+fn strip_inline_image_markup_text(raw: &str) -> String {
+    strip_inline_image_markup_with_name(raw).0
+}
+
+fn strip_inline_image_markup_with_name(raw: &str) -> (String, Option<String>) {
+    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+    let mut extracted_name = None::<String>;
+    let mut kept_lines = Vec::<String>::new();
+
+    for line in normalized.lines() {
+        let trimmed = line.trim();
+        if let Some(image_name) = parse_inline_image_wrapper_name(trimmed) {
+            if extracted_name.is_none() {
+                extracted_name = Some(image_name);
+            }
+            continue;
+        }
+        if trimmed == "</image>" {
+            continue;
+        }
+        kept_lines.push(line.to_string());
+    }
+
+    (collapse_blank_lines(&kept_lines.join("\n")), extracted_name)
+}
+
+fn parse_inline_image_wrapper_name(line: &str) -> Option<String> {
+    if !line.starts_with("<image") || !line.ends_with('>') || line.starts_with("</image") {
+        return None;
+    }
+
+    let marker = "name=[";
+    if let Some(start) = line.find(marker) {
+        let remainder = &line[start + marker.len()..];
+        if let Some(end) = remainder.find(']') {
+            let name = remainder[..end].trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    Some("Attached image".to_string())
+}
+
+fn collapse_blank_lines(raw: &str) -> String {
+    let mut collapsed = Vec::<String>::new();
+    let mut previous_blank = false;
+    for line in raw.lines() {
+        let is_blank = line.trim().is_empty();
+        if is_blank && previous_blank {
+            continue;
+        }
+        collapsed.push(line.to_string());
+        previous_blank = is_blank;
+    }
+    collapsed.join("\n").trim().to_string()
 }
 
 #[cfg(test)]
@@ -599,6 +724,45 @@ mod tests {
             }
         })
         .to_string()
+    }
+
+    #[test]
+    fn normalize_transcript_user_content_strips_image_wrapper_tags() {
+        let content = json!([
+            {
+                "type": "input_text",
+                "input_text": "<image name=[Image #1]>"
+            },
+            {
+                "type": "input_image",
+                "image_url": "data:image/png;base64,AAAA"
+            },
+            {
+                "type": "input_text",
+                "input_text": "</image>"
+            },
+            {
+                "type": "input_text",
+                "input_text": "Please inspect this screenshot."
+            }
+        ]);
+
+        let normalized = normalize_transcript_user_content(&content);
+
+        assert_eq!(
+            normalized,
+            json!([
+                {
+                    "type": "input_image",
+                    "image_url": "data:image/png;base64,AAAA",
+                    "altText": "Image #1"
+                },
+                {
+                    "type": "input_text",
+                    "input_text": "Please inspect this screenshot."
+                }
+            ])
+        );
     }
 }
 
