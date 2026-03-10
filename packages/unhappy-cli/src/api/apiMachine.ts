@@ -633,7 +633,7 @@ export class ApiMachineClient {
     ) =>
       entries.map((entry) => ({
         path: entry.path,
-        latestUpdatedAt: new Date(entry.openedAt ?? 0).toISOString(),
+        latestUpdatedAt: new Date(entry.openedAt ?? Date.now()).toISOString(),
         codexThreadCount: 0,
         claudeSessionCount: 0,
         openedExplicitly: true,

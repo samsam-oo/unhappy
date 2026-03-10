@@ -541,14 +541,22 @@ fn restore_opened_projects(
 ) -> Vec<OpenedProject> {
     if let Some(state) = persisted_state {
         let restored = normalize_opened_projects(
-            state.opened_projects.iter().map(|entry| entry.path.as_str()),
+            state
+                .opened_projects
+                .iter()
+                .map(|entry| (entry.path.as_str(), entry.opened_at)),
         );
         if !restored.is_empty() {
             return restored;
         }
     }
 
-    let restored_from_store = normalize_opened_projects(store.opened_projects.iter().map(String::as_str));
+    let restored_from_store = normalize_opened_projects(
+        store
+            .opened_projects
+            .iter()
+            .map(|path| (path.as_str(), None)),
+    );
     if !restored_from_store.is_empty() {
         return restored_from_store;
     }
@@ -560,6 +568,7 @@ fn restore_opened_projects(
                 .as_ref()
                 .and_then(|metadata| metadata.get("directory"))
                 .and_then(Value::as_str)
+                .map(|path| (path, None))
         }),
     );
     if !restored_from_metadata.is_empty() {
@@ -570,10 +579,11 @@ fn restore_opened_projects(
 }
 
 fn normalize_opened_projects<'a>(
-    paths: impl IntoIterator<Item = &'a str>,
+    paths: impl IntoIterator<Item = (&'a str, Option<u64>)>,
 ) -> Vec<OpenedProject> {
     let mut restored = Vec::new();
-    for path in paths {
+    let fallback_opened_at = now_millis();
+    for (path, opened_at) in paths {
         let normalized = path.trim();
         if normalized.is_empty() {
             continue;
@@ -583,7 +593,7 @@ fn normalize_opened_projects<'a>(
         }
         restored.push(OpenedProject {
             path: normalized.to_string(),
-            opened_at: None,
+            opened_at: Some(opened_at.unwrap_or(fallback_opened_at)),
         });
     }
     restored
@@ -605,7 +615,8 @@ fn restore_opened_projects_from_codex_resume(config: &Config) -> Vec<OpenedProje
         entries
             .keys()
             .map(String::as_str)
-            .filter(|path| path_looks_like_project_root(path)),
+            .filter(|path| path_looks_like_project_root(path))
+            .map(|path| (path, None)),
     )
 }
 
@@ -827,6 +838,8 @@ mod tests {
         assert_eq!(opened.len(), 2);
         assert_eq!(opened[0].path, "/tmp/project-a");
         assert_eq!(opened[1].path, "/tmp/project-b");
+        assert!(opened[0].opened_at.is_some());
+        assert!(opened[1].opened_at.is_some());
     }
 
     #[tokio::test]
@@ -857,5 +870,6 @@ mod tests {
         let opened = state.list_opened_projects().await;
         assert_eq!(opened.len(), 1);
         assert_eq!(opened[0].path, project_dir.display().to_string());
+        assert!(opened[0].opened_at.is_some());
     }
 }

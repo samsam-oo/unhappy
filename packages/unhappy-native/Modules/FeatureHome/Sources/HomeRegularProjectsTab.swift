@@ -408,6 +408,9 @@ struct HomeRegularProjectRow: View {
     }
 
     private var updatedLabel: String {
+        guard group.latestUpdatedAt > 0 else {
+            return "Unknown"
+        }
         let interval = Date().timeIntervalSince1970 - group.latestUpdatedAt
         if interval < 60 {
             return "just now"
