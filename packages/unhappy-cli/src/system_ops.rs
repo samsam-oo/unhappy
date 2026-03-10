@@ -1,12 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
-use std::{
-    env,
-    fs,
-    path::Path,
-    process::Command,
-    time::Duration,
-};
+use std::{env, fs, path::Path, process::Command, time::Duration};
 
 const PLIST_LABEL: &str = "com.unhappy-cli.daemon";
 const PLIST_FILE: &str = "/Library/LaunchDaemons/com.unhappy-cli.daemon.plist";
@@ -52,8 +46,12 @@ pub fn list_unhappy_processes(current_pid: u32) -> Result<Vec<UnhappyProcessInfo
         }
 
         let mut parts = trimmed.split_whitespace();
-        let Some(pid_raw) = parts.next() else { continue };
-        let Some(name_raw) = parts.next() else { continue };
+        let Some(pid_raw) = parts.next() else {
+            continue;
+        };
+        let Some(name_raw) = parts.next() else {
+            continue;
+        };
         let pid = match pid_raw.parse::<u32>() {
             Ok(value) => value,
             Err(_) => continue,
@@ -128,11 +126,14 @@ pub fn install_launchd_service(
 
     let plist_path = Path::new(PLIST_FILE);
     if plist_path.exists() {
-        let _ = Command::new("launchctl").args(["unload", PLIST_FILE]).status();
+        let _ = Command::new("launchctl")
+            .args(["unload", PLIST_FILE])
+            .status();
     }
 
     let current_executable = env::current_exe().context("failed to resolve current executable")?;
-    let environment_variables = launchd_environment(unhappy_home_dir, server_url, current_cli_version);
+    let environment_variables =
+        launchd_environment(unhappy_home_dir, server_url, current_cli_version);
     let plist = render_launchd_plist(
         current_executable.as_path(),
         unhappy_home_dir,
@@ -162,7 +163,9 @@ pub fn uninstall_launchd_service() -> Result<()> {
         return Ok(());
     }
 
-    let _ = Command::new("launchctl").args(["unload", PLIST_FILE]).status();
+    let _ = Command::new("launchctl")
+        .args(["unload", PLIST_FILE])
+        .status();
     fs::remove_file(plist_path)
         .with_context(|| format!("failed to remove {}", plist_path.display()))?;
     Ok(())
@@ -263,7 +266,9 @@ fn ensure_supported_install_platform() -> Result<()> {
     if cfg!(target_os = "macos") {
         return Ok(());
     }
-    Err(anyhow!("daemon installation is currently only supported on macOS"))
+    Err(anyhow!(
+        "daemon installation is currently only supported on macOS"
+    ))
 }
 
 fn ensure_root() -> Result<()> {
@@ -284,9 +289,15 @@ fn launchd_environment(
     current_cli_version: &str,
 ) -> Vec<(String, String)> {
     let mut pairs = vec![
-        ("UNHAPPY_HOME_DIR".to_string(), unhappy_home_dir.display().to_string()),
+        (
+            "UNHAPPY_HOME_DIR".to_string(),
+            unhappy_home_dir.display().to_string(),
+        ),
         ("UNHAPPY_SERVER_URL".to_string(), server_url.to_string()),
-        ("UNHAPPY_CLI_VERSION".to_string(), current_cli_version.to_string()),
+        (
+            "UNHAPPY_CLI_VERSION".to_string(),
+            current_cli_version.to_string(),
+        ),
     ];
 
     for key in [
@@ -317,7 +328,10 @@ fn render_launchd_plist(
     environment_variables: &[(String, String)],
 ) -> String {
     let program_arguments = [
-        format!("<string>{}</string>", escape_xml(&executable.display().to_string())),
+        format!(
+            "<string>{}</string>",
+            escape_xml(&executable.display().to_string())
+        ),
         "<string>local-control-server</string>".to_string(),
     ]
     .join("\n                    ");

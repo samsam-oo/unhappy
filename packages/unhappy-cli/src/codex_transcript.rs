@@ -57,7 +57,9 @@ pub async fn list_codex_thread_messages(
             Err(_) => continue,
         };
         let envelope = match parsed.as_object() {
-            Some(object) if object.get("type").and_then(Value::as_str) == Some("response_item") => object,
+            Some(object) if object.get("type").and_then(Value::as_str) == Some("response_item") => {
+                object
+            }
             _ => continue,
         };
         let payload = match envelope.get("payload").and_then(Value::as_object) {
@@ -65,7 +67,8 @@ pub async fn list_codex_thread_messages(
             None => continue,
         };
 
-        let Some(backfill) = build_resume_backfill_message(payload, line_number, normalized_path) else {
+        let Some(backfill) = build_resume_backfill_message(payload, line_number, normalized_path)
+        else {
             continue;
         };
 
@@ -220,7 +223,11 @@ fn build_resume_backfill_message(
                 "content": normalized_content
             }
         }),
-        role: if role == "assistant" { "assistant" } else { "user" },
+        role: if role == "assistant" {
+            "assistant"
+        } else {
+            "user"
+        },
     })
 }
 
@@ -229,7 +236,11 @@ fn build_function_call_backfill_message(
     line_number: usize,
     resume_file: &str,
 ) -> Option<ResumeBackfillMessage> {
-    let name = payload.get("name").and_then(Value::as_str)?.trim().to_string();
+    let name = payload
+        .get("name")
+        .and_then(Value::as_str)?
+        .trim()
+        .to_string();
     if name.is_empty() {
         return None;
     }
@@ -352,7 +363,8 @@ fn normalize_transcript_assistant_content(content: &Value) -> Option<Value> {
         }
         Value::String(text) => {
             let trimmed = text.trim();
-            (!trimmed.is_empty()).then(|| Value::Array(vec![json!({ "type": "text", "text": trimmed })]))
+            (!trimmed.is_empty())
+                .then(|| Value::Array(vec![json!({ "type": "text", "text": trimmed })]))
         }
         Value::Object(_) => extract_transcript_text(content)
             .map(|text| Value::Array(vec![json!({ "type": "text", "text": text })]))

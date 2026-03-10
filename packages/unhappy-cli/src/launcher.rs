@@ -1,6 +1,4 @@
-use crate::{
-    config::Config,
-};
+use crate::config::Config;
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -106,7 +104,12 @@ pub async fn list_sessions(unhappy_home_dir: &Path) -> Result<Value> {
 }
 
 pub async fn stop_session(unhappy_home_dir: &Path, session_id: &str) -> Result<Value> {
-    control_post(unhappy_home_dir, "/stop-session", json!({ "sessionId": session_id })).await
+    control_post(
+        unhappy_home_dir,
+        "/stop-session",
+        json!({ "sessionId": session_id }),
+    )
+    .await
 }
 
 pub async fn spawn_session(unhappy_home_dir: &Path, request_json: &str) -> Result<Value> {
@@ -266,8 +269,7 @@ fn cleanup_stale_state(unhappy_home_dir: &Path) -> Result<()> {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
-                return Err(error)
-                    .with_context(|| format!("failed to remove {}", path.display()))
+                return Err(error).with_context(|| format!("failed to remove {}", path.display()))
             }
         }
     }

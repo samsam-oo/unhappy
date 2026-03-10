@@ -78,10 +78,7 @@ pub async fn list_directory(payload: &Value) -> Result<Value> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let sort = payload
-        .get("sort")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
+    let sort = payload.get("sort").and_then(Value::as_bool).unwrap_or(true);
     let max_entries = payload
         .get("maxEntries")
         .and_then(Value::as_u64)
@@ -104,7 +101,11 @@ pub async fn list_directory(payload: &Value) -> Result<Value> {
         if !allowed_types.is_empty() && !allowed_types.iter().any(|value| value == kind) {
             continue;
         }
-        let metadata = if include_stats { entry.metadata().await.ok() } else { None };
+        let metadata = if include_stats {
+            entry.metadata().await.ok()
+        } else {
+            None
+        };
         entries.push(json!({
             "name": entry.file_name().to_string_lossy().to_string(),
             "type": kind,
@@ -226,7 +227,12 @@ pub async fn bash(payload: &Value) -> Result<Value> {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    match timeout(Duration::from_millis(timeout_ms), child.spawn()?.wait_with_output()).await {
+    match timeout(
+        Duration::from_millis(timeout_ms),
+        child.spawn()?.wait_with_output(),
+    )
+    .await
+    {
         Ok(Ok(output)) => Ok(json!({
             "success": output.status.success(),
             "stdout": String::from_utf8_lossy(&output.stdout).to_string(),
@@ -270,7 +276,10 @@ async fn run_command(binary: &str, args: &[String], cwd: Option<&str>) -> Result
     if let Some(cwd) = cwd.filter(|value| !value.trim().is_empty()) {
         command.current_dir(resolve_path(cwd));
     }
-    let output = command.output().await.with_context(|| format!("failed to run {binary}"))?;
+    let output = command
+        .output()
+        .await
+        .with_context(|| format!("failed to run {binary}"))?;
     Ok(json!({
         "success": output.status.success(),
         "exitCode": output.status.code().unwrap_or(1),
@@ -341,9 +350,26 @@ async fn list_codex_models(config: &Config) -> Result<Value> {
         json!({ "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" }, "capabilities": {} }),
     )
     .await?;
-    let result = match rpc(&mut stdin, &mut reader, &mut next_id, "model/list", json!({})).await {
+    let result = match rpc(
+        &mut stdin,
+        &mut reader,
+        &mut next_id,
+        "model/list",
+        json!({}),
+    )
+    .await
+    {
         Ok(value) => value,
-        Err(_) => rpc(&mut stdin, &mut reader, &mut next_id, "models/list", json!({})).await?,
+        Err(_) => {
+            rpc(
+                &mut stdin,
+                &mut reader,
+                &mut next_id,
+                "models/list",
+                json!({}),
+            )
+            .await?
+        }
     };
     let _ = child.start_kill();
     Ok(normalize_codex_model_list(result))
@@ -362,11 +388,17 @@ fn normalize_codex_model_list(result: Value) -> Value {
     let mut metadata = Vec::<Value>::new();
 
     for row in rows {
-        if let Some(id) = row.as_str().map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(id) = row
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
             models.push(id.to_string());
             continue;
         }
-        let Some(object) = row.as_object() else { continue };
+        let Some(object) = row.as_object() else {
+            continue;
+        };
         let id = object
             .get("id")
             .or_else(|| object.get("model"))
@@ -407,10 +439,13 @@ fn normalize_codex_model_list(result: Value) -> Value {
 fn build_tree_node(path: &Path, max_depth: usize) -> Result<Value> {
     let metadata = std::fs::metadata(path)
         .with_context(|| format!("failed to read metadata for {}", path.display()))?;
-    let modified = metadata.modified().ok()
+    let modified = metadata
+        .modified()
+        .ok()
         .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|value| value.as_secs_f64());
-    let name = path.file_name()
+    let name = path
+        .file_name()
         .and_then(|value| value.to_str())
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| path.to_string_lossy().to_string());
@@ -426,8 +461,8 @@ fn build_tree_node(path: &Path, max_depth: usize) -> Result<Value> {
     }
 
     let mut children = Vec::new();
-    for entry in std::fs::read_dir(path)
-        .with_context(|| format!("failed to read {}", path.display()))?
+    for entry in
+        std::fs::read_dir(path).with_context(|| format!("failed to read {}", path.display()))?
     {
         let entry = entry?;
         children.push(build_tree_node(&entry.path(), max_depth.saturating_sub(1))?);
@@ -461,7 +496,11 @@ fn difftastic_binary(config: &Config) -> PathBuf {
         .filter(|value| !value.trim().is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| config.cli_root());
-    let binary_name = if cfg!(target_os = "windows") { "difft.exe" } else { "difft" };
+    let binary_name = if cfg!(target_os = "windows") {
+        "difft.exe"
+    } else {
+        "difft"
+    };
     cli_root.join("tools").join("unpacked").join(binary_name)
 }
 

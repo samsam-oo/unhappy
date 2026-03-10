@@ -132,11 +132,8 @@ impl DaemonState {
             .ok()
             .and_then(|bytes| serde_json::from_slice::<PersistedDaemonState>(&bytes).ok());
         let mut inner = self.inner.write().await;
-        inner.opened_projects = restore_opened_projects(
-            &self.config,
-            persisted_state.as_ref(),
-            &store,
-        );
+        inner.opened_projects =
+            restore_opened_projects(&self.config, persisted_state.as_ref(), &store);
         inner.sessions_by_pid = store
             .tracked_sessions
             .into_iter()
@@ -187,7 +184,9 @@ impl DaemonState {
         };
         let snapshot = {
             let mut inner = self.inner.write().await;
-            inner.opened_projects.retain(|entry| entry.path != normalized);
+            inner
+                .opened_projects
+                .retain(|entry| entry.path != normalized);
             inner.opened_projects.push(OpenedProject {
                 path: normalized.clone(),
                 opened_at: Some(now_millis()),
@@ -203,7 +202,9 @@ impl DaemonState {
         };
         let snapshot = {
             let mut inner = self.inner.write().await;
-            inner.opened_projects.retain(|entry| entry.path != normalized);
+            inner
+                .opened_projects
+                .retain(|entry| entry.path != normalized);
             self.snapshot_from_inner(&inner)
         };
         self.write_snapshot(&snapshot).await
@@ -263,7 +264,10 @@ impl DaemonState {
         }
     }
 
-    pub async fn spawn_session(self: &Arc<Self>, request: SpawnSessionRequest) -> SpawnSessionResponse {
+    pub async fn spawn_session(
+        self: &Arc<Self>,
+        request: SpawnSessionRequest,
+    ) -> SpawnSessionResponse {
         if !std::path::Path::new(&request.directory).exists() {
             return SpawnSessionResponse::requires_user_approval(request.directory);
         }
@@ -284,7 +288,10 @@ impl DaemonState {
         });
         let resolved_command = adapter.resolve_command(&self.config.provider_commands);
 
-        let launched = match self.process_spawner.spawn(resolved_command, &launch_request) {
+        let launched = match self
+            .process_spawner
+            .spawn(resolved_command, &launch_request)
+        {
             Ok(launched) => launched,
             Err(error) => {
                 return SpawnSessionResponse::error(format!(
@@ -326,9 +333,9 @@ impl DaemonState {
                     ))
                 }
             }
-            Ok(Err(_)) => {
-                SpawnSessionResponse::error(format!("Session webhook receiver closed for PID {pid}"))
-            }
+            Ok(Err(_)) => SpawnSessionResponse::error(format!(
+                "Session webhook receiver closed for PID {pid}"
+            )),
             Err(_) => {
                 let snapshot = {
                     let mut inner = self.inner.write().await;
@@ -341,10 +348,7 @@ impl DaemonState {
         }
     }
 
-    async fn spawn_codex_session(
-        &self,
-        request: SpawnSessionRequest,
-    ) -> SpawnSessionResponse {
+    async fn spawn_codex_session(&self, request: SpawnSessionRequest) -> SpawnSessionResponse {
         match open_or_resume_codex_thread(
             &self.config,
             &request.directory,
@@ -386,9 +390,9 @@ impl DaemonState {
                 self.persist_snapshot_best_effort(snapshot).await;
                 SpawnSessionResponse::success(session.thread_id)
             }
-            Err(error) => SpawnSessionResponse::error(format!(
-                "Failed to open Codex thread: {error}"
-            )),
+            Err(error) => {
+                SpawnSessionResponse::error(format!("Failed to open Codex thread: {error}"))
+            }
         }
     }
 
@@ -399,13 +403,18 @@ impl DaemonState {
 
         let (awaiter, tracked, snapshot) = {
             let mut inner = self.inner.write().await;
-            let prior_pid = inner.sessions_by_pid.iter().find_map(|(existing_pid, session)| {
-                (session.provider_session_id() == Some(request.provider_session_id.as_str()))
-                    .then_some(*existing_pid)
-            });
+            let prior_pid = inner
+                .sessions_by_pid
+                .iter()
+                .find_map(|(existing_pid, session)| {
+                    (session.provider_session_id() == Some(request.provider_session_id.as_str()))
+                        .then_some(*existing_pid)
+                });
 
             let tracked = match prior_pid {
-                Some(existing_pid) if existing_pid != pid => inner.sessions_by_pid.remove(&existing_pid),
+                Some(existing_pid) if existing_pid != pid => {
+                    inner.sessions_by_pid.remove(&existing_pid)
+                }
                 _ => inner.sessions_by_pid.remove(&pid),
             }
             .unwrap_or_else(|| TrackedSession::from_provider_session_started(pid, &request))
@@ -559,16 +568,15 @@ fn restore_opened_projects(
         return restored_from_store;
     }
 
-    let restored_from_metadata = normalize_opened_projects(
-        store.tracked_sessions.iter().filter_map(|session| {
+    let restored_from_metadata =
+        normalize_opened_projects(store.tracked_sessions.iter().filter_map(|session| {
             session
                 .metadata
                 .as_ref()
                 .and_then(|metadata| metadata.get("directory"))
                 .and_then(Value::as_str)
                 .map(|path| (path, None))
-        }),
-    );
+        }));
     if !restored_from_metadata.is_empty() {
         return restored_from_metadata;
     }
@@ -586,7 +594,10 @@ fn normalize_opened_projects<'a>(
         let Some(normalized) = normalize_project_path(path, &current_home) else {
             continue;
         };
-        if restored.iter().any(|entry: &OpenedProject| entry.path == normalized) {
+        if restored
+            .iter()
+            .any(|entry: &OpenedProject| entry.path == normalized)
+        {
             continue;
         }
         restored.push(OpenedProject {
@@ -628,12 +639,7 @@ fn path_looks_like_project_root(path: &str) -> bool {
         return false;
     }
 
-    if std::env::var("HOME")
-        .ok()
-        .map(PathBuf::from)
-        .as_ref()
-        == Some(&candidate)
-    {
+    if std::env::var("HOME").ok().map(PathBuf::from).as_ref() == Some(&candidate) {
         return false;
     }
 
@@ -660,8 +666,8 @@ fn path_looks_like_project_root(path: &str) -> bool {
     };
     entries.flatten().any(|entry| {
         let path = entry.path();
-        path.extension().and_then(|value| value.to_str()) == Some("xcodeproj") ||
-            path.extension().and_then(|value| value.to_str()) == Some("xcworkspace")
+        path.extension().and_then(|value| value.to_str()) == Some("xcodeproj")
+            || path.extension().and_then(|value| value.to_str()) == Some("xcworkspace")
     })
 }
 
