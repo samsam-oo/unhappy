@@ -25,7 +25,7 @@ import { decodeBase64, decrypt, encodeBase64, encrypt } from '@/api/encryption';
 import { 
   runDaemonSubcommandJson,
   stopDaemonSubcommand,
-} from '@/daemon/executable';
+} from '@/utils/rustDaemonCli';
 import { readCredentials, readDaemonState, clearDaemonState, readSettings } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { spawnUnhappyCLI } from '@/utils/spawnUnhappyCLI';

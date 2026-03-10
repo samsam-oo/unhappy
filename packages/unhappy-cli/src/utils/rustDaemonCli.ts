@@ -26,10 +26,6 @@ export type LauncherStatus = {
   } | null;
 };
 
-function normalizeForMatch(value: string): string {
-  return value.trim().normalize('NFKC').replaceAll('\\', '/');
-}
-
 function stripWrappingQuotes(value: string): string {
   const trimmed = value.trim();
   if (
@@ -62,7 +58,7 @@ function parseDaemonExecutableArgs(rawValue: string): string[] {
 }
 
 function resolveConfiguredExecutablePath(rawValue: string): string {
-  const normalizedValue = normalizeForMatch(stripWrappingQuotes(rawValue));
+  const normalizedValue = stripWrappingQuotes(rawValue.trim()).normalize('NFKC');
   if (!normalizedValue) {
     throw new Error(`${DAEMON_EXECUTABLE_ENV} cannot be empty when provided`);
   }
@@ -98,19 +94,22 @@ function findBundledRustDaemonExecutable(): string | null {
 }
 
 function createTimestampForFilename(date: Date = new Date()): string {
-  return date
-    .toLocaleString('sv-SE', {
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-    .replace(/[: ]/g, '-')
-    .replace(/,/g, '')
-    + '-pid-' + process.pid;
+  return (
+    date
+      .toLocaleString('sv-SE', {
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })
+      .replace(/[: ]/g, '-')
+      .replace(/,/g, '') +
+    '-pid-' +
+    process.pid
+  );
 }
 
 function createDaemonLogFilePath(): string {
@@ -135,9 +134,7 @@ export function resolveDaemonExecutable(): ResolvedDaemonExecutable {
   const configuredExecutable = process.env[DAEMON_EXECUTABLE_ENV]?.trim();
   if (configuredExecutable) {
     const executablePath = resolveConfiguredExecutablePath(configuredExecutable);
-    const args = parseDaemonExecutableArgs(
-      process.env[DAEMON_EXECUTABLE_ARGS_ENV] ?? '',
-    );
+    const args = parseDaemonExecutableArgs(process.env[DAEMON_EXECUTABLE_ARGS_ENV] ?? '');
     return {
       source: 'environment',
       executablePath,

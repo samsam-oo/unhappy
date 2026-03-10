@@ -10,7 +10,7 @@ import {
   readDaemonLauncherStatus,
   runDaemonSubcommandJson,
   stopDaemonSubcommand,
-} from '@/daemon/executable';
+} from '@/utils/rustDaemonCli';
 import { readCredentials, readDaemonState, readSettings } from '@/persistence';
 import { projectPath } from '@/projectPath';
 import chalk from 'chalk';

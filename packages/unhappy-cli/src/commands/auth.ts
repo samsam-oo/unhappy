@@ -3,7 +3,7 @@ import {
   readDaemonLauncherStatus,
   startDaemonDetached,
   stopDaemonSubcommand,
-} from '@/daemon/executable';
+} from '@/utils/rustDaemonCli';
 import {
   clearCredentials,
   clearMachineId,

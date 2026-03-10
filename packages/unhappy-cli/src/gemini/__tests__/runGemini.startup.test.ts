@@ -62,7 +62,7 @@ vi.mock('@/claude/utils/startHappyServer', () => ({
   })),
 }));
 
-vi.mock('@/daemon/executable', () => ({
+vi.mock('@/utils/rustDaemonCli', () => ({
   runDaemonSubcommand: vi.fn(async () => ''),
 }));
 

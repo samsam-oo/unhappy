@@ -5,7 +5,7 @@ import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import { getProjectPath } from "./utils/path";
 import { join } from "node:path";
-import { runDaemonSubcommand } from "@/daemon/executable";
+import { runDaemonSubcommand } from "@/utils/rustDaemonCli";
 
 export interface SessionPushNotifier {
     sendToAllDevices(

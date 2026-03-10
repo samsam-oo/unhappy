@@ -4,7 +4,7 @@ import { logger } from '@/ui/logger';
 import {
   startDaemonDetached,
   stopDaemonSubcommand,
-} from './executable';
+} from '@/utils/rustDaemonCli';
 
 const DEFAULT_UPDATE_COMMAND = 'npm install -g unhappy-cli@latest';
 
