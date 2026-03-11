@@ -498,7 +498,14 @@ public actor MachineDataPlaneWebSocketClient {
                 tag: sealedBody.tag
             )
         )
-        try await send(frame: requestFrame, transport: liveConnection.transport)
+        try await withMachineDataPlaneTimeout(
+            Self.sendTimeoutInterval(
+                for: request.operation,
+                baseRequestTimeoutInterval: requestTimeoutInterval
+            )
+        ) {
+            try await self.send(frame: requestFrame, transport: liveConnection.transport)
+        }
         sentRequest = true
 
         let terminalFrame = try await awaitStreamTerminalFrame(
@@ -708,6 +715,20 @@ public actor MachineDataPlaneWebSocketClient {
         }
     }
 
+    nonisolated static func sendTimeoutInterval(
+        for operation: MachineDataPlaneOperation,
+        baseRequestTimeoutInterval: TimeInterval
+    ) -> TimeInterval {
+        switch RequestPriority.forOperation(operation) {
+        case .interactive:
+            return max(min(baseRequestTimeoutInterval, 6), 4)
+        case .normal:
+            return max(min(baseRequestTimeoutInterval, 4), 2)
+        case .background:
+            return max(min(baseRequestTimeoutInterval, 3), 1)
+        }
+    }
+
     private func markConnectionPhase(_ phase: ConnectionPhase, for key: ConnectionKey) {
         guard var state = connectionStates[key] else { return }
         state.phase = phase
@@ -886,6 +907,26 @@ public actor MachineDataPlaneWebSocketClient {
     ) -> Int {
         let limit = max(maxInFlightStreams ?? 1, 1)
         return max(limit - max(activeExecutions, 0), 0)
+    }
+}
+
+private func withMachineDataPlaneTimeout<T: Sendable>(
+    _ timeoutInterval: TimeInterval,
+    operation: @Sendable @escaping () async throws -> T
+) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask(operation: operation)
+        group.addTask {
+            let nanoseconds = UInt64(max(timeoutInterval, 0.001) * 1_000_000_000)
+            try await Task.sleep(nanoseconds: nanoseconds)
+            throw MachinesAPIError.rpcTimedOut
+        }
+
+        guard let result = try await group.next() else {
+            throw MachinesAPIError.rpcTimedOut
+        }
+        group.cancelAll()
+        return result
     }
 }
 
