@@ -1,7 +1,6 @@
 import Foundation
 import Combine
 @testable import FeatureSessions
-import FeatureNewSession
 import CoreKit
 
 enum MockSessionsLoaderError: Error, Sendable {
