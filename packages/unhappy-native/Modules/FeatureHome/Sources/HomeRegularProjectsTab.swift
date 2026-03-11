@@ -11,6 +11,7 @@ struct HomeRegularProjectsTab: View {
     let hideInactiveSessions: Bool
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
+    let makeProjectStartSheet: SessionProjectStartSheetBuilder
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
 
     @State private var selectedProjectID: String?
@@ -311,7 +312,7 @@ struct HomeRegularProjectsTab: View {
                         token: token,
                         hideInactiveSessions: hideInactiveSessions,
                         defaultNewSessionAgent: defaultNewSessionAgent,
-                        makeNewSessionViewModel: makeNewSessionViewModel,
+                        makeProjectStartSheet: makeProjectStartSheet,
                         makeDirectSessionViewModel: makeDirectSessionViewModel,
                         onProjectRemoved: {
                             selectedProjectID = nil

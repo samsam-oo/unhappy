@@ -20,6 +20,7 @@ struct HomeAuthenticatedRegularView: View {
     let hideInactiveSessions: Bool
     let defaultNewSessionAgent: APISessionSpawnAgent
     let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
+    let makeProjectStartSheet: SessionProjectStartSheetBuilder
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let makeMachinesViewModel: @MainActor () -> MachinesViewModel
     let makeUsageViewModel: @MainActor () -> UsageSettingsViewModel
@@ -40,6 +41,7 @@ struct HomeAuthenticatedRegularView: View {
         makeInboxViewModel: @escaping @MainActor () -> InboxViewModel,
         makeSessionsViewModel: @escaping @MainActor () -> SessionsViewModel,
         makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
+        makeProjectStartSheet: @escaping SessionProjectStartSheetBuilder,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         makeMachinesViewModel: @escaping @MainActor () -> MachinesViewModel,
         makeUsageViewModel: @escaping @MainActor () -> UsageSettingsViewModel,
@@ -53,6 +55,7 @@ struct HomeAuthenticatedRegularView: View {
         self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
         self.makeNewSessionViewModel = makeNewSessionViewModel
+        self.makeProjectStartSheet = makeProjectStartSheet
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.makeMachinesViewModel = makeMachinesViewModel
         self.makeUsageViewModel = makeUsageViewModel
@@ -72,6 +75,7 @@ struct HomeAuthenticatedRegularView: View {
                 hideInactiveSessions: hideInactiveSessions,
                 defaultNewSessionAgent: defaultNewSessionAgent,
                 makeNewSessionViewModel: makeNewSessionViewModel,
+                makeProjectStartSheet: makeProjectStartSheet,
                 makeDirectSessionViewModel: makeDirectSessionViewModel,
             )
             .tabItem {

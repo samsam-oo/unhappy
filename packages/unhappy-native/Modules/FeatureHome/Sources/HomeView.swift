@@ -121,7 +121,8 @@ public struct HomeView: View {
                 hideInactiveSessions: settingsViewModel.hideInactiveSessions,
                 defaultNewSessionAgent: settingsViewModel.defaultNewSessionAgent,
                 makeViewModel: makeSessionsViewModel,
-                makeNewSessionViewModel: makeNewSessionViewModel,
+                makeProjectPickerSheet: makeFeatureSessionsProjectPickerSheet,
+                makeProjectStartSheet: makeFeatureSessionsProjectStartSheet,
                 makeDirectSessionViewModel: makeDirectSessionViewModel
             )
             .tabItem {
@@ -164,6 +165,7 @@ public struct HomeView: View {
             makeInboxViewModel: makeInboxViewModel,
             makeSessionsViewModel: makeSessionsViewModel,
             makeNewSessionViewModel: makeNewSessionViewModel,
+            makeProjectStartSheet: makeFeatureSessionsProjectStartSheet,
             makeDirectSessionViewModel: makeDirectSessionViewModel,
             makeMachinesViewModel: makeMachinesViewModel,
             makeUsageViewModel: makeUsageViewModel,
@@ -171,6 +173,56 @@ public struct HomeView: View {
             makeTerminalConnectViewModel: makeTerminalConnectViewModel,
             makeAccountLinkViewModel: makeAccountLinkViewModel
         )
+    }
+
+    private var makeFeatureSessionsProjectPickerSheet: SessionProjectPickerSheetBuilder {
+        { context, onProjectSelected in
+            AnyView(
+                NewSessionView(
+                    serverURLString: context.serverURLString,
+                    token: context.token,
+                    defaultAgent: context.defaultAgent,
+                    mode: .selectProject,
+                    makeViewModel: makeNewSessionViewModel,
+                    onProjectSelected: { machineID, directoryPath, machineDisplayName, wrappedMachineDataEncryptionKey in
+                        onProjectSelected(
+                            SessionProjectPickerResult(
+                                machineID: machineID,
+                                directoryPath: directoryPath,
+                                machineDisplayName: machineDisplayName,
+                                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+                            )
+                        )
+                    }
+                )
+            )
+        }
+    }
+
+    private var makeFeatureSessionsProjectStartSheet: SessionProjectStartSheetBuilder {
+        { context, onSessionSpawned in
+            AnyView(
+                NewSessionView(
+                    serverURLString: context.serverURLString,
+                    token: context.token,
+                    defaultAgent: context.defaultAgent,
+                    initialMachineID: context.initialMachineID,
+                    initialDirectoryPath: context.initialDirectoryPath,
+                    makeViewModel: makeNewSessionViewModel,
+                    onSessionSpawned: { spawned in
+                        onSessionSpawned(
+                            SessionProjectStartResult(
+                                sessionID: spawned.sessionID,
+                                agent: spawned.agent,
+                                machineID: spawned.machineID,
+                                directoryPath: spawned.directoryPath,
+                                model: spawned.model
+                            )
+                        )
+                    }
+                )
+            )
+        }
     }
 
     private var accountSecretRequiredHome: some View {

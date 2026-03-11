@@ -159,7 +159,6 @@ let project = Project(
                 .target(name: "CoreKit"),
                 .target(name: "SessionKit"),
                 .target(name: "UIFoundation"),
-                .target(name: "FeatureNewSession"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
