@@ -1,6 +1,5 @@
 import Foundation
 import CoreKit
-import SessionKit
 
 public protocol SessionProjectsLoadingAction: Sendable {
     func loadProjects(
@@ -394,7 +393,7 @@ public actor SessionProjectRemoveUseCase: SessionProjectRemovingAction {
     }
 }
 
-extension Date {
+public extension Date {
     private static func fractionalISO8601Formatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

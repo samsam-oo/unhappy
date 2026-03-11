@@ -1,33 +1,32 @@
 import Foundation
 import CoreKit
-import SessionKit
 
-struct SessionMessagePayloadField: Equatable, Identifiable, Sendable {
-    let key: String
-    let value: String
+public struct SessionMessagePayloadField: Equatable, Identifiable, Sendable {
+    public let key: String
+    public let value: String
 
-    var id: String { key }
+    public var id: String { key }
 }
 
-struct SessionMessageDetailPresentation: Equatable, Sendable {
-    let id: String
-    let sequenceText: String
-    let localID: String?
-    let createdAtText: String
-    let updatedAtText: String
-    let contentType: String?
-    let payloadPreview: String?
-    let payloadCharacterCount: Int
-    let payloadTruncated: Bool
-    let payloadFields: [SessionMessagePayloadField]
-    let parsedEntries: [SessionTranscriptEntry]
+public struct SessionMessageDetailPresentation: Equatable, Sendable {
+    public let id: String
+    public let sequenceText: String
+    public let localID: String?
+    public let createdAtText: String
+    public let updatedAtText: String
+    public let contentType: String?
+    public let payloadPreview: String?
+    public let payloadCharacterCount: Int
+    public let payloadTruncated: Bool
+    public let payloadFields: [SessionMessagePayloadField]
+    public let parsedEntries: [SessionTranscriptEntry]
 }
 
-enum SessionMessageDetailPresentationBuilder {
-    static let payloadPreviewLimit = 4_000
-    static let payloadFieldValueLimit = 600
+public enum SessionMessageDetailPresentationBuilder {
+    public static let payloadPreviewLimit = 4_000
+    public static let payloadFieldValueLimit = 600
 
-    static func make(
+    public static func make(
         from message: APISessionMessage,
         transcriptPresentation: SessionTranscriptMessagePresentation? = nil,
         timestampFormatter: (TimeInterval) -> String = defaultTimestampFormatter
@@ -72,7 +71,7 @@ enum SessionMessageDetailPresentationBuilder {
         )
     }
 
-    private static func defaultTimestampFormatter(_ timestamp: TimeInterval) -> String {
+    public static func defaultTimestampFormatter(_ timestamp: TimeInterval) -> String {
         let date = Date(timeIntervalSince1970: timestamp)
         return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .medium)
     }

@@ -1,9 +1,8 @@
 import Foundation
 import CoreKit
-import SessionKit
 
-enum DirectSessionIdentityResolver {
-    static func resolve(from row: SessionLinkedUpstreamSession) -> DirectSessionIdentity? {
+public enum DirectSessionIdentityResolver {
+    public static func resolve(from row: SessionLinkedUpstreamSession) -> DirectSessionIdentity? {
         guard row.summary.provider == .codex || row.summary.provider == .claude || row.summary.provider == .gemini else { return nil }
         guard let cwd = row.summary.cwd?.trimmingCharacters(in: .whitespacesAndNewlines),
               !cwd.isEmpty else {
@@ -47,7 +46,7 @@ enum DirectSessionIdentityResolver {
         )
     }
 
-    static func resolve(from session: APISession) -> DirectSessionIdentity? {
+    public static func resolve(from session: APISession) -> DirectSessionIdentity? {
         let context = SessionRuntimeContext(session: session)
         guard let upstreamIdentity = context.upstreamIdentity else { return nil }
         guard let cwd = context.workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines),

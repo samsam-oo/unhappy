@@ -135,6 +135,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "SessionKit"),
                 .target(name: "FeatureInbox"),
                 .target(name: "FeatureMachine"),
                 .target(name: "FeatureNewSession"),

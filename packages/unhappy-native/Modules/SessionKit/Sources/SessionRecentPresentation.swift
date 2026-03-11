@@ -1,18 +1,18 @@
 import Foundation
 import CoreKit
 
-struct SessionRecentSection: Equatable, Identifiable, Sendable {
-    enum Entry: Identifiable, Equatable, Sendable {
+public struct SessionRecentSection: Equatable, Identifiable, Sendable {
+    public enum Entry: Identifiable, Equatable, Sendable {
         case direct(DirectSessionIdentity, updatedAt: TimeInterval)
 
-        var id: String {
+        public var id: String {
             switch self {
             case .direct(let identity, _):
                 return "direct:\(identity.machineID)|\(identity.provider.rawValue)|\(identity.upstreamSessionID)"
             }
         }
 
-        var updatedAt: TimeInterval {
+        public var updatedAt: TimeInterval {
             switch self {
             case .direct(_, let updatedAt):
                 return updatedAt
@@ -20,15 +20,15 @@ struct SessionRecentSection: Equatable, Identifiable, Sendable {
         }
     }
 
-    let dayStart: Date
-    let title: String
-    let entries: [Entry]
+    public let dayStart: Date
+    public let title: String
+    public let entries: [Entry]
 
-    var id: TimeInterval { dayStart.timeIntervalSince1970 }
+    public var id: TimeInterval { dayStart.timeIntervalSince1970 }
 }
 
-enum SessionRecentPresentationBuilder {
-    static func make(
+public enum SessionRecentPresentationBuilder {
+    public static func make(
         upstreamSessions: [SessionLinkedUpstreamSession],
         now: Date = .now,
         calendar: Calendar = .current
@@ -70,7 +70,7 @@ enum SessionRecentPresentationBuilder {
         }
     }
 
-    static func sectionTitle(
+    public static func sectionTitle(
         for dayStart: Date,
         todayStart: Date,
         calendar: Calendar

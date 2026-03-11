@@ -1,8 +1,7 @@
 import Foundation
 import CoreKit
-import SessionKit
 
-func sessionsMergeFetchedMessages(
+public func sessionsMergeFetchedMessages(
     fetchedMessages: [APISessionMessage],
     cachedMessages: [APISessionMessage]?
 ) -> [APISessionMessage] {
@@ -23,7 +22,7 @@ func sessionsMergeFetchedMessages(
     return cachedMessages + Array(fetchedMessages.dropFirst(cachedMessages.count))
 }
 
-func sessionsNormalizeMessageOrder(_ messages: [APISessionMessage]) -> [APISessionMessage] {
+public func sessionsNormalizeMessageOrder(_ messages: [APISessionMessage]) -> [APISessionMessage] {
     messages.sorted { lhs, rhs in
         if lhs.seq != rhs.seq {
             return lhs.seq < rhs.seq
@@ -38,7 +37,7 @@ func sessionsNormalizeMessageOrder(_ messages: [APISessionMessage]) -> [APISessi
     }
 }
 
-func sessionsMakeOptimisticUserPayload(text: String, imageDataURLs: [String] = []) -> String {
+public func sessionsMakeOptimisticUserPayload(text: String, imageDataURLs: [String] = []) -> String {
     let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let normalizedImageDataURLs = imageDataURLs
         .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -83,7 +82,7 @@ func sessionsMakeOptimisticUserPayload(text: String, imageDataURLs: [String] = [
     return encodedPayload
 }
 
-func sessionsMergeLatestRows(_ latestRows: [APISession], into existingRows: [APISession]) -> [APISession] {
+public func sessionsMergeLatestRows(_ latestRows: [APISession], into existingRows: [APISession]) -> [APISession] {
     var byID: [String: APISession] = [:]
     byID.reserveCapacity(existingRows.count + latestRows.count)
 
@@ -102,7 +101,7 @@ func sessionsMergeLatestRows(_ latestRows: [APISession], into existingRows: [API
     }
 }
 
-func sessionsMultiAgentInProgressCount(_ rows: [APISession]) -> Int {
+public func sessionsMultiAgentInProgressCount(_ rows: [APISession]) -> Int {
     rows.reduce(0) { partialResult, session in
         partialResult + SessionRuntimeContext(session: session).collabInProgressCount
     }

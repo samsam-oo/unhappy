@@ -1,15 +1,27 @@
 import Foundation
 import CoreKit
 
-struct DirectSessionPermissionOption: Identifiable, Equatable, Sendable {
-    let id: String
-    let mode: APISessionMessagePermissionMode?
-    let label: String
-    let description: String?
+public struct DirectSessionPermissionOption: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let mode: APISessionMessagePermissionMode?
+    public let label: String
+    public let description: String?
+
+    public init(
+        id: String,
+        mode: APISessionMessagePermissionMode?,
+        label: String,
+        description: String?
+    ) {
+        self.id = id
+        self.mode = mode
+        self.label = label
+        self.description = description
+    }
 }
 
-enum DirectSessionPermissionModeAdapter {
-    static func selectedLabel(
+public enum DirectSessionPermissionModeAdapter {
+    public static func selectedLabel(
         provider: APIUpstreamSessionProvider,
         override: APISessionMessagePermissionMode?,
         current: APISessionMessagePermissionMode?
@@ -28,7 +40,7 @@ enum DirectSessionPermissionModeAdapter {
         }
     }
 
-    static func options(for provider: APIUpstreamSessionProvider) -> [DirectSessionPermissionOption] {
+    public static func options(for provider: APIUpstreamSessionProvider) -> [DirectSessionPermissionOption] {
         switch provider {
         case .codex:
             return [
@@ -108,7 +120,7 @@ enum DirectSessionPermissionModeAdapter {
         }
     }
 
-    static func label(
+    public static func label(
         for provider: APIUpstreamSessionProvider,
         mode: APISessionMessagePermissionMode
     ) -> String {
