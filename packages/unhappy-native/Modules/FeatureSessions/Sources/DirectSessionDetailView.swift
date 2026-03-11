@@ -31,7 +31,6 @@ public struct DirectSessionDetailView: View {
 
     private enum PendingOlderMessagesAnchor {
         case top(String)
-        case bottom
     }
 
     @StateObject private var viewModel: DirectSessionViewModel
@@ -50,7 +49,8 @@ public struct DirectSessionDetailView: View {
     @State private var shouldFollowTranscript = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
     @State private var pendingOlderMessagesAnchor: PendingOlderMessagesAnchor?
-    @State private var canAutoLoadOlderMessages = true
+    @State private var isTopPagingRowVisible = false
+    @State private var lastAutoLoadedOlderMessagesTriggerID: String?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
@@ -138,8 +138,6 @@ public struct DirectSessionDetailView: View {
                         switch pendingOlderMessagesAnchor {
                         case .top(let messageID):
                             scrollToMessage(messageID, using: proxy)
-                        case .bottom:
-                            scrollTranscriptToBottom(using: proxy, animated: false)
                         }
                     }
                     return
@@ -147,9 +145,12 @@ public struct DirectSessionDetailView: View {
                 guard shouldFollowTranscript else { return }
                 scrollTranscriptToBottom(using: proxy, animated: true)
             }
+            .onChange(of: viewModel.olderMessagesLoadTriggerID) { _, _ in
+                autoLoadOlderMessagesIfNeeded()
+            }
             .onChange(of: viewModel.isLoading) { wasLoading, isLoading in
                 guard wasLoading && !isLoading else { return }
-                shouldFollowTranscript = true
+                guard shouldFollowTranscript else { return }
                 scrollTranscriptToBottom(using: proxy, animated: false)
             }
             .onAppear {
@@ -384,15 +385,15 @@ public struct DirectSessionDetailView: View {
                         .foregroundStyle(AppPalette.secondaryText)
                 }
                 .onAppear {
+                    isTopPagingRowVisible = true
                     autoLoadOlderMessagesIfNeeded()
                 }
                 .onDisappear {
-                    canAutoLoadOlderMessages = true
+                    isTopPagingRowVisible = false
                 }
             }
             Spacer()
         }
-        .id(viewModel.olderMessagesLoadTriggerID ?? "no-older-messages")
     }
 
     private var summaryCard: some View {
@@ -864,16 +865,22 @@ public struct DirectSessionDetailView: View {
     }
 
     private func autoLoadOlderMessagesIfNeeded() {
-        guard canAutoLoadOlderMessages else { return }
+        guard isTopPagingRowVisible else { return }
         guard viewModel.isLoadingOlderMessages == false else { return }
-        guard viewModel.hasOlderMessages else { return }
-        if shouldFollowTranscript {
-            pendingOlderMessagesAnchor = .bottom
-        } else {
-            guard let anchorMessageID = transcriptPresentations.first?.messageID else { return }
-            pendingOlderMessagesAnchor = .top(anchorMessageID)
+        guard let triggerID = viewModel.olderMessagesLoadTriggerID else { return }
+        guard DirectSessionTranscriptAutoPagingDecision.shouldTrigger(
+            currentTriggerID: triggerID,
+            lastTriggeredID: lastAutoLoadedOlderMessagesTriggerID,
+            isTopPagingRowVisible: isTopPagingRowVisible,
+            shouldFollowTranscript: shouldFollowTranscript,
+            isLoadingOlderMessages: viewModel.isLoadingOlderMessages
+        ) else {
+            return
         }
-        canAutoLoadOlderMessages = false
+        guard let anchorMessageID = transcriptPresentations.first?.messageID else { return }
+
+        pendingOlderMessagesAnchor = .top(anchorMessageID)
+        lastAutoLoadedOlderMessagesTriggerID = triggerID
 
         Task {
             await viewModel.loadOlderMessages(
