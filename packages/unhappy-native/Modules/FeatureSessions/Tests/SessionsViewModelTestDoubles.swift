@@ -21,6 +21,23 @@ struct MockSessionsLoader: SessionsLoading {
     }
 }
 
+struct DataPlaneReconnectSessionsLoader: SessionsLoading {
+    func loadSessions(serverURLString: String, token: String) async throws -> [APISession] {
+        throw MachinesAPIError.rpcTimedOut
+    }
+}
+
+struct DataPlaneReconnectSessionsPageLoader: SessionsPageLoading {
+    func loadPage(
+        serverURLString: String,
+        token: String,
+        cursor: String?,
+        limit: Int
+    ) async throws -> SessionsPageResult {
+        throw MachinesAPIError.rpcTimedOut
+    }
+}
+
 struct MockSessionsServiceForValidation: SessionsFetching, SessionsPagingFetching, SessionDeleting {
     func fetchSessions(serverURL: URL, token: String) async throws -> [APISession] {
         []

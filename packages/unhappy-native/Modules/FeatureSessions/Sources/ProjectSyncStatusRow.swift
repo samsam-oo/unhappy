@@ -15,8 +15,27 @@ struct ProjectSyncStatusPresentation: Equatable {
     init(
         multiAgentInProgressCount: Int,
         isRefreshing: Bool,
-        refreshLabel: String
+        refreshLabel: String,
+        reconnectingStatusText: String?
     ) {
+        if let reconnectingStatusText, !reconnectingStatusText.isEmpty {
+            if let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
+                inProgressCount: multiAgentInProgressCount
+            ) {
+                self.layout = .leading
+                self.showsSpinner = true
+                self.primaryText = multiAgentStatus.summaryText
+                self.secondaryText = reconnectingStatusText
+                self.multiAgentStatus = multiAgentStatus
+                return
+            }
+            self.layout = .centered
+            self.showsSpinner = true
+            self.primaryText = reconnectingStatusText
+            self.secondaryText = nil
+            self.multiAgentStatus = nil
+            return
+        }
         if let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
             inProgressCount: multiAgentInProgressCount
         ) {
@@ -39,15 +58,18 @@ public struct ProjectSyncStatusRow: View {
     let multiAgentInProgressCount: Int
     let isRefreshing: Bool
     let refreshLabel: String
+    let reconnectingStatusText: String?
 
     public init(
         multiAgentInProgressCount: Int = 0,
         isRefreshing: Bool,
-        refreshLabel: String = "Refreshing projects…"
+        refreshLabel: String = "Refreshing projects…",
+        reconnectingStatusText: String? = nil
     ) {
         self.multiAgentInProgressCount = max(0, multiAgentInProgressCount)
         self.isRefreshing = isRefreshing
         self.refreshLabel = refreshLabel
+        self.reconnectingStatusText = reconnectingStatusText
     }
 
     public var body: some View {
@@ -102,7 +124,8 @@ public struct ProjectSyncStatusRow: View {
         ProjectSyncStatusPresentation(
             multiAgentInProgressCount: multiAgentInProgressCount,
             isRefreshing: isRefreshing,
-            refreshLabel: refreshLabel
+            refreshLabel: refreshLabel,
+            reconnectingStatusText: reconnectingStatusText
         )
     }
 }

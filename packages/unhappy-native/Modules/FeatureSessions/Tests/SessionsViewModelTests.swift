@@ -50,6 +50,24 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadUsesReconnectStatusForTransientDataPlaneFailures() async throws {
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: DataPlaneReconnectSessionsPageLoader(),
+            poller: MockSessionsPoller(rows: []),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.errorMessage == nil)
+        #expect(model.reconnectingStatusText == "Reconnecting to machine…")
+    }
+
+    @Test
     func loadWithInactiveSessionsMarksMultiAgentCompleted() async throws {
         let expected = [
             APISession(
