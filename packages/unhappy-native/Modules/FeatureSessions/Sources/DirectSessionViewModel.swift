@@ -1,9 +1,15 @@
 import Foundation
 import CoreKit
+import OSLog
 import SessionKit
 
 @MainActor
 public final class DirectSessionViewModel: ObservableObject {
+    private static let logger = Logger(
+        subsystem: "im.unhappy.app",
+        category: "direct-session"
+    )
+
     private static let messagePageSize = 240
     private static let incrementalRefreshPageSize = 40
     private static let postSendRefreshDelay: Duration = .milliseconds(250)
@@ -92,6 +98,9 @@ public final class DirectSessionViewModel: ObservableObject {
     }
 
     public func load(serverURLString: String, token: String) async {
+        Self.logger.log(
+            "load start provider=\(self.identity.provider.rawValue, privacy: .public) machine=\(self.identity.machineID, privacy: .public) session=\(self.identity.upstreamSessionID, privacy: .public)"
+        )
         isLoading = true
         defer { isLoading = false }
 
@@ -103,6 +112,9 @@ public final class DirectSessionViewModel: ObservableObject {
             applyLatestPage(page)
             errorMessage = nil
             liveStatusText = nil
+            Self.logger.log(
+                "load ok provider=\(self.identity.provider.rawValue, privacy: .public) machine=\(self.identity.machineID, privacy: .public) session=\(self.identity.upstreamSessionID, privacy: .public) count=\(page.messages.count)"
+            )
         } catch {
             applyMessagesLoadError(error)
         }
@@ -576,10 +588,18 @@ public final class DirectSessionViewModel: ObservableObject {
         if let reconnectingStatusText = MachinesAPIError.reconnectingStatusText(from: error) {
             liveStatusText = reconnectingStatusText
             errorMessage = nil
+            let message = (error as NSError).localizedDescription
+            Self.logger.error(
+                "load transient-fail provider=\(self.identity.provider.rawValue, privacy: .public) machine=\(self.identity.machineID, privacy: .public) session=\(self.identity.upstreamSessionID, privacy: .public) error=\(message, privacy: .public)"
+            )
             return
         }
         liveStatusText = nil
         errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        let message = (error as NSError).localizedDescription
+        Self.logger.error(
+            "load fail provider=\(self.identity.provider.rawValue, privacy: .public) machine=\(self.identity.machineID, privacy: .public) session=\(self.identity.upstreamSessionID, privacy: .public) error=\(message, privacy: .public)"
+        )
     }
 }
 
