@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Context, Result};
+#[cfg(any(windows, test))]
+use serde::Deserialize;
 use serde::Serialize;
 use std::{env, fs, path::Path, process::Command, time::Duration};
 
@@ -27,58 +29,137 @@ pub struct DoctorCleanError {
     pub error: String,
 }
 
+#[cfg(any(windows, test))]
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct WindowsProcessSnapshot {
+    process_id: u32,
+    name: String,
+    command_line: Option<String>,
+}
+
 pub fn list_unhappy_processes(current_pid: u32) -> Result<Vec<UnhappyProcessInfo>> {
-    let output = Command::new("ps")
-        .args(["-ax", "-o", "pid=", "-o", "comm=", "-o", "command="])
-        .output()
-        .context("failed to execute ps")?;
-    if !output.status.success() {
-        return Err(anyhow!("ps exited with {}", output.status));
+    let daemon_basename = current_daemon_basename()?;
+    let mut rows = Vec::new();
+
+    #[cfg(unix)]
+    {
+        let output = Command::new("ps")
+            .args(["-ax", "-o", "pid=", "-o", "comm=", "-o", "command="])
+            .output()
+            .context("failed to execute ps")?;
+        if !output.status.success() {
+            return Err(anyhow!("ps exited with {}", output.status));
+        }
+
+        let stdout = String::from_utf8(output.stdout).context("ps output was not valid UTF-8")?;
+        for line in stdout.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            let mut parts = trimmed.split_whitespace();
+            let Some(pid_raw) = parts.next() else {
+                continue;
+            };
+            let Some(name_raw) = parts.next() else {
+                continue;
+            };
+            let pid = match pid_raw.parse::<u32>() {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            let command = parts.collect::<Vec<_>>().join(" ");
+            let process_type = classify_process(
+                pid,
+                current_pid,
+                name_raw,
+                command.as_str(),
+                daemon_basename.as_str(),
+            );
+            if process_type.is_empty() {
+                continue;
+            }
+            rows.push(UnhappyProcessInfo {
+                pid,
+                command: if command.is_empty() {
+                    name_raw.to_string()
+                } else {
+                    command
+                },
+                process_type,
+            });
+        }
     }
 
-    let daemon_basename = current_daemon_basename()?;
-    let stdout = String::from_utf8(output.stdout).context("ps output was not valid UTF-8")?;
-    let mut rows = Vec::new();
-    for line in stdout.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
+    #[cfg(windows)]
+    {
+        let snapshots = windows_process_snapshots()?;
+        for snapshot in snapshots {
+            let command = snapshot
+                .command_line
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(snapshot.name.as_str())
+                .to_string();
+            let process_type = classify_process(
+                snapshot.process_id,
+                current_pid,
+                snapshot.name.as_str(),
+                command.as_str(),
+                daemon_basename.as_str(),
+            );
+            if process_type.is_empty() {
+                continue;
+            }
+            rows.push(UnhappyProcessInfo {
+                pid: snapshot.process_id,
+                command,
+                process_type,
+            });
         }
-
-        let mut parts = trimmed.split_whitespace();
-        let Some(pid_raw) = parts.next() else {
-            continue;
-        };
-        let Some(name_raw) = parts.next() else {
-            continue;
-        };
-        let pid = match pid_raw.parse::<u32>() {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        let command = parts.collect::<Vec<_>>().join(" ");
-        let process_type = classify_process(
-            pid,
-            current_pid,
-            name_raw,
-            command.as_str(),
-            daemon_basename.as_str(),
-        );
-        if process_type.is_empty() {
-            continue;
-        }
-        rows.push(UnhappyProcessInfo {
-            pid,
-            command: if command.is_empty() {
-                name_raw.to_string()
-            } else {
-                command
-            },
-            process_type,
-        });
     }
 
     Ok(rows)
+}
+
+#[cfg(windows)]
+fn windows_process_snapshots() -> Result<Vec<WindowsProcessSnapshot>> {
+    let script = "Get-CimInstance Win32_Process | Select-Object ProcessId,Name,CommandLine | ConvertTo-Json -Compress";
+    let output = match Command::new("pwsh")
+        .args(["-NoProfile", "-Command", script])
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Command::new("powershell")
+            .args(["-NoProfile", "-Command", script])
+            .output()
+            .context("failed to execute powershell for process listing")?,
+        Err(error) => return Err(error).context("failed to execute pwsh for process listing"),
+    };
+    if !output.status.success() {
+        return Err(anyhow!("powershell process listing exited with {}", output.status));
+    }
+
+    parse_windows_process_snapshots(&String::from_utf8(output.stdout).context("powershell output was not valid UTF-8")?)
+}
+
+#[cfg(any(windows, test))]
+fn parse_windows_process_snapshots(raw: &str) -> Result<Vec<WindowsProcessSnapshot>> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "null" {
+        return Ok(Vec::new());
+    }
+
+    if let Ok(rows) = serde_json::from_str::<Vec<WindowsProcessSnapshot>>(trimmed) {
+        return Ok(rows);
+    }
+    if let Ok(row) = serde_json::from_str::<WindowsProcessSnapshot>(trimmed) {
+        return Ok(vec![row]);
+    }
+    Err(anyhow!("powershell process listing was not valid JSON"))
 }
 
 pub async fn doctor_clean(current_pid: u32) -> Result<DoctorCleanResult> {
@@ -433,4 +514,38 @@ fn escape_xml(value: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_windows_process_snapshots_accepts_array_payloads() {
+        let rows = parse_windows_process_snapshots(
+            r#"[{"ProcessId":3312,"Name":"unhappy.exe","CommandLine":"unhappy.exe daemon start"}]"#
+        )
+        .expect("rows");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].process_id, 3312);
+        assert_eq!(rows[0].name, "unhappy.exe");
+        assert_eq!(rows[0].command_line.as_deref(), Some("unhappy.exe daemon start"));
+    }
+
+    #[test]
+    fn parse_windows_process_snapshots_accepts_single_object_payloads() {
+        let rows = parse_windows_process_snapshots(
+            r#"{"ProcessId":4704,"Name":"pwsh.exe","CommandLine":"pwsh -Command unhappy doctor-processes"}"#
+        )
+        .expect("rows");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].process_id, 4704);
+        assert_eq!(rows[0].name, "pwsh.exe");
+        assert_eq!(
+            rows[0].command_line.as_deref(),
+            Some("pwsh -Command unhappy doctor-processes")
+        );
+    }
 }
