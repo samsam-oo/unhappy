@@ -537,6 +537,40 @@ extension URLSessionMachinesService {
         )
     }
 
+    public func setDaemonPreventSleep(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        enabled: Bool
+    ) async throws -> APIMachineCommandResult {
+        let data = try await rpcDirectoryService.invokeCommand(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            command: "prevent-daemon-sleep",
+            params: ["enabled": .bool(enabled)]
+        )
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw MachinesAPIError.invalidRPCPayload
+        }
+
+        let success = payload["success"] as? Bool ?? false
+        let normalizedError = (payload["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !success {
+            throw MachinesAPIError.rpcCallFailed(
+                (normalizedError?.isEmpty == false ? normalizedError : nil)
+                    ?? "Failed to update daemon idle sleep prevention"
+            )
+        }
+        let normalizedMessage = (payload["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return APIMachineCommandResult(
+            success: true,
+            message: (normalizedMessage?.isEmpty == false ? normalizedMessage : nil)
+                ?? (enabled ? "Daemon idle sleep prevention enabled" : "Daemon idle sleep prevention disabled"),
+            error: nil
+        )
+    }
+
     public func listDirectory(
         serverURL: URL,
         token: String,

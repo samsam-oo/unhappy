@@ -52,6 +52,7 @@ public enum MachineDataPlaneOperation: String, Codable, CaseIterable, Sendable {
     case providerSpawn = "provider.spawn"
     case machinePing = "machine.ping"
     case machineListModels = "machine.listModels"
+    case daemonPreventSleep = "daemon.preventSleep"
     case daemonStop = "daemon.stop"
     case daemonUpdate = "daemon.update"
     case projectList = "project.list"

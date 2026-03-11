@@ -940,6 +940,15 @@ public protocol MachineDaemonUpdating: Sendable {
     func updateDaemon(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult
 }
 
+public protocol MachineDaemonPreventSleepSetting: Sendable {
+    func setDaemonPreventSleep(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        enabled: Bool
+    ) async throws -> APIMachineCommandResult
+}
+
 public protocol MachineDeleting: Sendable {
     func deleteMachine(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult
 }
@@ -1270,6 +1279,7 @@ public actor URLSessionMachinesService:
     MachineSessionSpawning,
     MachineDaemonStopping,
     MachineDaemonUpdating,
+    MachineDaemonPreventSleepSetting,
     MachineDeleting,
     MachineDirectoryListing,
     MachineFileReading,

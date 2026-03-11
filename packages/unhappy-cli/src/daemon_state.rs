@@ -2,8 +2,10 @@ use crate::{
     codex_app_server::open_or_resume_codex_thread,
     config::Config,
     control_server::{
-        ListChild, ProviderSessionStartedRequest, SpawnSessionRequest, SpawnSessionResponse,
+        DaemonPreventSleepResponse, ListChild, ProviderSessionStartedRequest, SpawnSessionRequest,
+        SpawnSessionResponse,
     },
+    power_assertion::IdleSleepAssertionGuard,
     provider::{
         ProviderAdapters, ProviderProcessSpawner, ProviderSpawnContext, TokioProviderProcessSpawner,
     },
@@ -18,7 +20,7 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     process,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
@@ -35,6 +37,7 @@ pub struct DaemonState {
     config: Config,
     shutdown_tx: watch::Sender<bool>,
     process_spawner: Arc<dyn ProviderProcessSpawner>,
+    idle_sleep_assertion_guard: Mutex<Option<IdleSleepAssertionGuard>>,
 }
 
 #[derive(Debug)]
@@ -46,6 +49,7 @@ struct DaemonStateInner {
     started_at: u64,
     shutdown_requested_at: Option<u64>,
     state_reason: Option<String>,
+    prevent_idle_sleep: bool,
     opened_projects: Vec<OpenedProject>,
     sessions_by_pid: HashMap<u32, TrackedSession>,
     awaiters_by_pid: HashMap<u32, oneshot::Sender<TrackedSession>>,
@@ -79,6 +83,8 @@ struct PersistedDaemonState {
     status: DaemonStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     state_reason: Option<String>,
+    #[serde(default)]
+    prevent_idle_sleep: bool,
     started_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     shutdown_requested_at: Option<u64>,
@@ -111,6 +117,7 @@ impl DaemonState {
                 started_at,
                 shutdown_requested_at: None,
                 state_reason: None,
+                prevent_idle_sleep: false,
                 opened_projects: Vec::new(),
                 sessions_by_pid: HashMap::new(),
                 awaiters_by_pid: HashMap::new(),
@@ -118,6 +125,7 @@ impl DaemonState {
             config,
             shutdown_tx,
             process_spawner,
+            idle_sleep_assertion_guard: Mutex::new(None),
         })
     }
 
@@ -132,6 +140,11 @@ impl DaemonState {
             .ok()
             .and_then(|bytes| serde_json::from_slice::<PersistedDaemonState>(&bytes).ok());
         let mut inner = self.inner.write().await;
+        let prevent_idle_sleep = persisted_state
+            .as_ref()
+            .map(|state| state.prevent_idle_sleep)
+            .unwrap_or(false);
+        inner.prevent_idle_sleep = prevent_idle_sleep;
         inner.opened_projects =
             restore_opened_projects(&self.config, persisted_state.as_ref(), &store);
         inner.sessions_by_pid = store
@@ -139,6 +152,8 @@ impl DaemonState {
             .into_iter()
             .map(|session| (session.pid, TrackedSession::from(session)))
             .collect();
+        drop(inner);
+        self.apply_idle_sleep_assertion(prevent_idle_sleep)?;
         Ok(())
     }
 
@@ -223,7 +238,33 @@ impl DaemonState {
             "httpPort": inner.http_port,
             "startedAt": inner.started_at,
             "shutdownRequestedAt": inner.shutdown_requested_at,
+            "preventIdleSleep": inner.prevent_idle_sleep,
             "openedProjects": inner.opened_projects,
+        })
+    }
+
+    pub async fn set_prevent_idle_sleep(
+        &self,
+        enabled: bool,
+    ) -> Result<DaemonPreventSleepResponse> {
+        self.apply_idle_sleep_assertion(enabled)?;
+
+        let snapshot = {
+            let mut inner = self.inner.write().await;
+            inner.prevent_idle_sleep = enabled;
+            self.snapshot_from_inner(&inner)
+        };
+        self.write_snapshot(&snapshot).await?;
+
+        Ok(DaemonPreventSleepResponse {
+            success: true,
+            enabled,
+            message: if enabled {
+                "Daemon idle sleep prevention enabled".to_string()
+            } else {
+                "Daemon idle sleep prevention disabled".to_string()
+            },
+            error: None,
         })
     }
 
@@ -514,6 +555,7 @@ impl DaemonState {
             started_with_cli_version: self.config.current_cli_version.clone(),
             status: inner.status,
             state_reason: inner.state_reason.clone(),
+            prevent_idle_sleep: inner.prevent_idle_sleep,
             started_at: inner.started_at,
             shutdown_requested_at: inner.shutdown_requested_at,
             updated_at,
@@ -530,6 +572,33 @@ impl DaemonState {
                     .collect(),
             },
         }
+    }
+
+    fn apply_idle_sleep_assertion(&self, enabled: bool) -> Result<()> {
+        let mut guard = self
+            .idle_sleep_assertion_guard
+            .lock()
+            .expect("idle sleep assertion mutex poisoned");
+
+        if enabled {
+            if guard.is_some() {
+                return Ok(());
+            }
+            *guard = match IdleSleepAssertionGuard::acquire_for_pid(process::id())
+                .map_err(anyhow::Error::from)?
+            {
+                Some(guard) => Some(guard),
+                None => {
+                    return Err(anyhow::anyhow!(
+                        "idle sleep prevention is unavailable on this platform"
+                    ))
+                }
+            };
+            return Ok(());
+        }
+
+        *guard = None;
+        Ok(())
     }
 
     fn state_file_path(&self) -> PathBuf {

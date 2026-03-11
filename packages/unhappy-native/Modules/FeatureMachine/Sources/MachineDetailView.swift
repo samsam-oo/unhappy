@@ -27,18 +27,19 @@ public struct MachineDetailView: View {
     }
 
     public var body: some View {
-        let presentation = MachineDetailPresentationBuilder.make(from: machine)
-        let machineDisplayName = MachineDisplayNameResolver.displayName(for: machine)
+        let currentMachine = viewModel.machine(machineID: machine.id) ?? machine
+        let presentation = MachineDetailPresentationBuilder.make(from: currentMachine)
+        let machineDisplayName = MachineDisplayNameResolver.displayName(for: currentMachine)
         List {
-            machineSection(machineDisplayName: machineDisplayName, presentation: presentation)
+            machineSection(machine: currentMachine, machineDisplayName: machineDisplayName, presentation: presentation)
             daemonDiagnosticsSection(presentation: presentation)
             metadataDiagnosticsSection(presentation: presentation)
-            spawnSessionSection
-            daemonSection
+            spawnSessionSection(machine: currentMachine)
+            daemonSection(machine: currentMachine)
             statusSection
             errorSection
         }
-        .navigationTitle(machineDisplayName == machine.id ? "Machine" : machineDisplayName)
+        .navigationTitle(machineDisplayName == currentMachine.id ? "Machine" : machineDisplayName)
         .navigationBarTitleDisplayMode(.inline)
         .alert(
             "Stop daemon?",
@@ -48,7 +49,7 @@ public struct MachineDetailView: View {
                 Button("Stop", role: .destructive) {
                     Task {
                         await viewModel.stopDaemon(
-                            machineID: machine.id,
+                            machineID: currentMachine.id,
                             serverURLString: serverURLString,
                             token: token
                         )
@@ -77,6 +78,7 @@ public struct MachineDetailView: View {
     }
 
     private func machineSection(
+        machine: APIMachine,
         machineDisplayName: String,
         presentation: MachineDetailPresentation
     ) -> some View {
@@ -174,7 +176,7 @@ public struct MachineDetailView: View {
     }
 
     @ViewBuilder
-    private var spawnSessionSection: some View {
+    private func spawnSessionSection(machine: APIMachine) -> some View {
         Section("Spawn Session") {
             TextField("Directory", text: $directory)
                 .textInputAutocapitalization(.never)
@@ -211,12 +213,28 @@ public struct MachineDetailView: View {
         }
     }
 
-    private var daemonSection: some View {
+    private func daemonSection(machine: APIMachine) -> some View {
         Section("Daemon") {
             Button("Update Daemon") {
                 Task { await updateDaemon() }
             }
             .disabled(viewModel.isUpdating(machineID: machine.id))
+
+            Button(
+                viewModel.preventSleepEnabled(machineID: machine.id)
+                    ? "Disable Prevent Sleep"
+                    : "Enable Prevent Sleep"
+            ) {
+                Task {
+                    await viewModel.setPreventSleep(
+                        machineID: machine.id,
+                        enabled: !viewModel.preventSleepEnabled(machineID: machine.id),
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                }
+            }
+            .disabled(viewModel.isTogglingPreventSleep(machineID: machine.id))
 
             Button("Stop Daemon", role: .destructive) {
                 showStopDaemonConfirmation = true

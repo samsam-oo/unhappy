@@ -22,6 +22,7 @@ export const MachineDataPlaneOperationSchema = z.enum([
   'provider.spawn',
   'machine.ping',
   'machine.listModels',
+  'daemon.preventSleep',
   'daemon.stop',
   'daemon.update',
   'project.list',

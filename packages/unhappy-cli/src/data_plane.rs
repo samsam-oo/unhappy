@@ -437,6 +437,7 @@ fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
     match operation {
         MachineDataPlaneOperation::MachinePing => "machine.ping",
         MachineDataPlaneOperation::MachineListModels => "machine.listModels",
+        MachineDataPlaneOperation::DaemonPreventSleep => "daemon.preventSleep",
         MachineDataPlaneOperation::DaemonStop => "daemon.stop",
         MachineDataPlaneOperation::DaemonUpdate => "daemon.update",
         MachineDataPlaneOperation::ProviderSpawn => "provider.spawn",
@@ -526,6 +527,13 @@ async fn dispatch_request(
         }
         MachineDataPlaneOperation::MachineListModels => {
             local_ops::list_models(config, payload.get("agent").and_then(Value::as_str)).await
+        }
+        MachineDataPlaneOperation::DaemonPreventSleep => {
+            let enabled = payload
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| anyhow!("enabled is required"))?;
+            Ok(serde_json::to_value(state.set_prevent_idle_sleep(enabled).await?)?)
         }
         MachineDataPlaneOperation::DaemonStop => {
             state.request_shutdown_with_reason("mobile-app").await;

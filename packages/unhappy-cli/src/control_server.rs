@@ -93,6 +93,16 @@ pub struct StopSessionResponse {
     success: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DaemonPreventSleepResponse {
+    pub success: bool,
+    pub enabled: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnSessionResponse {
@@ -155,6 +165,12 @@ struct StopSessionRequest {
     session_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DaemonPreventSleepRequest {
+    enabled: bool,
+}
+
 pub async fn start_control_server(
     state: SharedDaemonState,
     bind_addr: Option<SocketAddr>,
@@ -171,6 +187,7 @@ pub async fn start_control_server(
         .route("/list", post(list_sessions))
         .route("/stop-session", post(stop_session))
         .route("/spawn-session", post(spawn_session))
+        .route("/prevent-sleep", post(set_prevent_sleep))
         .route("/stop", post(stop_daemon))
         .with_state(state.clone());
 
@@ -276,6 +293,25 @@ async fn stop_daemon(State(state): State<SharedDaemonState>) -> Json<StatusOkRes
         .request_shutdown_with_reason("http-stop-request")
         .await;
     Json(StatusOkResponse::stopping())
+}
+
+async fn set_prevent_sleep(
+    State(state): State<SharedDaemonState>,
+    Json(request): Json<DaemonPreventSleepRequest>,
+) -> Response {
+    match state.set_prevent_idle_sleep(request.enabled).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(DaemonPreventSleepResponse {
+                success: false,
+                enabled: request.enabled,
+                message: "Failed to update daemon idle sleep prevention".to_string(),
+                error: Some(error.to_string()),
+            }),
+        )
+            .into_response(),
+    }
 }
 
 fn default_bind_addr() -> SocketAddr {

@@ -663,6 +663,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         switch normalizedCommand {
         case "list-models":
             operation = .machineListModels
+        case "prevent-daemon-sleep":
+            operation = .daemonPreventSleep
         case "stop-daemon":
             operation = .daemonStop
         case "update-daemon":
@@ -726,6 +728,8 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         switch command {
         case "list-models":
             return .machineListModels
+        case "prevent-daemon-sleep":
+            return .daemonPreventSleep
         case "stop-daemon":
             return .daemonStop
         case "update-daemon":
