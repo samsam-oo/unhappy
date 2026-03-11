@@ -93,7 +93,7 @@ struct SessionTranscriptRichContentTests {
 
         let summary = SessionTranscriptRichContentParser.summaryTitle(for: entry)
 
-        #expect(summary == "Explored 3 files")
+        #expect(summary == "Explored 2 files, 1 search")
     }
 
     @Test
@@ -141,7 +141,7 @@ struct SessionTranscriptRichContentTests {
         )
 
         #expect(SessionTranscriptRichContentParser.summaryTitle(for: singleReadEntry) == "Explored 1 file")
-        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Explored 3 files")
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Explored 2 files, 1 search")
     }
 
     @Test
@@ -269,6 +269,40 @@ struct SessionTranscriptRichContentTests {
         #expect(command.actions[0].detail == "NewSessionViewPresentation.swift")
         #expect(command.actions[1].kind == .search)
         #expect(command.actions[1].detail == "struct NewSessionMachinePresentation")
+    }
+
+    @Test
+    func commandPresentationInfersExplorationActionFromRawShellCommand() {
+        let body = """
+        {
+          "type": "commandExecutionPresentation",
+          "command": "rg -n struct NewSessionMachinePresentation Sources",
+          "cwd": "/tmp/project"
+        }
+        """
+        let entry = SessionTranscriptEntry(
+            id: "tool-command-shell",
+            role: .agent,
+            kind: .toolResult,
+            title: "Ran command",
+            body: body,
+            toolUseID: "call_cmd_shell",
+            sourceType: "item_completed",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected inferred command execution rich content")
+            return
+        }
+
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: entry) == "Explored 1 file")
+        #expect(command.actions.count == 1)
+        #expect(command.actions[0].kind == .search)
+        #expect(command.actions[0].detail == "struct in Sources")
     }
 
     @Test

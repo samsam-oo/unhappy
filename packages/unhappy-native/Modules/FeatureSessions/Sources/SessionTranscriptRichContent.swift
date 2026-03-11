@@ -1470,6 +1470,12 @@ enum SessionTranscriptRichContentParser {
             (object["parsed_cmd"] as? [[String: Any]]) ??
             (object["parsedCmd"] as? [[String: Any]]) ?? []
 
+        if rawActions.isEmpty,
+           let command = normalizeString(object["command"]) ?? normalizeString(object["cmd"]),
+           let inferred = inferAction(fromShellCommand: command) {
+            return [inferred]
+        }
+
         return rawActions.enumerated().compactMap { index, action in
             let rawType = normalizeString(action["type"])?.lowercased() ?? ""
             let kind: SessionTranscriptCommandExecutionPayload.Action.Kind
@@ -1500,6 +1506,59 @@ enum SessionTranscriptRichContentParser {
                 detail: detail
             )
         }
+    }
+
+    private static func inferAction(
+        fromShellCommand command: String
+    ) -> SessionTranscriptCommandExecutionPayload.Action? {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let tokens = shellTokens(from: trimmed)
+        guard let executable = tokens.first?.lowercased() else { return nil }
+
+        switch executable {
+        case "rg", "ripgrep", "grep":
+            let pattern = firstNonFlagToken(in: Array(tokens.dropFirst())) ?? trimmed
+            let scope = lastPathLikeToken(in: Array(tokens.dropFirst()))
+            let detail = scope.map { "\(pattern) in \($0)" } ?? pattern
+            return .init(id: "inferred-search", kind: .search, detail: detail)
+        case "sed", "cat", "head", "tail", "less", "awk":
+            let path = lastPathLikeToken(in: Array(tokens.dropFirst())) ?? trimmed
+            return .init(id: "inferred-read", kind: .read, detail: path)
+        case "ls", "find", "tree":
+            let path = lastPathLikeToken(in: Array(tokens.dropFirst())) ?? "."
+            return .init(id: "inferred-list", kind: .list, detail: path)
+        default:
+            return nil
+        }
+    }
+
+    private static func shellTokens(from command: String) -> [String] {
+        command
+            .split(whereSeparator: { $0.isWhitespace || $0 == "|" || $0 == ";" || $0 == "&" })
+            .map(String.init)
+    }
+
+    private static func firstNonFlagToken(in tokens: [String]) -> String? {
+        for token in tokens {
+            if token.hasPrefix("-") { continue }
+            return token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        }
+        return nil
+    }
+
+    private static func lastPathLikeToken(in tokens: [String]) -> String? {
+        for token in tokens.reversed() {
+            let normalized = token.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            if normalized.hasPrefix("-") { continue }
+            if normalized.contains("/") || normalized.contains(".") || normalized.hasPrefix("~") {
+                return normalized
+            }
+            if normalized.lowercased() == "sources" || normalized.lowercased() == "tests" {
+                return normalized
+            }
+        }
+        return nil
     }
 
     private static func explorationSummaryTitle(
