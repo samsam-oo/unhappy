@@ -28,8 +28,10 @@ public actor MachineDataPlaneWebSocketClient {
                  .projectSessions,
                  .codexListThreads,
                  .claudeListSessions,
-                 .geminiListSessions:
-                return .background
+                 .geminiListSessions,
+                 .machineListModels,
+                 .projectList:
+                return .normal
 
             default:
                 return .normal
@@ -54,7 +56,6 @@ public actor MachineDataPlaneWebSocketClient {
     private struct LiveConnection {
         let transport: any MachineDataPlaneTextTransport
         let sessionKey: Data
-        var lastActivityAt: TimeInterval
     }
 
     private struct ConnectionState {
@@ -66,18 +67,15 @@ public actor MachineDataPlaneWebSocketClient {
     }
 
     private let requestTimeoutInterval: TimeInterval
-    private let staleConnectionProbeInterval: TimeInterval
     private let backgroundReconnectBackoffInterval: TimeInterval
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
     private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
 
     public init(
         requestTimeoutInterval: TimeInterval = 8,
-        staleConnectionProbeInterval: TimeInterval = 5,
         backgroundReconnectBackoffInterval: TimeInterval = 10
     ) {
         self.requestTimeoutInterval = requestTimeoutInterval
-        self.staleConnectionProbeInterval = staleConnectionProbeInterval
         self.backgroundReconnectBackoffInterval = backgroundReconnectBackoffInterval
     }
 
@@ -292,25 +290,8 @@ public actor MachineDataPlaneWebSocketClient {
         serverURL: URL
     ) async throws -> LiveConnection {
         if let existingConnection = connectionStates[key]?.liveConnection {
-            let now = Date().timeIntervalSince1970
-            if now - existingConnection.lastActivityAt >= staleConnectionProbeInterval {
-                recordConnectionFailure(for: key)
-                invalidateConnection(for: key)
-            } else {
-                var refreshed = existingConnection
-                refreshed.lastActivityAt = now
-                connectionStates[key]?.liveConnection = refreshed
-                clearRecordedConnectionFailure(for: key)
-                return refreshed
-            }
-
-            if let refreshedConnection = connectionStates[key]?.liveConnection {
-                var refreshed = refreshedConnection
-                refreshed.lastActivityAt = now
-                connectionStates[key]?.liveConnection = refreshed
-                clearRecordedConnectionFailure(for: key)
-                return refreshed
-            }
+            clearRecordedConnectionFailure(for: key)
+            return existingConnection
         }
 
         if let inFlightConnection = inFlightConnections[key] {
@@ -352,8 +333,7 @@ public actor MachineDataPlaneWebSocketClient {
 
                 return LiveConnection(
                     transport: transport,
-                    sessionKey: sessionKey,
-                    lastActivityAt: Date().timeIntervalSince1970
+                    sessionKey: sessionKey
                 )
             } catch {
                 await transport.close()
@@ -365,11 +345,9 @@ public actor MachineDataPlaneWebSocketClient {
         defer { inFlightConnections[key] = nil }
 
         let liveConnection = try await connectTask.value
-        var updatedConnection = liveConnection
-        updatedConnection.lastActivityAt = Date().timeIntervalSince1970
-        connectionStates[key]?.liveConnection = updatedConnection
+        connectionStates[key]?.liveConnection = liveConnection
         clearRecordedConnectionFailure(for: key)
-        return updatedConnection
+        return liveConnection
     }
 
     private func performRequest(
