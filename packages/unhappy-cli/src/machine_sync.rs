@@ -66,6 +66,15 @@ pub fn spawn_machine_sync(state: SharedDaemonState) -> JoinHandle<()> {
     })
 }
 
+pub async fn sync_machine_snapshot_now(state: SharedDaemonState) -> Result<()> {
+    let config = state.config();
+    let client = Client::builder()
+        .user_agent(format!("unhappy-cli/{}", config.current_cli_version))
+        .build()
+        .context("failed to build machine sync client")?;
+    post_machine_snapshot(&client, &config, state, true).await
+}
+
 async fn post_machine_snapshot(
     client: &Client,
     config: &Config,
@@ -113,7 +122,7 @@ async fn post_session_catalog_delta(
     config: &Config,
     state: SharedDaemonState,
 ) -> Result<()> {
-    let scopes = build_session_catalog_scopes(config, state).await?;
+    let scopes = build_session_catalog_scopes(config, state.clone()).await?;
     let response = client
         .post(format!(
             "{}/v1/machines/{}/session-catalog/delta",
@@ -121,7 +130,15 @@ async fn post_session_catalog_delta(
             config.machine_id
         ))
         .bearer_auth(&config.token)
-        .json(&json!({ "scopes": scopes }))
+        .json(&json!({
+            "openedProjects": state
+                .list_opened_projects()
+                .await
+                .into_iter()
+                .map(|project| project.path)
+                .collect::<Vec<_>>(),
+            "scopes": scopes
+        }))
         .send()
         .await
         .context("failed to POST session catalog delta")?;
