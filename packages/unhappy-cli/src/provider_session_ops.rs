@@ -17,6 +17,7 @@ use tokio::{
     fs::{self, File},
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
+    time::{Duration, Instant},
 };
 
 type ProviderSessionListFuture<'a> = Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>>;
@@ -350,7 +351,8 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
         }
     }
     let _ = call_rpc(&mut stdin, &mut reader, 3, "turn/start", turn_params).await?;
-    let _ = child.start_kill();
+    drop(stdin);
+    spawn_codex_turn_completion_drain(child, reader);
 
     Ok(json!({ "success": true }))
 }
@@ -990,6 +992,53 @@ async fn call_rpc(
     }
 
     Err(anyhow!("codex app-server closed before responding"))
+}
+
+fn spawn_codex_turn_completion_drain(
+    mut child: tokio::process::Child,
+    mut reader: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+) {
+    tokio::spawn(async move {
+        let deadline = Instant::now() + Duration::from_secs(300);
+
+        loop {
+            let next_line = tokio::time::timeout_at(deadline, reader.next_line()).await;
+            let line = match next_line {
+                Ok(Ok(Some(line))) => line,
+                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => break,
+            };
+            let parsed: Value = match serde_json::from_str(line.trim()) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            if codex_turn_has_completed(&parsed) {
+                break;
+            }
+        }
+
+        let _ = child.start_kill();
+        let _ = child.wait().await;
+    });
+}
+
+fn codex_turn_has_completed(message: &Value) -> bool {
+    let Some(method) = message
+        .get("method")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return false;
+    };
+
+    matches!(
+        method,
+        "turn/completed"
+            | "turnCompleted"
+            | "codex/event/turn.completed"
+            | "codex/event/turn-completed"
+    ) || method.contains("turn/completed")
+        || method.contains("turn.completed")
 }
 
 async fn collect_jsonl_files(root: &Path) -> Result<Vec<PathBuf>> {
@@ -1817,6 +1866,19 @@ mod tests {
         ));
 
         assert_eq!(normalized, "Please inspect this screenshot.");
+    }
+
+    #[test]
+    fn codex_turn_has_completed_matches_current_and_legacy_notifications() {
+        assert!(codex_turn_has_completed(&json!({
+            "method": "turn/completed"
+        })));
+        assert!(codex_turn_has_completed(&json!({
+            "method": "codex/event/turn.completed"
+        })));
+        assert!(!codex_turn_has_completed(&json!({
+            "method": "item/completed"
+        })));
     }
 
     #[tokio::test]
