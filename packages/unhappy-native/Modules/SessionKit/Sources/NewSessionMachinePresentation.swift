@@ -31,6 +31,7 @@ public enum NewSessionMachinePresentation {
             keys: primaryNameKeys,
             rejectGenericHosts: true
         ) {
+            MachineDisplayNameCache.storeDisplayName(name, for: machine.id)
             return name
         }
         if let host = bestDisplayString(
@@ -38,6 +39,7 @@ public enum NewSessionMachinePresentation {
             keys: hostKeys,
             rejectGenericHosts: true
         ) {
+            MachineDisplayNameCache.storeDisplayName(host, for: machine.id)
             return host
         }
         if let relaxedHost = bestDisplayString(
@@ -45,7 +47,11 @@ public enum NewSessionMachinePresentation {
             keys: hostKeys,
             rejectGenericHosts: false
         ) {
+            MachineDisplayNameCache.storeDisplayName(relaxedHost, for: machine.id)
             return relaxedHost
+        }
+        if let cached = MachineDisplayNameCache.cachedDisplayName(for: machine.id) {
+            return cached
         }
         return machine.id
     }

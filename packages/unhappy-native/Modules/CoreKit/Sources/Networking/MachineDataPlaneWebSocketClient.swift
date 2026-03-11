@@ -22,17 +22,17 @@ public actor MachineDataPlaneWebSocketClient {
         static func forOperation(_ operation: MachineDataPlaneOperation) -> RequestPriority {
             switch operation {
             case .codexSendMessage,
+                 .codexListMessages,
                  .claudeSendMessage,
+                 .claudeListMessages,
                  .geminiSendMessage,
+                 .geminiListMessages,
                  .fsReadFile,
                  .execBash,
                  .providerSpawn:
                 return .interactive
 
             case .machinePing,
-                 .codexListMessages,
-                 .claudeListMessages,
-                 .geminiListMessages,
                  .projectSessions,
                  .codexListThreads,
                  .claudeListSessions,

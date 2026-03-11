@@ -68,7 +68,7 @@ struct MachineDataPlaneWebSocketClientTests {
             MachineDataPlaneWebSocketClient.reconnectGraceInterval(
                 for: .codexListMessages,
                 baseGraceInterval: 4
-            ) == 4
+            ) == 6
         )
         #expect(
             MachineDataPlaneWebSocketClient.reconnectGraceInterval(
@@ -98,7 +98,7 @@ struct MachineDataPlaneWebSocketClientTests {
             MachineDataPlaneWebSocketClient.responseTimeoutInterval(
                 for: .codexListMessages,
                 baseResponseTimeoutInterval: 12
-            ) == 20
+            ) == 45
         )
         #expect(
             MachineDataPlaneWebSocketClient.responseTimeoutInterval(
@@ -126,7 +126,7 @@ struct MachineDataPlaneWebSocketClientTests {
             MachineDataPlaneWebSocketClient.sendTimeoutInterval(
                 for: .codexListMessages,
                 baseRequestTimeoutInterval: 8
-            ) == 4
+            ) == 6
         )
         #expect(
             MachineDataPlaneWebSocketClient.sendTimeoutInterval(
