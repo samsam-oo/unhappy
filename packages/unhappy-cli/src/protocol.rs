@@ -93,9 +93,6 @@ pub struct MachineDataPlaneHelloFrame {
     pub connection_id: String,
     pub role: MachineDataPlaneRole,
     pub key_exchange: MachineDataPlaneKeyExchange,
-    pub supports_chunk_ack: bool,
-    pub supports_resume: bool,
-    pub last_acked_stream_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -119,7 +116,6 @@ pub struct MachineDataPlaneRequestFrame {
     pub stream_id: String,
     pub op: MachineDataPlaneOperation,
     pub body: MachineDataPlaneSealedBody,
-    pub expects_chunks: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

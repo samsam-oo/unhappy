@@ -421,8 +421,7 @@ public actor MachineDataPlaneWebSocketClient {
         let requestHeader = MachineDataPlaneRequestFrame(
             streamID: streamID,
             op: request.operation,
-            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: ""),
-            expectsChunks: false
+            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: "")
         )
         let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
             request.bodyObject,
@@ -436,8 +435,7 @@ public actor MachineDataPlaneWebSocketClient {
                 nonce: sealedBody.nonce,
                 ciphertext: sealedBody.ciphertext,
                 tag: sealedBody.tag
-            ),
-            expectsChunks: false
+            )
         )
         try await send(frame: requestFrame, transport: liveConnection.transport)
         sentRequest = true
@@ -671,7 +669,6 @@ public actor MachineDataPlaneWebSocketClient {
             ("t", frame.t.rawValue),
             ("streamId", frame.streamID),
             ("op", frame.op.rawValue),
-            ("expectsChunks", frame.expectsChunks ? "1" : "0"),
         ])
     }
 
