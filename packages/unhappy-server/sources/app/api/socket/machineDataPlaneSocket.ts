@@ -85,6 +85,19 @@ function sendJSONFrame(socket: WebSocket, payload: unknown): void {
     socket.send(JSON.stringify(payload));
 }
 
+function logRelay(
+    message: string,
+    metadata: Record<string, unknown>
+): void {
+    log(
+        {
+            module: "machine-data-plane-relay",
+            ...metadata,
+        },
+        message
+    );
+}
+
 function rejectUpgrade(socket: Duplex, statusCode: number, message: string): void {
     socket.write(
         `HTTP/1.1 ${statusCode} ${message}\r\n` +
@@ -150,6 +163,12 @@ export function startMachineDataPlaneSocket(app: Fastify) {
     }
 
     function cleanupState(state: ConnectionState): void {
+        logRelay("Cleaning up data-plane connection state", {
+            userId: state.userId,
+            machineId: state.machineId,
+            role: state.role ?? "unknown",
+            ready: state.ready,
+        });
         clearHandshakeTimeout(state);
         const key = machineKey(state.userId, state.machineId);
         const routeState = machineRoutes.get(key);
@@ -184,6 +203,14 @@ export function startMachineDataPlaneSocket(app: Fastify) {
         message: string,
         retryable: boolean
     ): void {
+        logRelay("Sending data-plane stream error", {
+            userId: state.userId,
+            machineId: state.machineId,
+            role: state.role ?? "unknown",
+            streamId,
+            code,
+            retryable,
+        });
         const payload = MachineDataPlaneErrorFrameSchema.parse({
             v: MACHINE_DATA_PLANE_PROTOCOL_VERSION,
             t: "error",
@@ -251,6 +278,15 @@ export function startMachineDataPlaneSocket(app: Fastify) {
 
         sendJSONFrame(native.socket, nativeAck);
         sendJSONFrame(daemon.socket, daemonAck);
+        logRelay("Completed data-plane handshake", {
+            userId: native.userId,
+            machineId: native.machineId,
+            nativeSessionId: native.sessionId,
+            daemonSessionId: daemon.sessionId,
+            idleTimeoutSeconds,
+            maxChunkBytes,
+            maxInFlightStreams,
+        });
         native.ready = true;
         daemon.ready = true;
         clearHandshakeTimeout(native);
@@ -304,6 +340,14 @@ export function startMachineDataPlaneSocket(app: Fastify) {
         state.role = role;
         state.hello = hello;
         state.ready = false;
+
+        logRelay("Registered data-plane hello", {
+            userId: state.userId,
+            machineId: state.machineId,
+            role,
+            sessionId: state.sessionId,
+            connectionId: hello.connectionId,
+        });
 
         const existing = role === "native" ? routeState.native : routeState.daemon;
         if (existing && existing.socket !== state.socket) {
@@ -362,6 +406,13 @@ export function startMachineDataPlaneSocket(app: Fastify) {
 
         if (!peer?.ready) {
             if ("streamId" in frame) {
+                logRelay("Peer not ready for data-plane stream", {
+                    userId: state.userId,
+                    machineId: state.machineId,
+                    role: state.role,
+                    frameType: frame.t,
+                    streamId: frame.streamId,
+                });
                 sendStreamError(
                     state,
                     frame.streamId,
@@ -377,6 +428,14 @@ export function startMachineDataPlaneSocket(app: Fastify) {
 
         switch (frame.t) {
         case "request":
+            logRelay("Routing data-plane request", {
+                userId: state.userId,
+                machineId: state.machineId,
+                fromRole: state.role,
+                toRole: peer.role ?? (state.role === "native" ? "daemon" : "native"),
+                streamId: frame.streamId,
+                op: frame.op,
+            });
             routeState.streams.set(frame.streamId, { initiatorRole: state.role });
             sendJSONFrame(peer.socket, frame);
             return;
@@ -391,6 +450,14 @@ export function startMachineDataPlaneSocket(app: Fastify) {
                 state.socket.close(1008, "Only responder may stream results");
                 return;
             }
+            logRelay("Routing data-plane terminal frame", {
+                userId: state.userId,
+                machineId: state.machineId,
+                fromRole: state.role,
+                toRole: stream.initiatorRole,
+                frameType: frame.t,
+                streamId: frame.streamId,
+            });
             const initiator = stream.initiatorRole === "native" ? routeState.native : routeState.daemon;
             if (initiator?.ready) {
                 sendJSONFrame(initiator.socket, frame);
@@ -455,6 +522,11 @@ export function startMachineDataPlaneSocket(app: Fastify) {
                     handshakeTimeout: null,
                 };
                 socketStates.set(ws, state);
+                logRelay("Accepted data-plane websocket upgrade", {
+                    userId: authorized.userId,
+                    machineId: authorized.machineId,
+                    sessionId: state.sessionId,
+                });
 
                 ws.on("message", (raw: RawData) => {
                     const currentState = socketStates.get(ws);

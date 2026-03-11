@@ -1,6 +1,6 @@
 import SwiftUI
 import CoreKit
-import FeatureNewSession
+import SessionKit
 import UIFoundation
 
 @MainActor
@@ -29,7 +29,7 @@ public struct SessionProjectDetailView: View {
     let token: String
     let hideInactiveSessions: Bool
     let defaultNewSessionAgent: APISessionSpawnAgent
-    let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
+    let makeProjectStartSheet: SessionProjectStartSheetBuilder
     let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     let onProjectRemoved: (() -> Void)?
 
@@ -45,7 +45,7 @@ public struct SessionProjectDetailView: View {
         token: String,
         hideInactiveSessions: Bool,
         defaultNewSessionAgent: APISessionSpawnAgent,
-        makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
+        makeProjectStartSheet: @escaping SessionProjectStartSheetBuilder,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel,
         onProjectRemoved: (() -> Void)? = nil
     ) {
@@ -55,7 +55,7 @@ public struct SessionProjectDetailView: View {
         self.token = token
         self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
-        self.makeNewSessionViewModel = makeNewSessionViewModel
+        self.makeProjectStartSheet = makeProjectStartSheet
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
         self.onProjectRemoved = onProjectRemoved
     }
@@ -173,69 +173,69 @@ public struct SessionProjectDetailView: View {
             )
         }
         .sheet(isPresented: $isPresentingNewSession) {
-            NewSessionView(
-                serverURLString: serverURLString,
-                token: token,
-                defaultAgent: defaultNewSessionAgent,
-                initialMachineID: initialGroup.machineID,
-                initialDirectoryPath: initialGroup.projectPath,
-                makeViewModel: makeNewSessionViewModel,
-                onSessionSpawned: { context in
-                    guard let sessionID = context.sessionID else { return }
-                    Task {
-                        let resolvedMachineID = context.machineID ?? initialGroup.machineID
-                        await viewModel.refreshProject(
-                            machineID: resolvedMachineID,
-                            projectPath: context.directoryPath,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                        let provider: APIUpstreamSessionProvider
-                        switch context.agent {
-                        case .codex:
-                            provider = .codex
-                        case .claude:
-                            provider = .claude
-                        case .gemini:
-                            provider = .gemini
-                        }
-                        if let directRow = viewModel.projectSessions(
-                            machineID: resolvedMachineID,
-                            projectPath: context.directoryPath
-                        ).first(where: {
-                            $0.machineID == resolvedMachineID &&
-                            $0.summary.provider == provider &&
-                            $0.summary.id == sessionID
-                        }), let identity = DirectSessionIdentityResolver.resolve(from: directRow) {
-                            spawnedDirectSessionIdentity = identity
-                            return
-                        }
-                        let fallbackProvider: APIUpstreamSessionProvider
-                        switch context.agent {
-                        case .codex:
-                            fallbackProvider = .codex
-                        case .gemini:
-                            fallbackProvider = .gemini
-                        case .claude:
-                            fallbackProvider = .claude
-                        }
-                        spawnedDirectSessionIdentity = DirectSessionIdentity(
-                            machineID: resolvedMachineID,
-                            machineDisplayName: projectDisplayGroup.machineDisplayName,
-                            wrappedMachineDataEncryptionKey: projectDisplayGroup.wrappedMachineDataEncryptionKey,
-                            provider: fallbackProvider,
-                            upstreamSessionID: sessionID,
-                            title: "Session",
-                            cwd: context.directoryPath,
-                            transcriptPath: nil,
-                            model: context.model,
-                            effort: nil,
-                            permissionMode: nil,
-                            collabInProgressCount: 0
-                        )
+            makeProjectStartSheet(
+                SessionProjectStartSheetContext(
+                    serverURLString: serverURLString,
+                    token: token,
+                    defaultAgent: defaultNewSessionAgent,
+                    initialMachineID: initialGroup.machineID,
+                    initialDirectoryPath: initialGroup.projectPath
+                )
+            ) { context in
+                guard let sessionID = context.sessionID else { return }
+                Task {
+                    let resolvedMachineID = context.machineID ?? initialGroup.machineID
+                    await viewModel.refreshProject(
+                        machineID: resolvedMachineID,
+                        projectPath: context.directoryPath,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
+                    let provider: APIUpstreamSessionProvider
+                    switch context.agent {
+                    case .codex:
+                        provider = .codex
+                    case .claude:
+                        provider = .claude
+                    case .gemini:
+                        provider = .gemini
                     }
+                    if let directRow = viewModel.projectSessions(
+                        machineID: resolvedMachineID,
+                        projectPath: context.directoryPath
+                    ).first(where: {
+                        $0.machineID == resolvedMachineID &&
+                        $0.summary.provider == provider &&
+                        $0.summary.id == sessionID
+                    }), let identity = DirectSessionIdentityResolver.resolve(from: directRow) {
+                        spawnedDirectSessionIdentity = identity
+                        return
+                    }
+                    let fallbackProvider: APIUpstreamSessionProvider
+                    switch context.agent {
+                    case .codex:
+                        fallbackProvider = .codex
+                    case .gemini:
+                        fallbackProvider = .gemini
+                    case .claude:
+                        fallbackProvider = .claude
+                    }
+                    spawnedDirectSessionIdentity = DirectSessionIdentity(
+                        machineID: resolvedMachineID,
+                        machineDisplayName: projectDisplayGroup.machineDisplayName,
+                        wrappedMachineDataEncryptionKey: projectDisplayGroup.wrappedMachineDataEncryptionKey,
+                        provider: fallbackProvider,
+                        upstreamSessionID: sessionID,
+                        title: "Session",
+                        cwd: context.directoryPath,
+                        transcriptPath: nil,
+                        model: context.model,
+                        effort: nil,
+                        permissionMode: nil,
+                        collabInProgressCount: 0
+                    )
                 }
-            )
+            }
         }
     }
 

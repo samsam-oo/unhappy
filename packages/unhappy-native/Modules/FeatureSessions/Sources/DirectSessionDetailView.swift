@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import SessionKit
 import UIFoundation
 
 @MainActor
@@ -219,6 +220,9 @@ public struct DirectSessionDetailView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 8) {
+                if let latestPlanPresentation {
+                    SessionPlanLiveBar(presentation: latestPlanPresentation)
+                }
                 if displayedCollabCount > 0 {
                     SessionSubAgentLiveBar(count: displayedCollabCount)
                 }
@@ -350,6 +354,10 @@ public struct DirectSessionDetailView: View {
 
     private var displayedCollabCount: Int {
         max(viewModel.identity.collabInProgressCount, transcriptDerivedCollabCount)
+    }
+
+    private var latestPlanPresentation: SessionPlanLivePresentation? {
+        SessionPlanLivePresentationBuilder.latestPlan(in: transcriptPresentations)
     }
 
     private var transcriptDerivedCollabCount: Int {

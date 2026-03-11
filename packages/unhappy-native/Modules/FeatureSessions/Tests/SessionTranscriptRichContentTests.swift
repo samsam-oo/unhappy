@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import FeatureSessions
+import SessionKit
 
 struct SessionTranscriptRichContentTests {
     @Test
@@ -93,7 +94,7 @@ struct SessionTranscriptRichContentTests {
 
         let summary = SessionTranscriptRichContentParser.summaryTitle(for: entry)
 
-        #expect(summary == "Listed 2 paths, 1 search")
+        #expect(summary == "Explored 2 files, 1 search")
     }
 
     @Test
@@ -140,8 +141,8 @@ struct SessionTranscriptRichContentTests {
             threadID: nil
         )
 
-        #expect(SessionTranscriptRichContentParser.summaryTitle(for: singleReadEntry) == "Read 1 file")
-        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Read 2 files, 1 search")
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: singleReadEntry) == "Explored 1 file")
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Explored 2 files, 1 search")
     }
 
     @Test
@@ -227,6 +228,82 @@ struct SessionTranscriptRichContentTests {
         #expect(command.status == .succeeded)
         #expect(command.exitCode == 0)
         #expect(command.durationText == "11s")
+        #expect(command.actions.isEmpty)
+    }
+
+    @Test
+    func commandPresentationBuildsExplorationActionsFromCommandActions() {
+        let body = """
+        {
+          "type": "commandExecutionPresentation",
+          "command": "inspect repo",
+          "cwd": "/tmp/project",
+          "commandActions": [
+            { "type": "read", "path": "NewSessionViewPresentation.swift" },
+            { "type": "search", "query": "struct NewSessionMachinePresentation" },
+            { "type": "read", "path": "NewSessionMachinePresentation.swift" }
+          ]
+        }
+        """
+        let entry = SessionTranscriptEntry(
+            id: "tool-command-actions",
+            role: .agent,
+            kind: .toolResult,
+            title: "Ran command",
+            body: body,
+            toolUseID: "call_cmd_actions",
+            sourceType: "item_completed",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected command execution rich content")
+            return
+        }
+
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: entry) == "Explored 3 files")
+        #expect(command.actions.count == 3)
+        #expect(command.actions[0].kind == .read)
+        #expect(command.actions[0].detail == "NewSessionViewPresentation.swift")
+        #expect(command.actions[1].kind == .search)
+        #expect(command.actions[1].detail == "struct NewSessionMachinePresentation")
+    }
+
+    @Test
+    func commandPresentationInfersExplorationActionFromRawShellCommand() {
+        let body = """
+        {
+          "type": "commandExecutionPresentation",
+          "command": "rg -n struct NewSessionMachinePresentation Sources",
+          "cwd": "/tmp/project"
+        }
+        """
+        let entry = SessionTranscriptEntry(
+            id: "tool-command-shell",
+            role: .agent,
+            kind: .toolResult,
+            title: "Ran command",
+            body: body,
+            toolUseID: "call_cmd_shell",
+            sourceType: "item_completed",
+            toolName: "codexbash",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected inferred command execution rich content")
+            return
+        }
+
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: entry) == "Explored 1 file")
+        #expect(command.actions.count == 1)
+        #expect(command.actions[0].kind == .search)
+        #expect(command.actions[0].detail == "struct in Sources")
     }
 
     @Test

@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import CoreKit
+import SecurityKit
 
 enum MachineDisplayNameResolver {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
@@ -22,6 +23,9 @@ enum MachineDisplayNameResolver {
             raw: machine.metadata,
             dataEncryptionKey: machine.dataEncryptionKey
         ) else {
+            if let cached = MachineDisplayNameCache.cachedDisplayName(for: machine.id) {
+                return cached
+            }
             return fallbackDisplayName(for: machine)
         }
 
@@ -38,6 +42,7 @@ enum MachineDisplayNameResolver {
             rejectGenericHosts: true,
             rejectOpaqueIdentifiers: true
         ) {
+            MachineDisplayNameCache.storeDisplayName(name, for: machine.id)
             return name
         }
         if let host = bestDisplayString(
@@ -46,9 +51,13 @@ enum MachineDisplayNameResolver {
             rejectGenericHosts: true,
             rejectOpaqueIdentifiers: true
         ) {
+            MachineDisplayNameCache.storeDisplayName(host, for: machine.id)
             return host
         }
 
+        if let cached = MachineDisplayNameCache.cachedDisplayName(for: machine.id) {
+            return cached
+        }
         return fallbackDisplayName(for: machine)
     }
 
@@ -334,7 +343,7 @@ enum MachineDisplayNameResolver {
             .string(forKey: accountSecretDefaultsKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let raw, !raw.isEmpty else { return nil }
-        guard let decoded = decodeBase64(raw), decoded.count == 32 else {
+        guard let decoded = AccountSecretCodec.decode(raw), decoded.count == 32 else {
             return nil
         }
         return decoded

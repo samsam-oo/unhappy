@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import CoreKit
+import SessionKit
 import UIFoundation
 
 let directSessionTranscriptScrollCoordinateSpace = "direct-session-transcript-scroll"

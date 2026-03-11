@@ -1,6 +1,6 @@
 import SwiftUI
 import CoreKit
-import FeatureNewSession
+import SessionKit
 
 @MainActor
 public struct SessionsView: View {
@@ -13,7 +13,8 @@ public struct SessionsView: View {
     private let token: String
     private let hideInactiveSessions: Bool
     private let defaultNewSessionAgent: APISessionSpawnAgent
-    private let makeNewSessionViewModel: @MainActor () -> NewSessionViewModel
+    private let makeProjectPickerSheet: SessionProjectPickerSheetBuilder
+    private let makeProjectStartSheet: SessionProjectStartSheetBuilder
     private let makeDirectSessionViewModel: @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     @State private var isPresentingProjectPicker = false
     @State private var navigationPath: [Selection] = []
@@ -24,7 +25,8 @@ public struct SessionsView: View {
         hideInactiveSessions: Bool = false,
         defaultNewSessionAgent: APISessionSpawnAgent = .claude,
         makeViewModel: @escaping @MainActor () -> SessionsViewModel,
-        makeNewSessionViewModel: @escaping @MainActor () -> NewSessionViewModel,
+        makeProjectPickerSheet: @escaping SessionProjectPickerSheetBuilder,
+        makeProjectStartSheet: @escaping SessionProjectStartSheetBuilder,
         makeDirectSessionViewModel: @escaping @MainActor (DirectSessionIdentity) -> DirectSessionViewModel
     ) {
         self.serverURLString = serverURLString
@@ -32,7 +34,8 @@ public struct SessionsView: View {
         self.hideInactiveSessions = hideInactiveSessions
         self.defaultNewSessionAgent = defaultNewSessionAgent
         _viewModel = StateObject(wrappedValue: makeViewModel())
-        self.makeNewSessionViewModel = makeNewSessionViewModel
+        self.makeProjectPickerSheet = makeProjectPickerSheet
+        self.makeProjectStartSheet = makeProjectStartSheet
         self.makeDirectSessionViewModel = makeDirectSessionViewModel
     }
 
@@ -69,25 +72,24 @@ public struct SessionsView: View {
             }
         }
         .sheet(isPresented: $isPresentingProjectPicker) {
-            NewSessionView(
-                serverURLString: serverURLString,
-                token: token,
-                defaultAgent: defaultNewSessionAgent,
-                mode: .selectProject,
-                makeViewModel: makeNewSessionViewModel,
-                onProjectSelected: { machineID, directoryPath, machineDisplayName, wrappedMachineDataEncryptionKey in
-                    Task {
-                        await viewModel.openProject(
-                            machineID: machineID ?? "",
-                            machineDisplayName: machineDisplayName ?? machineID ?? "",
-                            projectPath: directoryPath,
-                            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
-                            serverURLString: serverURLString,
-                            token: token
-                        )
-                    }
+            makeProjectPickerSheet(
+                SessionProjectPickerSheetContext(
+                    serverURLString: serverURLString,
+                    token: token,
+                    defaultAgent: defaultNewSessionAgent
+                )
+            ) { result in
+                Task {
+                    await viewModel.openProject(
+                        machineID: result.machineID ?? "",
+                        machineDisplayName: result.machineDisplayName ?? result.machineID ?? "",
+                        projectPath: result.directoryPath,
+                        wrappedMachineDataEncryptionKey: result.wrappedMachineDataEncryptionKey,
+                        serverURLString: serverURLString,
+                        token: token
+                    )
                 }
-            )
+            }
         }
     }
 
@@ -346,7 +348,7 @@ public struct SessionsView: View {
                     token: token,
                     hideInactiveSessions: hideInactiveSessions,
                     defaultNewSessionAgent: defaultNewSessionAgent,
-                    makeNewSessionViewModel: makeNewSessionViewModel,
+                    makeProjectStartSheet: makeProjectStartSheet,
                     makeDirectSessionViewModel: makeDirectSessionViewModel,
                     onProjectRemoved: {
                         navigationPath.removeAll()

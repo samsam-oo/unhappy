@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import CoreKit
+import SessionKit
 @testable import FeatureSessions
 
 struct DirectSessionUseCasesTests {
@@ -48,6 +49,40 @@ struct DirectSessionUseCasesTests {
         #expect(page.messages.count == 1)
         let recordedSessionID = await service.recordedSessionID
         #expect(recordedSessionID == "gemini-session-1")
+    }
+
+    @Test
+    func loadMessagesRetriesTransientSocketFailures() async throws {
+        let service = RetryingCodexMessagesService()
+        let useCase = DirectSessionMessagesLoadUseCase(
+            codexService: service,
+            claudeService: FailingClaudeMessagesService(),
+            geminiService: GeminiMessagesService(messages: [])
+        )
+
+        let page = try await useCase.loadMessages(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            identity: DirectSessionIdentity(
+                machineID: "machine-1",
+                machineDisplayName: "Mac",
+                wrappedMachineDataEncryptionKey: nil,
+                provider: .codex,
+                upstreamSessionID: "thread-1",
+                title: "Codex Session",
+                cwd: "/repo",
+                transcriptPath: "/repo/.codex/transcript.jsonl",
+                model: nil,
+                effort: nil,
+                permissionMode: nil,
+                collabInProgressCount: 0
+            ),
+            limit: 120,
+            cursor: nil
+        )
+
+        #expect(page.messages.count == 1)
+        #expect(await service.callCount == 3)
     }
 
     @Test
@@ -256,6 +291,40 @@ private actor GeminiMessagingService: MachineGeminiSessionMessaging {
             queueCount: nil,
             queuedMessages: nil,
             error: nil
+        )
+    }
+}
+
+private actor RetryingCodexMessagesService: MachineCodexThreadMessagesFetching {
+    private(set) var callCount = 0
+
+    func fetchCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
+        callCount += 1
+        if callCount < 3 {
+            throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
+        }
+        return APISessionMessagesPage(
+            messages: [
+                APISessionMessage(
+                    id: "codex-msg-1",
+                    seq: 1,
+                    localId: nil,
+                    content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                    createdAt: 1,
+                    updatedAt: 1
+                )
+            ],
+            nextCursor: nil,
+            hasNext: false
         )
     }
 }

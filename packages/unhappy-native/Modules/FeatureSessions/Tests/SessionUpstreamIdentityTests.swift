@@ -1,6 +1,7 @@
 import Testing
 @testable import FeatureSessions
 import CoreKit
+import SessionKit
 
 struct SessionUpstreamIdentityTests {
     @Test

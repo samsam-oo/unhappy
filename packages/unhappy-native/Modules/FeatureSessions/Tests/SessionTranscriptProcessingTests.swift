@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import FeatureSessions
+import SessionKit
 
 struct SessionTranscriptProcessingTests {
     @Test
@@ -304,11 +305,121 @@ struct SessionTranscriptProcessingTests {
         }
 
         #expect(firstCommand.command == "npm test")
-        #expect(firstCommand.supplementalEntries.isEmpty)
+        #expect(firstCommand.supplementalEntries.map(\.kind) == [.toolResult])
         #expect(firstCommand.status == .running)
         #expect(secondCommand.command == "npm run dev")
-        #expect(secondCommand.supplementalEntries.map(\.kind) == [.stdin, .toolResult])
+        #expect(secondCommand.supplementalEntries.map(\.kind) == [.toolResult, .stdin, .toolResult])
         #expect(secondCommand.status == .running)
+    }
+
+    @Test
+    func mergesAdjacentExplorationOnlyCommandsIntoSingleCard() {
+        let first = makeEntry(
+            id: "explore-1",
+            kind: .toolResult,
+            title: "Ran command",
+            body: #"{"command":"cat README.md","cwd":"/tmp/project"}"#,
+            sourceType: "item_completed"
+        )
+        let second = makeEntry(
+            id: "explore-2",
+            kind: .toolResult,
+            title: "Ran command",
+            body: #"{"command":"rg TODO Sources","cwd":"/tmp/project"}"#,
+            sourceType: "item_completed"
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: first),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: second),
+        ])
+
+        #expect(coalesced.count == 1)
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected merged exploration card")
+            return
+        }
+
+        #expect(command.summary == "Explored 1 file, 1 search")
+        #expect(command.actions.map(\.kind) == [.read, .search])
+    }
+
+    @Test
+    func attachesOrphanGenericToolResultToPreviousCommandCard() {
+        let command = makeEntry(
+            id: "command",
+            kind: .toolResult,
+            title: "Ran command",
+            body: #"{"command":"python script.py","cwd":"/tmp/project"}"#,
+            sourceType: "item_completed"
+        )
+        let orphanResult = SessionTranscriptEntry(
+            id: "tool-result",
+            role: .agent,
+            kind: .toolResult,
+            title: "Tool Result",
+            body: #"{"status":"completed","message":"read finished"}"#,
+            toolUseID: nil,
+            sourceType: "tool_result",
+            toolName: nil,
+            isSidechain: false,
+            threadID: nil
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: command),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: orphanResult),
+        ])
+
+        #expect(coalesced.count == 1)
+        guard case .commandExecution(let merged)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected command execution card")
+            return
+        }
+
+        #expect(merged.supplementalEntries.map(\.kind) == [.toolResult])
+        #expect(merged.supplementalEntries.first?.body == #"{"status":"completed","message":"read finished"}"#)
+    }
+
+    @Test
+    func attachesPlainTextToolResultWithToolNameToPreviousCommandCard() {
+        let command = makeEntry(
+            id: "command",
+            kind: .toolResult,
+            title: "Ran command",
+            body: #"{"command":"rg SessionTranscriptProcessing","cwd":"/tmp/project"}"#,
+            sourceType: "item_completed"
+        )
+        let orphanResult = SessionTranscriptEntry(
+            id: "tool-result",
+            role: .agent,
+            kind: .toolResult,
+            title: "Read Result",
+            body: "Read NewSessionViewPresentation.swift",
+            toolUseID: nil,
+            sourceType: "tool_result",
+            toolName: "read_file",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: command),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: orphanResult),
+        ])
+
+        #expect(coalesced.count == 1)
+        guard case .commandExecution(let merged)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected command execution card")
+            return
+        }
+
+        #expect(merged.supplementalEntries.map(\.kind) == [.toolResult])
+        #expect(merged.supplementalEntries.first?.title == "Read Result")
+        #expect(merged.supplementalEntries.first?.body == "Read NewSessionViewPresentation.swift")
     }
 
     private func makeCommandPresentations() -> [SessionTranscriptMessagePresentation] {

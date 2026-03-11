@@ -1,5 +1,6 @@
 import Testing
 @testable import FeatureSessions
+import SessionKit
 
 struct DirectSessionArtifactsTests {
     @Test
@@ -21,6 +22,7 @@ struct DirectSessionArtifactsTests {
                     exitCode: 0,
                     status: "completed",
                     durationMs: 100,
+                    actions: [],
                     supplementalEntries: []
                 )
             ),

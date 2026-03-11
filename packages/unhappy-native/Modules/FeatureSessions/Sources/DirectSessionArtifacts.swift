@@ -1,4 +1,5 @@
 import Foundation
+import SessionKit
 
 enum DirectSessionArtifacts {
     static func richEntries(

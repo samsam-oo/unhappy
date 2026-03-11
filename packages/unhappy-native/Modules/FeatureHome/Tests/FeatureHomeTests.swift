@@ -5,6 +5,7 @@ import FeatureSessions
 import FeatureMachine
 import FeatureNewSession
 import CoreKit
+import SessionKit
 import FeatureSettings
 
 @MainActor

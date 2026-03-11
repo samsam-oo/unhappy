@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import OSLog
 
 protocol MachineDataPlaneTextTransport: Sendable {
     func send(text: String) async throws
@@ -9,6 +10,11 @@ protocol MachineDataPlaneTextTransport: Sendable {
 }
 
 actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
+    private static let logger = Logger(
+        subsystem: "im.unhappy.app",
+        category: "machine-data-plane.transport"
+    )
+
     private let url: URL
     private let token: String
     private let subprotocol: String
@@ -122,6 +128,7 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
             throw terminalError
         }
         if connection == nil {
+            Self.logger.log("transport connect start url=\(self.url.absoluteString, privacy: .public)")
             connection = makeConnection()
             connection?.start(queue: queue)
         }
@@ -230,6 +237,7 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
     }
 
     private func handleStateUpdate(_ state: NWConnection.State) {
+        Self.logger.log("transport state url=\(self.url.absoluteString, privacy: .public) state=\(String(describing: state), privacy: .public)")
         if let terminalError = Self.terminalError(for: state) {
             terminate(with: terminalError)
             return
@@ -251,8 +259,6 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
 
     nonisolated static func terminalError(for state: NWConnection.State) -> Error? {
         switch state {
-        case .waiting(let error):
-            return error
         case .failed(let error):
             return error
         case .cancelled:
@@ -268,16 +274,19 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
         error: NWError?
     ) {
         if let error {
+            Self.logger.error("transport receive error url=\(self.url.absoluteString, privacy: .public) error=\(String(describing: error), privacy: .public)")
             terminate(with: error)
             return
         }
         guard let connection else {
+            Self.logger.error("transport receive missing-connection url=\(self.url.absoluteString, privacy: .public)")
             terminate(with: MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected"))
             return
         }
 
         let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
         if metadata?.opcode == .close {
+            Self.logger.error("transport receive close url=\(self.url.absoluteString, privacy: .public)")
             terminate(with: MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected"))
             return
         }
@@ -298,6 +307,7 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
     }
 
     private func terminate(with error: Error) {
+        Self.logger.error("transport terminate url=\(self.url.absoluteString, privacy: .public) error=\(String(describing: error), privacy: .public)")
         keepaliveTask?.cancel()
         keepaliveTask = nil
         terminalError = error

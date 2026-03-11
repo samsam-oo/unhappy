@@ -1,25 +1,14 @@
 import SwiftUI
 import CoreKit
-import FeatureNewSession
+import SessionKit
 
 #Preview {
     SessionsView(
         serverURLString: "https://api.unhappy.im",
         token: "",
         makeViewModel: { SessionsViewModel(service: URLSessionSessionsService()) },
-        makeNewSessionViewModel: {
-            let service = URLSessionMachinesService()
-            return NewSessionViewModel(
-                machinesLoader: NewSessionMachinesLoadUseCase(service: service),
-                directoryLister: NewSessionDirectoryListUseCase(service: service),
-                spawner: NewSessionSpawnUseCase(service: service),
-                recentProjectsManager: NewSessionNoopRecentProjectsManager(),
-                profilesManager: NewSessionNoopProfilesManager(),
-                modelsLoader: NewSessionModelsLoadUseCase(service: service),
-                codexThreadsLoader: NewSessionCodexThreadsLoadUseCase(service: service),
-                claudeSessionsLoader: NewSessionClaudeSessionsLoadUseCase(service: service)
-            )
-        },
+        makeProjectPickerSheet: { _, _ in AnyView(Text("Project Picker")) },
+        makeProjectStartSheet: { _, _ in AnyView(Text("New Session")) },
         makeDirectSessionViewModel: { identity in
             let service = URLSessionMachinesService()
             return DirectSessionViewModel(

@@ -1,8 +1,14 @@
 import Foundation
 import Network
+import OSLog
 import SecurityKit
 
 public actor MachineDataPlaneWebSocketClient {
+    private static let logger = Logger(
+        subsystem: "im.unhappy.app",
+        category: "machine-data-plane"
+    )
+
     private enum ConnectionPhase: Sendable {
         case idle
         case connecting
@@ -22,17 +28,17 @@ public actor MachineDataPlaneWebSocketClient {
         static func forOperation(_ operation: MachineDataPlaneOperation) -> RequestPriority {
             switch operation {
             case .codexSendMessage,
+                 .codexListMessages,
                  .claudeSendMessage,
+                 .claudeListMessages,
                  .geminiSendMessage,
+                 .geminiListMessages,
                  .fsReadFile,
                  .execBash,
                  .providerSpawn:
                 return .interactive
 
             case .machinePing,
-                 .codexListMessages,
-                 .claudeListMessages,
-                 .geminiListMessages,
                  .projectSessions,
                  .codexListThreads,
                  .claudeListSessions,
@@ -124,9 +130,16 @@ public actor MachineDataPlaneWebSocketClient {
         operation: MachineDataPlaneOperation,
         bodyObject: Any
     ) async throws -> Data {
+        let requestID = UUID().uuidString
+        Self.logger.log(
+            "request start id=\(requestID, privacy: .public) op=\(operation.rawValue, privacy: .public) machine=\(machineID, privacy: .public)"
+        )
         guard let machineDataKey = MachineDataPlaneEncryption.resolveMachineDataKey(
             rawWrappedKey: wrappedMachineDataEncryptionKey
         ) else {
+            Self.logger.error(
+                "request fail id=\(requestID, privacy: .public) op=\(operation.rawValue, privacy: .public) machine=\(machineID, privacy: .public) reason=missing-machine-data-key"
+            )
             throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
         }
 
@@ -136,27 +149,38 @@ public actor MachineDataPlaneWebSocketClient {
             machineID: machineID,
             machineDataKeyBase64URL: Base64URLCodec.encode(machineDataKey)
         )
-        let requestID = UUID().uuidString
 
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                enqueueRequest(
-                    QueuedRequest(
-                        id: requestID,
-                        operation: operation,
-                        bodyObject: bodyObject,
-                        priority: RequestPriority.forOperation(operation),
-                        continuation: continuation
-                    ),
-                    machineDataKey: machineDataKey,
-                    for: key,
-                    serverURL: serverURL
-                )
+        do {
+            let data = try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    enqueueRequest(
+                        QueuedRequest(
+                            id: requestID,
+                            operation: operation,
+                            bodyObject: bodyObject,
+                            priority: RequestPriority.forOperation(operation),
+                            continuation: continuation
+                        ),
+                        machineDataKey: machineDataKey,
+                        for: key,
+                        serverURL: serverURL
+                    )
+                }
+            } onCancel: {
+                Task { [weak self] in
+                    await self?.cancelQueuedRequest(id: requestID, for: key)
+                }
             }
-        } onCancel: {
-            Task { [weak self] in
-                await self?.cancelQueuedRequest(id: requestID, for: key)
-            }
+            Self.logger.log(
+                "request ok id=\(requestID, privacy: .public) op=\(operation.rawValue, privacy: .public) machine=\(machineID, privacy: .public)"
+            )
+            return data
+        } catch {
+            let message = (error as NSError).localizedDescription
+            Self.logger.error(
+                "request fail id=\(requestID, privacy: .public) op=\(operation.rawValue, privacy: .public) machine=\(machineID, privacy: .public) error=\(message, privacy: .public)"
+            )
+            throw error
         }
     }
 
