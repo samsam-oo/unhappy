@@ -236,6 +236,20 @@ struct SessionsViewModelTests {
                 ),
             ]
         )
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote Session",
+                cwd: "/repo/app",
+                updatedAt: "2026-03-06T04:00:00.000Z",
+                createdAt: "2026-03-06T03:00:00.000Z",
+                archived: false
+            )
+        )
         let projectSessionsLoader = RecordingProjectSessionsLoader(result: .success([row]))
         let model = SessionsViewModel(
             loader: MockSessionsLoader(result: .success([])),

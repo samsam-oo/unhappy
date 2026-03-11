@@ -4,7 +4,7 @@ import FeatureNewSession
 
 @MainActor
 public final class DirectSessionViewModel: ObservableObject {
-    private static let messagePageSize = 120
+    private static let messagePageSize = 240
     private static let incrementalRefreshPageSize = 40
     private static let postSendRefreshDelay: Duration = .milliseconds(250)
 

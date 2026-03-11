@@ -29,6 +29,11 @@ public struct DirectSessionDetailView: View {
         case customModel
     }
 
+    private enum PendingOlderMessagesAnchor {
+        case top(String)
+        case bottom
+    }
+
     @StateObject private var viewModel: DirectSessionViewModel
     private let serverURLString: String
     private let token: String
@@ -44,7 +49,8 @@ public struct DirectSessionDetailView: View {
     @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var shouldFollowTranscript = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
-    @State private var pendingOlderMessagesAnchorID: String?
+    @State private var pendingOlderMessagesAnchor: PendingOlderMessagesAnchor?
+    @State private var canAutoLoadOlderMessages = true
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
@@ -125,11 +131,16 @@ public struct DirectSessionDetailView: View {
                 }
             )
             .onChange(of: transcriptPresentations.map(\.messageID)) { _, _ in
-                if let pendingOlderMessagesAnchorID {
-                    self.pendingOlderMessagesAnchorID = nil
+                if let pendingOlderMessagesAnchor {
+                    self.pendingOlderMessagesAnchor = nil
                     Task { @MainActor in
                         await Task.yield()
-                        scrollToMessage(pendingOlderMessagesAnchorID, using: proxy)
+                        switch pendingOlderMessagesAnchor {
+                        case .top(let messageID):
+                            scrollToMessage(messageID, using: proxy)
+                        case .bottom:
+                            scrollTranscriptToBottom(using: proxy, animated: false)
+                        }
                     }
                     return
                 }
@@ -374,6 +385,9 @@ public struct DirectSessionDetailView: View {
                 }
                 .onAppear {
                     autoLoadOlderMessagesIfNeeded()
+                }
+                .onDisappear {
+                    canAutoLoadOlderMessages = true
                 }
             }
             Spacer()
@@ -850,12 +864,16 @@ public struct DirectSessionDetailView: View {
     }
 
     private func autoLoadOlderMessagesIfNeeded() {
+        guard canAutoLoadOlderMessages else { return }
         guard viewModel.isLoadingOlderMessages == false else { return }
         guard viewModel.hasOlderMessages else { return }
-        guard let anchorMessageID = transcriptPresentations.first?.messageID else { return }
-
-        shouldFollowTranscript = false
-        pendingOlderMessagesAnchorID = anchorMessageID
+        if shouldFollowTranscript {
+            pendingOlderMessagesAnchor = .bottom
+        } else {
+            guard let anchorMessageID = transcriptPresentations.first?.messageID else { return }
+            pendingOlderMessagesAnchor = .top(anchorMessageID)
+        }
+        canAutoLoadOlderMessages = false
 
         Task {
             await viewModel.loadOlderMessages(
