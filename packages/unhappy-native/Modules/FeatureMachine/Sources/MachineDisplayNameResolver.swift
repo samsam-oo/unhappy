@@ -22,6 +22,9 @@ enum MachineDisplayNameResolver {
             raw: machine.metadata,
             dataEncryptionKey: machine.dataEncryptionKey
         ) else {
+            if let cached = MachineDisplayNameCache.cachedDisplayName(for: machine.id) {
+                return cached
+            }
             return fallbackDisplayName(for: machine)
         }
 
@@ -38,6 +41,7 @@ enum MachineDisplayNameResolver {
             rejectGenericHosts: true,
             rejectOpaqueIdentifiers: true
         ) {
+            MachineDisplayNameCache.storeDisplayName(name, for: machine.id)
             return name
         }
         if let host = bestDisplayString(
@@ -46,9 +50,13 @@ enum MachineDisplayNameResolver {
             rejectGenericHosts: true,
             rejectOpaqueIdentifiers: true
         ) {
+            MachineDisplayNameCache.storeDisplayName(host, for: machine.id)
             return host
         }
 
+        if let cached = MachineDisplayNameCache.cachedDisplayName(for: machine.id) {
+            return cached
+        }
         return fallbackDisplayName(for: machine)
     }
 
