@@ -536,6 +536,9 @@ public actor MachineDataPlaneWebSocketClient {
                 tag: sealedBody.tag
             )
         )
+        Self.logger.log(
+            "request frame send id=\(request.id, privacy: .public) stream=\(streamID, privacy: .public) op=\(request.operation.rawValue, privacy: .public)"
+        )
         try await withMachineDataPlaneTimeout(
             Self.sendTimeoutInterval(
                 for: request.operation,
@@ -545,12 +548,18 @@ public actor MachineDataPlaneWebSocketClient {
             try await self.send(frame: requestFrame, transport: liveConnection.transport)
         }
         sentRequest = true
+        Self.logger.log(
+            "request frame sent id=\(request.id, privacy: .public) stream=\(streamID, privacy: .public) op=\(request.operation.rawValue, privacy: .public)"
+        )
 
         let terminalFrame = try await awaitStreamTerminalFrame(
             streamID: streamID,
             requestID: request.id,
             for: key,
             timeoutInterval: responseTimeoutInterval
+        )
+        Self.logger.log(
+            "request terminal received id=\(request.id, privacy: .public) stream=\(streamID, privacy: .public) op=\(request.operation.rawValue, privacy: .public) type=\(String(describing: terminalFrame), privacy: .public)"
         )
 
         switch terminalFrame {
