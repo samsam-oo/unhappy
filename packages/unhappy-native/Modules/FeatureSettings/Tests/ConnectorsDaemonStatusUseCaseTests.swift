@@ -11,6 +11,7 @@ struct ConnectorsDaemonStatusUseCaseTests {
                 id: "m1",
                 active: true,
                 activeAt: 10,
+                stoppedAt: nil,
                 createdAt: 1,
                 updatedAt: 10,
                 metadataVersion: 1,
@@ -23,6 +24,7 @@ struct ConnectorsDaemonStatusUseCaseTests {
                 id: "m2",
                 active: false,
                 activeAt: 0,
+                stoppedAt: 9,
                 createdAt: 1,
                 updatedAt: 9,
                 metadataVersion: 1,
@@ -41,6 +43,8 @@ struct ConnectorsDaemonStatusUseCaseTests {
 
         #expect(snapshot.totalMachines == 2)
         #expect(snapshot.onlineMachines == 1)
+        #expect(snapshot.stoppedMachines == 1)
+        #expect(snapshot.unknownMachines == 0)
         #expect(snapshot.daemonStateMachines == 1)
         #expect(snapshot.isReady == true)
     }

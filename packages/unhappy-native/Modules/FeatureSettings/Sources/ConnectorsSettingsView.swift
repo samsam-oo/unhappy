@@ -37,6 +37,12 @@ public struct ConnectorsSettingsView: View {
                     LabeledContent("Online") {
                         Text("\(snapshot.onlineMachines)")
                     }
+                    LabeledContent("Stopped") {
+                        Text("\(snapshot.stoppedMachines)")
+                    }
+                    LabeledContent("Unknown") {
+                        Text("\(snapshot.unknownMachines)")
+                    }
                 }
                 if let errorMessage = daemonStatusViewModel.errorMessage {
                     Text(errorMessage)
@@ -90,8 +96,8 @@ public struct ConnectorsSettingsView: View {
             return "Missing API Token"
         case .running:
             return "Running"
-        case .offline:
-            return "Offline"
+        case .stopped:
+            return "Stopped"
         case .none:
             return "No Machines"
         case .unknown:
@@ -103,7 +109,7 @@ public struct ConnectorsSettingsView: View {
         switch statusState {
         case .running:
             return .green
-        case .offline, .unavailable:
+        case .stopped, .unavailable:
             return .orange
         case .missingToken:
             return .red
@@ -125,8 +131,11 @@ public struct ConnectorsSettingsView: View {
         if snapshot.onlineMachines > 0 {
             return .running
         }
+        if snapshot.stoppedMachines > 0, snapshot.unknownMachines == 0 {
+            return .stopped
+        }
         if snapshot.totalMachines > 0 {
-            return .offline
+            return .unknown
         }
         return .none
     }
@@ -137,7 +146,7 @@ enum DaemonStatusState {
     case unavailable
     case missingToken
     case running
-    case offline
+    case stopped
     case none
     case unknown
 }

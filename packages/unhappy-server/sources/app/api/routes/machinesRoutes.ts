@@ -71,6 +71,12 @@ export function machinesRoutes(app: Fastify) {
         };
     }
 
+    function stoppedAtForMachineResponse(machine: {
+        stoppedAt: Date | null;
+    }): number | null {
+        return machine.stoppedAt?.getTime() ?? null;
+    }
+
     function isMissingCatalogTableError(error: unknown): boolean {
         if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
             return false;
@@ -294,6 +300,7 @@ export function machinesRoutes(app: Fastify) {
         accountId: string;
         active: boolean;
         lastActiveAt: Date;
+        stoppedAt: Date | null;
         metadata: string;
         metadataVersion: number;
         daemonState: string | null;
@@ -306,6 +313,7 @@ export function machinesRoutes(app: Fastify) {
         const effectiveActive = deriveMachineActive({
             active: machine.active,
             lastActiveAtMs: machine.lastActiveAt.getTime(),
+            stoppedAtMs: machine.stoppedAt?.getTime() ?? null,
             connected: Boolean(findConnectedMachine(machine.accountId, machine.id)),
         });
         if (effectiveActive == machine.active) {
@@ -401,6 +409,9 @@ export function machinesRoutes(app: Fastify) {
                         dataEncryptionKey: dataEncryptionKeyChanged ? incomingDataEncryptionKey : machine.dataEncryptionKey,
                         active: typeof active === 'boolean' ? active : machine.active,
                         lastActiveAt: typeof active === 'boolean' ? new Date() : machine.lastActiveAt,
+                        stoppedAt: typeof active === 'boolean'
+                            ? (active ? null : new Date())
+                            : machine.stoppedAt,
                     }
                 });
 
@@ -446,6 +457,7 @@ export function machinesRoutes(app: Fastify) {
                         : null,
                     active: currentMachine.active,
                     activeAt: currentMachine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
+                    stoppedAt: stoppedAtForMachineResponse(currentMachine),
                     createdAt: currentMachine.createdAt.getTime(),
                     updatedAt: currentMachine.updatedAt.getTime()
                 }
@@ -464,6 +476,7 @@ export function machinesRoutes(app: Fastify) {
                     daemonStateVersion: daemonState ? 1 : 0,
                     dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
                     active: active ?? false,
+                    stoppedAt: active == false ? new Date() : null,
                     // lastActiveAt and activeAt defaults to now() in schema
                 }
             });
@@ -509,6 +522,7 @@ export function machinesRoutes(app: Fastify) {
                     dataEncryptionKey: newMachine.dataEncryptionKey ? Buffer.from(newMachine.dataEncryptionKey).toString('base64') : null,
                     active: newMachine.active,
                     activeAt: newMachine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
+                    stoppedAt: stoppedAtForMachineResponse(newMachine),
                     createdAt: newMachine.createdAt.getTime(),
                     updatedAt: newMachine.updatedAt.getTime()
                 }
@@ -577,6 +591,7 @@ export function machinesRoutes(app: Fastify) {
             seq: m.seq,
             active: m.active,
             activeAt: m.lastActiveAt.getTime(),
+            stoppedAt: stoppedAtForMachineResponse(m),
             createdAt: m.createdAt.getTime(),
             updatedAt: m.updatedAt.getTime()
         }));
@@ -618,6 +633,7 @@ export function machinesRoutes(app: Fastify) {
                 seq: normalizedMachine.seq,
                 active: normalizedMachine.active,
                 activeAt: normalizedMachine.lastActiveAt.getTime(),
+                stoppedAt: stoppedAtForMachineResponse(normalizedMachine),
                 createdAt: normalizedMachine.createdAt.getTime(),
                 updatedAt: normalizedMachine.updatedAt.getTime()
             }
@@ -955,6 +971,7 @@ export function machinesRoutes(app: Fastify) {
             data: {
                 active: false,
                 lastActiveAt: new Date(stoppedAt),
+                stoppedAt: new Date(stoppedAt),
             },
         });
 

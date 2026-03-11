@@ -5,6 +5,7 @@ public struct APIMachine: Decodable, Equatable, Identifiable, Sendable {
     public let seq: Int?
     public let active: Bool
     public let activeAt: TimeInterval
+    public let stoppedAt: TimeInterval?
     public let createdAt: TimeInterval
     public let updatedAt: TimeInterval
     public let metadataVersion: Int
@@ -18,6 +19,7 @@ public struct APIMachine: Decodable, Equatable, Identifiable, Sendable {
         seq: Int? = nil,
         active: Bool,
         activeAt: TimeInterval,
+        stoppedAt: TimeInterval? = nil,
         createdAt: TimeInterval,
         updatedAt: TimeInterval,
         metadataVersion: Int,
@@ -30,6 +32,7 @@ public struct APIMachine: Decodable, Equatable, Identifiable, Sendable {
         self.seq = seq
         self.active = active
         self.activeAt = activeAt
+        self.stoppedAt = stoppedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.metadataVersion = metadataVersion
@@ -44,6 +47,7 @@ public struct APIMachine: Decodable, Equatable, Identifiable, Sendable {
         case seq
         case active
         case activeAt
+        case stoppedAt
         case createdAt
         case updatedAt
         case metadataVersion
@@ -60,6 +64,7 @@ public struct APIMachine: Decodable, Equatable, Identifiable, Sendable {
         seq = container.decodeFlexibleIntIfPresent(forKey: .seq)
         active = (try? container.decode(Bool.self, forKey: .active)) ?? false
         activeAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .activeAt) ?? 0
+        stoppedAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .stoppedAt)
         createdAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .createdAt) ?? 0
         updatedAt = container.decodeFlexibleTimeIntervalIfPresent(forKey: .updatedAt) ?? 0
         metadataVersion = container.decodeFlexibleIntIfPresent(forKey: .metadataVersion) ?? 0
@@ -67,6 +72,11 @@ public struct APIMachine: Decodable, Equatable, Identifiable, Sendable {
         daemonStateVersion = container.decodeFlexibleIntIfPresent(forKey: .daemonStateVersion) ?? 0
         daemonState = try? container.decodeIfPresent(String.self, forKey: .daemonState)
         dataEncryptionKey = try? container.decodeIfPresent(String.self, forKey: .dataEncryptionKey)
+    }
+
+    public var isExplicitlyStopped: Bool {
+        guard let stoppedAt else { return false }
+        return !active && stoppedAt >= activeAt
     }
 }
 

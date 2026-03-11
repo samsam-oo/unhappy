@@ -5,9 +5,10 @@ describe("deriveMachineActive", () => {
     it("keeps explicitly stopped machines offline", () => {
         expect(
             deriveMachineActive({
-                active: false,
+                active: true,
                 lastActiveAtMs: 1_000,
-                connected: true,
+                stoppedAtMs: 1_500,
+                connected: false,
                 nowMs: 2_000,
             })
         ).toBe(false);
@@ -44,5 +45,17 @@ describe("deriveMachineActive", () => {
                 nowMs: 1_000 + (1000 * 60 * 11),
             })
         ).toBe(false);
+    });
+
+    it("keeps recent heartbeats online when there is no explicit stop", () => {
+        expect(
+            deriveMachineActive({
+                active: true,
+                lastActiveAtMs: 10_000,
+                stoppedAtMs: 9_000,
+                connected: false,
+                nowMs: 10_000 + (1000 * 60 * 2),
+            })
+        ).toBe(true);
     });
 });

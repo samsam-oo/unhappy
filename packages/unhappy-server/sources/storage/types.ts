@@ -43,6 +43,7 @@ declare global {
             dataEncryptionKey: string | null;
             active: boolean;
             activeAt: number;
+            stoppedAt?: number | null;
             createdAt: number;
             updatedAt: number;
         } | {

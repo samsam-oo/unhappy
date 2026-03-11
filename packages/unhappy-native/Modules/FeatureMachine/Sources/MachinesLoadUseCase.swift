@@ -60,6 +60,9 @@ public actor MachinesLoadUseCase: MachinesLoadingAction {
                 if lhs.active != rhs.active {
                     return lhs.active && !rhs.active
                 }
+                if lhs.isExplicitlyStopped != rhs.isExplicitlyStopped {
+                    return lhs.isExplicitlyStopped && !rhs.isExplicitlyStopped
+                }
                 if lhs.activeAt != rhs.activeAt {
                     return lhs.activeAt > rhs.activeAt
                 }

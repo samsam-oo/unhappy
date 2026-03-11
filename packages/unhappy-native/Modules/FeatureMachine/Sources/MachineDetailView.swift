@@ -90,11 +90,16 @@ public struct MachineDetailView: View {
                     .font(.footnote.monospaced())
             }
             LabeledContent("Status") {
-                Text(machine.active ? "Online" : "Offline")
-                    .foregroundStyle(machine.active ? Color.green : Color.secondary)
+                Text(presentation.statusText)
+                    .foregroundStyle(machine.active ? Color.green : (machine.isExplicitlyStopped ? Color.orange : Color.secondary))
             }
             LabeledContent("Active At") {
                 Text(presentation.activeAtText)
+            }
+            if let stoppedAtText = presentation.stoppedAtText {
+                LabeledContent("Stopped At") {
+                    Text(stoppedAtText)
+                }
             }
             LabeledContent("Created At") {
                 Text(presentation.createdAtText)
