@@ -383,6 +383,45 @@ struct SessionTranscriptProcessingTests {
         #expect(merged.supplementalEntries.first?.body == #"{"status":"completed","message":"read finished"}"#)
     }
 
+    @Test
+    func attachesPlainTextToolResultWithToolNameToPreviousCommandCard() {
+        let command = makeEntry(
+            id: "command",
+            kind: .toolResult,
+            title: "Ran command",
+            body: #"{"command":"rg SessionTranscriptProcessing","cwd":"/tmp/project"}"#,
+            sourceType: "item_completed"
+        )
+        let orphanResult = SessionTranscriptEntry(
+            id: "tool-result",
+            role: .agent,
+            kind: .toolResult,
+            title: "Read Result",
+            body: "Read NewSessionViewPresentation.swift",
+            toolUseID: nil,
+            sourceType: "tool_result",
+            toolName: "read_file",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: command),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: orphanResult),
+        ])
+
+        #expect(coalesced.count == 1)
+        guard case .commandExecution(let merged)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected command execution card")
+            return
+        }
+
+        #expect(merged.supplementalEntries.map(\.kind) == [.toolResult])
+        #expect(merged.supplementalEntries.first?.title == "Read Result")
+        #expect(merged.supplementalEntries.first?.body == "Read NewSessionViewPresentation.swift")
+    }
+
     private func makeCommandPresentations() -> [SessionTranscriptMessagePresentation] {
         let commandBody = """
         {"command":"corepack yarn test","cwd":"/tmp/project","commandActions":[{"type":"read","path":"README.md"},{"type":"search","query":"TODO"}]}
