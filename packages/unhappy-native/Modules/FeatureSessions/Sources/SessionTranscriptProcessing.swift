@@ -180,6 +180,7 @@ enum SessionTranscriptProcessing {
         var result: [FlattenedTranscriptEntry] = []
         result.reserveCapacity(flattened.count)
         var openCommandIndexByToolUseID: [String: Int] = [:]
+        var attachedToolIndexByToolUseID: [String: Int] = [:]
 
         for flattenedEntry in flattened {
             let entry = flattenedEntry.entry
@@ -188,7 +189,8 @@ enum SessionTranscriptProcessing {
                let existingIndex = matchingOpenCommandIndex(
                     for: entry,
                     in: result,
-                    openCommandIndexByToolUseID: openCommandIndexByToolUseID
+                    openCommandIndexByToolUseID: openCommandIndexByToolUseID,
+                    attachedToolIndexByToolUseID: attachedToolIndexByToolUseID
                ),
                result.indices.contains(existingIndex),
                let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry) {
@@ -222,7 +224,8 @@ enum SessionTranscriptProcessing {
                let existingIndex = matchingOpenCommandIndex(
                     for: entry,
                     in: result,
-                    openCommandIndexByToolUseID: openCommandIndexByToolUseID
+                    openCommandIndexByToolUseID: openCommandIndexByToolUseID,
+                    attachedToolIndexByToolUseID: attachedToolIndexByToolUseID
                ),
                result.indices.contains(existingIndex),
                let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry) {
@@ -259,6 +262,9 @@ enum SessionTranscriptProcessing {
                             payload: mergedPayload
                         )
                     )
+                    if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                        attachedToolIndexByToolUseID.removeValue(forKey: toolUseID)
+                    }
                     continue
                 }
 
@@ -316,6 +322,7 @@ enum SessionTranscriptProcessing {
                     } else {
                         removeOpenCommandIndex(existingIndex, openCommandIndexByToolUseID: &openCommandIndexByToolUseID)
                     }
+                    removeAttachedToolIndex(existingIndex, attachedToolIndexByToolUseID: &attachedToolIndexByToolUseID)
                 }
                 continue
             }
@@ -328,7 +335,8 @@ enum SessionTranscriptProcessing {
                let existingIndex = matchingOpenCommandIndex(
                     for: entry,
                     in: result,
-                    openCommandIndexByToolUseID: openCommandIndexByToolUseID
+                    openCommandIndexByToolUseID: openCommandIndexByToolUseID,
+                    attachedToolIndexByToolUseID: attachedToolIndexByToolUseID
                ),
                result.indices.contains(existingIndex),
                let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry) {
@@ -361,6 +369,9 @@ enum SessionTranscriptProcessing {
                         payload: mergedPayload
                     )
                 )
+                if let toolUseID = normalizedToolUseID(entry.toolUseID) {
+                    attachedToolIndexByToolUseID[toolUseID] = existingIndex
+                }
                 continue
             }
 
@@ -368,6 +379,7 @@ enum SessionTranscriptProcessing {
                 finalizeOpenCommands(
                     in: &result,
                     openCommandIndexByToolUseID: &openCommandIndexByToolUseID,
+                    attachedToolIndexByToolUseID: &attachedToolIndexByToolUseID,
                     status: entry.sourceType?.lowercased() == "turn_aborted" ? "aborted" : "completed",
                     success: entry.sourceType?.lowercased() == "turn_aborted" ? false : true,
                     completedAt: flattenedEntry.createdAt
@@ -455,10 +467,15 @@ enum SessionTranscriptProcessing {
     private static func matchingOpenCommandIndex(
         for entry: SessionTranscriptEntry,
         in result: [FlattenedTranscriptEntry],
-        openCommandIndexByToolUseID: [String: Int]
+        openCommandIndexByToolUseID: [String: Int],
+        attachedToolIndexByToolUseID: [String: Int]
     ) -> Int? {
         if let toolUseID = normalizedToolUseID(entry.toolUseID),
            let existingIndex = openCommandIndexByToolUseID[toolUseID] {
+            return existingIndex
+        }
+        if let toolUseID = normalizedToolUseID(entry.toolUseID),
+           let existingIndex = attachedToolIndexByToolUseID[toolUseID] {
             return existingIndex
         }
         if let sessionID = sessionID(for: entry) {
@@ -497,6 +514,7 @@ enum SessionTranscriptProcessing {
     private static func finalizeOpenCommands(
         in result: inout [FlattenedTranscriptEntry],
         openCommandIndexByToolUseID: inout [String: Int],
+        attachedToolIndexByToolUseID: inout [String: Int],
         status: String,
         success: Bool,
         completedAt: TimeInterval
@@ -532,6 +550,16 @@ enum SessionTranscriptProcessing {
             )
         }
         openCommandIndexByToolUseID.removeAll()
+        attachedToolIndexByToolUseID.removeAll()
+    }
+
+    private static func removeAttachedToolIndex(
+        _ index: Int,
+        attachedToolIndexByToolUseID: inout [String: Int]
+    ) {
+        for (key, value) in attachedToolIndexByToolUseID where value == index {
+            attachedToolIndexByToolUseID.removeValue(forKey: key)
+        }
     }
 
     private static func replacingEntry(
