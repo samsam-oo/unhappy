@@ -291,16 +291,69 @@ fn read_persisted_state(path: &Path) -> Result<Option<PersistedDaemonStateSnapsh
 }
 
 fn force_kill_pid(pid: u32) -> Result<()> {
-    let result = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
-    if result == 0 || !pid_is_alive(pid) {
-        return Ok(());
+    #[cfg(unix)]
+    {
+        let result = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+        if result == 0 || !pid_is_alive(pid) {
+            return Ok(());
+        }
+        return Err(std::io::Error::last_os_error())
+            .with_context(|| format!("failed to kill daemon pid {pid}"));
     }
-    Err(std::io::Error::last_os_error()).with_context(|| format!("failed to kill daemon pid {pid}"))
+
+    #[cfg(windows)]
+    {
+        if !pid_is_alive(pid) {
+            return Ok(());
+        }
+        let status = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status()
+            .context("failed to invoke taskkill")?;
+        if status.success() || !pid_is_alive(pid) {
+            return Ok(());
+        }
+        return Err(anyhow!("failed to kill daemon pid {pid}: taskkill exited with {status}"));
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = pid;
+        Err(anyhow!("force kill is unsupported on this platform"))
+    }
 }
 
 fn pid_is_alive(pid: u32) -> bool {
-    let result = unsafe { libc::kill(pid as i32, 0) };
-    result == 0
+    #[cfg(unix)]
+    {
+        let result = unsafe { libc::kill(pid as i32, 0) };
+        return result == 0;
+    }
+
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output();
+        return tasklist_output_contains_pid(pid, output.ok().as_ref());
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+#[cfg(windows)]
+fn tasklist_output_contains_pid(pid: u32, output: Option<&std::process::Output>) -> bool {
+    let Some(output) = output else { return false };
+    if !output.status.success() {
+        return false;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let needle = format!(",\"{pid}\",");
+    stdout.lines().any(|line| line.contains(&needle))
 }
 
 #[cfg(test)]
