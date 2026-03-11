@@ -1,19 +1,19 @@
 import Foundation
 import CoreKit
 
-struct SessionUpstreamIdentity: Equatable, Sendable {
-    let machineID: String
-    let provider: APIUpstreamSessionProvider
-    let upstreamSessionID: String
-    let workingDirectory: String?
-    let transcriptPath: String?
-    let machineDisplayName: String?
+public struct SessionUpstreamIdentity: Equatable, Sendable {
+    public let machineID: String
+    public let provider: APIUpstreamSessionProvider
+    public let upstreamSessionID: String
+    public let workingDirectory: String?
+    public let transcriptPath: String?
+    public let machineDisplayName: String?
 
-    var key: String {
+    public var key: String {
         "\(machineID)|\(provider.rawValue)|\(upstreamSessionID)"
     }
 
-    init?(
+    public init?(
         session: APISession
     ) {
         let metadata = SessionPayloadValueResolver.decodeJSONObject(

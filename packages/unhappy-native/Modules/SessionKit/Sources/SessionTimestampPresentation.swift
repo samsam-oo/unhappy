@@ -1,7 +1,7 @@
 import Foundation
 
-enum SessionTimestampPresentation {
-    static func updatedLabelIfKnown(
+public enum SessionTimestampPresentation {
+    public static func updatedLabelIfKnown(
         for unixTimeSeconds: TimeInterval,
         now: Date = .now,
         calendar: Calendar = .current
@@ -12,7 +12,7 @@ enum SessionTimestampPresentation {
         return updatedLabel(for: unixTimeSeconds, now: now, calendar: calendar)
     }
 
-    static func updatedLabel(
+    public static func updatedLabel(
         for unixTimeSeconds: TimeInterval,
         now: Date = .now,
         calendar: Calendar = .current

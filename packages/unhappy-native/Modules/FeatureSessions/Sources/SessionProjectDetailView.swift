@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreKit
 import FeatureNewSession
+import SessionKit
 import UIFoundation
 
 @MainActor

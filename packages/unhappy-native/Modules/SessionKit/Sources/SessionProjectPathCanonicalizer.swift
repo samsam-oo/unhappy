@@ -1,7 +1,7 @@
 import Foundation
 
-enum SessionProjectPathCanonicalizer {
-    static func canonicalPath(
+public enum SessionProjectPathCanonicalizer {
+    public static func canonicalPath(
         _ rawPath: String?,
         homeDirectory: String? = nil
     ) -> String? {

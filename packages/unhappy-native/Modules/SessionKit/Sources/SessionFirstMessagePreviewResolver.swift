@@ -1,8 +1,8 @@
 import Foundation
 import CoreKit
 
-enum SessionFirstMessagePreviewResolver {
-    static func resolve(
+public enum SessionFirstMessagePreviewResolver {
+    public static func resolve(
         from messages: [APISessionMessage],
         dataEncryptionKey: String?
     ) -> String? {

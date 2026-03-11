@@ -1,22 +1,22 @@
 import Foundation
 import CoreKit
 
-struct SessionRuntimeContext {
-    let session: APISession
-    let metadata: [String: Any]
-    let agentState: [String: Any]
-    let upstreamIdentity: SessionUpstreamIdentity?
-    let machineID: String?
-    let machineDisplayName: String?
-    let provider: APIUpstreamSessionProvider?
-    let sessionAgent: APISessionSpawnAgent?
-    let currentModelLabel: String?
-    let currentEffortLabel: String?
-    let currentPermissionMode: APISessionMessagePermissionMode?
-    let collabInProgressCount: Int
-    let requiresApproval: Bool
+public struct SessionRuntimeContext {
+    public let session: APISession
+    public let metadata: [String: Any]
+    public let agentState: [String: Any]
+    public let upstreamIdentity: SessionUpstreamIdentity?
+    public let machineID: String?
+    public let machineDisplayName: String?
+    public let provider: APIUpstreamSessionProvider?
+    public let sessionAgent: APISessionSpawnAgent?
+    public let currentModelLabel: String?
+    public let currentEffortLabel: String?
+    public let currentPermissionMode: APISessionMessagePermissionMode?
+    public let collabInProgressCount: Int
+    public let requiresApproval: Bool
 
-    init(session: APISession) {
+    public init(session: APISession) {
         self.session = session
         self.metadata = SessionPayloadValueResolver.decodeJSONObject(
             payload: session.metadata,
@@ -83,7 +83,7 @@ struct SessionRuntimeContext {
         )
     }
 
-    var workingDirectory: String? {
+    public var workingDirectory: String? {
         if let workingDirectory = upstreamIdentity?.workingDirectory {
             return workingDirectory
         }
@@ -104,7 +104,7 @@ struct SessionRuntimeContext {
         )
     }
 
-    var upstreamSessionID: String? {
+    public var upstreamSessionID: String? {
         upstreamIdentity?.upstreamSessionID
     }
 

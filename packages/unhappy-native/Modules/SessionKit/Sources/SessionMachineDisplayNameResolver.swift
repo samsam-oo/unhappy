@@ -1,7 +1,7 @@
 import Foundation
 
-enum SessionMachineDisplayNameResolver {
-    static func resolve(in objects: [[String: Any]]) -> String? {
+public enum SessionMachineDisplayNameResolver {
+    public static func resolve(in objects: [[String: Any]]) -> String? {
         if let primary = bestDisplayString(
             in: objects,
             keys: ["displayName", "name", "machineName", "deviceName", "computerName"],
@@ -18,7 +18,7 @@ enum SessionMachineDisplayNameResolver {
         )
     }
 
-    static func preferred(
+    public static func preferred(
         existing: String,
         candidate: String?,
         machineID: String
