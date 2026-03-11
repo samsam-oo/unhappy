@@ -1,6 +1,6 @@
 import Foundation
 import CoreKit
-import FeatureNewSession
+import SessionKit
 
 public protocol SessionRecentCatalogLoadingAction: Sendable {
     func loadRecentSessions(

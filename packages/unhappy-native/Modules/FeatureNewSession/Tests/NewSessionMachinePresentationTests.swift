@@ -1,5 +1,6 @@
 import Testing
 import CoreKit
+import SessionKit
 @testable import FeatureNewSession
 
 struct NewSessionMachinePresentationTests {

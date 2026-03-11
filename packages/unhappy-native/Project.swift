@@ -109,6 +109,23 @@ let project = Project(
             ])
         ),
         .target(
+            name: "SessionKit",
+            destinations: .iOS,
+            product: .staticFramework,
+            bundleId: "im.unhappy.app.session-kit",
+            buildableFolders: [
+                "Modules/SessionKit/Sources",
+            ],
+            dependencies: [
+                .target(name: "CoreKit"),
+            ],
+            metadata: .metadata(tags: [
+                "tag:team:mobile",
+                "tag:feature:session-kit",
+                "tag:layer:kit",
+            ])
+        ),
+        .target(
             name: "FeatureHome",
             destinations: .iOS,
             product: .staticFramework,
@@ -140,6 +157,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "SessionKit"),
                 .target(name: "UIFoundation"),
                 .target(name: "FeatureNewSession"),
             ],
@@ -212,6 +230,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "SessionKit"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
@@ -266,6 +285,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "FeatureSessions"),
+                .target(name: "SessionKit"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
@@ -339,6 +359,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "FeatureNewSession"),
+                .target(name: "SessionKit"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",

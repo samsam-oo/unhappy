@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import SessionKit
 
 @MainActor
 public final class NewSessionViewModel: ObservableObject {

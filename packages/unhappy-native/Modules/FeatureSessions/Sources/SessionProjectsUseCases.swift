@@ -1,6 +1,6 @@
 import Foundation
 import CoreKit
-import FeatureNewSession
+import SessionKit
 
 public protocol SessionProjectsLoadingAction: Sendable {
     func loadProjects(

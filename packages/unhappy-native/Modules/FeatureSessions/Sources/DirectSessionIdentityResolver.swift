@@ -1,6 +1,6 @@
 import Foundation
 import CoreKit
-import FeatureNewSession
+import SessionKit
 
 enum DirectSessionIdentityResolver {
     static func resolve(from row: SessionLinkedUpstreamSession) -> DirectSessionIdentity? {
