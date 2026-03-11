@@ -81,10 +81,8 @@ public enum MachineDataPlaneFrameType: String, Codable, Sendable {
     case hello
     case helloAck = "hello-ack"
     case request
-    case chunk
     case complete
     case error
-    case ack
 }
 
 public struct MachineDataPlaneHelloFrame: Codable, Equatable, Sendable {
@@ -93,9 +91,6 @@ public struct MachineDataPlaneHelloFrame: Codable, Equatable, Sendable {
     public let connectionID: String
     public let role: MachineDataPlaneRole
     public let keyExchange: MachineDataPlaneKeyExchange
-    public let supportsChunkAck: Bool
-    public let supportsResume: Bool
-    public let lastAckedStreamID: String?
 
     enum CodingKeys: String, CodingKey {
         case v
@@ -103,27 +98,18 @@ public struct MachineDataPlaneHelloFrame: Codable, Equatable, Sendable {
         case connectionID = "connectionId"
         case role
         case keyExchange
-        case supportsChunkAck
-        case supportsResume
-        case lastAckedStreamID = "lastAckedStreamId"
     }
 
     public init(
         connectionID: String,
         role: MachineDataPlaneRole,
-        keyExchange: MachineDataPlaneKeyExchange,
-        supportsChunkAck: Bool = true,
-        supportsResume: Bool = true,
-        lastAckedStreamID: String? = nil
+        keyExchange: MachineDataPlaneKeyExchange
     ) {
         self.v = MachineDataPlaneProtocol.version
         self.t = .hello
         self.connectionID = connectionID
         self.role = role
         self.keyExchange = keyExchange
-        self.supportsChunkAck = supportsChunkAck
-        self.supportsResume = supportsResume
-        self.lastAckedStreamID = lastAckedStreamID
     }
 }
 
@@ -155,7 +141,6 @@ public struct MachineDataPlaneRequestFrame: Codable, Equatable, Sendable {
     public let streamID: String
     public let op: MachineDataPlaneOperation
     public let body: MachineDataPlaneSealedBody
-    public let expectsChunks: Bool
 
     enum CodingKeys: String, CodingKey {
         case v
@@ -163,39 +148,18 @@ public struct MachineDataPlaneRequestFrame: Codable, Equatable, Sendable {
         case streamID = "streamId"
         case op
         case body
-        case expectsChunks
     }
 
     public init(
         streamID: String,
         op: MachineDataPlaneOperation,
-        body: MachineDataPlaneSealedBody,
-        expectsChunks: Bool = true
+        body: MachineDataPlaneSealedBody
     ) {
         self.v = MachineDataPlaneProtocol.version
         self.t = .request
         self.streamID = streamID
         self.op = op
         self.body = body
-        self.expectsChunks = expectsChunks
-    }
-}
-
-public struct MachineDataPlaneChunkFrame: Codable, Equatable, Sendable {
-    public let v: Int
-    public let t: MachineDataPlaneFrameType
-    public let streamID: String
-    public let seq: Int
-    public let body: MachineDataPlaneSealedBody
-    public let final: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case v
-        case t
-        case streamID = "streamId"
-        case seq
-        case body
-        case final
     }
 }
 
@@ -234,26 +198,5 @@ public struct MachineDataPlaneErrorFrame: Codable, Equatable, Sendable {
         case code
         case message
         case retryable
-    }
-}
-
-public struct MachineDataPlaneAckFrame: Codable, Equatable, Sendable {
-    public let v: Int
-    public let t: MachineDataPlaneFrameType
-    public let streamID: String
-    public let seq: Int
-
-    enum CodingKeys: String, CodingKey {
-        case v
-        case t
-        case streamID = "streamId"
-        case seq
-    }
-
-    public init(streamID: String, seq: Int) {
-        self.v = MachineDataPlaneProtocol.version
-        self.t = .ack
-        self.streamID = streamID
-        self.seq = seq
     }
 }

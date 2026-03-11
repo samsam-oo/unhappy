@@ -50,10 +50,8 @@ export const MachineDataPlaneFrameTypeSchema = z.enum([
   'hello',
   'hello-ack',
   'request',
-  'chunk',
   'complete',
   'error',
-  'ack',
 ])
 
 const BaseFrameSchema = z.object({
@@ -66,9 +64,6 @@ export const MachineDataPlaneHelloFrameSchema = BaseFrameSchema.extend({
   connectionId: z.string().min(1),
   role: MachineDataPlaneRoleSchema,
   keyExchange: MachineDataPlaneKeyExchangeSchema,
-  supportsChunkAck: z.boolean(),
-  supportsResume: z.boolean(),
-  lastAckedStreamId: z.string().min(1).nullable().optional(),
 })
 
 export const MachineDataPlaneHelloAckFrameSchema = BaseFrameSchema.extend({
@@ -86,15 +81,6 @@ export const MachineDataPlaneRequestFrameSchema = BaseFrameSchema.extend({
   streamId: z.string().min(1),
   op: MachineDataPlaneOperationSchema,
   body: MachineDataPlaneSealedBodySchema,
-  expectsChunks: z.boolean(),
-})
-
-export const MachineDataPlaneChunkFrameSchema = BaseFrameSchema.extend({
-  t: z.literal('chunk'),
-  streamId: z.string().min(1),
-  seq: z.number().int().nonnegative(),
-  body: MachineDataPlaneSealedBodySchema,
-  final: z.boolean(),
 })
 
 export const MachineDataPlaneCompleteFrameSchema = BaseFrameSchema.extend({
@@ -114,20 +100,12 @@ export const MachineDataPlaneErrorFrameSchema = BaseFrameSchema.extend({
   retryable: z.boolean(),
 })
 
-export const MachineDataPlaneAckFrameSchema = BaseFrameSchema.extend({
-  t: z.literal('ack'),
-  streamId: z.string().min(1),
-  seq: z.number().int().nonnegative(),
-})
-
 export const MachineDataPlaneFrameSchema = z.discriminatedUnion('t', [
   MachineDataPlaneHelloFrameSchema,
   MachineDataPlaneHelloAckFrameSchema,
   MachineDataPlaneRequestFrameSchema,
-  MachineDataPlaneChunkFrameSchema,
   MachineDataPlaneCompleteFrameSchema,
   MachineDataPlaneErrorFrameSchema,
-  MachineDataPlaneAckFrameSchema,
 ])
 
 export type MachineDataPlaneHelloFrame = z.infer<typeof MachineDataPlaneHelloFrameSchema>
