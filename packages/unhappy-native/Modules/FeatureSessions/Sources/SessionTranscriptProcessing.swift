@@ -204,6 +204,7 @@ enum SessionTranscriptProcessing {
                     exitCode: existingPayload.exitCode,
                     status: existingPayload.status,
                     durationMs: existingPayload.durationMs,
+                    actions: existingPayload.actions,
                     supplementalEntries: existingPayload.supplementalEntries
                 )
                 result[existingIndex] = replacingEntry(
@@ -241,6 +242,7 @@ enum SessionTranscriptProcessing {
                         exitCode: existingPayload.exitCode,
                         status: existingPayload.status,
                         durationMs: existingPayload.durationMs,
+                        actions: existingPayload.actions,
                         supplementalEntries: appendSupplementalEntry(
                             existingPayload.supplementalEntries,
                             kind: .toolResult,
@@ -291,6 +293,7 @@ enum SessionTranscriptProcessing {
                         ? (existingPayload.status ?? resultPayload?.status ?? "running")
                         : (resultPayload?.status ?? existingPayload.status ?? inferredStatus),
                     durationMs: derivedDurationMs,
+                    actions: resultPayload?.actions ?? existingPayload.actions,
                     supplementalEntries: appendSupplementalEntry(
                         existingPayload.supplementalEntries,
                         kind: .toolResult,
@@ -341,6 +344,7 @@ enum SessionTranscriptProcessing {
                     exitCode: existingPayload.exitCode,
                     status: existingPayload.status,
                     durationMs: existingPayload.durationMs,
+                    actions: existingPayload.actions,
                     supplementalEntries: appendSupplementalEntry(
                         existingPayload.supplementalEntries,
                         kind: .stdin,
@@ -515,6 +519,7 @@ enum SessionTranscriptProcessing {
                 exitCode: existingPayload.exitCode,
                 status: existingPayload.status ?? status,
                 durationMs: existingPayload.durationMs ?? durationMs(from: result[index].createdAt, to: completedAt),
+                actions: existingPayload.actions,
                 supplementalEntries: existingPayload.supplementalEntries
             )
             result[index] = replacingEntry(
