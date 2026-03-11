@@ -4,6 +4,7 @@ import Network
 protocol MachineDataPlaneTextTransport: Sendable {
     func send(text: String) async throws
     func receiveText() async throws -> String
+    func configureKeepalive(idleTimeoutSeconds: Int) async
     func close() async
 }
 
@@ -21,6 +22,7 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
     private var readyContinuations: [CheckedContinuation<Void, Error>] = []
     private var receiveContinuations: [CheckedContinuation<String, Error>] = []
     private var bufferedTexts: [String] = []
+    private var keepaliveTask: Task<Void, Never>?
 
     init(
         url: URL,
@@ -79,8 +81,39 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
         }
     }
 
+    func configureKeepalive(idleTimeoutSeconds: Int) async {
+        let interval = Self.keepaliveInterval(forIdleTimeoutSeconds: idleTimeoutSeconds)
+        keepaliveTask?.cancel()
+        guard interval > 0 else { return }
+
+        keepaliveTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let nanoseconds = UInt64(max(interval, 0.001) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanoseconds)
+                guard !Task.isCancelled else { return }
+                guard let self else { return }
+                do {
+                    try await self.sendPing()
+                } catch {
+                    await self.handleKeepaliveFailure(error)
+                    return
+                }
+            }
+        }
+    }
+
     func close() async {
         terminate(with: MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected"))
+    }
+
+    nonisolated static func keepaliveInterval(forIdleTimeoutSeconds idleTimeoutSeconds: Int) -> TimeInterval {
+        let idleSeconds = max(idleTimeoutSeconds, 1)
+        let halfIdle = TimeInterval(idleSeconds) * 0.5
+        let upperBound = TimeInterval(idleSeconds) - 5
+        if upperBound >= 5 {
+            return min(max(halfIdle, 5), upperBound)
+        }
+        return max(halfIdle, 1)
     }
 
     private func connect() async throws {
@@ -155,6 +188,38 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
         receiveNext(on: connection)
     }
 
+    private func sendPing() async throws {
+        guard isReady else { return }
+        guard let connection else {
+            throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
+        }
+
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .ping)
+        let context = NWConnection.ContentContext(
+            identifier: UUID().uuidString,
+            metadata: [metadata]
+        )
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(
+                content: Data(),
+                contentContext: context,
+                isComplete: true,
+                completion: .contentProcessed { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: ())
+                    }
+                }
+            )
+        }
+    }
+
+    private func handleKeepaliveFailure(_ error: Error) {
+        terminate(with: error)
+    }
+
     private func receiveNext(on connection: NWConnection) {
         connection.receiveMessage { [weak self] content, context, _, error in
             guard let self else { return }
@@ -219,6 +284,8 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
     }
 
     private func terminate(with error: Error) {
+        keepaliveTask?.cancel()
+        keepaliveTask = nil
         terminalError = error
         isReady = false
         receiveLoopStarted = false

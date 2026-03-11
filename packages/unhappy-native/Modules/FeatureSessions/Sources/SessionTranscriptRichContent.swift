@@ -405,10 +405,25 @@ enum SessionTranscriptRichContentParser {
         return nil
     }
 
+    static func userInputPresentation(
+        for entry: SessionTranscriptEntry
+    ) -> SessionTranscriptGenericToolPresentation? {
+        guard case .toolDetails(let tool)? = richToolContent(for: entry),
+              tool.kind == .stdin,
+              let body = tool.body?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !body.isEmpty else {
+            return nil
+        }
+        return tool
+    }
+
     static func summaryTitle(for entry: SessionTranscriptEntry) -> String? {
         if let richContent = richToolContent(for: entry) {
             switch richContent {
-            case .commandExecution:
+            case .commandExecution(let command):
+                if let summary = command.summary, !summary.isEmpty {
+                    return summary
+                }
                 return "Ran command"
             case .fileChanges(let changes):
                 if changes.count == 1, let first = changes.first {
@@ -416,10 +431,7 @@ enum SessionTranscriptRichContentParser {
                 }
                 return "Edited \(changes.count) files"
             case .diff(let files):
-                if files.count == 1, let first = files.first {
-                    return "Diff \(fileName(from: first.path))"
-                }
-                return "Diff \(files.count) files"
+                return diffSummaryTitle(files)
             case .toolDetails(let tool):
                 if let compactSummary = tool.compactSummary, !compactSummary.isEmpty {
                     return "\(tool.title) · \(compactSummary)"
@@ -457,8 +469,7 @@ enum SessionTranscriptRichContentParser {
             guard changes.count == 1, let first = changes.first else { return nil }
             return first.path
         case .diff(let files):
-            guard files.count == 1, let first = files.first else { return nil }
-            return first.path
+            return diffSummarySubtitle(files)
         case .toolDetails(let tool):
             return tool.subtitle
         }
@@ -692,7 +703,7 @@ enum SessionTranscriptRichContentParser {
         case .wait:
             title = "Wait for Agent"
         case .stdin:
-            title = entry.kind == .toolResult ? "Input Sent" : "Send Input"
+            title = "User Input"
         case .toolResult:
             title = entry.title ?? "Tool Result"
         case .toolCall:
@@ -742,6 +753,10 @@ enum SessionTranscriptRichContentParser {
                     "text",
                 ])
             )
+        }
+
+        if kind == .stdin, body?.isEmpty != false {
+            return nil
         }
 
         let hasStructuredHighlights = compactSummary != nil ||
@@ -1330,16 +1345,16 @@ enum SessionTranscriptRichContentParser {
 
         var parts: [String] = []
         if exploreCount > 0 {
-            parts.append("Explored \(exploreCount) \(exploreCount == 1 ? "path" : "paths")")
+            parts.append("Listed \(exploreCount) \(exploreCount == 1 ? "path" : "paths")")
         }
         if readCount > 0 {
-            parts.append("Explored \(readCount) \(readCount == 1 ? "file" : "files")")
+            parts.append("Read \(readCount) \(readCount == 1 ? "file" : "files")")
         }
         if searchCount > 0 {
             parts.append("\(searchCount) \(searchCount == 1 ? "search" : "searches")")
         }
         if editCount > 0 {
-            parts.append("\(editCount) \(editCount == 1 ? "edit" : "edits")")
+            parts.append("Edited \(editCount) \(editCount == 1 ? "file" : "files")")
         }
         if commandCount > 0 || parts.isEmpty {
             parts.append("Ran \(commandActions.count) \(commandActions.count == 1 ? "command" : "commands")")
@@ -1382,9 +1397,12 @@ enum SessionTranscriptRichContentParser {
             return completedSummary(from: object["completed"]) ??
                 humanizedStatus(normalizeString(object["status"]))
         case .stdin:
-            return truncatedText(
-                normalizeString(object["chars"]) ?? normalizeString(object["text"]),
-                limit: 72
+            return firstString(
+                object["nickname"],
+                object["agentNickname"],
+                object["agent_id"],
+                object["id"],
+                object["session_id"]
             )
         case .toolResult, .toolCall:
             return firstString(
@@ -1415,7 +1433,10 @@ enum SessionTranscriptRichContentParser {
                 object["description"]
             )
         case .stdin:
-            return nil
+            return truncatedText(
+                normalizeString(object["chars"]) ?? normalizeString(object["text"]),
+                limit: 96
+            )
         case .toolResult, .toolCall:
             return firstString(
                 object["message"],
@@ -1457,7 +1478,7 @@ enum SessionTranscriptRichContentParser {
             }
             return entryKind == .toolResult ? ("Updated", .neutral) : ("Waiting", .accent)
         case .stdin:
-            return entryKind == .toolResult ? ("Sent", .success) : ("Pending", .accent)
+            return entryKind == .toolResult ? ("Sent", .success) : ("Queued", .accent)
         case .toolResult:
             return ("Result", .neutral)
         case .toolCall:
@@ -1518,6 +1539,26 @@ enum SessionTranscriptRichContentParser {
         }
 
         return normalizeString(value)
+    }
+
+    private static func diffSummaryTitle(_ files: [SessionTranscriptDiffFilePresentation]) -> String {
+        if files.count == 1, let first = files.first {
+            return "Edited \(fileName(from: first.path))"
+        }
+        return "Edited \(files.count) files"
+    }
+
+    private static func diffSummarySubtitle(_ files: [SessionTranscriptDiffFilePresentation]) -> String? {
+        guard !files.isEmpty else { return nil }
+        let totalHunks = files.reduce(0) { $0 + $1.hunkCount }
+        if files.count == 1, let first = files.first {
+            if totalHunks > 0 {
+                return "\(totalHunks) \(totalHunks == 1 ? "hunk" : "hunks")"
+            }
+            return first.path
+        }
+        guard totalHunks > 0 else { return nil }
+        return "\(totalHunks) \(totalHunks == 1 ? "hunk" : "hunks")"
     }
 
     private static func completedSummary(from value: Any?) -> String? {

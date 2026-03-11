@@ -165,10 +165,9 @@ fn list_codex_thread_messages_blocking(
     kept_rev.reverse();
     let messages = kept_rev
         .into_iter()
-        .enumerate()
-        .map(|(index, (_, mut message, _))| {
+        .map(|(line_offset, mut message, _)| {
             if let Some(object) = message.as_object_mut() {
-                object.insert("seq".to_string(), json!(index + 1));
+                object.insert("seq".to_string(), json!(line_offset));
             }
             message
         })
@@ -698,6 +697,10 @@ mod tests {
             first_messages[1]["content"]["payload"].as_str().unwrap().contains("third"),
             true
         );
+        assert!(
+            first_messages[0]["seq"].as_u64().unwrap()
+                < first_messages[1]["seq"].as_u64().unwrap()
+        );
         let next_cursor = first_page["nextCursor"].as_str().expect("next cursor");
         assert_eq!(first_page["hasNext"].as_bool(), Some(true));
 
@@ -709,6 +712,10 @@ mod tests {
         assert_eq!(
             older_messages[0]["content"]["payload"].as_str().unwrap().contains("first"),
             true
+        );
+        assert!(
+            older_messages[0]["seq"].as_u64().unwrap()
+                < first_messages[0]["seq"].as_u64().unwrap()
         );
         assert_eq!(older_page["hasNext"].as_bool(), Some(false));
     }

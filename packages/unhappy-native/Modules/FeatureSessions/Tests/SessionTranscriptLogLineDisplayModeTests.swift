@@ -42,4 +42,29 @@ struct SessionTranscriptLogLineDisplayModeTests {
 
         #expect(mode == .mainMessage)
     }
+
+    @Test
+    func sendInputEntriesUseMainMessageMode() {
+        let entry = SessionTranscriptEntry(
+            id: "send-input",
+            role: .agent,
+            kind: .toolResult,
+            title: "send_input",
+            body: """
+            {
+              "nickname": "Copernicus",
+              "text": "Double-check the migration ordering."
+            }
+            """,
+            toolUseID: "tool-2",
+            sourceType: "tool_result",
+            toolName: "send_input",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        let mode = SessionTranscriptLogLineDisplayMode.resolve(for: entry)
+
+        #expect(mode == .mainMessage)
+    }
 }

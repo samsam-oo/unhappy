@@ -3,6 +3,13 @@ import Network
 import SecurityKit
 
 public actor MachineDataPlaneWebSocketClient {
+    private enum ConnectionPhase: Sendable {
+        case idle
+        case connecting
+        case connected
+        case reconnecting
+    }
+
     private enum RequestPriority: Int, Comparable, Sendable {
         case background = 0
         case normal = 1
@@ -28,8 +35,10 @@ public actor MachineDataPlaneWebSocketClient {
                  .projectSessions,
                  .codexListThreads,
                  .claudeListSessions,
-                 .geminiListSessions:
-                return .background
+                 .geminiListSessions,
+                 .machineListModels,
+                 .projectList:
+                return .normal
 
             default:
                 return .normal
@@ -54,7 +63,6 @@ public actor MachineDataPlaneWebSocketClient {
     private struct LiveConnection {
         let transport: any MachineDataPlaneTextTransport
         let sessionKey: Data
-        var lastActivityAt: TimeInterval
     }
 
     private struct ConnectionState {
@@ -63,22 +71,23 @@ public actor MachineDataPlaneWebSocketClient {
         var queuedRequests: [QueuedRequest] = []
         var isProcessing = false
         var lastConnectionFailureAt: TimeInterval?
+        var phase: ConnectionPhase = .idle
     }
 
     private let requestTimeoutInterval: TimeInterval
-    private let staleConnectionProbeInterval: TimeInterval
     private let backgroundReconnectBackoffInterval: TimeInterval
+    private let reconnectGraceInterval: TimeInterval
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
     private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
 
     public init(
         requestTimeoutInterval: TimeInterval = 8,
-        staleConnectionProbeInterval: TimeInterval = 5,
-        backgroundReconnectBackoffInterval: TimeInterval = 10
+        backgroundReconnectBackoffInterval: TimeInterval = 10,
+        reconnectGraceInterval: TimeInterval = 4
     ) {
         self.requestTimeoutInterval = requestTimeoutInterval
-        self.staleConnectionProbeInterval = staleConnectionProbeInterval
         self.backgroundReconnectBackoffInterval = backgroundReconnectBackoffInterval
+        self.reconnectGraceInterval = reconnectGraceInterval
     }
 
     public func requestJSON(
@@ -260,30 +269,45 @@ public actor MachineDataPlaneWebSocketClient {
            shouldThrottleBackgroundReconnect(for: key) {
             throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
         }
-        do {
-            let liveConnection = try await liveConnection(for: key, serverURL: serverURL)
-            return try await performRequest(
-                request,
-                using: liveConnection
-            )
-        } catch {
-            let mappedError = (error as? MachinesAPIError) ?? mapTransportError(error)
-            if allowReconnectRetry, shouldRetryAfterConnectionFailure(mappedError) {
-                invalidateConnection(for: key)
-                if case .rpcCallFailed(let message) = mappedError,
-                   message == "Peer data-plane connection is not ready" {
-                    try? await Task.sleep(for: .milliseconds(250))
-                }
+
+        let deadline = allowReconnectRetry
+            ? Date().timeIntervalSince1970 + reconnectGraceIntervalForPriority(request.priority)
+            : nil
+        var reconnectAttempt = 0
+        var sentRequest = false
+
+        while true {
+            do {
+                let liveConnection = try await liveConnection(for: key, serverURL: serverURL)
                 return try await performRequest(
                     request,
-                    for: key,
-                    serverURL: serverURL,
-                    allowReconnectRetry: false
+                    using: liveConnection,
+                    sentRequest: &sentRequest
                 )
+            } catch {
+                let mappedError = (error as? MachinesAPIError) ?? mapTransportError(error)
+                if shouldReconnectRequest(
+                    request,
+                    after: mappedError,
+                    sentRequest: sentRequest,
+                    deadline: deadline
+                ) {
+                    reconnectAttempt += 1
+                    markConnectionPhase(.reconnecting, for: key)
+                    invalidateConnection(for: key)
+                    let delay = Self.reconnectBackoffDelay(attempt: reconnectAttempt)
+                    if delay > 0 {
+                        let nanoseconds = UInt64(max(delay, 0.001) * 1_000_000_000)
+                        try? await Task.sleep(nanoseconds: nanoseconds)
+                    }
+                    sentRequest = false
+                    continue
+                }
+
+                recordConnectionFailure(for: key)
+                invalidateConnection(for: key)
+                throw mappedError
             }
-            recordConnectionFailure(for: key)
-            invalidateConnection(for: key)
-            throw mappedError
         }
     }
 
@@ -292,25 +316,9 @@ public actor MachineDataPlaneWebSocketClient {
         serverURL: URL
     ) async throws -> LiveConnection {
         if let existingConnection = connectionStates[key]?.liveConnection {
-            let now = Date().timeIntervalSince1970
-            if now - existingConnection.lastActivityAt >= staleConnectionProbeInterval {
-                recordConnectionFailure(for: key)
-                invalidateConnection(for: key)
-            } else {
-                var refreshed = existingConnection
-                refreshed.lastActivityAt = now
-                connectionStates[key]?.liveConnection = refreshed
-                clearRecordedConnectionFailure(for: key)
-                return refreshed
-            }
-
-            if let refreshedConnection = connectionStates[key]?.liveConnection {
-                var refreshed = refreshedConnection
-                refreshed.lastActivityAt = now
-                connectionStates[key]?.liveConnection = refreshed
-                clearRecordedConnectionFailure(for: key)
-                return refreshed
-            }
+            clearRecordedConnectionFailure(for: key)
+            markConnectionPhase(.connected, for: key)
+            return existingConnection
         }
 
         if let inFlightConnection = inFlightConnections[key] {
@@ -320,6 +328,8 @@ public actor MachineDataPlaneWebSocketClient {
         guard let machineDataKey = connectionStates[key]?.machineDataKey else {
             throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
         }
+
+        markConnectionPhase(.connecting, for: key)
 
         let connectTask = Task<LiveConnection, Error> {
             let transport = try makeTransport(
@@ -341,6 +351,7 @@ public actor MachineDataPlaneWebSocketClient {
                 try await send(frame: hello, transport: transport)
 
                 let helloAck = try await receiveHelloAck(transport: transport)
+                await transport.configureKeepalive(idleTimeoutSeconds: helloAck.idleTimeoutSeconds)
                 let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
                     machineDataKey: machineDataKey,
                     localPrivateKey: handshake.privateKey,
@@ -352,8 +363,7 @@ public actor MachineDataPlaneWebSocketClient {
 
                 return LiveConnection(
                     transport: transport,
-                    sessionKey: sessionKey,
-                    lastActivityAt: Date().timeIntervalSince1970
+                    sessionKey: sessionKey
                 )
             } catch {
                 await transport.close()
@@ -365,16 +375,19 @@ public actor MachineDataPlaneWebSocketClient {
         defer { inFlightConnections[key] = nil }
 
         let liveConnection = try await connectTask.value
-        var updatedConnection = liveConnection
-        updatedConnection.lastActivityAt = Date().timeIntervalSince1970
-        connectionStates[key]?.liveConnection = updatedConnection
-        clearRecordedConnectionFailure(for: key)
-        return updatedConnection
+        if var state = connectionStates[key] {
+            state.liveConnection = liveConnection
+            state.phase = .connected
+            state.lastConnectionFailureAt = nil
+            connectionStates[key] = state
+        }
+        return liveConnection
     }
 
     private func performRequest(
         _ request: QueuedRequest,
-        using liveConnection: LiveConnection
+        using liveConnection: LiveConnection,
+        sentRequest: inout Bool
     ) async throws -> Data {
         let streamID = UUID().uuidString
         let requestHeader = MachineDataPlaneRequestFrame(
@@ -399,6 +412,7 @@ public actor MachineDataPlaneWebSocketClient {
             expectsChunks: false
         )
         try await send(frame: requestFrame, transport: liveConnection.transport)
+        sentRequest = true
 
         while true {
             let text = try await liveConnection.transport.receiveText()
@@ -435,6 +449,9 @@ public actor MachineDataPlaneWebSocketClient {
             }
         }
         state.liveConnection = nil
+        if state.phase == .connected {
+            state.phase = .reconnecting
+        }
         connectionStates[key] = state
         inFlightConnections[key]?.cancel()
         inFlightConnections[key] = nil
@@ -468,6 +485,96 @@ public actor MachineDataPlaneWebSocketClient {
     private func clearRecordedConnectionFailure(for key: ConnectionKey) {
         guard var state = connectionStates[key] else { return }
         state.lastConnectionFailureAt = nil
+        connectionStates[key] = state
+    }
+
+    private func reconnectGraceIntervalForPriority(_ priority: RequestPriority) -> TimeInterval {
+        switch priority {
+        case .interactive:
+            return max(reconnectGraceInterval, 6)
+        case .normal:
+            return reconnectGraceInterval
+        case .background:
+            return 0
+        }
+    }
+
+    private func shouldReconnectRequest(
+        _ request: QueuedRequest,
+        after error: MachinesAPIError,
+        sentRequest: Bool,
+        deadline: TimeInterval?
+    ) -> Bool {
+        guard shouldRetryAfterConnectionFailure(error) else {
+            return false
+        }
+        guard let deadline else {
+            return false
+        }
+        guard Date().timeIntervalSince1970 < deadline else {
+            return false
+        }
+        guard request.priority != .background else {
+            return false
+        }
+        if sentRequest {
+            return Self.isOperationSafeToReplay(request.operation)
+        }
+        return true
+    }
+
+    nonisolated static func isOperationSafeToReplay(_ operation: MachineDataPlaneOperation) -> Bool {
+        switch operation {
+        case .machineListModels,
+             .projectList,
+             .projectSessions,
+             .codexListThreads,
+             .codexListMessages,
+             .claudeListSessions,
+             .claudeListMessages,
+             .geminiListSessions,
+             .geminiListMessages,
+             .fsListDirectory,
+             .fsGetDirectoryTree,
+             .fsReadFile,
+             .searchRipgrep,
+             .diffDifftastic:
+            return true
+        default:
+            return false
+        }
+    }
+
+    nonisolated static func reconnectBackoffDelay(attempt: Int) -> TimeInterval {
+        switch attempt {
+        case 1:
+            return 0.25
+        case 2:
+            return 0.5
+        case 3:
+            return 1
+        default:
+            return 1.5
+        }
+    }
+
+    nonisolated static func reconnectGraceInterval(
+        for operation: MachineDataPlaneOperation,
+        baseGraceInterval: TimeInterval
+    ) -> TimeInterval {
+        switch RequestPriority.forOperation(operation) {
+        case .interactive:
+            return max(baseGraceInterval, 6)
+        case .normal:
+            return baseGraceInterval
+        case .background:
+            return 0
+        }
+    }
+
+    private func markConnectionPhase(_ phase: ConnectionPhase, for key: ConnectionKey) {
+        guard var state = connectionStates[key] else { return }
+        state.phase = phase
         connectionStates[key] = state
     }
 

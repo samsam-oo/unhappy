@@ -52,10 +52,6 @@ pub async fn read_session_store(path: &Path) -> Result<PersistedSessionStore> {
     Ok(persisted.unwrap_or_default())
 }
 
-pub async fn write_session_store(path: &Path, store: &PersistedSessionStore) -> Result<()> {
-    write_json_file(path, store).await
-}
-
 pub async fn write_json_file<T>(path: &Path, value: &T) -> Result<()>
 where
     T: Serialize,

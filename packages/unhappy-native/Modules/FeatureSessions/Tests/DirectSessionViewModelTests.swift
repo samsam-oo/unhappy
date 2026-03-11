@@ -104,7 +104,24 @@ struct DirectSessionViewModelTests {
         try await Task.sleep(for: .milliseconds(350))
 
         let recordedLimits = await loader.recordedLimits
-        #expect(recordedLimits == [120, 40])
+        #expect(recordedLimits == [240, 40])
+    }
+
+    @Test
+    func initialLoadRequestsTailFirstPageOfTwoHundredFortyMessages() async {
+        let loader = RecordingMessagesLoader()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: SuccessfulSender()
+        )
+
+        await viewModel.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(await loader.recordedLimits == [240])
     }
 
     @Test
