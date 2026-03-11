@@ -97,4 +97,12 @@ struct MachineDataPlaneWebSocketClientTests {
             ) == 20
         )
     }
+
+    @Test
+    func dispatchCapacityUsesAdvertisedInFlightLimit() {
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: nil, activeExecutions: 0) == 1)
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: nil, activeExecutions: 1) == 0)
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: 4, activeExecutions: 1) == 3)
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: 4, activeExecutions: 4) == 0)
+    }
 }
