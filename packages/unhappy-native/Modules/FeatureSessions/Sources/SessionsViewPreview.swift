@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreKit
+import SessionKit
 
 #Preview {
     SessionsView(

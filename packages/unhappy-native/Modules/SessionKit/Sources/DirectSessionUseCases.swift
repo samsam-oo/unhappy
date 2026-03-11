@@ -1,6 +1,5 @@
 import Foundation
 import CoreKit
-import SessionKit
 
 public struct DirectSessionIdentity: Identifiable, Equatable, Hashable, Sendable {
     public let machineID: String

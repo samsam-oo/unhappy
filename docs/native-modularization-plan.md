@@ -93,5 +93,9 @@ This stays inside `CoreKit` first. It does not need a new public target immediat
 
 - `Slice 1` completed:
   shared session model types now live in `SessionKit`
-- current step:
-  move pure session-domain helpers from `FeatureSessions` into `SessionKit`
+- `Slice 2` completed:
+  transcript parsing, semantic processing, and rich-content core now live in `SessionKit`
+- `Slice 3` completed:
+  `FeatureSessions` no longer composes `FeatureNewSession` directly
+- `Slice 4` in progress:
+  session supporting-sync types, direct-session helpers, and pure loaders are moving into `SessionKit`, leaving `FeatureSessions` with view models, SwiftUI screens, and composition hooks

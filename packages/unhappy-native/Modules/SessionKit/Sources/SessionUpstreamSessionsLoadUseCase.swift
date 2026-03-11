@@ -1,6 +1,5 @@
 import Foundation
 import CoreKit
-import SessionKit
 
 public protocol SessionUpstreamSessionsLoadingAction: Sendable {
     func loadUpstreamSessions(

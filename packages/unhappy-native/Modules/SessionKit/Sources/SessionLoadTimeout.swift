@@ -1,13 +1,13 @@
 import Foundation
 import CoreKit
 
-enum SessionLoadTimeout {
-    static let directMessages: Duration = .seconds(6)
-    static let projects: Duration = .seconds(4)
-    static let upstreamSessions: Duration = .seconds(5)
+public enum SessionLoadTimeout {
+    public static let directMessages: Duration = .seconds(6)
+    public static let projects: Duration = .seconds(4)
+    public static let upstreamSessions: Duration = .seconds(5)
 }
 
-func withSessionLoadTimeout<T: Sendable>(
+public func withSessionLoadTimeout<T: Sendable>(
     _ timeout: Duration,
     operation: @Sendable @escaping () async throws -> T
 ) async throws -> T {

@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import CoreKit
+import SessionKit
 @testable import FeatureSessions
 
 struct DirectSessionUseCasesTests {

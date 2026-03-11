@@ -1,7 +1,7 @@
 import Foundation
 
-enum DirectSessionTranscriptAutoPagingDecision {
-    static func shouldTrigger(
+public enum DirectSessionTranscriptAutoPagingDecision {
+    public static func shouldTrigger(
         currentTriggerID: String?,
         lastTriggeredID: String?,
         isTopPagingRowVisible: Bool,
@@ -17,7 +17,7 @@ enum DirectSessionTranscriptAutoPagingDecision {
         return trimmed != lastTriggeredID
     }
 
-    static func shouldRestoreOlderAnchor(
+    public static func shouldRestoreOlderAnchor(
         pendingAnchorMessageID: String?,
         currentFirstMessageID: String?
     ) -> Bool {

@@ -1,9 +1,9 @@
 import Foundation
 
-enum DirectSessionPollingStrategy {
-    static let incrementalRefreshPageSize = 20
+public enum DirectSessionPollingStrategy {
+    public static let incrementalRefreshPageSize = 20
 
-    static func shouldRefreshLatestMessages(
+    public static func shouldRefreshLatestMessages(
         hasExistingMessages: Bool,
         isSending: Bool,
         isLoadingOlderMessages: Bool,
@@ -19,7 +19,7 @@ enum DirectSessionPollingStrategy {
         return hasActiveMessagesLoad == false
     }
 
-    static func refreshLimit(
+    public static func refreshLimit(
         hasExistingMessages: Bool,
         defaultPageSize: Int
     ) -> Int {

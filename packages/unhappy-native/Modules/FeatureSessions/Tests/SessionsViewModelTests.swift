@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import FeatureSessions
 import CoreKit
+import SessionKit
 
 @MainActor
 struct SessionsViewModelTests {
