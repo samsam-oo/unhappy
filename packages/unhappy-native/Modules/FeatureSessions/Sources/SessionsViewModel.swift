@@ -775,11 +775,14 @@ public final class SessionsViewModel: ObservableObject {
                 }
             )
             projectsErrorMessage = nil
-            await refreshSupportingProjectContent(
-                serverURLString: serverURLString,
-                token: token,
-                force: true
-            )
+            Task { [weak self] in
+                guard let self else { return }
+                await self.refreshSupportingProjectContent(
+                    serverURLString: serverURLString,
+                    token: token,
+                    force: true
+                )
+            }
             return true
         } catch {
             projectsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription

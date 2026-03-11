@@ -3,6 +3,7 @@ use crate::{
     control_server::SpawnSessionRequest,
     daemon_state::{OpenedProject, SharedDaemonState},
     local_ops,
+    machine_sync,
     protocol::{
         MachineDataPlaneCompleteFrame, MachineDataPlaneErrorFrame, MachineDataPlaneHelloAckFrame,
         MachineDataPlaneHelloFrame, MachineDataPlaneKeyExchange, MachineDataPlaneOperation,
@@ -564,6 +565,7 @@ async fn dispatch_request(
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow!("path is required"))?;
             state.open_project(path).await?;
+            machine_sync::sync_machine_snapshot_now(state.clone()).await?;
             Ok(json!({
                 "success": true,
                 "message": "Project added"
@@ -577,6 +579,7 @@ async fn dispatch_request(
                 .filter(|value| !value.is_empty())
                 .ok_or_else(|| anyhow!("path is required"))?;
             state.remove_project(path).await?;
+            machine_sync::sync_machine_snapshot_now(state.clone()).await?;
             Ok(json!({
                 "success": true,
                 "message": "Project removed"
