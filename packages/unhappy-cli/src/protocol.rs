@@ -31,6 +31,8 @@ pub struct MachineDataPlaneSealedBody {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MachineDataPlaneOperation {
+    #[serde(rename = "machine.ping")]
+    MachinePing,
     #[serde(rename = "machine.listModels")]
     MachineListModels,
     #[serde(rename = "daemon.stop")]

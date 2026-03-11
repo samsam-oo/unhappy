@@ -29,7 +29,8 @@ public actor MachineDataPlaneWebSocketClient {
                  .providerSpawn:
                 return .interactive
 
-            case .codexListMessages,
+            case .machinePing,
+                 .codexListMessages,
                  .claudeListMessages,
                  .geminiListMessages,
                  .projectSessions,
@@ -90,12 +91,15 @@ public actor MachineDataPlaneWebSocketClient {
         var activeStreams: [String: ActiveStream] = [:]
         var bufferedTerminalFrames: [String: StreamTerminalFrame] = [:]
         var readerTask: Task<Void, Never>?
+        var needsIdleProbe = false
+        var idleProbeTask: Task<Void, Error>?
     }
 
     private let requestTimeoutInterval: TimeInterval
     private let responseTimeoutInterval: TimeInterval
     private let backgroundReconnectBackoffInterval: TimeInterval
     private let reconnectGraceInterval: TimeInterval
+    private let idleProbeTimeoutInterval: TimeInterval
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
     private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
 
@@ -109,6 +113,7 @@ public actor MachineDataPlaneWebSocketClient {
         self.responseTimeoutInterval = responseTimeoutInterval
         self.backgroundReconnectBackoffInterval = backgroundReconnectBackoffInterval
         self.reconnectGraceInterval = reconnectGraceInterval
+        self.idleProbeTimeoutInterval = max(min(requestTimeoutInterval, 3), 1)
     }
 
     public func requestJSON(
@@ -332,6 +337,9 @@ public actor MachineDataPlaneWebSocketClient {
         guard var state = connectionStates[key] else { return }
         state.activeExecutionCount = max(state.activeExecutionCount - 1, 0)
         state.dispatchedRequests.removeValue(forKey: requestID)
+        if state.activeExecutionCount == 0, state.liveConnection != nil {
+            state.needsIdleProbe = true
+        }
         connectionStates[key] = state
         schedulePump(for: key, serverURL: serverURL)
     }
@@ -400,7 +408,11 @@ public actor MachineDataPlaneWebSocketClient {
         if let existingConnection = connectionStates[key]?.liveConnection {
             clearRecordedConnectionFailure(for: key)
             markConnectionPhase(.connected, for: key)
-            return existingConnection
+            try await probeIdleConnectionIfNeeded(for: key, liveConnection: existingConnection)
+            guard let liveConnection = connectionStates[key]?.liveConnection else {
+                throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
+            }
+            return liveConnection
         }
 
         if let inFlightConnection = inFlightConnections[key] {
@@ -462,6 +474,8 @@ public actor MachineDataPlaneWebSocketClient {
             state.liveConnection = liveConnection
             state.phase = .connected
             state.lastConnectionFailureAt = nil
+            state.needsIdleProbe = false
+            state.idleProbeTask = nil
             if state.readerTask == nil {
                 state.readerTask = makeReaderTask(for: key, transport: liveConnection.transport)
             }
@@ -531,6 +545,100 @@ public actor MachineDataPlaneWebSocketClient {
         }
     }
 
+    private func probeIdleConnectionIfNeeded(
+        for key: ConnectionKey,
+        liveConnection: LiveConnection
+    ) async throws {
+        guard let state = connectionStates[key], state.liveConnection != nil else { return }
+        guard state.needsIdleProbe else { return }
+
+        if let idleProbeTask = state.idleProbeTask {
+            try await idleProbeTask.value
+            return
+        }
+
+        let idleProbeTask = Task<Void, Error> { [weak self] in
+            guard let self else { return }
+            try await self.performIdleProbe(using: liveConnection, for: key)
+        }
+
+        if var currentState = connectionStates[key] {
+            currentState.idleProbeTask = idleProbeTask
+            connectionStates[key] = currentState
+        }
+
+        do {
+            try await idleProbeTask.value
+            if var currentState = connectionStates[key] {
+                currentState.idleProbeTask = nil
+                currentState.needsIdleProbe = false
+                connectionStates[key] = currentState
+            }
+        } catch {
+            if var currentState = connectionStates[key] {
+                currentState.idleProbeTask = nil
+                currentState.needsIdleProbe = true
+                connectionStates[key] = currentState
+            }
+            let mappedError = (error as? MachinesAPIError) ?? mapTransportError(error)
+            recordConnectionFailure(for: key)
+            invalidateConnection(for: key)
+            throw mappedError
+        }
+    }
+
+    private func performIdleProbe(
+        using liveConnection: LiveConnection,
+        for key: ConnectionKey
+    ) async throws {
+        let streamID = UUID().uuidString
+        let requestHeader = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: .machinePing,
+            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: "")
+        )
+        let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
+            ["reason": "idle-reuse"],
+            sessionKey: liveConnection.sessionKey,
+            authenticatedData: requestAAD(for: requestHeader)
+        )
+        let requestFrame = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: .machinePing,
+            body: MachineDataPlaneSealedBody(
+                nonce: sealedBody.nonce,
+                ciphertext: sealedBody.ciphertext,
+                tag: sealedBody.tag
+            )
+        )
+
+        try await withMachineDataPlaneTimeout(idleProbeTimeoutInterval) {
+            try await self.send(frame: requestFrame, transport: liveConnection.transport)
+        }
+
+        let terminalFrame = try await awaitStreamTerminalFrame(
+            streamID: streamID,
+            requestID: "probe:\(streamID)",
+            for: key,
+            timeoutInterval: idleProbeTimeoutInterval
+        )
+
+        switch terminalFrame {
+        case .error(let errorFrame):
+            throw MachinesAPIError.rpcCallFailed(errorFrame.message)
+        case .complete(let completeFrame):
+            _ = try MachineDataPlaneEncryption.decryptDataPlanePayload(
+                MachineDataPlaneSealedPayload(
+                    nonce: completeFrame.body.nonce,
+                    ciphertext: completeFrame.body.ciphertext,
+                    tag: completeFrame.body.tag
+                ),
+                sessionKey: liveConnection.sessionKey,
+                authenticatedData: completeAAD(for: completeFrame)
+            )
+        }
+    }
+
     private func awaitStreamTerminalFrame(
         streamID: String,
         requestID: String,
@@ -571,6 +679,9 @@ public actor MachineDataPlaneWebSocketClient {
         state.liveConnection = nil
         let readerTask = state.readerTask
         state.readerTask = nil
+        let idleProbeTask = state.idleProbeTask
+        state.idleProbeTask = nil
+        state.needsIdleProbe = false
         state.bufferedTerminalFrames.removeAll()
         if state.phase == .connected {
             state.phase = .reconnecting
@@ -579,6 +690,7 @@ public actor MachineDataPlaneWebSocketClient {
         inFlightConnections[key]?.cancel()
         inFlightConnections[key] = nil
         readerTask?.cancel()
+        idleProbeTask?.cancel()
         if let transport {
             Task {
                 await transport.close()
