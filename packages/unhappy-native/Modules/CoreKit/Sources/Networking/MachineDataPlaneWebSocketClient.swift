@@ -88,6 +88,7 @@ public actor MachineDataPlaneWebSocketClient {
         var phase: ConnectionPhase = .idle
         var activeExecutionCount = 0
         var activeStreams: [String: ActiveStream] = [:]
+        var bufferedTerminalFrames: [String: StreamTerminalFrame] = [:]
         var readerTask: Task<Void, Never>?
     }
 
@@ -563,6 +564,7 @@ public actor MachineDataPlaneWebSocketClient {
         state.liveConnection = nil
         let readerTask = state.readerTask
         state.readerTask = nil
+        state.bufferedTerminalFrames.removeAll()
         if state.phase == .connected {
             state.phase = .reconnecting
         }
@@ -724,6 +726,12 @@ public actor MachineDataPlaneWebSocketClient {
             continuation.resume(throwing: MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected"))
             return
         }
+        if let bufferedFrame = state.bufferedTerminalFrames.removeValue(forKey: streamID) {
+            timeoutTask.cancel()
+            connectionStates[key] = state
+            continuation.resume(returning: bufferedFrame)
+            return
+        }
         state.activeStreams[streamID] = ActiveStream(
             requestID: requestID,
             continuation: continuation,
@@ -759,6 +767,7 @@ public actor MachineDataPlaneWebSocketClient {
         guard var state = connectionStates[key], !state.activeStreams.isEmpty else { return }
         let activeStreams = Array(state.activeStreams.values)
         state.activeStreams.removeAll()
+        state.bufferedTerminalFrames.removeAll()
         connectionStates[key] = state
         for activeStream in activeStreams {
             activeStream.timeoutTask.cancel()
@@ -812,8 +821,12 @@ public actor MachineDataPlaneWebSocketClient {
         for key: ConnectionKey,
         frame: StreamTerminalFrame
     ) {
-        guard var state = connectionStates[key],
-              let activeStream = state.activeStreams.removeValue(forKey: streamID) else {
+        guard var state = connectionStates[key] else {
+            return
+        }
+        guard let activeStream = state.activeStreams.removeValue(forKey: streamID) else {
+            state.bufferedTerminalFrames[streamID] = frame
+            connectionStates[key] = state
             return
         }
         activeStream.timeoutTask.cancel()
