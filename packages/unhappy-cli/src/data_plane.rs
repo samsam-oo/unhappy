@@ -29,7 +29,7 @@ use std::time::Instant;
 use tokio::{
     process::Command,
     task::JoinHandle,
-    time::{sleep, Duration},
+    time::{sleep, Duration, MissedTickBehavior},
 };
 use tokio_tungstenite::{
     connect_async,
@@ -178,7 +178,7 @@ impl SessionCryptoContext {
 }
 
 pub async fn connect_and_handshake(config: &Config) -> Result<()> {
-    let (_socket, _session_key) = connect_once(config).await?;
+    let (_socket, _session_key, _keepalive_interval) = connect_once(config).await?;
     Ok(())
 }
 
@@ -208,8 +208,11 @@ pub fn spawn_data_plane_service(state: SharedDaemonState) -> JoinHandle<()> {
 }
 
 async fn connect_and_serve_once(config: &Config, state: SharedDaemonState) -> Result<()> {
-    let (mut socket, session_key) = connect_once(config).await?;
+    let (mut socket, session_key, keepalive_interval) = connect_once(config).await?;
     let mut shutdown_rx = state.subscribe_shutdown();
+    let mut keepalive = tokio::time::interval(keepalive_interval);
+    keepalive.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    keepalive.tick().await;
 
     loop {
         tokio::select! {
@@ -241,11 +244,17 @@ async fn connect_and_serve_once(config: &Config, state: SharedDaemonState) -> Re
                     _ => {}
                 }
             }
+            _ = keepalive.tick() => {
+                socket
+                    .send(Message::Ping(Vec::new().into()))
+                    .await
+                    .context("failed to send data-plane keepalive ping")?;
+            }
         }
     }
 }
 
-async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
+async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32], Duration)> {
     let started_at = Instant::now();
     let mut url = Url::parse(&config.server_url).context("invalid server url")?;
     match url.scheme() {
@@ -309,7 +318,23 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32])> {
         );
     }
 
-    Ok((socket, session_key))
+    Ok((
+        socket,
+        session_key,
+        keepalive_interval(ack.idle_timeout_seconds),
+    ))
+}
+
+fn keepalive_interval(idle_timeout_seconds: u16) -> Duration {
+    let idle_millis = u64::from(idle_timeout_seconds.max(1)) * 1_000;
+    let half_idle = idle_millis / 2;
+    let upper_bound = idle_millis.saturating_sub(5_000);
+    let interval_millis = if upper_bound >= 5_000 {
+        half_idle.clamp(5_000, upper_bound)
+    } else {
+        half_idle.max(1_000)
+    };
+    Duration::from_millis(interval_millis)
 }
 
 fn machine_data_plane_request(url: &Url, token: &str) -> Result<http::Request<()>> {
@@ -1207,5 +1232,12 @@ mod tests {
         });
 
         assert!(row.is_none());
+    }
+
+    #[test]
+    fn keepalive_interval_tracks_idle_timeout() {
+        assert_eq!(keepalive_interval(45), Duration::from_millis(22_500));
+        assert_eq!(keepalive_interval(8), Duration::from_millis(4_000));
+        assert_eq!(keepalive_interval(1), Duration::from_millis(1_000));
     }
 }
