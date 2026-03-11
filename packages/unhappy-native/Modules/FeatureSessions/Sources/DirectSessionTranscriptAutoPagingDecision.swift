@@ -5,11 +5,11 @@ enum DirectSessionTranscriptAutoPagingDecision {
         currentTriggerID: String?,
         lastTriggeredID: String?,
         isTopPagingRowVisible: Bool,
-        shouldFollowTranscript: Bool,
+        isNearTranscriptBottom: Bool,
         isLoadingOlderMessages: Bool
     ) -> Bool {
         guard isTopPagingRowVisible else { return false }
-        guard shouldFollowTranscript == false else { return false }
+        guard isNearTranscriptBottom == false else { return false }
         guard isLoadingOlderMessages == false else { return false }
         guard let currentTriggerID else { return false }
         let trimmed = currentTriggerID.trimmingCharacters(in: .whitespacesAndNewlines)
