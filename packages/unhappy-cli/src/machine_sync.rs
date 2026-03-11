@@ -20,7 +20,6 @@ const MACHINE_BUNDLE_VERSION: u8 = 2;
 const MACHINE_BUNDLE_NONCE_LENGTH: usize = 12;
 const HEARTBEAT_INTERVAL_SECONDS: u64 = 60;
 const DATA_KEY_WRAP_VERSION: u8 = 2;
-const DATA_KEY_WRAP_PUBLIC_KEY_LENGTH: usize = 32;
 const DATA_KEY_WRAP_NONCE_LENGTH: usize = 12;
 const DATA_KEY_WRAP_KDF_SALT: &[u8] = b"unhappy.data.encryption-key.wrap.salt.v2";
 const DATA_KEY_WRAP_KDF_INFO: &[u8] = b"unhappy.data.encryption-key.wrap.info.v2";
@@ -130,7 +129,9 @@ async fn post_session_catalog_delta(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        return Err(anyhow!("session catalog delta failed with HTTP {status}: {body}"));
+        return Err(anyhow!(
+            "session catalog delta failed with HTTP {status}: {body}"
+        ));
     }
 
     Ok(())
@@ -146,7 +147,13 @@ async fn build_session_catalog_scopes(
 
     for opened_project in opened_projects {
         for provider in [Provider::Codex, Provider::Claude, Provider::Gemini] {
-            let rows = provider_session_rows_for_project(config, provider, &opened_project.path, &children).await?;
+            let rows = provider_session_rows_for_project(
+                config,
+                provider,
+                &opened_project.path,
+                &children,
+            )
+            .await?;
             scopes.push(json!({
                 "provider": provider.command_name(),
                 "projectPath": opened_project.path,
@@ -457,7 +464,7 @@ mod tests {
             .expect("decode wrapped bundle");
 
         assert_eq!(bundle.first().copied(), Some(DATA_KEY_WRAP_VERSION));
-        let public_key_end = 1 + DATA_KEY_WRAP_PUBLIC_KEY_LENGTH;
+        let public_key_end = 1 + 32;
         let nonce_end = public_key_end + DATA_KEY_WRAP_NONCE_LENGTH;
         let ephemeral_public: [u8; 32] = bundle[1..public_key_end]
             .try_into()

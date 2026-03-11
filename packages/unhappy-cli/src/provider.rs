@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     env,
     io::{Error, ErrorKind},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use tokio::process::{Child, Command};
 
@@ -46,33 +46,8 @@ impl Provider {
 
 #[derive(Debug, Clone)]
 pub struct ProviderCommand {
-    mode: ProviderCommandMode,
     executable: String,
     args: Vec<String>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProviderCommandMode {
-    LegacyWrapper,
-    DirectBinary,
-}
-
-#[derive(Debug, Clone)]
-pub struct CodexDirectRuntimeContract {
-    pub executable: String,
-    pub startup_args: Vec<String>,
-    pub codex_home_dir: PathBuf,
-    pub auth_file_path: PathBuf,
-    pub sessions_dir: PathBuf,
-    pub resume_thread_id: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct GeminiDirectRuntimeContract {
-    pub executable: String,
-    pub startup_args: Vec<String>,
-    pub control_port_metadata_key: &'static str,
-    pub session_id_metadata_key: &'static str,
 }
 
 impl ProviderCommand {
@@ -95,11 +70,7 @@ impl ProviderCommand {
             if args.is_empty() {
                 args = default_direct_args(provider);
             }
-            return Ok(Self {
-                mode: ProviderCommandMode::DirectBinary,
-                executable,
-                args,
-            });
+            return Ok(Self { executable, args });
         }
 
         if provider == Provider::Codex {
@@ -108,7 +79,6 @@ impl ProviderCommand {
                 args = default_direct_args(provider);
             }
             return Ok(Self {
-                mode: ProviderCommandMode::DirectBinary,
                 executable: provider.command_name().to_string(),
                 args,
             });
@@ -121,14 +91,9 @@ impl ProviderCommand {
         args.extend(configured_args);
 
         Ok(Self {
-            mode: ProviderCommandMode::LegacyWrapper,
             executable: shared_cli.to_string(),
             args,
         })
-    }
-
-    pub fn mode(&self) -> ProviderCommandMode {
-        self.mode
     }
 
     pub fn executable(&self) -> &str {
@@ -163,41 +128,6 @@ impl ProviderCommandConfig {
             Provider::Codex => &self.codex,
             Provider::Claude => &self.claude,
             Provider::Gemini => &self.gemini,
-        }
-    }
-
-    pub fn codex_direct_contract(
-        &self,
-        unhappy_home_dir: &Path,
-        resume_thread_id: Option<&str>,
-    ) -> CodexDirectRuntimeContract {
-        let command = self.resolve(Provider::Codex);
-        let codex_home_dir = env::var("UNHAPPY_CODEX_HOME_DIR")
-            .ok()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                env::var("HOME")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|_| unhappy_home_dir.to_path_buf())
-                    .join(".codex")
-            });
-        CodexDirectRuntimeContract {
-            executable: command.executable().to_string(),
-            startup_args: command.args().to_vec(),
-            auth_file_path: codex_home_dir.join("auth.json"),
-            sessions_dir: codex_home_dir.join("sessions"),
-            codex_home_dir,
-            resume_thread_id: normalized_arg(resume_thread_id).map(ToOwned::to_owned),
-        }
-    }
-
-    pub fn gemini_direct_contract(&self) -> GeminiDirectRuntimeContract {
-        let command = self.resolve(Provider::Gemini);
-        GeminiDirectRuntimeContract {
-            executable: command.executable().to_string(),
-            startup_args: command.args().to_vec(),
-            control_port_metadata_key: "agentControlPort",
-            session_id_metadata_key: "agentSessionId",
         }
     }
 }
