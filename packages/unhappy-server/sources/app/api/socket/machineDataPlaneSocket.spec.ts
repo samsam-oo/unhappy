@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    decodeMachineDataPlaneRawData,
     machineDataPlaneNativeHandshakeTimeoutMs,
     machineDataPlaneOutstandingStreamTerminationTargets,
 } from "./machineDataPlaneSocket";
@@ -36,5 +37,14 @@ describe("machineDataPlaneSocket", () => {
         );
 
         expect(targets).toEqual([]);
+    });
+
+    it("decodes fragmented websocket text frames", () => {
+        const text = decodeMachineDataPlaneRawData([
+            Buffer.from('{"t":"req'),
+            Buffer.from('uest","v":1}'),
+        ]);
+
+        expect(text).toBe('{"t":"request","v":1}');
     });
 });

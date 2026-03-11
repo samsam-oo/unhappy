@@ -76,6 +76,28 @@ export function machineDataPlaneOutstandingStreamTerminationTargets(
     return targets;
 }
 
+export function decodeMachineDataPlaneRawData(raw: RawData): string {
+    if (typeof raw === "string") {
+        return raw;
+    }
+    if (Buffer.isBuffer(raw)) {
+        return raw.toString("utf8");
+    }
+    if (raw instanceof ArrayBuffer) {
+        return Buffer.from(raw).toString("utf8");
+    }
+    if (Array.isArray(raw)) {
+        return Buffer.concat(
+            raw.map((chunk) => {
+                return Buffer.isBuffer(chunk)
+                    ? chunk
+                    : Buffer.from(String(chunk), "utf8");
+            })
+        ).toString("utf8");
+    }
+    return Buffer.from(String(raw), "utf8").toString("utf8");
+}
+
 function machineKey(userId: string, machineId: string): string {
     return `${userId}:${machineId}`;
 }
@@ -385,18 +407,37 @@ export function startMachineDataPlaneSocket(app: Fastify) {
 
     function routeFrame(state: ConnectionState, rawFrame: unknown): void {
         if (!state.role) {
+            logRelay("Rejected data-plane frame before handshake completed", {
+                userId: state.userId,
+                machineId: state.machineId,
+                sessionId: state.sessionId,
+            });
             state.socket.close(1008, "Handshake required");
             return;
         }
 
         const parsed = MachineDataPlaneFrameSchema.safeParse(rawFrame);
         if (!parsed.success) {
+            logRelay("Rejected invalid data-plane frame", {
+                userId: state.userId,
+                machineId: state.machineId,
+                role: state.role,
+                sessionId: state.sessionId,
+                issues: parsed.error.issues,
+            });
             state.socket.close(1008, "Invalid data-plane frame");
             return;
         }
 
         const frame = parsed.data;
         if (frame.t === "hello" || frame.t === "hello-ack") {
+            logRelay("Rejected handshake frame after initialization", {
+                userId: state.userId,
+                machineId: state.machineId,
+                role: state.role,
+                sessionId: state.sessionId,
+                frameType: frame.t,
+            });
             state.socket.close(1008, "Handshake frame not allowed after initialization");
             return;
         }
@@ -469,6 +510,14 @@ export function startMachineDataPlaneSocket(app: Fastify) {
         }
 
         default:
+            const unsupportedFrameType = (frame as { t?: string }).t ?? "unknown";
+            logRelay("Rejected unsupported data-plane frame", {
+                userId: state.userId,
+                machineId: state.machineId,
+                role: state.role,
+                sessionId: state.sessionId,
+                frameType: unsupportedFrameType,
+            });
             state.socket.close(1008, "Unsupported data-plane frame");
         }
     }
@@ -533,10 +582,28 @@ export function startMachineDataPlaneSocket(app: Fastify) {
                     if (!currentState) return;
 
                     let decoded: unknown;
+                    const text = decodeMachineDataPlaneRawData(raw);
+                    logRelay("Received data-plane websocket frame", {
+                        userId: currentState.userId,
+                        machineId: currentState.machineId,
+                        role: currentState.role ?? "unknown",
+                        ready: currentState.ready,
+                        sessionId: currentState.sessionId,
+                        bytes: Buffer.byteLength(text, "utf8"),
+                        helloReceived: currentState.hello !== null,
+                    });
                     try {
-                        const text = typeof raw === "string" ? raw : raw.toString("utf8");
                         decoded = JSON.parse(text);
-                    } catch {
+                    } catch (error) {
+                        logRelay("Failed to decode data-plane websocket frame", {
+                            userId: currentState.userId,
+                            machineId: currentState.machineId,
+                            role: currentState.role ?? "unknown",
+                            ready: currentState.ready,
+                            sessionId: currentState.sessionId,
+                            error: String(error),
+                            preview: text.slice(0, 256),
+                        });
                         ws.close(1008, "Invalid JSON frame");
                         return;
                     }
@@ -544,6 +611,13 @@ export function startMachineDataPlaneSocket(app: Fastify) {
                     if (!currentState.hello) {
                         const hello = MachineDataPlaneHelloFrameSchema.safeParse(decoded);
                         if (!hello.success) {
+                            logRelay("Rejected non-hello frame during data-plane handshake", {
+                                userId: currentState.userId,
+                                machineId: currentState.machineId,
+                                role: currentState.role ?? "unknown",
+                                sessionId: currentState.sessionId,
+                                issues: hello.error.issues,
+                            });
                             ws.close(1008, "Expected hello frame");
                             return;
                         }
@@ -554,9 +628,18 @@ export function startMachineDataPlaneSocket(app: Fastify) {
                     routeFrame(currentState, decoded);
                 });
 
-                ws.on("close", () => {
+                ws.on("close", (code, reasonBuffer) => {
                     const currentState = socketStates.get(ws);
                     if (!currentState) return;
+                    logRelay("Closed data-plane websocket", {
+                        userId: currentState.userId,
+                        machineId: currentState.machineId,
+                        role: currentState.role ?? "unknown",
+                        ready: currentState.ready,
+                        sessionId: currentState.sessionId,
+                        closeCode: code,
+                        reason: reasonBuffer.toString("utf8"),
+                    });
                     cleanupState(currentState);
                 });
 

@@ -49,25 +49,39 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
             throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
         }
 
+        Self.logger.log(
+            "transport send start url=\(self.url.absoluteString, privacy: .public) bytes=\(text.utf8.count)"
+        )
+
         let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
         let context = NWConnection.ContentContext(
             identifier: UUID().uuidString,
             metadata: [metadata]
         )
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            connection.send(
-                content: Data(text.utf8),
-                contentContext: context,
-                isComplete: true,
-                completion: .contentProcessed { error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume(returning: ())
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                connection.send(
+                    content: Data(text.utf8),
+                    contentContext: context,
+                    isComplete: true,
+                    completion: .contentProcessed { error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume(returning: ())
+                        }
                     }
-                }
+                )
+            }
+            Self.logger.log(
+                "transport send ok url=\(self.url.absoluteString, privacy: .public)"
             )
+        } catch {
+            Self.logger.error(
+                "transport send fail url=\(self.url.absoluteString, privacy: .public) error=\(String(describing: error), privacy: .public)"
+            )
+            throw error
         }
     }
 
