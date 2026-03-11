@@ -183,6 +183,12 @@ public enum DirectSessionUseCaseError: LocalizedError, Equatable {
 }
 
 public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingAction {
+    private static let retryIntervals: [Duration] = [
+        .milliseconds(250),
+        .milliseconds(500),
+        .seconds(1),
+    ]
+
     private let codexService: any MachineCodexThreadMessagesFetching
     private let claudeService: any MachineClaudeSessionMessagesFetching
     private let geminiService: any MachineGeminiSessionMessagesFetching
@@ -234,45 +240,71 @@ public actor DirectSessionMessagesLoadUseCase: DirectSessionMessagesLoadingActio
             throw DirectSessionUseCaseError.missingCWD
         }
 
-        switch identity.provider {
-        case .codex:
-            let normalizedTranscriptPath = identity.transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !normalizedTranscriptPath.isEmpty else {
-                throw DirectSessionUseCaseError.missingTranscriptPath
+        var attemptsRemaining = Self.retryIntervals[...]
+        while true {
+            do {
+                switch identity.provider {
+                case .codex:
+                    let normalizedTranscriptPath = identity.transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    guard !normalizedTranscriptPath.isEmpty else {
+                        throw DirectSessionUseCaseError.missingTranscriptPath
+                    }
+                    return try await codexService.fetchCodexThreadMessages(
+                        serverURL: serverURL,
+                        token: normalizedToken,
+                        machineID: normalizedMachineID,
+                        threadID: normalizedUpstreamSessionID,
+                        transcriptPath: normalizedTranscriptPath,
+                        wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
+                        limit: limit,
+                        cursor: cursor
+                    )
+
+                case .claude:
+                    return try await claudeService.fetchClaudeSessionMessages(
+                        serverURL: serverURL,
+                        token: normalizedToken,
+                        machineID: normalizedMachineID,
+                        sessionID: normalizedUpstreamSessionID,
+                        cwd: normalizedCWD,
+                        wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
+                        limit: limit,
+                        cursor: cursor
+                    )
+
+                case .gemini:
+                    return try await geminiService.fetchGeminiSessionMessages(
+                        serverURL: serverURL,
+                        token: normalizedToken,
+                        machineID: normalizedMachineID,
+                        sessionID: normalizedUpstreamSessionID,
+                        wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
+                        limit: limit,
+                        cursor: cursor
+                    )
+                }
+            } catch {
+                guard shouldRetry(error), let delay = attemptsRemaining.first else {
+                    throw error
+                }
+                attemptsRemaining = attemptsRemaining.dropFirst()
+                try? await Task.sleep(for: delay)
             }
-            return try await codexService.fetchCodexThreadMessages(
-                serverURL: serverURL,
-                token: normalizedToken,
-                machineID: normalizedMachineID,
-                threadID: normalizedUpstreamSessionID,
-                transcriptPath: normalizedTranscriptPath,
-                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
-                limit: limit,
-                cursor: cursor
-            )
+        }
+    }
 
-        case .claude:
-            return try await claudeService.fetchClaudeSessionMessages(
-                serverURL: serverURL,
-                token: normalizedToken,
-                machineID: normalizedMachineID,
-                sessionID: normalizedUpstreamSessionID,
-                cwd: normalizedCWD,
-                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
-                limit: limit,
-                cursor: cursor
-            )
-
-        case .gemini:
-            return try await geminiService.fetchGeminiSessionMessages(
-                serverURL: serverURL,
-                token: normalizedToken,
-                machineID: normalizedMachineID,
-                sessionID: normalizedUpstreamSessionID,
-                wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey,
-                limit: limit,
-                cursor: cursor
-            )
+    private func shouldRetry(_ error: Error) -> Bool {
+        guard let apiError = error as? MachinesAPIError else {
+            return false
+        }
+        switch apiError {
+        case .rpcTimedOut, .rpcSocketConnectionFailed:
+            return true
+        case .rpcCallFailed(let message):
+            return message == "Machine data-plane socket is not connected"
+                || message == "Peer data-plane connection is not ready"
+        default:
+            return false
         }
     }
 }
