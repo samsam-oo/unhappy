@@ -11,7 +11,7 @@ extension SessionTranscriptPresentationBuilder {
         return set
     }()
 
-    static func parseEntries(
+    public static func parseEntries(
         payloadString: String?,
         messageID: String
     ) -> [SessionTranscriptEntry] {
@@ -508,7 +508,7 @@ extension SessionTranscriptPresentationBuilder {
         return nil
     }
 
-    static func toolDisplayName(_ rawName: String) -> String {
+    public static func toolDisplayName(_ rawName: String) -> String {
         let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "Tool" }
         let key = trimmed
@@ -570,7 +570,7 @@ extension SessionTranscriptPresentationBuilder {
             .joined(separator: " ")
     }
 
-    static func stringify(_ value: Any?) -> String {
+    public static func stringify(_ value: Any?) -> String {
         guard let value else { return "null" }
         if let string = value as? String {
             return string

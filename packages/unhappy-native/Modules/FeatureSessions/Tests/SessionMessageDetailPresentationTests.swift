@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import FeatureSessions
+import SessionKit
 import CoreKit
 
 struct SessionMessageDetailPresentationTests {

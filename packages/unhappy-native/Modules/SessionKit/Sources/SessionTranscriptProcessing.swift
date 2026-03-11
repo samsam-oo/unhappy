@@ -1,6 +1,6 @@
 import Foundation
 
-enum SessionTranscriptProcessing {
+public enum SessionTranscriptProcessing {
     private struct FlattenedTranscriptEntry {
         let messageID: String
         let sequenceText: String
@@ -9,7 +9,7 @@ enum SessionTranscriptProcessing {
         var entry: SessionTranscriptEntry
     }
 
-    static func coalesceStreamingEntries(
+    public static func coalesceStreamingEntries(
         in presentations: [SessionTranscriptMessagePresentation]
     ) -> [SessionTranscriptMessagePresentation] {
         var flattened: [FlattenedTranscriptEntry] = []
@@ -112,7 +112,7 @@ enum SessionTranscriptProcessing {
         return coalesced
     }
 
-    static func filterReasoningEntries(
+    public static func filterReasoningEntries(
         in presentations: [SessionTranscriptMessagePresentation],
         showReasoningDetails: Bool
     ) -> [SessionTranscriptMessagePresentation] {

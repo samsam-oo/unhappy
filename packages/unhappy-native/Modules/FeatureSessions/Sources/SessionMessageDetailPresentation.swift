@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import SessionKit
 
 struct SessionMessagePayloadField: Equatable, Identifiable, Sendable {
     let key: String

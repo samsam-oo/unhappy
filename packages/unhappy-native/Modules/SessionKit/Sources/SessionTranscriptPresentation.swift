@@ -1,12 +1,12 @@
 import Foundation
 import CoreKit
 
-enum SessionTranscriptEntryRole: String, Equatable, Sendable {
+public enum SessionTranscriptEntryRole: String, Equatable, Sendable {
     case user
     case agent
     case system
 
-    var badgeTitle: String {
+    public var badgeTitle: String {
         switch self {
         case .user:
             return "You"
@@ -18,7 +18,7 @@ enum SessionTranscriptEntryRole: String, Equatable, Sendable {
     }
 }
 
-enum SessionTranscriptEntryKind: String, Equatable, Sendable {
+public enum SessionTranscriptEntryKind: String, Equatable, Sendable {
     case text
     case thinking
     case toolCall
@@ -27,20 +27,20 @@ enum SessionTranscriptEntryKind: String, Equatable, Sendable {
     case raw
 }
 
-struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
-    let id: String
-    let role: SessionTranscriptEntryRole
-    let kind: SessionTranscriptEntryKind
-    let title: String?
-    let body: String
-    let attachmentDataURL: String?
-    let toolUseID: String?
-    let sourceType: String?
-    let toolName: String?
-    let isSidechain: Bool
-    let threadID: String?
+public struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let role: SessionTranscriptEntryRole
+    public let kind: SessionTranscriptEntryKind
+    public let title: String?
+    public let body: String
+    public let attachmentDataURL: String?
+    public let toolUseID: String?
+    public let sourceType: String?
+    public let toolName: String?
+    public let isSidechain: Bool
+    public let threadID: String?
 
-    init(
+    public init(
         id: String,
         role: SessionTranscriptEntryRole,
         kind: SessionTranscriptEntryKind,
@@ -67,16 +67,30 @@ struct SessionTranscriptEntry: Identifiable, Equatable, Sendable {
     }
 }
 
-struct SessionTranscriptMessagePresentation: Equatable, Sendable {
-    let messageID: String
-    let sequenceText: String
-    let createdAt: TimeInterval
-    let createdAtText: String
-    let entries: [SessionTranscriptEntry]
+public struct SessionTranscriptMessagePresentation: Equatable, Sendable {
+    public let messageID: String
+    public let sequenceText: String
+    public let createdAt: TimeInterval
+    public let createdAtText: String
+    public let entries: [SessionTranscriptEntry]
+
+    public init(
+        messageID: String,
+        sequenceText: String,
+        createdAt: TimeInterval,
+        createdAtText: String,
+        entries: [SessionTranscriptEntry]
+    ) {
+        self.messageID = messageID
+        self.sequenceText = sequenceText
+        self.createdAt = createdAt
+        self.createdAtText = createdAtText
+        self.entries = entries
+    }
 }
 
-enum SessionTranscriptPresentationBuilder {
-    static func make(
+public enum SessionTranscriptPresentationBuilder {
+    public static func make(
         from message: APISessionMessage,
         dataEncryptionKey: String?,
         timestampFormatter: (TimeInterval) -> String = defaultTimestampFormatter
@@ -102,7 +116,7 @@ enum SessionTranscriptPresentationBuilder {
         )
     }
 
-    private static func defaultTimestampFormatter(_ timestamp: TimeInterval) -> String {
+    public static func defaultTimestampFormatter(_ timestamp: TimeInterval) -> String {
         let date = Date(timeIntervalSince1970: timestamp)
         return DateFormatter.localizedString(from: date, dateStyle: .none, timeStyle: .short)
     }
