@@ -45,7 +45,11 @@ type MachineRouteState = {
 };
 
 const machinePathPattern = /^\/v1\/machines\/([^/]+)\/data-plane\/?$/;
-const NATIVE_HANDSHAKE_TIMEOUT_MS = 2_500;
+const NATIVE_HANDSHAKE_TIMEOUT_MS = 10_000;
+
+export function machineDataPlaneNativeHandshakeTimeoutMs(): number {
+    return NATIVE_HANDSHAKE_TIMEOUT_MS;
+}
 
 function machineKey(userId: string, machineId: string): string {
     return `${userId}:${machineId}`;
