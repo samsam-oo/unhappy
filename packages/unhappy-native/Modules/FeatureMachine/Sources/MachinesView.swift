@@ -94,9 +94,9 @@ private struct MachineRow: View {
             }
             HStack(spacing: 8) {
                 Circle()
-                    .fill(machine.active ? .green : .gray)
+                    .fill(statusColor)
                     .frame(width: 8, height: 8)
-                Text(machine.active ? "Online" : "Offline")
+                Text(statusText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Updated \(Date(timeIntervalSince1970: machine.updatedAt), style: .relative)")
@@ -105,5 +105,17 @@ private struct MachineRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var statusText: String {
+        if machine.active { return "Online" }
+        if machine.isExplicitlyStopped { return "Stopped" }
+        return "Unknown"
+    }
+
+    private var statusColor: Color {
+        if machine.active { return .green }
+        if machine.isExplicitlyStopped { return .orange }
+        return .gray
     }
 }

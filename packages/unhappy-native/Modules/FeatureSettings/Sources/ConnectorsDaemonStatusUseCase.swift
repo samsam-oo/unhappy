@@ -4,11 +4,15 @@ import CoreKit
 public struct DaemonStatusSnapshot: Equatable, Sendable {
     public let totalMachines: Int
     public let onlineMachines: Int
+    public let stoppedMachines: Int
+    public let unknownMachines: Int
     public let daemonStateMachines: Int
 
-    public init(totalMachines: Int, onlineMachines: Int, daemonStateMachines: Int) {
+    public init(totalMachines: Int, onlineMachines: Int, stoppedMachines: Int, unknownMachines: Int, daemonStateMachines: Int) {
         self.totalMachines = totalMachines
         self.onlineMachines = onlineMachines
+        self.stoppedMachines = stoppedMachines
+        self.unknownMachines = unknownMachines
         self.daemonStateMachines = daemonStateMachines
     }
 
@@ -64,6 +68,8 @@ public actor DaemonStatusLoadUseCase: DaemonStatusLoadingAction {
         do {
             let machines = try await service.fetchMachines(serverURL: serverURL, token: normalizedToken)
             let onlineMachines = machines.filter(\.active).count
+            let stoppedMachines = machines.filter(\.isExplicitlyStopped).count
+            let unknownMachines = machines.count - onlineMachines - stoppedMachines
             let daemonStateMachines = machines.filter { machine in
                 let daemonState = machine.daemonState?.trimmingCharacters(in: .whitespacesAndNewlines)
                 return daemonState?.isEmpty == false
@@ -71,6 +77,8 @@ public actor DaemonStatusLoadUseCase: DaemonStatusLoadingAction {
             return DaemonStatusSnapshot(
                 totalMachines: machines.count,
                 onlineMachines: onlineMachines,
+                stoppedMachines: stoppedMachines,
+                unknownMachines: unknownMachines,
                 daemonStateMachines: daemonStateMachines
             )
         } catch {

@@ -436,6 +436,7 @@ export function buildNewMachineUpdate(machine: {
     dataEncryptionKey: Uint8Array | null;
     active: boolean;
     lastActiveAt: Date;
+    stoppedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
 }, updateSeq: number, updateId: string): UpdatePayload {
@@ -453,6 +454,7 @@ export function buildNewMachineUpdate(machine: {
             dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
             active: machine.active,
             activeAt: machine.lastActiveAt.getTime(),
+            stoppedAt: machine.stoppedAt?.getTime() ?? null,
             createdAt: machine.createdAt.getTime(),
             updatedAt: machine.updatedAt.getTime()
         },

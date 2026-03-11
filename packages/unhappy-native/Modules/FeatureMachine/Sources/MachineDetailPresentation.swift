@@ -11,6 +11,8 @@ struct MachineDetailField: Equatable, Identifiable, Sendable {
 struct MachineDetailPresentation: Equatable, Sendable {
     let machineID: String
     let active: Bool
+    let stoppedAtText: String?
+    let statusText: String
     let activeAtText: String
     let createdAtText: String
     let updatedAtText: String
@@ -41,6 +43,8 @@ enum MachineDetailPresentationBuilder {
         return MachineDetailPresentation(
             machineID: machine.id,
             active: machine.active,
+            stoppedAtText: machine.stoppedAt.map(timestampFormatter),
+            statusText: machine.active ? "Online" : (machine.isExplicitlyStopped ? "Stopped" : "Unknown"),
             activeAtText: timestampFormatter(machine.activeAt),
             createdAtText: timestampFormatter(machine.createdAt),
             updatedAtText: timestampFormatter(machine.updatedAt),
