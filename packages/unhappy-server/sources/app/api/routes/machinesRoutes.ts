@@ -17,7 +17,6 @@ import {
 import { Prisma } from "@prisma/client";
 
 export function machinesRoutes(app: Fastify) {
-    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 30;
     const sessionCatalogScopeSchema = z.object({
         provider: z.enum(['codex', 'claude', 'gemini']),
         projectPath: z.string().min(1),
@@ -303,43 +302,10 @@ export function machinesRoutes(app: Fastify) {
         createdAt: Date;
         updatedAt: Date;
     }>(machine: T): Promise<T> {
-        if (!machine.active) {
-            return machine;
-        }
-
-        if (findConnectedMachine(machine.accountId, machine.id)) {
-            return machine;
-        }
-
-        const staleCutoff = Date.now() - MACHINE_ACTIVE_STALE_AFTER_MS;
-        if (machine.lastActiveAt.getTime() > staleCutoff) {
-            return machine;
-        }
-
-        const updated = await db.machine.updateManyAndReturn({
-            where: {
-                accountId: machine.accountId,
-                id: machine.id,
-                active: true,
-                lastActiveAt: machine.lastActiveAt,
-            },
-            data: {
-                active: false,
-            }
-        });
-
-        const normalized = updated[0];
-        if (!normalized) {
-            return machine;
-        }
-
-        eventRouter.emitEphemeral({
-            userId: normalized.accountId,
-            payload: buildMachineActivityEphemeral(normalized.id, false, normalized.lastActiveAt.getTime()),
-            recipientFilter: { type: 'user-scoped-only' }
-        });
-
-        return normalized as T;
+        // Read paths should not mutate machine liveness. Background timeout
+        // handling owns stale/offline transitions so a status refresh cannot
+        // flip a healthy daemon offline because of transient jitter.
+        return machine;
     }
 
     async function invokeMachineCommand(
