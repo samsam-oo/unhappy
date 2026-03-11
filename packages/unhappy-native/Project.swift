@@ -46,6 +46,9 @@ let project = Project(
                 .target(name: "FeatureInbox"),
                 .target(name: "FeatureMachine"),
                 .target(name: "FeatureNewSession"),
+                .target(name: "FeatureSessions"),
+                .target(name: "FeatureSettings"),
+                .target(name: "SessionKit"),
                 .target(name: "UnhappyLiveActivitiesExtension"),
             ],
             settings: .settings(base: [
