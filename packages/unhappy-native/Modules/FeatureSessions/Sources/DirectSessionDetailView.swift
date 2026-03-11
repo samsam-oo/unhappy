@@ -140,14 +140,15 @@ public struct DirectSessionDetailView: View {
                 refreshBottomFollowState()
             }
             .onChange(of: transcriptPresentations.map(\.messageID)) { _, _ in
-                if let pendingOlderMessagesAnchor {
+                if case .top(let messageID) = pendingOlderMessagesAnchor,
+                   DirectSessionTranscriptAutoPagingDecision.shouldRestoreOlderAnchor(
+                    pendingAnchorMessageID: messageID,
+                    currentFirstMessageID: transcriptPresentations.first?.messageID
+                   ) {
                     self.pendingOlderMessagesAnchor = nil
                     Task { @MainActor in
                         await Task.yield()
-                        switch pendingOlderMessagesAnchor {
-                        case .top(let messageID):
-                            scrollToMessage(messageID, using: proxy)
-                        }
+                        scrollToMessage(messageID, using: proxy)
                     }
                     return
                 }
@@ -156,6 +157,16 @@ public struct DirectSessionDetailView: View {
             }
             .onChange(of: viewModel.olderMessagesLoadTriggerID) { _, _ in
                 autoLoadOlderMessagesIfNeeded()
+            }
+            .onChange(of: viewModel.isLoadingOlderMessages) { wasLoading, isLoading in
+                guard wasLoading && !isLoading else { return }
+                if case .top(let messageID) = pendingOlderMessagesAnchor,
+                   DirectSessionTranscriptAutoPagingDecision.shouldRestoreOlderAnchor(
+                    pendingAnchorMessageID: messageID,
+                    currentFirstMessageID: transcriptPresentations.first?.messageID
+                   ) == false {
+                    pendingOlderMessagesAnchor = nil
+                }
             }
             .onChange(of: viewModel.isLoading) { wasLoading, isLoading in
                 guard wasLoading && !isLoading else { return }
