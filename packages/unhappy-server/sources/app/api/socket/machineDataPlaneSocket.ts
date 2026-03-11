@@ -21,7 +21,7 @@ import {
 } from "./machineDataPlaneProtocol";
 import type { Fastify } from "../types";
 
-type MachineDataPlaneRole = "native" | "daemon";
+export type MachineDataPlaneRole = "native" | "daemon";
 
 type ConnectionState = {
     socket: WebSocket;
@@ -38,6 +38,11 @@ type StreamState = {
     initiatorRole: MachineDataPlaneRole;
 };
 
+type StreamTerminationTarget = {
+    streamId: string;
+    recipientRole: MachineDataPlaneRole;
+};
+
 type MachineRouteState = {
     native?: ConnectionState;
     daemon?: ConnectionState;
@@ -49,6 +54,26 @@ const NATIVE_HANDSHAKE_TIMEOUT_MS = 10_000;
 
 export function machineDataPlaneNativeHandshakeTimeoutMs(): number {
     return NATIVE_HANDSHAKE_TIMEOUT_MS;
+}
+
+export function machineDataPlaneOutstandingStreamTerminationTargets(
+    streams: Iterable<readonly [string, { initiatorRole: MachineDataPlaneRole }]>,
+    disconnectedRole: MachineDataPlaneRole
+): StreamTerminationTarget[] {
+    const targets: StreamTerminationTarget[] = [];
+    const recipientRole: MachineDataPlaneRole = disconnectedRole === "native" ? "daemon" : "native";
+
+    for (const [streamId, stream] of streams) {
+        if (stream.initiatorRole === disconnectedRole) {
+            continue;
+        }
+        targets.push({
+            streamId,
+            recipientRole,
+        });
+    }
+
+    return targets;
 }
 
 function machineKey(userId: string, machineId: string): string {
@@ -137,10 +162,14 @@ export function startMachineDataPlaneSocket(app: Fastify) {
             routeState.daemon = undefined;
         }
 
-        for (const [streamId, stream] of routeState.streams.entries()) {
-            if (stream.initiatorRole === state.role) {
-                routeState.streams.delete(streamId);
-            }
+        if (state.role) {
+            terminateOutstandingStreams(
+                routeState,
+                state.role,
+                "peer_disconnected",
+                "Peer data-plane connection closed before the stream completed",
+                true
+            );
         }
 
         if (!routeState.native && !routeState.daemon) {
@@ -164,6 +193,29 @@ export function startMachineDataPlaneSocket(app: Fastify) {
             retryable,
         });
         sendJSONFrame(state.socket, payload);
+    }
+
+    function terminateOutstandingStreams(
+        routeState: MachineRouteState,
+        disconnectedRole: MachineDataPlaneRole,
+        code: string,
+        message: string,
+        retryable: boolean
+    ): void {
+        const targets = machineDataPlaneOutstandingStreamTerminationTargets(
+            routeState.streams.entries(),
+            disconnectedRole
+        );
+
+        for (const target of targets) {
+            const recipient = target.recipientRole === "native" ? routeState.native : routeState.daemon;
+            if (!recipient?.ready) {
+                continue;
+            }
+            sendStreamError(recipient, target.streamId, code, message, retryable);
+        }
+
+        routeState.streams.clear();
     }
 
     function tryFinishHandshake(routeState: MachineRouteState): void {
@@ -231,7 +283,13 @@ export function startMachineDataPlaneSocket(app: Fastify) {
         const peer = peerRole === "native" ? routeState.native : routeState.daemon;
         if (!peer) return;
 
-        routeState.streams.clear();
+        terminateOutstandingStreams(
+            routeState,
+            peerRole,
+            "peer_renegotiating",
+            reason,
+            true
+        );
         if (peerRole === "native") {
             routeState.native = undefined;
         } else {
@@ -249,7 +307,13 @@ export function startMachineDataPlaneSocket(app: Fastify) {
 
         const existing = role === "native" ? routeState.native : routeState.daemon;
         if (existing && existing.socket !== state.socket) {
-            routeState.streams.clear();
+            terminateOutstandingStreams(
+                routeState,
+                role,
+                "peer_superseded",
+                "Peer data-plane connection was superseded by a newer connection",
+                true
+            );
             existing.socket.close(1012, "Superseded by a newer data-plane connection");
         }
 
