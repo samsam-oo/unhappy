@@ -54,6 +54,7 @@ public struct DirectSessionDetailView: View {
     @State private var lastAutoLoadedOlderMessagesTriggerID: String?
     @State private var transcriptViewportHeight: CGFloat = 0
     @State private var transcriptBottomAnchorMinY: CGFloat = .greatestFiniteMagnitude
+    @State private var forceBottomFollowExpiry: Date?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
@@ -140,7 +141,7 @@ public struct DirectSessionDetailView: View {
                 transcriptBottomAnchorMinY = minY
                 refreshBottomFollowState()
             }
-            .onChange(of: transcriptPresentations.map(\.messageID)) { _, _ in
+            .onChange(of: transcriptTailSignature) { _, _ in
                 if case .top(let messageID) = pendingOlderMessagesAnchor,
                    DirectSessionTranscriptAutoPagingDecision.shouldRestoreOlderAnchor(
                     pendingAnchorMessageID: messageID,
@@ -153,7 +154,7 @@ public struct DirectSessionDetailView: View {
                     }
                     return
                 }
-                guard isNearTranscriptBottom else { return }
+                guard shouldAutoFollowTranscriptBottom else { return }
                 scrollTranscriptToBottom(using: proxy, animated: true)
             }
             .onChange(of: viewModel.olderMessagesLoadTriggerID) { _, _ in
@@ -350,6 +351,27 @@ public struct DirectSessionDetailView: View {
 
     private var transcriptPresentations: [SessionTranscriptMessagePresentation] {
         cachedTranscriptPresentations
+    }
+
+    private var transcriptTailSignature: String {
+        guard let lastPresentation = transcriptPresentations.last,
+              let lastEntry = lastPresentation.entries.last else {
+            return "empty"
+        }
+        return [
+            lastPresentation.messageID,
+            lastEntry.id,
+            String(lastEntry.body.count),
+            lastEntry.role.rawValue,
+        ].joined(separator: "|")
+    }
+
+    private var shouldAutoFollowTranscriptBottom: Bool {
+        if isNearTranscriptBottom {
+            return true
+        }
+        guard let forceBottomFollowExpiry else { return false }
+        return forceBottomFollowExpiry > Date()
     }
 
     private var displayedCollabCount: Int {
@@ -849,6 +871,8 @@ public struct DirectSessionDetailView: View {
                 } else {
                     draftMessage = outboundText
                 }
+            } else {
+                forceBottomFollowExpiry = Date().addingTimeInterval(20)
             }
         }
     }
