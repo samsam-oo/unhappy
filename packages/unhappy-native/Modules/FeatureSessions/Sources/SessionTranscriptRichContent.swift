@@ -405,6 +405,18 @@ enum SessionTranscriptRichContentParser {
         return nil
     }
 
+    static func userInputPresentation(
+        for entry: SessionTranscriptEntry
+    ) -> SessionTranscriptGenericToolPresentation? {
+        guard case .toolDetails(let tool)? = richToolContent(for: entry),
+              tool.kind == .stdin,
+              let body = tool.body?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !body.isEmpty else {
+            return nil
+        }
+        return tool
+    }
+
     static func summaryTitle(for entry: SessionTranscriptEntry) -> String? {
         if let richContent = richToolContent(for: entry) {
             switch richContent {
@@ -691,7 +703,7 @@ enum SessionTranscriptRichContentParser {
         case .wait:
             title = "Wait for Agent"
         case .stdin:
-            title = "Steer Agent"
+            title = "User Input"
         case .toolResult:
             title = entry.title ?? "Tool Result"
         case .toolCall:
@@ -1466,7 +1478,7 @@ enum SessionTranscriptRichContentParser {
             }
             return entryKind == .toolResult ? ("Updated", .neutral) : ("Waiting", .accent)
         case .stdin:
-            return entryKind == .toolResult ? ("Steered", .success) : ("Queued", .accent)
+            return entryKind == .toolResult ? ("Sent", .success) : ("Queued", .accent)
         case .toolResult:
             return ("Result", .neutral)
         case .toolCall:
