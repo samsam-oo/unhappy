@@ -25,6 +25,17 @@ public struct MachinesView: View {
                     ProgressView("Loading machines…")
                     Spacer()
                 }
+            } else if let reconnectingStatusText = viewModel.reconnectingStatusText,
+                      viewModel.machines.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ProgressView()
+                    Text(reconnectingStatusText)
+                        .font(.headline)
+                    Text("The app is waiting for the machine connection to recover.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
             } else if let error = viewModel.errorMessage, viewModel.machines.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Unable to load machines")

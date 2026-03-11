@@ -29,7 +29,8 @@ public actor MachineDataPlaneWebSocketClient {
                  .providerSpawn:
                 return .interactive
 
-            case .codexListMessages,
+            case .machinePing,
+                 .codexListMessages,
                  .claudeListMessages,
                  .geminiListMessages,
                  .projectSessions,
@@ -61,24 +62,44 @@ public actor MachineDataPlaneWebSocketClient {
         let continuation: CheckedContinuation<Data, Error>
     }
 
+    private enum StreamTerminalFrame: Sendable {
+        case complete(MachineDataPlaneCompleteFrame)
+        case error(MachineDataPlaneErrorFrame)
+    }
+
+    private struct ActiveStream {
+        let requestID: String
+        let continuation: CheckedContinuation<StreamTerminalFrame, Error>
+        let timeoutTask: Task<Void, Never>
+    }
+
     private struct LiveConnection {
         let transport: any MachineDataPlaneTextTransport
         let sessionKey: Data
+        let maxInFlightStreams: Int
     }
 
     private struct ConnectionState {
         let machineDataKey: Data
         var liveConnection: LiveConnection?
         var queuedRequests: [QueuedRequest] = []
-        var isProcessing = false
+        var dispatchedRequests: [String: QueuedRequest] = [:]
+        var isPumpScheduled = false
         var lastConnectionFailureAt: TimeInterval?
         var phase: ConnectionPhase = .idle
+        var activeExecutionCount = 0
+        var activeStreams: [String: ActiveStream] = [:]
+        var bufferedTerminalFrames: [String: StreamTerminalFrame] = [:]
+        var readerTask: Task<Void, Never>?
+        var needsIdleProbe = false
+        var idleProbeTask: Task<Void, Error>?
     }
 
     private let requestTimeoutInterval: TimeInterval
     private let responseTimeoutInterval: TimeInterval
     private let backgroundReconnectBackoffInterval: TimeInterval
     private let reconnectGraceInterval: TimeInterval
+    private let idleProbeTimeoutInterval: TimeInterval
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
     private var inFlightConnections: [ConnectionKey: Task<LiveConnection, Error>] = [:]
 
@@ -92,6 +113,7 @@ public actor MachineDataPlaneWebSocketClient {
         self.responseTimeoutInterval = responseTimeoutInterval
         self.backgroundReconnectBackoffInterval = backgroundReconnectBackoffInterval
         self.reconnectGraceInterval = reconnectGraceInterval
+        self.idleProbeTimeoutInterval = max(min(requestTimeoutInterval, 3), 1)
     }
 
     public func requestJSON(
@@ -235,38 +257,40 @@ public actor MachineDataPlaneWebSocketClient {
             queuedRequest.priority < request.priority
         }
         state.queuedRequests.insert(request, at: insertionIndex)
-        let shouldStartProcessing = state.isProcessing == false
-        state.isProcessing = true
         connectionStates[key] = state
+        schedulePump(for: key, serverURL: serverURL)
+    }
 
-        guard shouldStartProcessing else { return }
+    private func schedulePump(for key: ConnectionKey, serverURL: URL) {
+        guard var state = connectionStates[key] else { return }
+        guard !state.isPumpScheduled else { return }
+        state.isPumpScheduled = true
+        connectionStates[key] = state
         Task { [weak self] in
-            await self?.processQueue(for: key, serverURL: serverURL)
+            await self?.pumpQueue(for: key, serverURL: serverURL)
         }
     }
 
-    private func processQueue(for key: ConnectionKey, serverURL: URL) async {
+    private func pumpQueue(for key: ConnectionKey, serverURL: URL) async {
         while true {
             guard var state = connectionStates[key] else { return }
-            guard state.queuedRequests.isEmpty == false else {
-                state.isProcessing = false
+            let capacity = Self.dispatchCapacity(
+                maxInFlightStreams: state.liveConnection?.maxInFlightStreams,
+                activeExecutions: state.activeExecutionCount
+            )
+            guard state.queuedRequests.isEmpty == false, capacity > 0 else {
+                state.isPumpScheduled = false
                 connectionStates[key] = state
                 return
             }
 
             let request = state.queuedRequests.removeFirst()
+            state.activeExecutionCount += 1
+            state.dispatchedRequests[request.id] = request
             connectionStates[key] = state
-
-            do {
-                let response = try await performRequest(
-                    request,
-                    for: key,
-                    serverURL: serverURL,
-                    allowReconnectRetry: request.priority != .background
-                )
-                request.continuation.resume(returning: response)
-            } catch {
-                request.continuation.resume(throwing: error)
+            let requestID = request.id
+            Task { [weak self, requestID, key, serverURL] in
+                await self?.runQueuedRequest(id: requestID, for: key, serverURL: serverURL)
             }
         }
     }
@@ -275,11 +299,49 @@ public actor MachineDataPlaneWebSocketClient {
         guard var state = connectionStates[key] else { return }
         guard let index = state.queuedRequests.firstIndex(where: { $0.id == id }) else { return }
         let request = state.queuedRequests.remove(at: index)
-        if state.queuedRequests.isEmpty, state.liveConnection == nil, inFlightConnections[key] == nil {
-            state.isProcessing = false
-        }
         connectionStates[key] = state
         request.continuation.resume(throwing: CancellationError())
+    }
+
+    private func runQueuedRequest(
+        id requestID: String,
+        for key: ConnectionKey,
+        serverURL: URL
+    ) async {
+        guard let request = dispatchedRequest(id: requestID, for: key) else {
+            requestDidFinish(requestID: requestID, for: key, serverURL: serverURL)
+            return
+        }
+        defer {
+            requestDidFinish(requestID: requestID, for: key, serverURL: serverURL)
+        }
+
+        do {
+            let response = try await performRequest(
+                request,
+                for: key,
+                serverURL: serverURL,
+                allowReconnectRetry: request.priority != .background
+            )
+            request.continuation.resume(returning: response)
+        } catch {
+            request.continuation.resume(throwing: error)
+        }
+    }
+
+    private func dispatchedRequest(id: String, for key: ConnectionKey) -> QueuedRequest? {
+        connectionStates[key]?.dispatchedRequests[id]
+    }
+
+    private func requestDidFinish(requestID: String, for key: ConnectionKey, serverURL: URL) {
+        guard var state = connectionStates[key] else { return }
+        state.activeExecutionCount = max(state.activeExecutionCount - 1, 0)
+        state.dispatchedRequests.removeValue(forKey: requestID)
+        if state.activeExecutionCount == 0, state.liveConnection != nil {
+            state.needsIdleProbe = true
+        }
+        connectionStates[key] = state
+        schedulePump(for: key, serverURL: serverURL)
     }
 
     private func performRequest(
@@ -305,6 +367,7 @@ public actor MachineDataPlaneWebSocketClient {
                 return try await performRequest(
                     request,
                     using: liveConnection,
+                    for: key,
                     sentRequest: &sentRequest,
                     responseTimeoutInterval: Self.responseTimeoutInterval(
                         for: request.operation,
@@ -345,7 +408,11 @@ public actor MachineDataPlaneWebSocketClient {
         if let existingConnection = connectionStates[key]?.liveConnection {
             clearRecordedConnectionFailure(for: key)
             markConnectionPhase(.connected, for: key)
-            return existingConnection
+            try await probeIdleConnectionIfNeeded(for: key, liveConnection: existingConnection)
+            guard let liveConnection = connectionStates[key]?.liveConnection else {
+                throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
+            }
+            return liveConnection
         }
 
         if let inFlightConnection = inFlightConnections[key] {
@@ -390,7 +457,8 @@ public actor MachineDataPlaneWebSocketClient {
 
                 return LiveConnection(
                     transport: transport,
-                    sessionKey: sessionKey
+                    sessionKey: sessionKey,
+                    maxInFlightStreams: max(helloAck.maxInFlightStreams, 1)
                 )
             } catch {
                 await transport.close()
@@ -406,14 +474,21 @@ public actor MachineDataPlaneWebSocketClient {
             state.liveConnection = liveConnection
             state.phase = .connected
             state.lastConnectionFailureAt = nil
+            state.needsIdleProbe = false
+            state.idleProbeTask = nil
+            if state.readerTask == nil {
+                state.readerTask = makeReaderTask(for: key, transport: liveConnection.transport)
+            }
             connectionStates[key] = state
         }
+        schedulePump(for: key, serverURL: serverURL)
         return liveConnection
     }
 
     private func performRequest(
         _ request: QueuedRequest,
         using liveConnection: LiveConnection,
+        for key: ConnectionKey,
         sentRequest: inout Bool,
         responseTimeoutInterval: TimeInterval
     ) async throws -> Data {
@@ -437,84 +512,190 @@ public actor MachineDataPlaneWebSocketClient {
                 tag: sealedBody.tag
             )
         )
-        try await send(frame: requestFrame, transport: liveConnection.transport)
+        try await withMachineDataPlaneTimeout(
+            Self.sendTimeoutInterval(
+                for: request.operation,
+                baseRequestTimeoutInterval: requestTimeoutInterval
+            )
+        ) {
+            try await self.send(frame: requestFrame, transport: liveConnection.transport)
+        }
         sentRequest = true
 
-        while true {
-            let text = try await receiveResponseText(
-                using: liveConnection.transport,
-                timeoutInterval: responseTimeoutInterval
+        let terminalFrame = try await awaitStreamTerminalFrame(
+            streamID: streamID,
+            requestID: request.id,
+            for: key,
+            timeoutInterval: responseTimeoutInterval
+        )
+
+        switch terminalFrame {
+        case .error(let errorFrame):
+            throw MachinesAPIError.rpcCallFailed(errorFrame.message)
+        case .complete(let completeFrame):
+            return try MachineDataPlaneEncryption.decryptDataPlanePayload(
+                MachineDataPlaneSealedPayload(
+                    nonce: completeFrame.body.nonce,
+                    ciphertext: completeFrame.body.ciphertext,
+                    tag: completeFrame.body.tag
+                ),
+                sessionKey: liveConnection.sessionKey,
+                authenticatedData: completeAAD(for: completeFrame)
             )
-
-            if let errorFrame = try? JSONDecoder().decode(
-                MachineDataPlaneErrorFrame.self,
-                from: Data(text.utf8)
-            ), errorFrame.streamID == streamID {
-                throw MachinesAPIError.rpcCallFailed(errorFrame.message)
-            }
-
-            if let completeFrame = try? JSONDecoder().decode(
-                MachineDataPlaneCompleteFrame.self,
-                from: Data(text.utf8)
-            ), completeFrame.streamID == streamID {
-                return try MachineDataPlaneEncryption.decryptDataPlanePayload(
-                    MachineDataPlaneSealedPayload(
-                        nonce: completeFrame.body.nonce,
-                        ciphertext: completeFrame.body.ciphertext,
-                        tag: completeFrame.body.tag
-                    ),
-                    sessionKey: liveConnection.sessionKey,
-                    authenticatedData: completeAAD(for: completeFrame)
-                )
-            }
         }
     }
 
-    private func receiveResponseText(
-        using transport: any MachineDataPlaneTextTransport,
-        timeoutInterval: TimeInterval
-    ) async throws -> String {
-        enum ResponseWaitResult: Sendable {
-            case text(String)
-            case timedOut
+    private func probeIdleConnectionIfNeeded(
+        for key: ConnectionKey,
+        liveConnection: LiveConnection
+    ) async throws {
+        guard let state = connectionStates[key], state.liveConnection != nil else { return }
+        guard state.needsIdleProbe else { return }
+
+        if let idleProbeTask = state.idleProbeTask {
+            try await idleProbeTask.value
+            return
         }
 
-        return try await withThrowingTaskGroup(of: ResponseWaitResult.self) { group in
-            group.addTask {
-                .text(try await transport.receiveText())
-            }
-            group.addTask {
-                let nanoseconds = UInt64(max(timeoutInterval, 0.001) * 1_000_000_000)
-                try await Task.sleep(nanoseconds: nanoseconds)
-                return .timedOut
-            }
+        let idleProbeTask = Task<Void, Error> { [weak self] in
+            guard let self else { return }
+            try await self.performIdleProbe(using: liveConnection, for: key)
+        }
 
-            let result = try await group.next() ?? .timedOut
-            group.cancelAll()
-            switch result {
-            case .text(let text):
-                return text
-            case .timedOut:
-                await transport.close()
-                throw MachinesAPIError.rpcTimedOut
+        if var currentState = connectionStates[key] {
+            currentState.idleProbeTask = idleProbeTask
+            connectionStates[key] = currentState
+        }
+
+        do {
+            try await idleProbeTask.value
+            if var currentState = connectionStates[key] {
+                currentState.idleProbeTask = nil
+                currentState.needsIdleProbe = false
+                connectionStates[key] = currentState
+            }
+        } catch {
+            if var currentState = connectionStates[key] {
+                currentState.idleProbeTask = nil
+                currentState.needsIdleProbe = true
+                connectionStates[key] = currentState
+            }
+            let mappedError = (error as? MachinesAPIError) ?? mapTransportError(error)
+            recordConnectionFailure(for: key)
+            invalidateConnection(for: key)
+            throw mappedError
+        }
+    }
+
+    private func performIdleProbe(
+        using liveConnection: LiveConnection,
+        for key: ConnectionKey
+    ) async throws {
+        let streamID = UUID().uuidString
+        let requestHeader = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: .machinePing,
+            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: "")
+        )
+        let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
+            ["reason": "idle-reuse"],
+            sessionKey: liveConnection.sessionKey,
+            authenticatedData: requestAAD(for: requestHeader)
+        )
+        let requestFrame = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: .machinePing,
+            body: MachineDataPlaneSealedBody(
+                nonce: sealedBody.nonce,
+                ciphertext: sealedBody.ciphertext,
+                tag: sealedBody.tag
+            )
+        )
+
+        try await withMachineDataPlaneTimeout(idleProbeTimeoutInterval) {
+            try await self.send(frame: requestFrame, transport: liveConnection.transport)
+        }
+
+        let terminalFrame = try await awaitStreamTerminalFrame(
+            streamID: streamID,
+            requestID: "probe:\(streamID)",
+            for: key,
+            timeoutInterval: idleProbeTimeoutInterval
+        )
+
+        switch terminalFrame {
+        case .error(let errorFrame):
+            throw MachinesAPIError.rpcCallFailed(errorFrame.message)
+        case .complete(let completeFrame):
+            _ = try MachineDataPlaneEncryption.decryptDataPlanePayload(
+                MachineDataPlaneSealedPayload(
+                    nonce: completeFrame.body.nonce,
+                    ciphertext: completeFrame.body.ciphertext,
+                    tag: completeFrame.body.tag
+                ),
+                sessionKey: liveConnection.sessionKey,
+                authenticatedData: completeAAD(for: completeFrame)
+            )
+        }
+    }
+
+    private func awaitStreamTerminalFrame(
+        streamID: String,
+        requestID: String,
+        for key: ConnectionKey,
+        timeoutInterval: TimeInterval
+    ) async throws -> StreamTerminalFrame {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let timeoutTask = Task { [weak self] in
+                    let nanoseconds = UInt64(max(timeoutInterval, 0.001) * 1_000_000_000)
+                    try? await Task.sleep(nanoseconds: nanoseconds)
+                    guard !Task.isCancelled else { return }
+                    await self?.handleResponseTimeout(streamID: streamID, for: key)
+                }
+                registerActiveStream(
+                    streamID: streamID,
+                    requestID: requestID,
+                    continuation: continuation,
+                    timeoutTask: timeoutTask,
+                    for: key
+                )
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.failStream(
+                    streamID: streamID,
+                    for: key,
+                    error: CancellationError(),
+                    invalidateConnection: false
+                )
             }
         }
     }
 
     private func invalidateConnection(for key: ConnectionKey) {
         guard var state = connectionStates[key] else { return }
-        if let transport = state.liveConnection?.transport {
-            Task {
-                await transport.close()
-            }
-        }
+        let transport = state.liveConnection?.transport
         state.liveConnection = nil
+        let readerTask = state.readerTask
+        state.readerTask = nil
+        let idleProbeTask = state.idleProbeTask
+        state.idleProbeTask = nil
+        state.needsIdleProbe = false
+        state.bufferedTerminalFrames.removeAll()
         if state.phase == .connected {
             state.phase = .reconnecting
         }
         connectionStates[key] = state
         inFlightConnections[key]?.cancel()
         inFlightConnections[key] = nil
+        readerTask?.cancel()
+        idleProbeTask?.cancel()
+        if let transport {
+            Task {
+                await transport.close()
+            }
+        }
     }
 
     private func shouldRetryAfterConnectionFailure(_ error: MachinesAPIError) -> Bool {
@@ -646,10 +827,155 @@ public actor MachineDataPlaneWebSocketClient {
         }
     }
 
+    nonisolated static func sendTimeoutInterval(
+        for operation: MachineDataPlaneOperation,
+        baseRequestTimeoutInterval: TimeInterval
+    ) -> TimeInterval {
+        switch RequestPriority.forOperation(operation) {
+        case .interactive:
+            return max(min(baseRequestTimeoutInterval, 6), 4)
+        case .normal:
+            return max(min(baseRequestTimeoutInterval, 4), 2)
+        case .background:
+            return max(min(baseRequestTimeoutInterval, 3), 1)
+        }
+    }
+
     private func markConnectionPhase(_ phase: ConnectionPhase, for key: ConnectionKey) {
         guard var state = connectionStates[key] else { return }
         state.phase = phase
         connectionStates[key] = state
+    }
+
+    private func registerActiveStream(
+        streamID: String,
+        requestID: String,
+        continuation: CheckedContinuation<StreamTerminalFrame, Error>,
+        timeoutTask: Task<Void, Never>,
+        for key: ConnectionKey
+    ) {
+        guard var state = connectionStates[key] else {
+            timeoutTask.cancel()
+            continuation.resume(throwing: MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected"))
+            return
+        }
+        if let bufferedFrame = state.bufferedTerminalFrames.removeValue(forKey: streamID) {
+            timeoutTask.cancel()
+            connectionStates[key] = state
+            continuation.resume(returning: bufferedFrame)
+            return
+        }
+        state.activeStreams[streamID] = ActiveStream(
+            requestID: requestID,
+            continuation: continuation,
+            timeoutTask: timeoutTask
+        )
+        connectionStates[key] = state
+    }
+
+    private func handleResponseTimeout(streamID: String, for key: ConnectionKey) {
+        failActiveStreams(for: key, error: MachinesAPIError.rpcTimedOut)
+        invalidateConnection(for: key)
+    }
+
+    private func failStream(
+        streamID: String,
+        for key: ConnectionKey,
+        error: Error,
+        invalidateConnection shouldInvalidateConnection: Bool
+    ) {
+        guard var state = connectionStates[key],
+              let activeStream = state.activeStreams.removeValue(forKey: streamID) else {
+            return
+        }
+        activeStream.timeoutTask.cancel()
+        connectionStates[key] = state
+        activeStream.continuation.resume(throwing: error)
+        if shouldInvalidateConnection {
+            invalidateConnection(for: key)
+        }
+    }
+
+    private func failActiveStreams(for key: ConnectionKey, error: Error) {
+        guard var state = connectionStates[key], !state.activeStreams.isEmpty else { return }
+        let activeStreams = Array(state.activeStreams.values)
+        state.activeStreams.removeAll()
+        state.bufferedTerminalFrames.removeAll()
+        connectionStates[key] = state
+        for activeStream in activeStreams {
+            activeStream.timeoutTask.cancel()
+            activeStream.continuation.resume(throwing: error)
+        }
+    }
+
+    private func makeReaderTask(
+        for key: ConnectionKey,
+        transport: any MachineDataPlaneTextTransport
+    ) -> Task<Void, Never> {
+        Task { [weak self] in
+            do {
+                while !Task.isCancelled {
+                    let text = try await transport.receiveText()
+                    await self?.handleIncomingFrameText(text, for: key)
+                }
+            } catch {
+                await self?.handleReaderFailure(error, for: key)
+            }
+        }
+    }
+
+    private func handleIncomingFrameText(_ text: String, for key: ConnectionKey) {
+        if let errorFrame = try? JSONDecoder().decode(
+            MachineDataPlaneErrorFrame.self,
+            from: Data(text.utf8)
+        ) {
+            resolveStream(
+                streamID: errorFrame.streamID,
+                for: key,
+                frame: .error(errorFrame)
+            )
+            return
+        }
+
+        if let completeFrame = try? JSONDecoder().decode(
+            MachineDataPlaneCompleteFrame.self,
+            from: Data(text.utf8)
+        ) {
+            resolveStream(
+                streamID: completeFrame.streamID,
+                for: key,
+                frame: .complete(completeFrame)
+            )
+        }
+    }
+
+    private func resolveStream(
+        streamID: String,
+        for key: ConnectionKey,
+        frame: StreamTerminalFrame
+    ) {
+        guard var state = connectionStates[key] else {
+            return
+        }
+        guard let activeStream = state.activeStreams.removeValue(forKey: streamID) else {
+            state.bufferedTerminalFrames[streamID] = frame
+            connectionStates[key] = state
+            return
+        }
+        activeStream.timeoutTask.cancel()
+        connectionStates[key] = state
+        activeStream.continuation.resume(returning: frame)
+    }
+
+    private func handleReaderFailure(_ error: Error, for key: ConnectionKey) {
+        guard let state = connectionStates[key],
+              state.liveConnection != nil || state.readerTask != nil else {
+            return
+        }
+        let mappedError = (error as? MachinesAPIError) ?? mapTransportError(error)
+        recordConnectionFailure(for: key)
+        failActiveStreams(for: key, error: mappedError)
+        invalidateConnection(for: key)
     }
 
     private func send<T: Encodable>(
@@ -685,6 +1011,34 @@ public actor MachineDataPlaneWebSocketClient {
 
     private func aadData(_ entries: [(String, String)]) -> Data {
         Data(entries.map { "\($0.0)=\($0.1)" }.joined(separator: "\n").utf8)
+    }
+
+    nonisolated static func dispatchCapacity(
+        maxInFlightStreams: Int?,
+        activeExecutions: Int
+    ) -> Int {
+        let limit = max(maxInFlightStreams ?? 1, 1)
+        return max(limit - max(activeExecutions, 0), 0)
+    }
+}
+
+private func withMachineDataPlaneTimeout<T: Sendable>(
+    _ timeoutInterval: TimeInterval,
+    operation: @Sendable @escaping () async throws -> T
+) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask(operation: operation)
+        group.addTask {
+            let nanoseconds = UInt64(max(timeoutInterval, 0.001) * 1_000_000_000)
+            try await Task.sleep(nanoseconds: nanoseconds)
+            throw MachinesAPIError.rpcTimedOut
+        }
+
+        guard let result = try await group.next() else {
+            throw MachinesAPIError.rpcTimedOut
+        }
+        group.cancelAll()
+        return result
     }
 }
 

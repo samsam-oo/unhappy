@@ -13,6 +13,7 @@ public final class DirectSessionViewModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var isLoadingOlderMessages = false
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var liveStatusText: String?
     @Published public private(set) var isSending = false
     @Published public private(set) var sendErrorMessage: String?
     @Published public private(set) var isArchiving = false
@@ -101,8 +102,9 @@ public final class DirectSessionViewModel: ObservableObject {
             )
             applyLatestPage(page)
             errorMessage = nil
+            liveStatusText = nil
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            applyMessagesLoadError(error)
         }
     }
 
@@ -149,8 +151,9 @@ public final class DirectSessionViewModel: ObservableObject {
                 hasOlderMessages = false
             }
             errorMessage = nil
+            liveStatusText = nil
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            applyMessagesLoadError(error)
         }
     }
 
@@ -443,8 +446,9 @@ public final class DirectSessionViewModel: ObservableObject {
                     applyIncrementalLatestPage(page)
                 }
                 errorMessage = nil
+                liveStatusText = nil
             } catch {
-                errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                applyMessagesLoadError(error)
             }
         }
 
@@ -528,8 +532,9 @@ public final class DirectSessionViewModel: ObservableObject {
             )
             applyIncrementalLatestPage(page)
             errorMessage = nil
+            liveStatusText = nil
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            applyMessagesLoadError(error)
         }
 
         postSendRefreshTask = nil
@@ -545,14 +550,18 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         let boundedLimit = max(1, limit ?? Self.messagePageSize)
+        let loader = self.loader
+        let identity = self.identity
         let task = Task {
-            try await loader.loadMessages(
-                serverURLString: serverURLString,
-                token: token,
-                identity: identity,
-                limit: boundedLimit,
-                cursor: nil
-            )
+            try await withSessionLoadTimeout(SessionLoadTimeout.directMessages) {
+                try await loader.loadMessages(
+                    serverURLString: serverURLString,
+                    token: token,
+                    identity: identity,
+                    limit: boundedLimit,
+                    cursor: nil
+                )
+            }
         }
         activeMessagesLoadTask = task
 
@@ -561,6 +570,16 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         return try await task.value
+    }
+
+    private func applyMessagesLoadError(_ error: Error) {
+        if let reconnectingStatusText = MachinesAPIError.reconnectingStatusText(from: error) {
+            liveStatusText = reconnectingStatusText
+            errorMessage = nil
+            return
+        }
+        liveStatusText = nil
+        errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }
 

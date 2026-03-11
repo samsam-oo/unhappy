@@ -16,6 +16,23 @@ struct DirectSessionViewModelTests {
     }
 
     @Test
+    func loadUsesLiveReconnectStatusForTransientDataPlaneFailures() async {
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: ReconnectingMessagesLoader(),
+            sender: SuccessfulSender()
+        )
+
+        await viewModel.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.errorMessage == nil)
+        #expect(viewModel.liveStatusText == "Reconnecting to machine…")
+    }
+
+    @Test
     func pollingStrategySkipsRefreshWhileSendOrPostSendRefreshIsPending() {
         #expect(
             DirectSessionPollingStrategy.shouldRefreshLatestMessages(
@@ -227,6 +244,18 @@ private actor BlockingMessagesLoader: DirectSessionMessagesLoadingAction {
         recordedCallCount += 1
         try await Task.sleep(for: .seconds(1))
         return APISessionMessagesPage(messages: [], nextCursor: nil, hasNext: false)
+    }
+}
+
+private actor ReconnectingMessagesLoader: DirectSessionMessagesLoadingAction {
+    func loadMessages(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
+        throw MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
     }
 }
 

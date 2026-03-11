@@ -6,6 +6,7 @@ public final class MachinesViewModel: ObservableObject {
     @Published public private(set) var machines: [APIMachine] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var reconnectingStatusText: String?
 
     @Published public private(set) var spawningMachineIDs: Set<String> = []
     @Published public private(set) var updatingMachineIDs: Set<String> = []
@@ -40,6 +41,7 @@ public final class MachinesViewModel: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
+        reconnectingStatusText = nil
         defer { isLoading = false }
 
         do {
@@ -49,9 +51,16 @@ public final class MachinesViewModel: ObservableObject {
             )
             clearStalePerMachineState()
             errorMessage = nil
+            reconnectingStatusText = nil
         } catch {
             machines = []
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            if let reconnectingStatusText = MachinesAPIError.reconnectingStatusText(from: error) {
+                self.reconnectingStatusText = reconnectingStatusText
+                errorMessage = nil
+            } else {
+                reconnectingStatusText = nil
+                errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
         }
     }
 

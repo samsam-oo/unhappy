@@ -32,6 +32,22 @@ struct MachineDataPlaneWebSocketClientTests {
     }
 
     @Test
+    func transportTreatsWaitingAsTerminal() {
+        let error = MachineDataPlaneNetworkTransport.terminalError(
+            for: .waiting(.posix(.ENOTCONN))
+        )
+
+        #expect(error != nil)
+    }
+
+    @Test
+    func transportTreatsCancelledAsDisconnected() {
+        let error = MachineDataPlaneNetworkTransport.terminalError(for: .cancelled)
+
+        #expect(error as? MachinesAPIError == .rpcCallFailed("Machine data-plane socket is not connected"))
+    }
+
+    @Test
     func replaySafetyOnlyCoversReadLikeOperations() {
         #expect(MachineDataPlaneWebSocketClient.isOperationSafeToReplay(.machineListModels))
         #expect(MachineDataPlaneWebSocketClient.isOperationSafeToReplay(.codexListMessages))
@@ -96,5 +112,35 @@ struct MachineDataPlaneWebSocketClientTests {
                 baseResponseTimeoutInterval: 4
             ) == 20
         )
+    }
+
+    @Test
+    func sendTimeoutIntervalFailsFasterThanResponseTimeout() {
+        #expect(
+            MachineDataPlaneWebSocketClient.sendTimeoutInterval(
+                for: .codexSendMessage,
+                baseRequestTimeoutInterval: 8
+            ) == 6
+        )
+        #expect(
+            MachineDataPlaneWebSocketClient.sendTimeoutInterval(
+                for: .codexListMessages,
+                baseRequestTimeoutInterval: 8
+            ) == 4
+        )
+        #expect(
+            MachineDataPlaneWebSocketClient.sendTimeoutInterval(
+                for: .projectList,
+                baseRequestTimeoutInterval: 8
+            ) == 4
+        )
+    }
+
+    @Test
+    func dispatchCapacityUsesAdvertisedInFlightLimit() {
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: nil, activeExecutions: 0) == 1)
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: nil, activeExecutions: 1) == 0)
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: 4, activeExecutions: 1) == 3)
+        #expect(MachineDataPlaneWebSocketClient.dispatchCapacity(maxInFlightStreams: 4, activeExecutions: 4) == 0)
     }
 }

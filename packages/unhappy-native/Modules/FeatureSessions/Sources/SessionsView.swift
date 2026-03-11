@@ -107,6 +107,24 @@ public struct SessionsView: View {
             } else if isPreparingProjectsFromLoadedSessions {
                 ProgressView("Preparing projects…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let reconnectingStatusText = viewModel.reconnectingStatusText,
+                      viewModel.sessions.isEmpty,
+                      !hasSidebarRows {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ProgressView()
+                        Text(reconnectingStatusText)
+                            .font(.headline)
+                        Text("The app is waiting for the machine data plane to reconnect.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .refreshable {
+                    await reloadSessions()
+                }
             } else if let error = viewModel.errorMessage, viewModel.sessions.isEmpty, !hasSidebarRows {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
@@ -186,7 +204,8 @@ public struct SessionsView: View {
             if shouldShowProjectsStatusRow {
                 ProjectSyncStatusRow(
                     multiAgentInProgressCount: viewModel.multiAgentInProgressCount,
-                    isRefreshing: isRefreshingProjectContent
+                    isRefreshing: isRefreshingProjectContent,
+                    reconnectingStatusText: viewModel.reconnectingStatusText
                 )
                 .listRowSeparator(.hidden)
             }
@@ -245,7 +264,7 @@ public struct SessionsView: View {
     }
 
     private var shouldShowProjectsStatusRow: Bool {
-        viewModel.multiAgentInProgressCount > 0
+        viewModel.multiAgentInProgressCount > 0 || viewModel.reconnectingStatusText != nil
     }
 
     private var shouldShowFullScreenLoading: Bool {

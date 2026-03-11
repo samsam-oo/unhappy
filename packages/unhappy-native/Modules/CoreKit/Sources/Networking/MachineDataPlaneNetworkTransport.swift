@@ -230,6 +230,11 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
     }
 
     private func handleStateUpdate(_ state: NWConnection.State) {
+        if let terminalError = Self.terminalError(for: state) {
+            terminate(with: terminalError)
+            return
+        }
+
         switch state {
         case .ready:
             isReady = true
@@ -239,12 +244,21 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
                 continuation.resume(returning: ())
             }
             startReceiveLoopIfNeeded()
-        case .failed(let error):
-            terminate(with: error)
-        case .cancelled:
-            terminate(with: MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected"))
         default:
             break
+        }
+    }
+
+    nonisolated static func terminalError(for state: NWConnection.State) -> Error? {
+        switch state {
+        case .waiting(let error):
+            return error
+        case .failed(let error):
+            return error
+        case .cancelled:
+            return MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected")
+        default:
+            return nil
         }
     }
 

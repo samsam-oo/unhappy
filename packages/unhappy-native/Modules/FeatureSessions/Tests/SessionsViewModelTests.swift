@@ -50,6 +50,24 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadUsesReconnectStatusForTransientDataPlaneFailures() async throws {
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: DataPlaneReconnectSessionsPageLoader(),
+            poller: MockSessionsPoller(rows: []),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.errorMessage == nil)
+        #expect(model.reconnectingStatusText == "Reconnecting to machine…")
+    }
+
+    @Test
     func loadWithInactiveSessionsMarksMultiAgentCompleted() async throws {
         let expected = [
             APISession(
@@ -146,6 +164,45 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadStartsSupportingDataRefreshBeforePrimaryPageCompletes() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let projectsLoader = DelayedProjectsLoader(
+            delay: .milliseconds(20),
+            result: .success([project])
+        )
+        let pageLoader = DelayedSessionsPageLoader(
+            delay: .milliseconds(200),
+            result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: pageLoader,
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: projectsLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        let loadTask = Task {
+            await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        }
+
+        try await Task.sleep(for: .milliseconds(80))
+
+        #expect(await projectsLoader.callCount() == 1)
+        await loadTask.value
+    }
+
+    @Test
     func loadProjectsStreamingStartsUpstreamSyncForVisibleProjectScopes() async throws {
         let project = SessionMachineProject(
             machineID: "machine-1",
@@ -204,6 +261,63 @@ struct SessionsViewModelTests {
         #expect(requestedProjects.count == 1)
         #expect(requestedProjects.first?.map(\.summary.path) == ["/repo/app"])
         #expect(model.upstreamSessions.map(\.summary.id) == ["thread-1"])
+    }
+
+    @Test
+    func loadUpstreamSessionsHydratesProjectScopesConcurrently() async throws {
+        let projectOne = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app-one",
+                latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let projectTwo = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app-two",
+                latestUpdatedAt: "2026-03-06T03:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote Session",
+                cwd: "/repo/app-one",
+                updatedAt: "2026-03-06T04:00:00.000Z",
+                createdAt: "2026-03-06T03:00:00.000Z",
+                archived: false
+            )
+        )
+        let loader = ConcurrentProjectSessionsLoader(
+            delay: .milliseconds(80),
+            rows: [row]
+        )
+        let projectsLoader = RecordingProjectsLoader(result: .success([projectOne, projectTwo]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: projectsLoader,
+            projectSessionsLoader: loader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.load(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.waitForPendingSupportingDataRefresh()
+
+        #expect(await loader.maxInFlightCount() > 1)
     }
 
     @Test

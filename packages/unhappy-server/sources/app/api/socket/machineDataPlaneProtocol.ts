@@ -20,6 +20,7 @@ export const MachineDataPlaneSealedBodySchema = z.object({
 })
 export const MachineDataPlaneOperationSchema = z.enum([
   'provider.spawn',
+  'machine.ping',
   'machine.listModels',
   'daemon.stop',
   'daemon.update',

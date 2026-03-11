@@ -4,6 +4,20 @@ import Testing
 
 struct MachinesAPITests {
     @Test
+    func reconnectingStatusTextTreatsDataPlaneDisconnectsAsTransient() {
+        #expect(MachinesAPIError.rpcTimedOut.reconnectingStatusText == "Reconnecting to machine…")
+        #expect(
+            MachinesAPIError.rpcCallFailed("Machine data-plane socket is not connected").reconnectingStatusText
+                == "Reconnecting to machine…"
+        )
+        #expect(
+            MachinesAPIError.rpcCallFailed("Peer data-plane connection is not ready").reconnectingStatusText
+                == "Reconnecting to machine…"
+        )
+        #expect(MachinesAPIError.missingToken.reconnectingStatusText == nil)
+    }
+
+    @Test
     func endpointUnavailableErrorHasActionableDescription() {
         let error = MachinesAPIError.endpointUnavailable("/v1/machines/:id/commands/list-directory")
         let description = error.errorDescription ?? ""

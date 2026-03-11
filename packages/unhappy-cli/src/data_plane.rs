@@ -424,6 +424,7 @@ async fn handle_request_frame(
 
 fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
     match operation {
+        MachineDataPlaneOperation::MachinePing => "machine.ping",
         MachineDataPlaneOperation::MachineListModels => "machine.listModels",
         MachineDataPlaneOperation::DaemonStop => "daemon.stop",
         MachineDataPlaneOperation::DaemonUpdate => "daemon.update",
@@ -456,6 +457,7 @@ fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
 fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -> String {
     let mut fields: Vec<String> = Vec::new();
     match operation {
+        MachineDataPlaneOperation::MachinePing => {}
         MachineDataPlaneOperation::ProjectList => {
             if let Some(explicit_only) = payload.get("explicitOnly").and_then(Value::as_bool) {
                 fields.push(format!("explicit_only={explicit_only}"));
@@ -503,6 +505,9 @@ async fn dispatch_request(
     payload: Value,
 ) -> Result<Value> {
     match operation {
+        MachineDataPlaneOperation::MachinePing => Ok(json!({
+            "success": true
+        })),
         MachineDataPlaneOperation::ProviderSpawn => {
             let request: SpawnSessionRequest =
                 serde_json::from_value(payload).context("invalid provider spawn payload")?;
