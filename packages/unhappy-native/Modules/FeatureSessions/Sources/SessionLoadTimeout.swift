@@ -2,6 +2,7 @@ import Foundation
 import CoreKit
 
 enum SessionLoadTimeout {
+    static let directMessages: Duration = .seconds(6)
     static let projects: Duration = .seconds(4)
     static let upstreamSessions: Duration = .seconds(5)
 }

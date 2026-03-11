@@ -550,14 +550,18 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         let boundedLimit = max(1, limit ?? Self.messagePageSize)
+        let loader = self.loader
+        let identity = self.identity
         let task = Task {
-            try await loader.loadMessages(
-                serverURLString: serverURLString,
-                token: token,
-                identity: identity,
-                limit: boundedLimit,
-                cursor: nil
-            )
+            try await withSessionLoadTimeout(SessionLoadTimeout.directMessages) {
+                try await loader.loadMessages(
+                    serverURLString: serverURLString,
+                    token: token,
+                    identity: identity,
+                    limit: boundedLimit,
+                    cursor: nil
+                )
+            }
         }
         activeMessagesLoadTask = task
 
