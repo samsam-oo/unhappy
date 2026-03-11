@@ -177,6 +177,35 @@ struct SessionTranscriptFileChangePresentation: Equatable, Identifiable, Sendabl
 }
 
 struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
+    struct Action: Equatable, Identifiable, Sendable {
+        enum Kind: String, Equatable, Sendable {
+            case list
+            case read
+            case search
+            case edit
+            case command
+
+            var label: String {
+                switch self {
+                case .list:
+                    return "List"
+                case .read:
+                    return "Read"
+                case .search:
+                    return "Search"
+                case .edit:
+                    return "Edit"
+                case .command:
+                    return "Run"
+                }
+            }
+        }
+
+        let id: String
+        let kind: Kind
+        let detail: String
+    }
+
     struct SupplementalEntry: Equatable, Identifiable, Sendable {
         enum Kind: String, Equatable, Sendable {
             case stdin
@@ -200,6 +229,7 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
     let exitCode: Int?
     let status: String?
     let durationMs: Int?
+    let actions: [Action]
     let supplementalEntries: [SupplementalEntry]
 
     init(
@@ -214,6 +244,7 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
         exitCode: Int?,
         status: String?,
         durationMs: Int?,
+        actions: [Action],
         supplementalEntries: [SupplementalEntry]
     ) {
         self.command = command
@@ -227,6 +258,7 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
         self.exitCode = exitCode
         self.status = status
         self.durationMs = durationMs
+        self.actions = actions
         self.supplementalEntries = supplementalEntries
     }
 
@@ -296,6 +328,7 @@ struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
     let status: Status
     let exitCode: Int?
     let durationText: String?
+    let actions: [SessionTranscriptCommandExecutionPayload.Action]
     let supplementalEntries: [SessionTranscriptCommandExecutionPayload.SupplementalEntry]
 
     var hasExpandableDetails: Bool {
@@ -457,6 +490,9 @@ enum SessionTranscriptRichContentParser {
         if let richContent = richToolContent(for: entry) {
             switch richContent {
             case .commandExecution(let command):
+                if let explorationTitle = explorationSummaryTitle(for: command.actions) {
+                    return explorationTitle
+                }
                 if let summary = command.summary, !summary.isEmpty {
                     return summary
                 }
@@ -552,6 +588,15 @@ enum SessionTranscriptRichContentParser {
         if let durationMs = payload.durationMs {
             object["durationMs"] = durationMs
         }
+        if !payload.actions.isEmpty {
+            object["commandActions"] = payload.actions.map { action in
+                [
+                    "id": action.id,
+                    "type": action.kind.rawValue,
+                    "detail": action.detail,
+                ]
+            }
+        }
         if !payload.supplementalEntries.isEmpty {
             object["supplementalEntries"] = payload.supplementalEntries.map { item in
                 [
@@ -632,6 +677,7 @@ enum SessionTranscriptRichContentParser {
             status: status,
             exitCode: payload.exitCode,
             durationText: formatCommandDuration(milliseconds: payload.durationMs),
+            actions: payload.actions,
             supplementalEntries: payload.supplementalEntries
         )
     }
@@ -666,6 +712,7 @@ enum SessionTranscriptRichContentParser {
             normalizeString(object["state"])
         let durationMs = normalizeInt(object["durationMs"]) ??
             normalizeInt(object["duration_ms"])
+        let actions = parseCommandActions(from: object)
         let supplementalEntries: [SessionTranscriptCommandExecutionPayload.SupplementalEntry] = (
             object["supplementalEntries"] as? [[String: Any]] ?? []
         ).compactMap { item in
@@ -686,6 +733,7 @@ enum SessionTranscriptRichContentParser {
                 exitCode != nil ||
                 status != nil ||
                 durationMs != nil ||
+                !actions.isEmpty ||
                 !supplementalEntries.isEmpty else {
             return nil
         }
@@ -702,6 +750,7 @@ enum SessionTranscriptRichContentParser {
             exitCode: exitCode,
             status: status,
             durationMs: durationMs,
+            actions: actions,
             supplementalEntries: supplementalEntries
         )
     }
@@ -1363,10 +1412,15 @@ enum SessionTranscriptRichContentParser {
 
     private static func commandSummary(from rawBody: String) -> String? {
         guard let object = parseJSONObject(from: rawBody) else { return nil }
-        let commandActions = (object["commandActions"] as? [[String: Any]]) ??
-            (object["parsed_cmd"] as? [[String: Any]]) ??
-            (object["parsedCmd"] as? [[String: Any]])
-        guard let commandActions, !commandActions.isEmpty else { return nil }
+        let commandActions = parseCommandActions(from: object)
+        guard !commandActions.isEmpty else { return nil }
+
+        if let explorationSummary = explorationSummary(
+            for: commandActions,
+            collapsed: false
+        ) {
+            return explorationSummary
+        }
 
         var exploreCount = 0
         var searchCount = 0
@@ -1375,17 +1429,16 @@ enum SessionTranscriptRichContentParser {
         var commandCount = 0
 
         for action in commandActions {
-            let type = normalizeString(action["type"])?.lowercased() ?? ""
-            switch type {
-            case "listfiles", "listfile", "ls":
+            switch action.kind {
+            case .list:
                 exploreCount += 1
-            case "search", "grep", "ripgrep", "rg":
+            case .search:
                 searchCount += 1
-            case "read", "readfile":
+            case .read:
                 readCount += 1
-            case "write", "writefile", "edit", "applypatch":
+            case .edit:
                 editCount += 1
-            default:
+            case .command:
                 commandCount += 1
             }
         }
@@ -1408,6 +1461,84 @@ enum SessionTranscriptRichContentParser {
         }
 
         return parts.joined(separator: ", ")
+    }
+
+    private static func parseCommandActions(
+        from object: [String: Any]
+    ) -> [SessionTranscriptCommandExecutionPayload.Action] {
+        let rawActions = (object["commandActions"] as? [[String: Any]]) ??
+            (object["parsed_cmd"] as? [[String: Any]]) ??
+            (object["parsedCmd"] as? [[String: Any]]) ?? []
+
+        return rawActions.enumerated().compactMap { index, action in
+            let rawType = normalizeString(action["type"])?.lowercased() ?? ""
+            let kind: SessionTranscriptCommandExecutionPayload.Action.Kind
+            switch rawType {
+            case "listfiles", "listfile", "ls":
+                kind = .list
+            case "read", "readfile":
+                kind = .read
+            case "search", "grep", "ripgrep", "rg":
+                kind = .search
+            case "write", "writefile", "edit", "applypatch":
+                kind = .edit
+            default:
+                kind = .command
+            }
+
+            let detail = normalizeString(action["detail"]) ??
+                normalizeString(action["path"]) ??
+                normalizeString(action["query"]) ??
+                normalizeString(action["pattern"]) ??
+                normalizeString(action["command"]) ??
+                normalizeString(action["cmd"]) ??
+                "Action \(index + 1)"
+
+            return SessionTranscriptCommandExecutionPayload.Action(
+                id: normalizeString(action["id"]) ?? "action-\(index)",
+                kind: kind,
+                detail: detail
+            )
+        }
+    }
+
+    private static func explorationSummaryTitle(
+        for actions: [SessionTranscriptCommandExecutionPayload.Action]
+    ) -> String? {
+        explorationSummary(for: actions, collapsed: true)
+    }
+
+    private static func explorationSummary(
+        for actions: [SessionTranscriptCommandExecutionPayload.Action],
+        collapsed: Bool
+    ) -> String? {
+        guard !actions.isEmpty else { return nil }
+        let explorationKinds = Set([
+            SessionTranscriptCommandExecutionPayload.Action.Kind.list,
+            .read,
+            .search,
+        ])
+        guard actions.allSatisfy({ explorationKinds.contains($0.kind) }) else {
+            return nil
+        }
+
+        let fileCount = actions.filter { $0.kind != .search }.count
+        let searchCount = actions.filter { $0.kind == .search }.count
+
+        if collapsed {
+            let collapsedCount = max(actions.count, fileCount)
+            return "Explored \(collapsedCount) \(collapsedCount == 1 ? "file" : "files")"
+        }
+
+        var parts: [String] = []
+        if fileCount > 0 {
+            parts.append("\(fileCount) \(fileCount == 1 ? "file" : "files")")
+        }
+        if searchCount > 0 {
+            parts.append("\(searchCount) \(searchCount == 1 ? "search" : "searches")")
+        }
+        guard !parts.isEmpty else { return nil }
+        return "Explored " + parts.joined(separator: ", ")
     }
 
     private static func formattedGenericToolBody(
@@ -2107,6 +2238,10 @@ struct SessionTranscriptToolRichContentView: View {
                         .foregroundStyle(AppPalette.secondaryText)
                 }
 
+                if !command.actions.isEmpty {
+                    explorationStack(for: command.actions)
+                }
+
                 if let logs = command.logs, !logs.isEmpty {
                     ScrollView(.vertical) {
                         SessionTranscriptMonospaceBlock(
@@ -2147,6 +2282,48 @@ struct SessionTranscriptToolRichContentView: View {
                 }
             }
             .padding(12)
+        }
+    }
+
+    @ViewBuilder
+    private func explorationStack(
+        for actions: [SessionTranscriptCommandExecutionPayload.Action]
+    ) -> some View {
+        SessionSurfaceCard(
+            cornerRadius: 12,
+            fillColor: AppPalette.controlSurface.opacity(0.92),
+            strokeColor: AppPalette.chromeSurfaceStroke.opacity(0.24)
+        ) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(AppPalette.secondaryText)
+                        .frame(width: 6, height: 6)
+                    Text("Explored")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppPalette.primaryText)
+                }
+
+                ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
+                    let branch = index == actions.count - 1 ? "└" : "├"
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(branch)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.secondaryText)
+                        Text(action.kind.label)
+                            .font(.caption.monospaced().weight(.semibold))
+                            .foregroundStyle(AppPalette.accent)
+                        Text(action.detail)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(AppPalette.primaryText)
+                            .lineLimit(1)
+                            .textSelection(.enabled)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.leading, 14)
+                }
+            }
+            .padding(10)
         }
     }
 
