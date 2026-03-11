@@ -317,7 +317,7 @@ struct SessionTranscriptRichContentTests {
     }
 
     @Test
-    func genericToolParserTreatsSendInputAsSteer() {
+    func genericToolParserTreatsSendInputAsUserInput() {
         let entry = SessionTranscriptEntry(
             id: "steer-agent",
             role: .agent,
@@ -343,9 +343,9 @@ struct SessionTranscriptRichContentTests {
         }
 
         #expect(tool.kind == .stdin)
-        #expect(tool.title == "Steer Agent")
+        #expect(tool.title == "User Input")
         #expect(tool.compactSummary == "Copernicus")
-        #expect(tool.badgeText == "Steered")
+        #expect(tool.badgeText == "Sent")
         #expect(tool.subtitle == "Double-check the migration ordering.")
         #expect(tool.body == "Double-check the migration ordering.")
     }

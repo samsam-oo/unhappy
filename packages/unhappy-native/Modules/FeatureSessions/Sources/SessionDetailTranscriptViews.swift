@@ -32,6 +32,10 @@ enum SessionTranscriptLogLineDisplayMode: Equatable {
             return .systemEvent
         }
 
+        if SessionTranscriptRichContentParser.userInputPresentation(for: entry) != nil {
+            return .mainMessage
+        }
+
         if entry.kind == .toolCall || entry.kind == .toolResult || entry.kind == .raw || isEditFilesEntry(entry) {
             return .collapsibleReference
         }
@@ -210,14 +214,19 @@ struct SessionTranscriptMessageRow: View {
 
     private var showsTimestamp: Bool {
         presentation.entries.contains { entry in
-            guard entry.role == .user || entry.role == .agent else { return false }
-            return entry.kind == .text || entry.kind == .thinking
+            SessionTranscriptLogLineDisplayMode.resolve(for: entry) == .mainMessage
         }
     }
 
     private var copyableText: String {
         presentation.entries
             .compactMap { entry -> String? in
+                if let userInput = SessionTranscriptRichContentParser.userInputPresentation(for: entry),
+                   let body = userInput.body?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !body.isEmpty {
+                    return body
+                }
+
                 let title = entry.title?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let body = entry.body.trimmingCharacters(in: .whitespacesAndNewlines)
                 if let title, !title.isEmpty, !body.isEmpty {
@@ -314,6 +323,10 @@ struct SessionTranscriptLogLine: View {
         SessionTranscriptLogLineDisplayMode.resolve(for: entry)
     }
 
+    private var userInputPresentation: SessionTranscriptGenericToolPresentation? {
+        SessionTranscriptRichContentParser.userInputPresentation(for: entry)
+    }
+
     var body: some View {
         if displayMode == .systemEvent {
             HStack(spacing: 6) {
@@ -397,7 +410,7 @@ struct SessionTranscriptLogLine: View {
                     Text(roleLabel)
                         .font(.caption2.monospaced().weight(.semibold))
                         .foregroundStyle(roleColor)
-                    if let title = entry.title, !title.isEmpty {
+                    if let title = mainMessageTitle, !title.isEmpty {
                         Text(title)
                             .font(.caption2.monospaced())
                             .foregroundStyle(AppPalette.secondaryText)
@@ -406,17 +419,19 @@ struct SessionTranscriptLogLine: View {
                     Spacer(minLength: 0)
                 }
 
-                if let attachmentDataURL = entry.attachmentDataURL {
+                if userInputPresentation == nil,
+                   let attachmentDataURL = entry.attachmentDataURL {
                     SessionTranscriptInlineImageView(
                         source: attachmentDataURL,
                         altText: imageAltText
                     )
                 }
 
-                if shouldRenderMessageBody {
+                if shouldRenderMessageBody,
+                   !mainMessageBody.isEmpty {
                     SessionTranscriptMarkdownView(
-                        markdown: entry.body,
-                        role: entry.role,
+                        markdown: mainMessageBody,
+                        role: messageRole,
                         kind: entry.kind,
                         onOpenFilePath: onFileLinkTap
                     )
@@ -471,11 +486,46 @@ struct SessionTranscriptLogLine: View {
     }
 
     private var roleLabel: String {
-        entry.role == .user ? "user" : "assistant"
+        switch messageRole {
+        case .user:
+            return "user"
+        case .agent:
+            return "assistant"
+        case .system:
+            return "system"
+        }
     }
 
     private var roleColor: Color {
-        entry.role == .user ? AppPalette.terminalLineUser : AppPalette.terminalLineAgent
+        switch messageRole {
+        case .user:
+            return AppPalette.terminalLineUser
+        case .agent:
+            return AppPalette.terminalLineAgent
+        case .system:
+            return AppPalette.secondaryText
+        }
+    }
+
+    private var messageRole: SessionTranscriptEntryRole {
+        userInputPresentation == nil ? entry.role : .user
+    }
+
+    private var mainMessageTitle: String? {
+        if let userInputPresentation,
+           let target = userInputPresentation.compactSummary?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !target.isEmpty {
+            return "to \(target)"
+        }
+        return entry.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var mainMessageBody: String {
+        if let userInputPresentation,
+           let body = userInputPresentation.body?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            return body
+        }
+        return entry.body
     }
 
     private var collapsibleTitle: String {
@@ -553,6 +603,9 @@ struct SessionTranscriptLogLine: View {
     }
 
     private var shouldRenderMessageBody: Bool {
+        if userInputPresentation != nil {
+            return true
+        }
         guard entry.attachmentDataURL != nil else { return true }
         return entry.body != imageAltText
     }
