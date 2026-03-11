@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
-    pin::Pin,
     path::{Path, PathBuf},
+    pin::Pin,
 };
 use tokio::{
     fs::{self, File},
@@ -66,7 +66,9 @@ impl ProviderSessionListAdapter for ClaudeSessionListAdapter {
         &'a self,
         context: ProviderSessionListContext<'a>,
     ) -> ProviderSessionListFuture<'a> {
-        Box::pin(async move { claude_list_sessions(context.payload, context.active_sessions).await })
+        Box::pin(
+            async move { claude_list_sessions(context.payload, context.active_sessions).await },
+        )
     }
 }
 
@@ -835,8 +837,6 @@ fn claude_project_dir_with_config(cwd: &str, config_dir: &Path) -> PathBuf {
 struct ClaudeSessionMeta {
     session_id: String,
     cwd: String,
-    timestamp: Option<String>,
-    is_sidechain: bool,
 }
 
 async fn read_claude_session_meta(path: &Path) -> Result<Option<ClaudeSessionMeta>> {
@@ -874,14 +874,6 @@ async fn read_claude_session_meta(path: &Path) -> Result<Option<ClaudeSessionMet
             return Ok(Some(ClaudeSessionMeta {
                 session_id: session_id.to_string(),
                 cwd: cwd.to_string(),
-                timestamp: object
-                    .get("timestamp")
-                    .and_then(Value::as_str)
-                    .map(ToOwned::to_owned),
-                is_sidechain: object
-                    .get("isSidechain")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false),
             }));
         }
     }
@@ -892,12 +884,6 @@ async fn read_claude_session_meta(path: &Path) -> Result<Option<ClaudeSessionMet
 struct GeminiStoredSession {
     #[serde(rename = "sessionId")]
     session_id: Option<String>,
-    #[serde(rename = "projectHash")]
-    project_hash: Option<String>,
-    #[serde(rename = "startTime")]
-    start_time: Option<String>,
-    #[serde(rename = "lastUpdated")]
-    last_updated: Option<String>,
     #[serde(default)]
     messages: Vec<GeminiStoredMessage>,
 }
@@ -1076,60 +1062,6 @@ async fn claude_transcript_contains_session_id(path: &Path, session_id: &str) ->
     Ok(false)
 }
 
-async fn list_gemini_historical_sessions(
-    gemini_config_dir: &Path,
-    cwd_filter: Option<&str>,
-) -> Result<Vec<Value>> {
-    let Some(cwd) = cwd_filter else {
-        return Ok(Vec::new());
-    };
-
-    let project_hash = gemini_project_hash(cwd);
-    let session_root = gemini_config_dir
-        .join("tmp")
-        .join(&project_hash)
-        .join("chats");
-    let mut rows = Vec::<Value>::new();
-    let mut seen = HashSet::<String>::new();
-
-    for path in collect_session_json_files(&session_root).await? {
-        let Some(stored) = read_gemini_session_file(&path).await? else {
-            continue;
-        };
-        let Some(session_id) = stored
-            .session_id
-            .clone()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())
-        else {
-            continue;
-        };
-        if stored.project_hash.as_deref() != Some(project_hash.as_str()) {
-            continue;
-        }
-        if !seen.insert(session_id.clone()) {
-            continue;
-        }
-        let metadata_updated_at = fs::metadata(&path)
-            .await
-            .ok()
-            .and_then(|value| value.modified().ok())
-            .and_then(system_time_to_rfc3339);
-        let updated_at = stored.last_updated.clone().or(metadata_updated_at);
-        let created_at = stored.start_time.clone().or(updated_at.clone());
-        rows.push(json!({
-            "id": session_id,
-            "title": first_gemini_user_preview(&stored.messages),
-            "cwd": cwd,
-            "updatedAt": updated_at,
-            "createdAt": created_at,
-            "model": Value::Null,
-        }));
-    }
-
-    Ok(rows)
-}
-
 async fn find_gemini_session_file(
     gemini_config_dir: &Path,
     session_id: &str,
@@ -1199,19 +1131,6 @@ fn gemini_project_hash(cwd: &str) -> String {
     hasher.update(cwd.as_bytes());
     let digest = hasher.finalize();
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
-}
-
-fn first_gemini_user_preview(messages: &[GeminiStoredMessage]) -> Option<String> {
-    messages
-        .iter()
-        .find(|message| message.message_type.as_deref() == Some("user"))
-        .map(|message| normalize_transcript_text(message.content.clone()))
-        .filter(|value| !value.is_empty())
-        .map(|value| {
-            let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
-            compact.chars().take(120).collect::<String>()
-        })
-        .filter(|value| !value.is_empty())
 }
 
 fn normalize_transcript_text(value: Value) -> String {
@@ -1489,25 +1408,13 @@ fn extract_codex_thread_summaries_from_list_response(response: &Value) -> Vec<Va
         let updated_at = object
             .get("updatedAt")
             .or_else(|| object.get("updated_at"))
-            .or_else(|| {
-                nested_thread
-                    .and_then(|thread| thread.get("updatedAt"))
-            })
-            .or_else(|| {
-                nested_thread
-                    .and_then(|thread| thread.get("updated_at"))
-            });
+            .or_else(|| nested_thread.and_then(|thread| thread.get("updatedAt")))
+            .or_else(|| nested_thread.and_then(|thread| thread.get("updated_at")));
         let created_at = object
             .get("createdAt")
             .or_else(|| object.get("created_at"))
-            .or_else(|| {
-                nested_thread
-                    .and_then(|thread| thread.get("createdAt"))
-            })
-            .or_else(|| {
-                nested_thread
-                    .and_then(|thread| thread.get("created_at"))
-            });
+            .or_else(|| nested_thread.and_then(|thread| thread.get("createdAt")))
+            .or_else(|| nested_thread.and_then(|thread| thread.get("created_at")));
         let updated_at = timestamp_value_to_rfc3339(updated_at);
         let created_at = timestamp_value_to_rfc3339(created_at);
 
@@ -1664,8 +1571,6 @@ mod tests {
 
         assert_eq!(meta.session_id, "real-session");
         assert_eq!(meta.cwd, "/tmp/project");
-        assert_eq!(meta.timestamp.as_deref(), Some("2026-03-10T10:00:00Z"));
-        assert!(!meta.is_sidechain);
     }
 
     #[tokio::test]
@@ -1687,47 +1592,6 @@ mod tests {
             .expect("path");
 
         assert_eq!(found, transcript);
-    }
-
-    #[tokio::test]
-    async fn list_gemini_historical_sessions_reads_project_hash_directory() {
-        let temp_dir = tempdir().expect("tempdir");
-        let cwd = "/tmp/unhappy";
-        let hash = gemini_project_hash(cwd);
-        let chats_dir = temp_dir.path().join("tmp").join(hash).join("chats");
-        fs::create_dir_all(&chats_dir).await.expect("mkdir");
-        fs::write(
-            chats_dir.join("session-2026-03-10T10-00-test.json"),
-            serde_json::to_vec(&json!({
-                "sessionId": "gemini-session-1",
-                "projectHash": gemini_project_hash(cwd),
-                "startTime": "2026-03-10T10:00:00Z",
-                "lastUpdated": "2026-03-10T10:01:00Z",
-                "messages": [
-                    {
-                        "id": "user-1",
-                        "timestamp": "2026-03-10T10:00:00Z",
-                        "type": "user",
-                        "content": "Summarize this repository"
-                    }
-                ]
-            }))
-            .expect("json"),
-        )
-        .await
-        .expect("write session");
-
-        let sessions = list_gemini_historical_sessions(temp_dir.path(), Some(cwd))
-            .await
-            .expect("list");
-
-        assert_eq!(sessions.len(), 1);
-        assert_eq!(sessions[0]["id"].as_str(), Some("gemini-session-1"));
-        assert_eq!(sessions[0]["cwd"].as_str(), Some(cwd));
-        assert_eq!(
-            sessions[0]["title"].as_str(),
-            Some("Summarize this repository")
-        );
     }
 
     #[test]
@@ -1780,10 +1644,7 @@ mod tests {
 
         let sessions = response["sessions"].as_array().expect("sessions array");
         assert_eq!(sessions.len(), 1);
-        assert_eq!(
-            sessions[0]["title"].as_str(),
-            Some("Active Claude Session")
-        );
+        assert_eq!(sessions[0]["title"].as_str(), Some("Active Claude Session"));
     }
 
     #[test]
