@@ -1,5 +1,6 @@
 import Testing
 @testable import FeatureSessions
+import SessionKit
 
 struct DirectSessionArtifactsTests {
     @Test

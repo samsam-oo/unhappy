@@ -1,7 +1,7 @@
 import Foundation
 
-enum SessionStreamingOutputMerger {
-    static func merge(existing: String, chunk: String) -> String {
+public enum SessionStreamingOutputMerger {
+    public static func merge(existing: String, chunk: String) -> String {
         guard !chunk.isEmpty else { return existing }
         guard !existing.isEmpty else { return chunk }
 

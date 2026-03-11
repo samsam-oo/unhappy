@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import FeatureSessions
+import SessionKit
 
 struct SessionTranscriptProcessingTests {
     @Test
@@ -304,10 +305,10 @@ struct SessionTranscriptProcessingTests {
         }
 
         #expect(firstCommand.command == "npm test")
-        #expect(firstCommand.supplementalEntries.isEmpty)
+        #expect(firstCommand.supplementalEntries.map(\.kind) == [.toolResult])
         #expect(firstCommand.status == .running)
         #expect(secondCommand.command == "npm run dev")
-        #expect(secondCommand.supplementalEntries.map(\.kind) == [.stdin, .toolResult])
+        #expect(secondCommand.supplementalEntries.map(\.kind) == [.toolResult, .stdin, .toolResult])
         #expect(secondCommand.status == .running)
     }
 

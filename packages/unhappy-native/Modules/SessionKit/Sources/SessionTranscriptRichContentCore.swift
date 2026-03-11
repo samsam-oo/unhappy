@@ -1,21 +1,25 @@
 import Foundation
-import SwiftUI
 import CoreKit
-import UIFoundation
 
-struct SessionTranscriptGenericToolField: Equatable, Identifiable, Sendable {
-    let id: String
-    let label: String
-    let value: String
+public struct SessionTranscriptGenericToolField: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let label: String
+    public let value: String
+
+    public init(id: String, label: String, value: String) {
+        self.id = id
+        self.label = label
+        self.value = value
+    }
 }
 
-struct SessionTranscriptPlanStepPresentation: Equatable, Identifiable, Sendable {
-    enum Status: String, Equatable, Sendable {
+public struct SessionTranscriptPlanStepPresentation: Equatable, Identifiable, Sendable {
+    public enum Status: String, Equatable, Sendable {
         case pending
         case inProgress = "in_progress"
         case completed
 
-        var label: String {
+        public var label: String {
             switch self {
             case .pending:
                 return "Planned"
@@ -26,7 +30,7 @@ struct SessionTranscriptPlanStepPresentation: Equatable, Identifiable, Sendable 
             }
         }
 
-        var symbolName: String {
+        public var symbolName: String {
             switch self {
             case .pending:
                 return "circle"
@@ -38,13 +42,19 @@ struct SessionTranscriptPlanStepPresentation: Equatable, Identifiable, Sendable 
         }
     }
 
-    let id: String
-    let step: String
-    let status: Status
+    public let id: String
+    public let step: String
+    public let status: Status
+
+    public init(id: String, step: String, status: Status) {
+        self.id = id
+        self.step = step
+        self.status = status
+    }
 }
 
-struct SessionTranscriptGenericToolPresentation: Equatable, Sendable {
-    enum Kind: Equatable, Sendable {
+public struct SessionTranscriptGenericToolPresentation: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
         case plan
         case spawnAgent
         case wait
@@ -53,31 +63,31 @@ struct SessionTranscriptGenericToolPresentation: Equatable, Sendable {
         case toolCall
     }
 
-    enum BadgeTone: Equatable, Sendable {
+    public enum BadgeTone: Equatable, Sendable {
         case accent
         case success
         case warning
         case neutral
     }
 
-    let kind: Kind
-    let title: String
-    let compactSummary: String?
-    let subtitle: String?
-    let badgeText: String?
-    let badgeTone: BadgeTone
-    let fields: [SessionTranscriptGenericToolField]
-    let body: String?
-    let planItems: [SessionTranscriptPlanStepPresentation]
+    public let kind: Kind
+    public let title: String
+    public let compactSummary: String?
+    public let subtitle: String?
+    public let badgeText: String?
+    public let badgeTone: BadgeTone
+    public let fields: [SessionTranscriptGenericToolField]
+    public let body: String?
+    public let planItems: [SessionTranscriptPlanStepPresentation]
 }
 
-struct SessionMarkdownListItem: Equatable, Sendable {
-    let depth: Int
-    let marker: String
-    let text: String
+public struct SessionMarkdownListItem: Equatable, Sendable {
+    public let depth: Int
+    public let marker: String
+    public let text: String
 }
 
-enum SessionMarkdownBlock: Equatable, Sendable {
+public enum SessionMarkdownBlock: Equatable, Sendable {
     case heading(level: Int, text: String)
     case paragraph(String)
     case quote(String)
@@ -86,14 +96,14 @@ enum SessionMarkdownBlock: Equatable, Sendable {
     case image(altText: String, source: String)
 }
 
-enum SessionTranscriptFileChangeKind: String, Equatable, Sendable {
+public enum SessionTranscriptFileChangeKind: String, Equatable, Sendable {
     case added
     case deleted
     case modified
     case moved
     case unknown
 
-    var label: String {
+    public var label: String {
         switch self {
         case .added:
             return "Added"
@@ -108,22 +118,7 @@ enum SessionTranscriptFileChangeKind: String, Equatable, Sendable {
         }
     }
 
-    var tint: Color {
-        switch self {
-        case .added:
-            return .green
-        case .deleted:
-            return .red
-        case .modified:
-            return AppPalette.accent
-        case .moved:
-            return .orange
-        case .unknown:
-            return AppPalette.secondaryText
-        }
-    }
-
-    var iconSystemName: String {
+    public var iconSystemName: String {
         switch self {
         case .added:
             return "plus"
@@ -139,53 +134,53 @@ enum SessionTranscriptFileChangeKind: String, Equatable, Sendable {
     }
 }
 
-struct SessionTranscriptDiffLinePresentation: Equatable, Identifiable, Sendable {
-    enum Kind: Equatable, Sendable {
+public struct SessionTranscriptDiffLinePresentation: Equatable, Identifiable, Sendable {
+    public enum Kind: Equatable, Sendable {
         case added
         case removed
         case context
         case meta
     }
 
-    let id: String
-    let kind: Kind
-    let text: String
+    public let id: String
+    public let kind: Kind
+    public let text: String
 }
 
-struct SessionTranscriptDiffHunkPresentation: Equatable, Identifiable, Sendable {
-    let id: String
-    let header: String
-    let lines: [SessionTranscriptDiffLinePresentation]
+public struct SessionTranscriptDiffHunkPresentation: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let header: String
+    public let lines: [SessionTranscriptDiffLinePresentation]
 }
 
-struct SessionTranscriptDiffFilePresentation: Equatable, Identifiable, Sendable {
-    let id: String
-    let path: String
-    let hunkCount: Int
-    let preview: String
-    let patch: String
-    let hunks: [SessionTranscriptDiffHunkPresentation]
+public struct SessionTranscriptDiffFilePresentation: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let path: String
+    public let hunkCount: Int
+    public let preview: String
+    public let patch: String
+    public let hunks: [SessionTranscriptDiffHunkPresentation]
 }
 
-struct SessionTranscriptFileChangePresentation: Equatable, Identifiable, Sendable {
-    let id: String
-    let path: String
-    let kind: SessionTranscriptFileChangeKind
-    let movePath: String?
-    let summary: String?
-    let diffFiles: [SessionTranscriptDiffFilePresentation]
+public struct SessionTranscriptFileChangePresentation: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let path: String
+    public let kind: SessionTranscriptFileChangeKind
+    public let movePath: String?
+    public let summary: String?
+    public let diffFiles: [SessionTranscriptDiffFilePresentation]
 }
 
-struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
-    struct Action: Equatable, Identifiable, Sendable {
-        enum Kind: String, Equatable, Sendable {
+public struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
+    public struct Action: Equatable, Identifiable, Sendable {
+        public enum Kind: String, Equatable, Sendable {
             case list
             case read
             case search
             case edit
             case command
 
-            var label: String {
+            public var label: String {
                 switch self {
                 case .list:
                     return "List"
@@ -201,38 +196,38 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
             }
         }
 
-        let id: String
-        let kind: Kind
-        let detail: String
+        public let id: String
+        public let kind: Kind
+        public let detail: String
     }
 
-    struct SupplementalEntry: Equatable, Identifiable, Sendable {
-        enum Kind: String, Equatable, Sendable {
+    public struct SupplementalEntry: Equatable, Identifiable, Sendable {
+        public enum Kind: String, Equatable, Sendable {
             case stdin
             case toolResult
         }
 
-        let id: String
-        let kind: Kind
-        let title: String
-        let body: String
+        public let id: String
+        public let kind: Kind
+        public let title: String
+        public let body: String
     }
 
-    let command: String?
-    let cwd: String?
-    let summary: String?
-    let logs: String?
-    let stdout: String?
-    let stderr: String?
-    let sessionID: String?
-    let success: Bool?
-    let exitCode: Int?
-    let status: String?
-    let durationMs: Int?
-    let actions: [Action]
-    let supplementalEntries: [SupplementalEntry]
+    public let command: String?
+    public let cwd: String?
+    public let summary: String?
+    public let logs: String?
+    public let stdout: String?
+    public let stderr: String?
+    public let sessionID: String?
+    public let success: Bool?
+    public let exitCode: Int?
+    public let status: String?
+    public let durationMs: Int?
+    public let actions: [Action]
+    public let supplementalEntries: [SupplementalEntry]
 
-    init(
+    public init(
         command: String?,
         cwd: String?,
         summary: String?,
@@ -262,7 +257,7 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
         self.supplementalEntries = supplementalEntries
     }
 
-    var displayedLogs: String? {
+    public var displayedLogs: String? {
         let normalizedLogs = logs?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedStdout = stdout?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedStderr = stderr?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -286,19 +281,19 @@ struct SessionTranscriptCommandExecutionPayload: Equatable, Sendable {
     }
 }
 
-struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
-    enum StatusTone: Equatable, Sendable {
+public struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
+    public enum StatusTone: Equatable, Sendable {
         case running
         case success
         case failure
     }
 
-    enum Status: Equatable, Sendable {
+    public enum Status: Equatable, Sendable {
         case running
         case succeeded
         case failed
 
-        var badgeLabel: String {
+        public var badgeLabel: String {
             switch self {
             case .running:
                 return "Running"
@@ -309,7 +304,7 @@ struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
             }
         }
 
-        var tone: StatusTone {
+        public var tone: StatusTone {
             switch self {
             case .running:
                 return .running
@@ -321,21 +316,21 @@ struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
         }
     }
 
-    let command: String
-    let cwd: String?
-    let summary: String?
-    let logs: String?
-    let status: Status
-    let exitCode: Int?
-    let durationText: String?
-    let actions: [SessionTranscriptCommandExecutionPayload.Action]
-    let supplementalEntries: [SessionTranscriptCommandExecutionPayload.SupplementalEntry]
+    public let command: String
+    public let cwd: String?
+    public let summary: String?
+    public let logs: String?
+    public let status: Status
+    public let exitCode: Int?
+    public let durationText: String?
+    public let actions: [SessionTranscriptCommandExecutionPayload.Action]
+    public let supplementalEntries: [SessionTranscriptCommandExecutionPayload.SupplementalEntry]
 
-    var hasExpandableDetails: Bool {
+    public var hasExpandableDetails: Bool {
         true
     }
 
-    var waitingDescription: String {
+    public var waitingDescription: String {
         if let summary, !summary.isEmpty {
             return summary
         }
@@ -346,15 +341,15 @@ struct SessionTranscriptCommandRunPresentation: Equatable, Sendable {
     }
 }
 
-enum SessionTranscriptRichToolContent: Equatable, Sendable {
+public enum SessionTranscriptRichToolContent: Equatable, Sendable {
     case commandExecution(SessionTranscriptCommandRunPresentation)
     case fileChanges([SessionTranscriptFileChangePresentation])
     case diff([SessionTranscriptDiffFilePresentation])
     case toolDetails(SessionTranscriptGenericToolPresentation)
 }
 
-enum SessionTranscriptRichContentParser {
-    static func markdownBlocks(from raw: String) -> [SessionMarkdownBlock] {
+public enum SessionTranscriptRichContentParser {
+    public static func markdownBlocks(from raw: String) -> [SessionMarkdownBlock] {
         let normalized = raw
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
@@ -457,7 +452,7 @@ enum SessionTranscriptRichContentParser {
         return blocks.isEmpty ? [.paragraph(raw)] : blocks
     }
 
-    static func richToolContent(for entry: SessionTranscriptEntry) -> SessionTranscriptRichToolContent? {
+    public static func richToolContent(for entry: SessionTranscriptEntry) -> SessionTranscriptRichToolContent? {
         if let command = commandPresentation(for: entry) {
             return .commandExecution(command)
         }
@@ -474,7 +469,7 @@ enum SessionTranscriptRichContentParser {
         return nil
     }
 
-    static func userInputPresentation(
+    public static func userInputPresentation(
         for entry: SessionTranscriptEntry
     ) -> SessionTranscriptGenericToolPresentation? {
         guard case .toolDetails(let tool)? = richToolContent(for: entry),
@@ -486,7 +481,7 @@ enum SessionTranscriptRichContentParser {
         return tool
     }
 
-    static func summaryTitle(for entry: SessionTranscriptEntry) -> String? {
+    public static func summaryTitle(for entry: SessionTranscriptEntry) -> String? {
         if let richContent = richToolContent(for: entry) {
             switch richContent {
             case .commandExecution(let command):
@@ -526,7 +521,7 @@ enum SessionTranscriptRichContentParser {
         return commandSummaryText(from: entry.body)
     }
 
-    static func summarySubtitle(for entry: SessionTranscriptEntry) -> String? {
+    public static func summarySubtitle(for entry: SessionTranscriptEntry) -> String? {
         guard let richContent = richToolContent(for: entry) else {
             return nil
         }
@@ -547,11 +542,11 @@ enum SessionTranscriptRichContentParser {
         }
     }
 
-    static func commandPayload(for entry: SessionTranscriptEntry) -> SessionTranscriptCommandExecutionPayload? {
+    public static func commandPayload(for entry: SessionTranscriptEntry) -> SessionTranscriptCommandExecutionPayload? {
         commandPayload(from: entry.body)
     }
 
-    static func encodeCommandPayload(_ payload: SessionTranscriptCommandExecutionPayload) -> String {
+    public static func encodeCommandPayload(_ payload: SessionTranscriptCommandExecutionPayload) -> String {
         var object: [String: Any] = [
             "type": "commandExecutionPresentation"
         ]
@@ -616,11 +611,11 @@ enum SessionTranscriptRichContentParser {
         return string
     }
 
-    static func commandSummaryText(from rawBody: String) -> String? {
+    public static func commandSummaryText(from rawBody: String) -> String? {
         commandSummary(from: rawBody)
     }
 
-    static func attributedInlineMarkdown(_ raw: String) -> AttributedString? {
+    public static func attributedInlineMarkdown(_ raw: String) -> AttributedString? {
         let normalized = normalizeAppMentions(in: normalizeMarkdownLinks(in: raw))
         return try? AttributedString(
             markdown: normalized,
@@ -1404,7 +1399,7 @@ enum SessionTranscriptRichContentParser {
         return result
     }
 
-    static func fileName(from path: String) -> String {
+    public static func fileName(from path: String) -> String {
         let normalized = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return path }
         return URL(fileURLWithPath: normalized).lastPathComponent
@@ -1942,685 +1937,5 @@ enum SessionTranscriptRichContentParser {
                 return lower.prefix(1).uppercased() + lower.dropFirst()
             }
             .joined(separator: " ")
-    }
-}
-
-struct SessionTranscriptMarkdownView: View {
-    let markdown: String
-    let role: SessionTranscriptEntryRole
-    let kind: SessionTranscriptEntryKind
-    let onOpenFilePath: (String) -> Void
-
-    private var blocks: [SessionMarkdownBlock] {
-        SessionTranscriptRichContentParser.markdownBlocks(from: markdown)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .tint(AppPalette.accent)
-        .environment(\.openURL, OpenURLAction { url in
-            if url.isFileURL {
-                let path = url.path.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !path.isEmpty {
-                    onOpenFilePath(path)
-                    return .handled
-                }
-            }
-            return .systemAction
-        })
-    }
-
-    @ViewBuilder
-    private func blockView(_ block: SessionMarkdownBlock) -> some View {
-        switch block {
-        case .heading(let level, let text):
-            inlineText(text)
-                .font(headingFont(level: level))
-                .foregroundStyle(AppPalette.primaryText)
-        case .paragraph(let text):
-            inlineText(text)
-                .font(kind == .thinking ? .callout : .body)
-                .foregroundStyle(kind == .thinking ? AppPalette.secondaryText : AppPalette.primaryText)
-        case .quote(let text):
-            HStack(alignment: .top, spacing: 10) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(role == .user ? AppPalette.terminalLineUser : AppPalette.terminalLineAgent)
-                    .frame(width: 3)
-                inlineText(text)
-                    .font(.callout)
-                    .foregroundStyle(AppPalette.primaryText)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AppPalette.chatToolBackground.opacity(0.8))
-            )
-        case .code(let language, let code):
-            SessionTranscriptMonospaceBlock(
-                text: code,
-                language: language,
-                accentColor: role == .user ? AppPalette.terminalLineUser : AppPalette.terminalLineAgent
-            )
-        case .list(let items):
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(item.marker)
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .frame(width: 22 + CGFloat(item.depth * 14), alignment: .leading)
-                        inlineText(item.text)
-                            .font(.callout)
-                            .foregroundStyle(AppPalette.primaryText)
-                    }
-                }
-            }
-        case .image(let altText, let source):
-            SessionTranscriptInlineImageView(
-                source: source,
-                altText: altText.isEmpty ? "Image" : altText
-            )
-        }
-    }
-
-    private func inlineText(_ raw: String) -> Text {
-        if let attributed = SessionTranscriptRichContentParser.attributedInlineMarkdown(raw) {
-            return Text(attributed)
-        }
-        return Text(raw)
-    }
-
-    private func headingFont(level: Int) -> Font {
-        switch level {
-        case 1:
-            return .title3.weight(.bold)
-        case 2:
-            return .title3.weight(.semibold)
-        case 3:
-            return .headline.weight(.semibold)
-        default:
-            return .subheadline.weight(.semibold)
-        }
-    }
-}
-
-struct SessionTranscriptToolRichContentView: View {
-    let entry: SessionTranscriptEntry
-
-    private var richContent: SessionTranscriptRichToolContent? {
-        SessionTranscriptRichContentParser.richToolContent(for: entry)
-    }
-
-    var body: some View {
-        if let richContent {
-            switch richContent {
-            case .commandExecution(let command):
-                commandExecutionCard(command)
-            case .fileChanges(let changes):
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(changes) { change in
-                        fileChangeCard(change)
-                    }
-                }
-            case .diff(let files):
-                diffFileList(files, compact: false)
-            case .toolDetails(let tool):
-                genericToolCard(tool)
-            }
-        } else {
-            SessionTranscriptMonospaceBlock(
-                text: entry.body,
-                language: nil,
-                accentColor: AppPalette.terminalLineTool
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func genericToolCard(
-        _ tool: SessionTranscriptGenericToolPresentation
-    ) -> some View {
-        let badgeTint = genericToolBadgeTint(tool.badgeTone)
-        SessionSurfaceCard(
-            cornerRadius: 14,
-            fillColor: AppPalette.chatToolBackground.opacity(0.95),
-            strokeColor: badgeTint.opacity(tool.badgeText == nil ? 0.18 : 0.24)
-        ) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: genericToolSymbolName(tool.kind))
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(badgeTint)
-                    Text(tool.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppPalette.primaryText)
-                    if let badgeText = tool.badgeText, !badgeText.isEmpty {
-                        Text(badgeText)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(badgeTint)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(badgeTint.opacity(0.12))
-                            )
-                    }
-                    Spacer(minLength: 0)
-                }
-
-                if let compactSummary = tool.compactSummary, !compactSummary.isEmpty {
-                    Text(compactSummary)
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppPalette.primaryText)
-                        .textSelection(.enabled)
-                }
-
-                if let subtitle = tool.subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(AppPalette.secondaryText)
-                }
-
-                if !tool.planItems.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(tool.planItems) { item in
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: item.status.symbolName)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(planStatusTint(item.status))
-                                    .padding(.top, 2)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.step)
-                                        .font(.footnote.weight(.medium))
-                                        .foregroundStyle(AppPalette.primaryText)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Text(item.status.label)
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(planStatusTint(item.status))
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            Capsule(style: .continuous)
-                                                .fill(planStatusTint(item.status).opacity(0.12))
-                                        )
-                                }
-                                Spacer(minLength: 0)
-                            }
-                        }
-                    }
-                }
-
-                if !tool.fields.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(tool.fields) { field in
-                            HStack(alignment: .top, spacing: 8) {
-                                Text(field.label)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(AppPalette.secondaryText)
-                                    .frame(width: 88, alignment: .leading)
-                                Text(field.value)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(AppPalette.primaryText)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        }
-                    }
-                }
-
-                if let body = tool.body, !body.isEmpty {
-                    SessionTranscriptMonospaceBlock(
-                        text: body,
-                        language: nil,
-                        accentColor: badgeTint
-                    )
-                }
-            }
-            .padding(12)
-        }
-    }
-
-    private func genericToolSymbolName(
-        _ kind: SessionTranscriptGenericToolPresentation.Kind
-    ) -> String {
-        switch kind {
-        case .plan:
-            return "checklist"
-        case .spawnAgent:
-            return "person.badge.plus"
-        case .wait:
-            return "hourglass"
-        case .stdin:
-            return "arrow.up.to.line.compact"
-        case .toolResult:
-            return "checkmark.circle"
-        case .toolCall:
-            return "hammer"
-        }
-    }
-
-    private func genericToolBadgeTint(
-        _ tone: SessionTranscriptGenericToolPresentation.BadgeTone
-    ) -> Color {
-        switch tone {
-        case .accent:
-            return AppPalette.accent
-        case .success:
-            return .green
-        case .warning:
-            return .orange
-        case .neutral:
-            return AppPalette.secondaryText
-        }
-    }
-
-    private func planStatusTint(
-        _ status: SessionTranscriptPlanStepPresentation.Status
-    ) -> Color {
-        switch status {
-        case .pending:
-            return AppPalette.secondaryText
-        case .inProgress:
-            return AppPalette.accent
-        case .completed:
-            return .green
-        }
-    }
-
-    @ViewBuilder
-    private func commandExecutionCard(
-        _ command: SessionTranscriptCommandRunPresentation
-    ) -> some View {
-        SessionSurfaceCard(
-            cornerRadius: 14,
-            fillColor: AppPalette.chatToolBackground.opacity(0.96),
-            strokeColor: commandStatusTint(command.status).opacity(0.24)
-        ) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: "terminal")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(commandStatusTint(command.status))
-                    Text("Ran command")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppPalette.primaryText)
-                    statusBadge(for: command)
-                    Spacer(minLength: 0)
-                    Text(command.command)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(AppPalette.secondaryText)
-                        .lineLimit(1)
-                    if let exitCode = command.exitCode {
-                        Text("Exit code \(exitCode)")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                    }
-                    if let durationText = command.durationText {
-                        Text(durationText)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                    }
-                }
-                SessionTranscriptMonospaceBlock(
-                    text: "$ " + command.command,
-                    language: "shell",
-                    accentColor: commandStatusTint(command.status)
-                )
-
-                if let cwd = command.cwd {
-                    LabeledContent {
-                        Text(cwd)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .textSelection(.enabled)
-                            .lineLimit(2)
-                    } label: {
-                        Text("Shell")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(AppPalette.secondaryText)
-                    }
-                }
-
-                if let summary = command.summary {
-                    Text(summary)
-                        .font(.caption)
-                        .foregroundStyle(AppPalette.secondaryText)
-                } else if command.logs?.isEmpty != false {
-                    Text(command.waitingDescription)
-                        .font(.caption)
-                        .foregroundStyle(AppPalette.secondaryText)
-                }
-
-                if !command.actions.isEmpty {
-                    explorationStack(for: command.actions)
-                }
-
-                if let logs = command.logs, !logs.isEmpty {
-                    ScrollView(.vertical) {
-                        SessionTranscriptMonospaceBlock(
-                            text: logs,
-                            language: nil,
-                            accentColor: commandStatusTint(command.status)
-                        )
-                    }
-                    .frame(maxHeight: 240)
-                }
-
-                if !command.supplementalEntries.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(command.supplementalEntries) { item in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.title)
-                                    .font(.caption2.monospaced().weight(.semibold))
-                                    .foregroundStyle(AppPalette.secondaryText)
-                                if item.kind == .toolResult {
-                                    ScrollView(.vertical) {
-                                        SessionTranscriptMonospaceBlock(
-                                            text: item.body,
-                                            language: nil,
-                                            accentColor: commandStatusTint(command.status)
-                                        )
-                                    }
-                                    .frame(maxHeight: 220)
-                                } else {
-                                    SessionTranscriptMonospaceBlock(
-                                        text: item.body,
-                                        language: nil,
-                                        accentColor: AppPalette.accent
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(12)
-        }
-    }
-
-    @ViewBuilder
-    private func explorationStack(
-        for actions: [SessionTranscriptCommandExecutionPayload.Action]
-    ) -> some View {
-        SessionSurfaceCard(
-            cornerRadius: 12,
-            fillColor: AppPalette.controlSurface.opacity(0.92),
-            strokeColor: AppPalette.chromeSurfaceStroke.opacity(0.24)
-        ) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(AppPalette.secondaryText)
-                        .frame(width: 6, height: 6)
-                    Text("Explored")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppPalette.primaryText)
-                }
-
-                ForEach(Array(actions.enumerated()), id: \.element.id) { index, action in
-                    let branch = index == actions.count - 1 ? "└" : "├"
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(branch)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                        Text(action.kind.label)
-                            .font(.caption.monospaced().weight(.semibold))
-                            .foregroundStyle(AppPalette.accent)
-                        Text(action.detail)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.primaryText)
-                            .lineLimit(1)
-                            .textSelection(.enabled)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.leading, 14)
-                }
-            }
-            .padding(10)
-        }
-    }
-
-    @ViewBuilder
-    private func fileChangeCard(_ change: SessionTranscriptFileChangePresentation) -> some View {
-        SessionSurfaceCard(
-            cornerRadius: 12,
-            fillColor: AppPalette.chatToolBackground.opacity(0.95),
-            strokeColor: change.kind.tint.opacity(0.24)
-        ) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .center, spacing: 8) {
-                    Image(systemName: change.kind.iconSystemName)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(change.kind.tint)
-                    Text(SessionTranscriptRichContentParser.fileName(from: change.path))
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppPalette.primaryText)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text(change.kind.label)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(change.kind.tint)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(change.kind.tint.opacity(0.14))
-                        )
-                }
-
-                Text(change.path)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(AppPalette.secondaryText)
-                    .textSelection(.enabled)
-
-                if let movePath = change.movePath, !movePath.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.turn.down.right")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                        Text(movePath)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(AppPalette.secondaryText)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                if let summary = change.summary, !summary.isEmpty {
-                    Text(summary)
-                        .font(.caption)
-                        .foregroundStyle(AppPalette.secondaryText)
-                }
-
-                if !change.diffFiles.isEmpty {
-                    diffFileList(change.diffFiles, compact: true)
-                }
-            }
-            .padding(12)
-        }
-    }
-
-    @ViewBuilder
-    private func statusBadge(
-        for command: SessionTranscriptCommandRunPresentation
-    ) -> some View {
-        HStack(spacing: 6) {
-            statusDot(for: command.status)
-            Text(command.status.badgeLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(commandStatusTint(command.status))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule(style: .continuous)
-                .fill(commandStatusTint(command.status).opacity(0.12))
-        )
-    }
-
-    private func commandStatusTint(
-        _ status: SessionTranscriptCommandRunPresentation.Status
-    ) -> Color {
-        switch status.tone {
-        case .running:
-            return AppPalette.accent
-        case .success:
-            return .green
-        case .failure:
-            return .red
-        }
-    }
-
-    @ViewBuilder
-    private func statusDot(
-        for status: SessionTranscriptCommandRunPresentation.Status
-    ) -> some View {
-        switch status.tone {
-        case .running:
-            LivePulseDot(size: 8)
-        case .success, .failure:
-            Circle()
-                .fill(commandStatusTint(status))
-                .frame(width: 8, height: 8)
-        }
-    }
-
-    @ViewBuilder
-    private func diffFileList(_ files: [SessionTranscriptDiffFilePresentation], compact: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
-                if !compact || index < 3 {
-                    SessionSurfaceCard(
-                        cornerRadius: 10,
-                        fillColor: Color.clear,
-                        strokeColor: AppPalette.chromeSurfaceStroke
-                    ) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                Text(file.path)
-                                    .font(.caption.monospaced().weight(.semibold))
-                                    .foregroundStyle(AppPalette.primaryText)
-                                    .lineLimit(1)
-                                Spacer(minLength: 0)
-                                Text(file.hunkCount == 1 ? "1 hunk" : "\(file.hunkCount) hunks")
-                                    .font(.caption2)
-                                    .foregroundStyle(AppPalette.secondaryText)
-                            }
-
-                            if compact {
-                                Text(file.preview)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(AppPalette.secondaryText)
-                                    .lineLimit(3)
-                            }
-
-                            transcriptDiffHunks(file.hunks, compact: compact)
-                        }
-                        .padding(10)
-                    }
-                }
-            }
-
-            if compact && files.count > 3 {
-                Text("+ \(files.count - 3) more files")
-                    .font(.caption)
-                    .foregroundStyle(AppPalette.secondaryText)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func transcriptDiffHunks(
-        _ hunks: [SessionTranscriptDiffHunkPresentation],
-        compact: Bool
-    ) -> some View {
-        let visibleHunks = compact ? Array(hunks.prefix(1)) : hunks
-
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(visibleHunks) { hunk in
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(hunk.lines.enumerated()), id: \.element.id) { index, line in
-                        if !compact || index < 12 {
-                            Text(line.text.isEmpty ? " " : line.text)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(diffForeground(for: line.kind))
-                                .lineLimit(nil)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(diffBackground(for: line.kind))
-                        }
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-
-            if compact,
-               let first = visibleHunks.first,
-               first.lines.count > 12 {
-                Text("+ \(first.lines.count - 12) more lines")
-                    .font(.caption2)
-                    .foregroundStyle(AppPalette.secondaryText)
-            }
-        }
-    }
-
-    private func diffForeground(for kind: SessionTranscriptDiffLinePresentation.Kind) -> Color {
-        switch kind {
-        case .added:
-            return .green
-        case .removed:
-            return .red
-        case .context, .meta:
-            return AppPalette.primaryText
-        }
-    }
-
-    private func diffBackground(for kind: SessionTranscriptDiffLinePresentation.Kind) -> Color {
-        switch kind {
-        case .added:
-            return .green.opacity(0.14)
-        case .removed:
-            return .red.opacity(0.14)
-        case .context:
-            return Color.clear
-        case .meta:
-            return AppPalette.chromeSurface.opacity(0.75)
-        }
-    }
-}
-
-struct SessionTranscriptMonospaceBlock: View {
-    let text: String
-    let language: String?
-    let accentColor: Color
-
-    var body: some View {
-        SessionSurfaceCard(
-            cornerRadius: 12,
-            fillColor: AppPalette.chromeSurface.opacity(0.9),
-            strokeColor: AppPalette.chromeSurfaceStroke
-        ) {
-            VStack(alignment: .leading, spacing: 8) {
-                if let language, !language.isEmpty {
-                    Text(language.uppercased())
-                        .font(.caption2.monospaced().weight(.semibold))
-                        .foregroundStyle(accentColor)
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    Text(text.isEmpty ? " " : text)
-                        .font(.footnote.monospaced())
-                        .foregroundStyle(AppPalette.primaryText)
-                        .lineSpacing(1.5)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(12)
-        }
     }
 }
