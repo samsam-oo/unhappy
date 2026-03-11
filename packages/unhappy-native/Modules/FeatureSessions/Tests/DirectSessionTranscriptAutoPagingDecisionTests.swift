@@ -40,4 +40,24 @@ struct DirectSessionTranscriptAutoPagingDecisionTests {
             ) == true
         )
     }
+
+    @Test
+    func doesNotRestoreOlderAnchorForLatestMessageAppend() {
+        #expect(
+            DirectSessionTranscriptAutoPagingDecision.shouldRestoreOlderAnchor(
+                pendingAnchorMessageID: "message-10",
+                currentFirstMessageID: "message-10"
+            ) == false
+        )
+    }
+
+    @Test
+    func restoresOlderAnchorWhenFirstMessageChanged() {
+        #expect(
+            DirectSessionTranscriptAutoPagingDecision.shouldRestoreOlderAnchor(
+                pendingAnchorMessageID: "message-10",
+                currentFirstMessageID: "message-8"
+            ) == true
+        )
+    }
 }
