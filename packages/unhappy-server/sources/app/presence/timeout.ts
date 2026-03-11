@@ -6,7 +6,9 @@ import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, eventRout
 import { findConnectedMachine } from "@/app/api/routes/codexPublicCommands";
 
 export function startTimeout() {
-    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 30;
+    // Favor false-online over false-offline. Rust daemon heartbeats every
+    // 60 seconds, so machine activity needs a very conservative stale window.
+    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 60 * 10;
 
     forever('session-timeout', async () => {
         while (true) {
