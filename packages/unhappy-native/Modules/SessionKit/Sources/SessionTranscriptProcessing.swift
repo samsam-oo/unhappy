@@ -716,8 +716,22 @@ public enum SessionTranscriptProcessing {
             normalizedToolName == "send_input" {
             return false
         }
-        if SessionTranscriptRichContentParser.commandPayload(for: entry) != nil {
-            return false
+        if let payload = SessionTranscriptRichContentParser.commandPayload(for: entry) {
+            let hasStandaloneCommandIdentity =
+                payload.command != nil ||
+                payload.cwd != nil ||
+                payload.summary != nil ||
+                payload.logs != nil ||
+                payload.stdout != nil ||
+                payload.stderr != nil ||
+                payload.sessionID != nil ||
+                payload.exitCode != nil ||
+                payload.durationMs != nil ||
+                !payload.actions.isEmpty ||
+                !payload.supplementalEntries.isEmpty
+            if hasStandaloneCommandIdentity {
+                return false
+            }
         }
         if normalizedToolUseID(entry.toolUseID) != nil {
             return false
@@ -728,7 +742,7 @@ public enum SessionTranscriptProcessing {
         if let tool = SessionTranscriptRichContentParser.genericToolPresentation(for: entry) {
             return tool.kind == .toolResult
         }
-        return entry.toolName == nil
+        return true
     }
 
     private static func replacingEntry(
