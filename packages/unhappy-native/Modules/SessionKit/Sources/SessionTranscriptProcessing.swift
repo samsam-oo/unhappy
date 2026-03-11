@@ -420,6 +420,43 @@ public enum SessionTranscriptProcessing {
                 continue
             }
 
+            if entry.kind == .toolResult,
+               let existingIndex = nearestCommandIndex(in: result),
+               result.indices.contains(existingIndex),
+               let existingPayload = commandPayloadIfApplicable(for: result[existingIndex].entry),
+               shouldAttachOrphanToolResult(entry) {
+                let mergedPayload = SessionTranscriptCommandExecutionPayload(
+                    command: existingPayload.command,
+                    cwd: existingPayload.cwd,
+                    summary: existingPayload.summary,
+                    logs: existingPayload.logs,
+                    stdout: existingPayload.stdout,
+                    stderr: existingPayload.stderr,
+                    sessionID: existingPayload.sessionID,
+                    success: existingPayload.success,
+                    exitCode: existingPayload.exitCode,
+                    status: existingPayload.status,
+                    durationMs: existingPayload.durationMs,
+                    actions: existingPayload.actions,
+                    supplementalEntries: appendSupplementalEntry(
+                        existingPayload.supplementalEntries,
+                        kind: .toolResult,
+                        title: entry.title ?? "Tool result",
+                        body: entry.body,
+                        entryID: entry.id
+                    )
+                )
+                result[existingIndex] = replacingEntry(
+                    result[existingIndex],
+                    makeCommandEntry(
+                        from: result[existingIndex].entry,
+                        kind: result[existingIndex].entry.kind,
+                        payload: mergedPayload
+                    )
+                )
+                continue
+            }
+
             result.append(flattenedEntry)
         }
 
@@ -654,6 +691,44 @@ public enum SessionTranscriptProcessing {
         for (key, value) in attachedToolIndexByToolUseID where value == index {
             attachedToolIndexByToolUseID.removeValue(forKey: key)
         }
+    }
+
+    private static func nearestCommandIndex(
+        in result: [FlattenedTranscriptEntry]
+    ) -> Int? {
+        for index in result.indices.reversed() {
+            if commandPayloadIfApplicable(for: result[index].entry) != nil {
+                return index
+            }
+        }
+        return nil
+    }
+
+    private static func shouldAttachOrphanToolResult(_ entry: SessionTranscriptEntry) -> Bool {
+        guard entry.kind == .toolResult else { return false }
+        let normalizedToolName = entry.toolName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if normalizedToolName == "update_plan" ||
+            normalizedToolName == "spawn_agent" ||
+            normalizedToolName == "wait" ||
+            normalizedToolName == "write_stdin" ||
+            normalizedToolName == "send_input" {
+            return false
+        }
+        if SessionTranscriptRichContentParser.commandPayload(for: entry) != nil {
+            return false
+        }
+        if normalizedToolUseID(entry.toolUseID) != nil {
+            return false
+        }
+        if sessionID(for: entry) != nil {
+            return false
+        }
+        if let tool = SessionTranscriptRichContentParser.genericToolPresentation(for: entry) {
+            return tool.kind == .toolResult
+        }
+        return entry.toolName == nil
     }
 
     private static func replacingEntry(
