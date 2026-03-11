@@ -99,6 +99,26 @@ struct MockSessionsPageLoader: SessionsPageLoading {
     }
 }
 
+actor DelayedSessionsPageLoader: SessionsPageLoading {
+    let delay: Duration
+    let result: Result<SessionsPageResult, MockSessionsPageLoaderError>
+
+    init(delay: Duration, result: Result<SessionsPageResult, MockSessionsPageLoaderError>) {
+        self.delay = delay
+        self.result = result
+    }
+
+    func loadPage(serverURLString: String, token: String, cursor: String?, limit: Int) async throws -> SessionsPageResult {
+        try await Task.sleep(for: delay)
+        switch result {
+        case .success(let page):
+            return page
+        case .failure(let error):
+            throw error
+        }
+    }
+}
+
 actor SequenceSessionsPageLoader: SessionsPageLoading {
     var pages: [SessionsPageResult]
 
@@ -260,6 +280,42 @@ actor RecordingProjectSessionsLoader: SessionProjectSessionsLoadingAction {
 
     func callCount() -> Int {
         calls
+    }
+
+    func requestedProjectsSnapshot() -> [SessionMachineProject] {
+        requestedProjects
+    }
+}
+
+actor ConcurrentProjectSessionsLoader: SessionProjectSessionsLoadingAction {
+    private var inFlight = 0
+    private var maxInFlight = 0
+    private var requestedProjects: [SessionMachineProject] = []
+    let delay: Duration
+    let rows: [SessionLinkedUpstreamSession]
+
+    init(delay: Duration, rows: [SessionLinkedUpstreamSession]) {
+        self.delay = delay
+        self.rows = rows
+    }
+
+    func loadProjectSessions(
+        serverURLString: String,
+        token: String,
+        project: SessionMachineProject
+    ) async throws -> [SessionLinkedUpstreamSession] {
+        inFlight += 1
+        maxInFlight = max(maxInFlight, inFlight)
+        requestedProjects.append(project)
+        defer {
+            inFlight -= 1
+        }
+        try await Task.sleep(for: delay)
+        return rows
+    }
+
+    func maxInFlightCount() -> Int {
+        maxInFlight
     }
 
     func requestedProjectsSnapshot() -> [SessionMachineProject] {
@@ -437,6 +493,32 @@ actor RecordingProjectsLoader: SessionProjectsLoadingAction {
 
     func loadProjects(serverURLString: String, token: String) async throws -> [SessionMachineProject] {
         calls += 1
+        switch result {
+        case .success(let projects):
+            return projects
+        case .failure(let error):
+            throw error
+        }
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+}
+
+actor DelayedProjectsLoader: SessionProjectsLoadingAction {
+    private var calls = 0
+    let delay: Duration
+    let result: Result<[SessionMachineProject], MockProjectsLoaderError>
+
+    init(delay: Duration, result: Result<[SessionMachineProject], MockProjectsLoaderError>) {
+        self.delay = delay
+        self.result = result
+    }
+
+    func loadProjects(serverURLString: String, token: String) async throws -> [SessionMachineProject] {
+        calls += 1
+        try await Task.sleep(for: delay)
         switch result {
         case .success(let projects):
             return projects

@@ -233,6 +233,11 @@ public final class SessionsViewModel: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
+        scheduleSupportingDataRefresh(
+            serverURLString: serverURLString,
+            token: token,
+            force: true
+        )
 
         do {
             let firstPage = try await pageLoader.loadPage(
@@ -248,19 +253,9 @@ public final class SessionsViewModel: ObservableObject {
             errorMessage = nil
             reconnectingStatusText = nil
             isLoading = false
-            scheduleSupportingDataRefresh(
-                serverURLString: serverURLString,
-                token: token,
-                force: true
-            )
         } catch {
             applyPrimaryLoadError(error)
             isLoading = false
-            scheduleSupportingDataRefresh(
-                serverURLString: serverURLString,
-                token: token,
-                force: true
-            )
         }
     }
 
@@ -445,21 +440,83 @@ public final class SessionsViewModel: ObservableObject {
             }
             defer { endUpstreamLoad(for: acceptedProjects) }
 
-            var firstErrorMessage: String?
-            for project in acceptedProjects {
-                await refreshProjectScopedSessions(
-                    project: project,
-                    loader: projectSessionsLoader,
-                    serverURLString: serverURLString,
-                    token: token
-                )
-                if firstErrorMessage == nil,
-                   let error = projectSessionsError(
+            struct ProjectSessionBatch: Sendable {
+                let scopeID: String
+                let project: SessionMachineProject
+                let rows: [SessionLinkedUpstreamSession]
+                let errorMessage: String?
+            }
+
+            let scopedProjects = acceptedProjects.compactMap { project -> (String, SessionMachineProject)? in
+                guard let scopeID = canonicalProjectID(
                     machineID: project.machineID,
                     projectPath: project.summary.path
-                   ),
-                   !error.isEmpty {
-                    firstErrorMessage = error
+                ) else {
+                    return nil
+                }
+                return (scopeID, project)
+            }
+            let activeScopedProjects = scopedProjects.filter { scopeID, _ in
+                activeProjectSessionScopeIDs.insert(scopeID).inserted
+            }
+            defer {
+                for (scopeID, _) in activeScopedProjects {
+                    activeProjectSessionScopeIDs.remove(scopeID)
+                    resolvedProjectSessionScopeIDs.insert(scopeID)
+                }
+            }
+
+            var firstErrorMessage: String?
+            await withTaskGroup(of: ProjectSessionBatch.self) { group in
+                for (scopeID, project) in activeScopedProjects {
+                    group.addTask {
+                        do {
+                            let rows = try await projectSessionsLoader.loadProjectSessions(
+                                serverURLString: serverURLString,
+                                token: token,
+                                project: project
+                            )
+                            return ProjectSessionBatch(
+                                scopeID: scopeID,
+                                project: project,
+                                rows: rows,
+                                errorMessage: nil
+                            )
+                        } catch {
+                            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                            let normalizedMessage = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                            return ProjectSessionBatch(
+                                scopeID: scopeID,
+                                project: project,
+                                rows: [],
+                                errorMessage: normalizedMessage.isEmpty ? nil : normalizedMessage
+                            )
+                        }
+                    }
+                }
+
+                for await batch in group {
+                    if batch.errorMessage == nil {
+                        if projectScopedSessions[batch.scopeID] != batch.rows {
+                            projectScopedSessions[batch.scopeID] = batch.rows
+                        }
+                        projectScopedSessionErrors[batch.scopeID] = nil
+                        setUpstreamSessionsIfChanged(
+                            mergeProjectScopedUpstreamRows(
+                                existing: upstreamSessions,
+                                refreshed: batch.rows,
+                                machineID: batch.project.machineID,
+                                projectPath: batch.project.summary.path
+                            )
+                        )
+                    } else {
+                        projectScopedSessionErrors[batch.scopeID] = batch.errorMessage
+                    }
+                    if firstErrorMessage == nil,
+                       let errorMessage = batch.errorMessage,
+                       !errorMessage.isEmpty {
+                        firstErrorMessage = errorMessage
+                    }
                 }
             }
             upstreamSessionsErrorMessage = firstErrorMessage
