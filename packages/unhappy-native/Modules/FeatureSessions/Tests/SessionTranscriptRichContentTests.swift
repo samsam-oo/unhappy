@@ -317,6 +317,48 @@ struct SessionTranscriptRichContentTests {
     }
 
     @Test
+    func genericToolParserBuildsPlanCard() {
+        let entry = SessionTranscriptEntry(
+            id: "plan-update",
+            role: .agent,
+            kind: .toolResult,
+            title: "update_plan",
+            body: """
+            {
+              "explanation": "Stabilize the reconnect flow before touching UI polish.",
+              "plan": [
+                { "step": "Inspect reconnect paths", "status": "completed" },
+                { "step": "Patch retry logic", "status": "in_progress" },
+                { "step": "Verify simulator build", "status": "pending" }
+              ]
+            }
+            """,
+            toolUseID: "tool-plan",
+            sourceType: "tool_result",
+            toolName: "update_plan",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .toolDetails(let tool)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected plan card")
+            return
+        }
+
+        #expect(tool.kind == .plan)
+        #expect(tool.title == "Plan")
+        #expect(tool.compactSummary == "3 steps")
+        #expect(tool.badgeText == "In Progress")
+        #expect(tool.subtitle == "Stabilize the reconnect flow before touching UI polish.")
+        #expect(tool.planItems.count == 3)
+        #expect(tool.planItems[0].status == .completed)
+        #expect(tool.planItems[1].status == .inProgress)
+        #expect(tool.planItems[2].status == .pending)
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: entry) == "Plan · 3 steps")
+    }
+
+    @Test
     func genericToolParserTreatsSendInputAsUserInput() {
         let entry = SessionTranscriptEntry(
             id: "steer-agent",
