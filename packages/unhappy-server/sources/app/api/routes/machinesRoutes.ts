@@ -15,6 +15,7 @@ import {
     invokePublicCommand
 } from "./codexPublicCommands";
 import { Prisma } from "@prisma/client";
+import { deriveMachineActive } from "./machineLiveness";
 
 export function machinesRoutes(app: Fastify) {
     const sessionCatalogScopeSchema = z.object({
@@ -302,10 +303,18 @@ export function machinesRoutes(app: Fastify) {
         createdAt: Date;
         updatedAt: Date;
     }>(machine: T): Promise<T> {
-        // Read paths should not mutate machine liveness. Background timeout
-        // handling owns stale/offline transitions so a status refresh cannot
-        // flip a healthy daemon offline because of transient jitter.
-        return machine;
+        const effectiveActive = deriveMachineActive({
+            active: machine.active,
+            lastActiveAtMs: machine.lastActiveAt.getTime(),
+            connected: Boolean(findConnectedMachine(machine.accountId, machine.id)),
+        });
+        if (effectiveActive == machine.active) {
+            return machine;
+        }
+        return {
+            ...machine,
+            active: effectiveActive,
+        };
     }
 
     async function invokeMachineCommand(
