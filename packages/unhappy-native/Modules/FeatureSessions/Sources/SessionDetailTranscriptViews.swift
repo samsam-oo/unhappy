@@ -563,6 +563,8 @@ struct SessionTranscriptLogLine: View {
                 return "arrow.left.arrow.right"
             case .toolDetails(let tool):
                 switch tool.kind {
+                case .plan:
+                    return "checklist"
                 case .spawnAgent:
                     return "person.badge.plus"
                 case .wait:

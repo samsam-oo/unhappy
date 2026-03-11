@@ -54,6 +54,7 @@ public actor MachineDataPlaneWebSocketClient {
     }
 
     private struct QueuedRequest {
+        let id: String
         let operation: MachineDataPlaneOperation
         let bodyObject: Any
         let priority: RequestPriority
@@ -75,6 +76,7 @@ public actor MachineDataPlaneWebSocketClient {
     }
 
     private let requestTimeoutInterval: TimeInterval
+    private let responseTimeoutInterval: TimeInterval
     private let backgroundReconnectBackoffInterval: TimeInterval
     private let reconnectGraceInterval: TimeInterval
     private var connectionStates: [ConnectionKey: ConnectionState] = [:]
@@ -82,10 +84,12 @@ public actor MachineDataPlaneWebSocketClient {
 
     public init(
         requestTimeoutInterval: TimeInterval = 8,
+        responseTimeoutInterval: TimeInterval = 30,
         backgroundReconnectBackoffInterval: TimeInterval = 10,
         reconnectGraceInterval: TimeInterval = 4
     ) {
         self.requestTimeoutInterval = requestTimeoutInterval
+        self.responseTimeoutInterval = responseTimeoutInterval
         self.backgroundReconnectBackoffInterval = backgroundReconnectBackoffInterval
         self.reconnectGraceInterval = reconnectGraceInterval
     }
@@ -110,19 +114,27 @@ public actor MachineDataPlaneWebSocketClient {
             machineID: machineID,
             machineDataKeyBase64URL: Base64URLCodec.encode(machineDataKey)
         )
+        let requestID = UUID().uuidString
 
-        return try await withCheckedThrowingContinuation { continuation in
-            enqueueRequest(
-                QueuedRequest(
-                    operation: operation,
-                    bodyObject: bodyObject,
-                    priority: RequestPriority.forOperation(operation),
-                    continuation: continuation
-                ),
-                machineDataKey: machineDataKey,
-                for: key,
-                serverURL: serverURL
-            )
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                enqueueRequest(
+                    QueuedRequest(
+                        id: requestID,
+                        operation: operation,
+                        bodyObject: bodyObject,
+                        priority: RequestPriority.forOperation(operation),
+                        continuation: continuation
+                    ),
+                    machineDataKey: machineDataKey,
+                    for: key,
+                    serverURL: serverURL
+                )
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.cancelQueuedRequest(id: requestID, for: key)
+            }
         }
     }
 
@@ -259,6 +271,17 @@ public actor MachineDataPlaneWebSocketClient {
         }
     }
 
+    private func cancelQueuedRequest(id: String, for key: ConnectionKey) {
+        guard var state = connectionStates[key] else { return }
+        guard let index = state.queuedRequests.firstIndex(where: { $0.id == id }) else { return }
+        let request = state.queuedRequests.remove(at: index)
+        if state.queuedRequests.isEmpty, state.liveConnection == nil, inFlightConnections[key] == nil {
+            state.isProcessing = false
+        }
+        connectionStates[key] = state
+        request.continuation.resume(throwing: CancellationError())
+    }
+
     private func performRequest(
         _ request: QueuedRequest,
         for key: ConnectionKey,
@@ -282,7 +305,11 @@ public actor MachineDataPlaneWebSocketClient {
                 return try await performRequest(
                     request,
                     using: liveConnection,
-                    sentRequest: &sentRequest
+                    sentRequest: &sentRequest,
+                    responseTimeoutInterval: Self.responseTimeoutInterval(
+                        for: request.operation,
+                        baseResponseTimeoutInterval: responseTimeoutInterval
+                    )
                 )
             } catch {
                 let mappedError = (error as? MachinesAPIError) ?? mapTransportError(error)
@@ -387,7 +414,8 @@ public actor MachineDataPlaneWebSocketClient {
     private func performRequest(
         _ request: QueuedRequest,
         using liveConnection: LiveConnection,
-        sentRequest: inout Bool
+        sentRequest: inout Bool,
+        responseTimeoutInterval: TimeInterval
     ) async throws -> Data {
         let streamID = UUID().uuidString
         let requestHeader = MachineDataPlaneRequestFrame(
@@ -415,7 +443,10 @@ public actor MachineDataPlaneWebSocketClient {
         sentRequest = true
 
         while true {
-            let text = try await liveConnection.transport.receiveText()
+            let text = try await receiveResponseText(
+                using: liveConnection.transport,
+                timeoutInterval: responseTimeoutInterval
+            )
 
             if let errorFrame = try? JSONDecoder().decode(
                 MachineDataPlaneErrorFrame.self,
@@ -437,6 +468,37 @@ public actor MachineDataPlaneWebSocketClient {
                     sessionKey: liveConnection.sessionKey,
                     authenticatedData: completeAAD(for: completeFrame)
                 )
+            }
+        }
+    }
+
+    private func receiveResponseText(
+        using transport: any MachineDataPlaneTextTransport,
+        timeoutInterval: TimeInterval
+    ) async throws -> String {
+        enum ResponseWaitResult: Sendable {
+            case text(String)
+            case timedOut
+        }
+
+        return try await withThrowingTaskGroup(of: ResponseWaitResult.self) { group in
+            group.addTask {
+                .text(try await transport.receiveText())
+            }
+            group.addTask {
+                let nanoseconds = UInt64(max(timeoutInterval, 0.001) * 1_000_000_000)
+                try await Task.sleep(nanoseconds: nanoseconds)
+                return .timedOut
+            }
+
+            let result = try await group.next() ?? .timedOut
+            group.cancelAll()
+            switch result {
+            case .text(let text):
+                return text
+            case .timedOut:
+                await transport.close()
+                throw MachinesAPIError.rpcTimedOut
             }
         }
     }
@@ -569,6 +631,20 @@ public actor MachineDataPlaneWebSocketClient {
             return baseGraceInterval
         case .background:
             return 0
+        }
+    }
+
+    nonisolated static func responseTimeoutInterval(
+        for operation: MachineDataPlaneOperation,
+        baseResponseTimeoutInterval: TimeInterval
+    ) -> TimeInterval {
+        switch RequestPriority.forOperation(operation) {
+        case .interactive:
+            return max(baseResponseTimeoutInterval, 45)
+        case .normal:
+            return max(baseResponseTimeoutInterval, 20)
+        case .background:
+            return max(min(baseResponseTimeoutInterval, 10), 5)
         }
     }
 

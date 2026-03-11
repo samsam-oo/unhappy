@@ -69,4 +69,32 @@ struct MachineDataPlaneWebSocketClientTests {
         #expect(MachineDataPlaneWebSocketClient.reconnectBackoffDelay(attempt: 3) == 1)
         #expect(MachineDataPlaneWebSocketClient.reconnectBackoffDelay(attempt: 9) == 1.5)
     }
+
+    @Test
+    func responseTimeoutIntervalPrefersLongerWindowForInteractiveOperations() {
+        #expect(
+            MachineDataPlaneWebSocketClient.responseTimeoutInterval(
+                for: .codexSendMessage,
+                baseResponseTimeoutInterval: 12
+            ) == 45
+        )
+        #expect(
+            MachineDataPlaneWebSocketClient.responseTimeoutInterval(
+                for: .codexListMessages,
+                baseResponseTimeoutInterval: 12
+            ) == 20
+        )
+        #expect(
+            MachineDataPlaneWebSocketClient.responseTimeoutInterval(
+                for: .projectList,
+                baseResponseTimeoutInterval: 12
+            ) == 20
+        )
+        #expect(
+            MachineDataPlaneWebSocketClient.responseTimeoutInterval(
+                for: .diffDifftastic,
+                baseResponseTimeoutInterval: 4
+            ) == 20
+        )
+    }
 }
