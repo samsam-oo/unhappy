@@ -22,6 +22,8 @@ pub struct PersistedDaemonStateSnapshot {
     pub start_time: String,
     pub started_with_cli_version: String,
     pub status: String,
+    #[serde(default)]
+    pub prevent_idle_sleep: bool,
     pub started_at: u64,
     pub updated_at: u64,
 }
@@ -32,6 +34,14 @@ pub struct LauncherStatus {
     pub running: bool,
     pub stale: bool,
     pub state: Option<PersistedDaemonStateSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LauncherPreventSleepStatus {
+    pub enabled: bool,
+    pub running: bool,
+    pub stale: bool,
 }
 
 pub async fn start_detached_daemon(config: &Config) -> Result<()> {
@@ -125,6 +135,29 @@ pub async fn provider_session_started(
     let request = serde_json::from_str::<Value>(request_json)
         .context("failed to decode provider-session-started request JSON")?;
     control_post(unhappy_home_dir, "/provider-session-started", request).await
+}
+
+pub async fn set_prevent_sleep(unhappy_home_dir: &Path, enabled: bool) -> Result<Value> {
+    control_post(
+        unhappy_home_dir,
+        "/prevent-sleep",
+        json!({ "enabled": enabled }),
+    )
+    .await
+}
+
+pub fn prevent_sleep_status(unhappy_home_dir: &Path) -> Result<LauncherPreventSleepStatus> {
+    let status = read_launcher_status(unhappy_home_dir)?;
+    let enabled = status
+        .state
+        .as_ref()
+        .map(|state| state.prevent_idle_sleep)
+        .unwrap_or(false);
+    Ok(LauncherPreventSleepStatus {
+        enabled,
+        running: status.running,
+        stale: status.stale,
+    })
 }
 
 pub fn print_status(unhappy_home_dir: &Path, as_json: bool) -> Result<()> {
@@ -382,6 +415,7 @@ mod tests {
                 start_time: "2026-03-10T00:00:00Z".to_string(),
                 started_with_cli_version: "0.14.15".to_string(),
                 status: "running".to_string(),
+                prevent_idle_sleep: false,
                 started_at: 1,
                 updated_at: 2,
             })

@@ -38,6 +38,7 @@ struct UnhappyNativeApp: App {
         let machinesLoader = MachinesLoadUseCase(service: machinesService)
         let machineSpawner = MachineSpawnUseCase(service: machinesService)
         let machineUpdater = MachineDaemonUpdateUseCase(service: machinesService)
+        let machinePreventSleepSetter = MachineDaemonPreventSleepUseCase(service: machinesService)
         let machineStopper = MachineDaemonStopUseCase(service: machinesService)
         let machineDeleter = MachineDeleteUseCase(service: machinesService)
         let newSessionMachinesLoader = NewSessionMachinesLoadUseCase(service: machinesService)
@@ -164,6 +165,7 @@ struct UnhappyNativeApp: App {
                 loader: machinesLoader,
                 spawner: machineSpawner,
                 updater: machineUpdater,
+                preventSleepSetter: machinePreventSleepSetter,
                 stopper: machineStopper,
                 deleter: machineDeleter
             )

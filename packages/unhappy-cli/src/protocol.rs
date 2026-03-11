@@ -35,6 +35,8 @@ pub enum MachineDataPlaneOperation {
     MachinePing,
     #[serde(rename = "machine.listModels")]
     MachineListModels,
+    #[serde(rename = "daemon.preventSleep")]
+    DaemonPreventSleep,
     #[serde(rename = "daemon.stop")]
     DaemonStop,
     #[serde(rename = "daemon.update")]
