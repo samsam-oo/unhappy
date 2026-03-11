@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import CoreKit
+import SecurityKit
 
 public enum NewSessionMachinePresentation {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
@@ -247,18 +248,16 @@ public enum NewSessionMachinePresentation {
         return Data(decrypted)
     }
 
-    private static func deriveContentBoxSecretKey(fromAccountSecret accountSecret: String) -> Data? {
-        let normalized = accountSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let decoded = Data(base64Encoded: normalized) ?? decodeBase64(normalized) else {
-            return nil
-        }
-        return decoded.count == x25519PublicKeyLength ? decoded : nil
+    private static func deriveContentBoxSecretKey(fromAccountSecret accountSecret: Data) -> Data? {
+        guard accountSecret.count == x25519PublicKeyLength else { return nil }
+        return accountSecret
     }
 
-    private static func loadAccountSecret() -> String? {
+    private static func loadAccountSecret() -> Data? {
         let raw = UserDefaults.standard.string(forKey: accountSecretDefaultsKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return raw?.isEmpty == false ? raw : nil
+        guard let raw, !raw.isEmpty else { return nil }
+        return AccountSecretCodec.decode(raw)
     }
 
     private static func decodeBase64(_ raw: String) -> Data? {

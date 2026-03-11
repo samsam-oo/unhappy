@@ -121,6 +121,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "SecurityKit"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
@@ -216,6 +217,7 @@ let project = Project(
             ],
             dependencies: [
                 .target(name: "CoreKit"),
+                .target(name: "SecurityKit"),
             ],
             metadata: .metadata(tags: [
                 "tag:team:mobile",
