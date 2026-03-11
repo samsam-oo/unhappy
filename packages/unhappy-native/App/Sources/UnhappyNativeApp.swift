@@ -6,6 +6,7 @@ import FeatureMachine
 import FeatureNewSession
 import FeatureSessions
 import FeatureSettings
+import SessionKit
 
 @main
 struct UnhappyNativeApp: App {
