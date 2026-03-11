@@ -3,6 +3,24 @@ import UIKit
 import CoreKit
 import UIFoundation
 
+let directSessionTranscriptScrollCoordinateSpace = "direct-session-transcript-scroll"
+
+struct DirectSessionTranscriptViewportHeightPreferenceKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct DirectSessionTranscriptBottomAnchorMinYPreferenceKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: CGFloat = .greatestFiniteMagnitude
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 enum SessionTranscriptLogLineDisplayMode: Equatable {
     case systemEvent
     case collapsibleReference
@@ -90,6 +108,14 @@ struct MessagesSectionRows: View {
         Color.clear
             .frame(height: 1)
             .sessionListRow(insets: SessionListRowInsets.anchor)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: DirectSessionTranscriptBottomAnchorMinYPreferenceKey.self,
+                        value: proxy.frame(in: .named(directSessionTranscriptScrollCoordinateSpace)).minY
+                    )
+                }
+            )
             .id(transcriptBottomAnchorID)
     }
 }

@@ -46,11 +46,13 @@ public struct DirectSessionDetailView: View {
     @State private var selectedPermissionModeOverride: APISessionMessagePermissionMode?
     @State private var showMissingDefaultsAlert = false
     @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
-    @State private var shouldFollowTranscript = true
+    @State private var isNearTranscriptBottom = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
     @State private var pendingOlderMessagesAnchor: PendingOlderMessagesAnchor?
     @State private var isTopPagingRowVisible = false
     @State private var lastAutoLoadedOlderMessagesTriggerID: String?
+    @State private var transcriptViewportHeight: CGFloat = 0
+    @State private var transcriptBottomAnchorMinY: CGFloat = .greatestFiniteMagnitude
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
@@ -92,9 +94,7 @@ public struct DirectSessionDetailView: View {
                         visibleTranscriptPresentations: transcriptPresentations,
                         liveStatusText: nil,
                         transcriptBottomAnchorID: transcriptBottomAnchorID,
-                        onReferenceToggle: {
-                            shouldFollowTranscript = false
-                        },
+                        onReferenceToggle: {},
                         onFileLinkTap: { path in
                             viewModel.prepareFilePath(path)
                             presentedQuickSurface = QuickSurface(kind: .files, filterPath: path)
@@ -122,14 +122,23 @@ public struct DirectSessionDetailView: View {
                     .padding(.horizontal, transcriptHorizontalPadding)
                 }
             }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8).onChanged { value in
-                    guard abs(value.translation.height) > abs(value.translation.width) else { return }
-                    if value.translation.height > 0 {
-                        shouldFollowTranscript = false
-                    }
+            .coordinateSpace(name: directSessionTranscriptScrollCoordinateSpace)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: DirectSessionTranscriptViewportHeightPreferenceKey.self,
+                        value: proxy.size.height
+                    )
                 }
             )
+            .onPreferenceChange(DirectSessionTranscriptViewportHeightPreferenceKey.self) { height in
+                transcriptViewportHeight = height
+                refreshBottomFollowState()
+            }
+            .onPreferenceChange(DirectSessionTranscriptBottomAnchorMinYPreferenceKey.self) { minY in
+                transcriptBottomAnchorMinY = minY
+                refreshBottomFollowState()
+            }
             .onChange(of: transcriptPresentations.map(\.messageID)) { _, _ in
                 if let pendingOlderMessagesAnchor {
                     self.pendingOlderMessagesAnchor = nil
@@ -142,7 +151,7 @@ public struct DirectSessionDetailView: View {
                     }
                     return
                 }
-                guard shouldFollowTranscript else { return }
+                guard isNearTranscriptBottom else { return }
                 scrollTranscriptToBottom(using: proxy, animated: true)
             }
             .onChange(of: viewModel.olderMessagesLoadTriggerID) { _, _ in
@@ -150,7 +159,7 @@ public struct DirectSessionDetailView: View {
             }
             .onChange(of: viewModel.isLoading) { wasLoading, isLoading in
                 guard wasLoading && !isLoading else { return }
-                guard shouldFollowTranscript else { return }
+                guard isNearTranscriptBottom else { return }
                 scrollTranscriptToBottom(using: proxy, animated: false)
             }
             .onAppear {
@@ -872,7 +881,7 @@ public struct DirectSessionDetailView: View {
             currentTriggerID: triggerID,
             lastTriggeredID: lastAutoLoadedOlderMessagesTriggerID,
             isTopPagingRowVisible: isTopPagingRowVisible,
-            shouldFollowTranscript: shouldFollowTranscript,
+            isNearTranscriptBottom: isNearTranscriptBottom,
             isLoadingOlderMessages: viewModel.isLoadingOlderMessages
         ) else {
             return
@@ -888,6 +897,15 @@ public struct DirectSessionDetailView: View {
                 token: token
             )
         }
+    }
+
+    private func refreshBottomFollowState() {
+        guard transcriptViewportHeight > 0 else {
+            isNearTranscriptBottom = true
+            return
+        }
+        let tolerance: CGFloat = 80
+        isNearTranscriptBottom = transcriptBottomAnchorMinY <= transcriptViewportHeight + tolerance
     }
 }
 
