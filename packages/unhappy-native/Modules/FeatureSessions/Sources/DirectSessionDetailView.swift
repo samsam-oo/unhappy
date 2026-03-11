@@ -92,7 +92,7 @@ public struct DirectSessionDetailView: View {
                         isLoading: viewModel.isLoading,
                         errorMessage: viewModel.errorMessage,
                         visibleTranscriptPresentations: transcriptPresentations,
-                        liveStatusText: nil,
+                        liveStatusText: viewModel.liveStatusText,
                         transcriptBottomAnchorID: transcriptBottomAnchorID,
                         onReferenceToggle: {},
                         onFileLinkTap: { path in

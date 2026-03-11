@@ -11,6 +11,7 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var sessions: [APISession] = []
     @Published public private(set) var isLoading = false
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var reconnectingStatusText: String?
     @Published public private(set) var hasMoreSessions = false
     @Published public private(set) var isLoadingMoreSessions = false
     @Published public private(set) var projects: [SessionMachineProject] = []
@@ -245,6 +246,7 @@ public final class SessionsViewModel: ObservableObject {
             hasMoreSessions = firstPage.hasNext
             lastPrimarySessionLoadAt = Date().timeIntervalSince1970
             errorMessage = nil
+            reconnectingStatusText = nil
             isLoading = false
             scheduleSupportingDataRefresh(
                 serverURLString: serverURLString,
@@ -252,7 +254,7 @@ public final class SessionsViewModel: ObservableObject {
                 force: true
             )
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            applyPrimaryLoadError(error)
             isLoading = false
             scheduleSupportingDataRefresh(
                 serverURLString: serverURLString,
@@ -290,12 +292,13 @@ public final class SessionsViewModel: ObservableObject {
                     force: false
                 )
                 errorMessage = nil
+                reconnectingStatusText = nil
                 isLoading = false
             }
         } catch is CancellationError {
             // Stream cancellation is expected when the view task is torn down.
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            applyPrimaryLoadError(error)
             isLoading = false
         }
     }
@@ -330,13 +333,14 @@ public final class SessionsViewModel: ObservableObject {
             self.nextCursor = page.nextCursor
             hasMoreSessions = page.hasNext
             errorMessage = nil
+            reconnectingStatusText = nil
             await refreshSupportingProjectContent(
                 serverURLString: serverURLString,
                 token: token,
                 force: false
             )
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            applyPrimaryLoadError(error)
         }
     }
 
@@ -616,6 +620,16 @@ public final class SessionsViewModel: ObservableObject {
         }
         lastSupportingDataFingerprint = fingerprint
         lastSupportingDataSyncAt = Date().timeIntervalSince1970
+    }
+
+    private func applyPrimaryLoadError(_ error: Error) {
+        if let reconnectingStatusText = MachinesAPIError.reconnectingStatusText(from: error) {
+            self.reconnectingStatusText = reconnectingStatusText
+            errorMessage = nil
+            return
+        }
+        reconnectingStatusText = nil
+        errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     public func openProject(

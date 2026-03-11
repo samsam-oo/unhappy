@@ -583,6 +583,28 @@ public enum MachinesAPIError: LocalizedError, Equatable {
             return "Request failed with status \(code)"
         }
     }
+
+    public var reconnectingStatusText: String? {
+        switch self {
+        case .rpcTimedOut:
+            return "Reconnecting to machine…"
+        case .rpcCallFailed(let message):
+            let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "machine data-plane socket is not connected" ||
+                normalized == "peer data-plane connection is not ready" ||
+                normalized == "peer data-plane connection closed before the stream completed" ||
+                normalized == "peer data-plane connection was superseded by a newer connection" {
+                return "Reconnecting to machine…"
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    public static func reconnectingStatusText(from error: Error) -> String? {
+        (error as? MachinesAPIError)?.reconnectingStatusText
+    }
 }
 
 public struct APIMachineDirectoryEntry: Decodable, Equatable, Identifiable, Sendable {
