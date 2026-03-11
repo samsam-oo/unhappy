@@ -128,9 +128,6 @@ impl SessionCryptoContext {
                 public_key: URL_SAFE_NO_PAD.encode(self.local_public.as_bytes()),
                 nonce: URL_SAFE_NO_PAD.encode(self.local_nonce),
             },
-            supports_chunk_ack: true,
-            supports_resume: true,
-            last_acked_stream_id: None,
         }
     }
 
@@ -1060,10 +1057,6 @@ fn request_aad(frame: &MachineDataPlaneRequestFrame) -> String {
                 .unwrap_or_else(|_| "\"\"".to_string())
                 .trim_matches('"')
                 .to_string()
-        ),
-        format!(
-            "expectsChunks={}",
-            if frame.expects_chunks { "1" } else { "0" }
         ),
     ]
     .join("\n")

@@ -381,20 +381,6 @@ export function startMachineDataPlaneSocket(app: Fastify) {
             sendJSONFrame(peer.socket, frame);
             return;
 
-        case "ack": {
-            const stream = routeState.streams.get(frame.streamId);
-            if (!stream) {
-                return;
-            }
-            if (stream.initiatorRole !== state.role) {
-                state.socket.close(1008, "Only stream initiator may acknowledge chunks");
-                return;
-            }
-            sendJSONFrame(peer.socket, frame);
-            return;
-        }
-
-        case "chunk":
         case "complete":
         case "error": {
             const stream = routeState.streams.get(frame.streamId);
