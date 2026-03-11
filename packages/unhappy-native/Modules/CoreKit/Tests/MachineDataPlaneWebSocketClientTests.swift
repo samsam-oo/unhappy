@@ -23,4 +23,11 @@ struct MachineDataPlaneWebSocketClientTests {
 
         #expect(mapped == .rpcCallFailed("Machine data-plane socket is not connected"))
     }
+
+    @Test
+    func keepaliveIntervalHonorsAdvertisedIdleTimeout() {
+        #expect(MachineDataPlaneNetworkTransport.keepaliveInterval(forIdleTimeoutSeconds: 45) == 22.5)
+        #expect(MachineDataPlaneNetworkTransport.keepaliveInterval(forIdleTimeoutSeconds: 8) == 4)
+        #expect(MachineDataPlaneNetworkTransport.keepaliveInterval(forIdleTimeoutSeconds: 1) == 1)
+    }
 }
