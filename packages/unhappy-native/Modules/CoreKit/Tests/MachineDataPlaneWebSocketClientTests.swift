@@ -32,12 +32,12 @@ struct MachineDataPlaneWebSocketClientTests {
     }
 
     @Test
-    func transportTreatsWaitingAsTerminal() {
+    func transportDoesNotTreatWaitingAsTerminal() {
         let error = MachineDataPlaneNetworkTransport.terminalError(
             for: .waiting(.posix(.ENOTCONN))
         )
 
-        #expect(error != nil)
+        #expect(error == nil)
     }
 
     @Test

@@ -251,8 +251,6 @@ actor MachineDataPlaneNetworkTransport: MachineDataPlaneTextTransport {
 
     nonisolated static func terminalError(for state: NWConnection.State) -> Error? {
         switch state {
-        case .waiting(let error):
-            return error
         case .failed(let error):
             return error
         case .cancelled:
