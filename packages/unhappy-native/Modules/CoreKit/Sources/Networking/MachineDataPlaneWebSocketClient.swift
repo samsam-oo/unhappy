@@ -322,6 +322,7 @@ public actor MachineDataPlaneWebSocketClient {
                 try await send(frame: hello, transport: transport)
 
                 let helloAck = try await receiveHelloAck(transport: transport)
+                await transport.configureKeepalive(idleTimeoutSeconds: helloAck.idleTimeoutSeconds)
                 let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
                     machineDataKey: machineDataKey,
                     localPrivateKey: handshake.privateKey,
