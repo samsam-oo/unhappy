@@ -453,9 +453,19 @@ pub async fn claude_list_messages(payload: &Value) -> Result<Value> {
         return Ok(json!({ "success": true, "messages": [], "hasNext": false }));
     };
 
+    build_claude_messages_page(&transcript_path, session_id, limit, cursor).await
+}
+
+async fn build_claude_messages_page(
+    transcript_path: &Path,
+    session_id: &str,
+    limit: usize,
+    cursor: Option<usize>,
+) -> Result<Value> {
     let base_timestamp = now_millis();
     let mut messages = Vec::<Value>::new();
-    let mut lines = BufReader::new(File::open(&transcript_path).await?).lines();
+    let mut lines = BufReader::new(File::open(transcript_path).await?).lines();
+    let mut stable_index = 0_usize;
     while let Some(line) = lines.next_line().await? {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -483,17 +493,28 @@ pub async fn claude_list_messages(payload: &Value) -> Result<Value> {
                 }
             })
         };
+        let timestamp = stable_message_timestamp_seconds(
+            parsed.get("timestamp").and_then(Value::as_str),
+            base_timestamp,
+            stable_index,
+        );
         messages.push(json!({
-            "id": parsed.get("uuid").and_then(Value::as_str).unwrap_or("claude-entry"),
-            "seq": messages.len() + 1,
+            "id": stable_message_id(
+                "claude-entry",
+                session_id,
+                stable_index,
+                parsed.get("uuid").and_then(Value::as_str)
+            ),
+            "seq": stable_index + 1,
             "localId": Value::Null,
             "content": {
                 "type": "text",
                 "payload": serde_json::to_string(&envelope)?
             },
-            "createdAt": (base_timestamp + messages.len() as u64) as f64 / 1000.0,
-            "updatedAt": (base_timestamp + messages.len() as u64) as f64 / 1000.0
+            "createdAt": timestamp,
+            "updatedAt": timestamp
         }));
+        stable_index += 1;
     }
 
     paginate_message_values(messages, limit, cursor)
@@ -662,9 +683,18 @@ pub async fn gemini_list_messages(
         return Ok(json!({ "success": true, "messages": [], "hasNext": false }));
     };
 
+    build_gemini_messages_page(session_id, stored_session, limit as usize, cursor)
+}
+
+fn build_gemini_messages_page(
+    session_id: &str,
+    stored_session: GeminiStoredSession,
+    limit: usize,
+    cursor: Option<usize>,
+) -> Result<Value> {
     let base_timestamp = now_millis();
     let mut messages = Vec::<Value>::new();
-    for stored_message in stored_session.messages {
+    for (stable_index, stored_message) in stored_session.messages.into_iter().enumerate() {
         let role = match stored_message.message_type.as_deref() {
             Some("user") => "user",
             _ => "agent",
@@ -686,20 +716,30 @@ pub async fn gemini_list_messages(
                 }
             })
         };
+        let timestamp = stable_message_timestamp_seconds(
+            stored_message.timestamp.as_deref(),
+            base_timestamp,
+            stable_index,
+        );
         messages.push(json!({
-            "id": stored_message.id.unwrap_or_else(|| "gemini-entry".to_string()),
-            "seq": messages.len() + 1,
+            "id": stable_message_id(
+                "gemini-entry",
+                session_id,
+                stable_index,
+                stored_message.id.as_deref()
+            ),
+            "seq": stable_index + 1,
             "localId": Value::Null,
             "content": {
                 "type": "text",
                 "payload": serde_json::to_string(&envelope)?
             },
-            "createdAt": (base_timestamp + messages.len() as u64) as f64 / 1000.0,
-            "updatedAt": (base_timestamp + messages.len() as u64) as f64 / 1000.0
+            "createdAt": timestamp,
+            "updatedAt": timestamp
         }));
     }
 
-    paginate_message_values(messages, limit as usize, cursor)
+    paginate_message_values(messages, limit, cursor)
 }
 
 pub async fn gemini_send_message(payload: &Value) -> Result<Value> {
@@ -1537,6 +1577,97 @@ fn system_time_to_rfc3339(value: std::time::SystemTime) -> Option<String> {
         })
 }
 
+fn stable_message_id(
+    prefix: &str,
+    session_id: &str,
+    stable_index: usize,
+    provided_id: Option<&str>,
+) -> String {
+    provided_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| format!("{prefix}-{session_id}-{stable_index}"))
+}
+
+fn stable_message_timestamp_seconds(
+    raw_timestamp: Option<&str>,
+    fallback_base_timestamp_ms: u64,
+    stable_index: usize,
+) -> f64 {
+    if let Some(raw_timestamp) = raw_timestamp {
+        let trimmed = raw_timestamp.trim();
+        if !trimmed.is_empty() {
+            if let Ok(parsed) = trimmed.parse::<f64>() {
+                return normalized_timestamp_seconds(parsed);
+            }
+            if let Some(parsed) = parse_rfc3339_timestamp_seconds(trimmed) {
+                return parsed;
+            }
+        }
+    }
+
+    (fallback_base_timestamp_ms + stable_index as u64) as f64 / 1000.0
+}
+
+fn parse_rfc3339_timestamp_seconds(raw: &str) -> Option<f64> {
+    let (date_part, time_and_zone) = raw.split_once('T')?;
+    let mut date_iter = date_part.split('-');
+    let year = date_iter.next()?.parse::<i32>().ok()?;
+    let month = date_iter.next()?.parse::<u8>().ok()?;
+    let day = date_iter.next()?.parse::<u8>().ok()?;
+
+    let (time_part, offset) = if let Some(value) = time_and_zone.strip_suffix('Z') {
+        (value, time::UtcOffset::UTC)
+    } else if let Some(split_index) = time_and_zone.rfind(['+', '-']) {
+        let (time_part, offset_part) = time_and_zone.split_at(split_index);
+        let sign = if offset_part.starts_with('-') { -1 } else { 1 };
+        let offset_body = &offset_part[1..];
+        let (hours, minutes) = offset_body.split_once(':')?;
+        let hour = hours.parse::<i8>().ok()? * sign;
+        let minute = minutes.parse::<i8>().ok()? * sign;
+        (time_part, time::UtcOffset::from_hms(hour, minute, 0).ok()?)
+    } else {
+        return None;
+    };
+
+    let (clock_part, fractional_part) = match time_part.split_once('.') {
+        Some((clock, fraction)) => (clock, Some(fraction)),
+        None => (time_part, None),
+    };
+    let mut clock_iter = clock_part.split(':');
+    let hour = clock_iter.next()?.parse::<u8>().ok()?;
+    let minute = clock_iter.next()?.parse::<u8>().ok()?;
+    let second = clock_iter.next()?.parse::<u8>().ok()?;
+
+    let nanosecond = fractional_part
+        .map(|fraction| {
+            let digits = fraction
+                .chars()
+                .take_while(|character| character.is_ascii_digit())
+                .collect::<String>();
+            if digits.is_empty() {
+                return None;
+            }
+            let padded = format!("{digits:0<9}");
+            padded[..9].parse::<u32>().ok()
+        })
+        .flatten()
+        .unwrap_or(0);
+
+    let date = time::Date::from_calendar_date(
+        year,
+        time::Month::try_from(month).ok()?,
+        day,
+    )
+    .ok()?;
+    let time = time::Time::from_hms_nano(hour, minute, second, nanosecond).ok()?;
+    let timestamp = time::PrimitiveDateTime::new(date, time)
+        .assume_offset(offset)
+        .to_offset(time::UtcOffset::UTC);
+    Some(timestamp.unix_timestamp_nanos() as f64 / 1_000_000_000.0)
+}
+
 fn now_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1592,6 +1723,38 @@ mod tests {
             .expect("path");
 
         assert_eq!(found, transcript);
+    }
+
+    #[tokio::test]
+    async fn claude_list_messages_preserves_stable_ids_and_timestamps() {
+        let temp_dir = tempdir().expect("tempdir");
+        let transcript = temp_dir.path().join("claude-session-123.jsonl");
+        fs::write(
+            &transcript,
+            concat!(
+                "{\"sessionId\":\"claude-session-123\",\"cwd\":\"/tmp/project\",\"type\":\"user\",\"uuid\":\"user-1\",\"timestamp\":\"2026-03-10T10:00:00Z\",\"message\":{\"content\":\"first\"}}\n",
+                "{\"sessionId\":\"claude-session-123\",\"cwd\":\"/tmp/project\",\"type\":\"assistant\",\"uuid\":\"assistant-1\",\"timestamp\":\"2026-03-10T10:00:02Z\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"second\"}]}}\n"
+            ),
+        )
+        .await
+        .expect("write transcript");
+
+        let response = build_claude_messages_page(&transcript, "claude-session-123", 20, None)
+        .await
+        .expect("list messages");
+
+        let messages = response["messages"].as_array().expect("messages");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["id"].as_str(), Some("user-1"));
+        assert_eq!(messages[0]["seq"].as_u64(), Some(1));
+        assert!(
+            (messages[0]["createdAt"].as_f64().unwrap() - 1773136800.0).abs() < 0.000_001
+        );
+        assert_eq!(messages[1]["id"].as_str(), Some("assistant-1"));
+        assert_eq!(messages[1]["seq"].as_u64(), Some(2));
+        assert!(
+            (messages[1]["createdAt"].as_f64().unwrap() - 1773136802.0).abs() < 0.000_001
+        );
     }
 
     #[test]
@@ -1654,5 +1817,47 @@ mod tests {
         ));
 
         assert_eq!(normalized, "Please inspect this screenshot.");
+    }
+
+    #[tokio::test]
+    async fn gemini_list_messages_preserves_stable_ids_and_timestamps() {
+        let response = build_gemini_messages_page(
+            "gemini-session-1",
+            GeminiStoredSession {
+                session_id: Some("gemini-session-1".to_string()),
+                messages: vec![
+                    GeminiStoredMessage {
+                        id: Some("user-1".to_string()),
+                        timestamp: Some("2026-03-10T09:32:06.678Z".to_string()),
+                        message_type: Some("user".to_string()),
+                        content: json!([{ "text": "first" }]),
+                        extra: serde_json::Map::new(),
+                    },
+                    GeminiStoredMessage {
+                        id: Some("assistant-1".to_string()),
+                        timestamp: Some("2026-03-10T09:32:10.085Z".to_string()),
+                        message_type: Some("gemini".to_string()),
+                        content: Value::String("second".to_string()),
+                        extra: serde_json::Map::new(),
+                    },
+                ],
+            },
+            20,
+            None,
+        )
+        .expect("list messages");
+
+        let messages = response["messages"].as_array().expect("messages");
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0]["id"].as_str(), Some("user-1"));
+        assert_eq!(messages[0]["seq"].as_u64(), Some(1));
+        assert!(
+            (messages[0]["createdAt"].as_f64().unwrap() - 1773135126.678).abs() < 0.000_01
+        );
+        assert_eq!(messages[1]["id"].as_str(), Some("assistant-1"));
+        assert_eq!(messages[1]["seq"].as_u64(), Some(2));
+        assert!(
+            (messages[1]["createdAt"].as_f64().unwrap() - 1773135130.085).abs() < 0.000_01
+        );
     }
 }
