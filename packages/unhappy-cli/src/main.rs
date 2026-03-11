@@ -9,6 +9,7 @@ mod launcher;
 mod local_ops;
 mod lock;
 mod machine_sync;
+mod power_assertion;
 mod protocol;
 mod provider;
 mod provider_session_ops;
@@ -24,8 +25,8 @@ use daemon_state::DaemonState;
 use data_plane::spawn_data_plane_service;
 use global_install::{install_global_cli, reinstall_global_cli, uninstall_global_cli};
 use launcher::{
-    list_sessions, print_status, provider_session_started, spawn_session, start_detached_daemon,
-    stop_daemon_from_state, stop_session,
+    list_sessions, prevent_sleep_status, print_status, provider_session_started, set_prevent_sleep,
+    spawn_session, start_detached_daemon, stop_daemon_from_state, stop_session,
 };
 use lock::DaemonLockGuard;
 use machine_sync::spawn_machine_sync;
@@ -110,8 +111,22 @@ enum DaemonCommand {
         #[arg(long)]
         request_json: String,
     },
+    PreventSleep {
+        #[command(subcommand)]
+        command: DaemonPreventSleepCommand,
+    },
     Install,
     Uninstall,
+}
+
+#[derive(Debug, Subcommand)]
+enum DaemonPreventSleepCommand {
+    On,
+    Off,
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -382,6 +397,43 @@ async fn run_daemon_command(command: DaemonCommand) -> Result<()> {
                     &provider_session_started(&unhappy_home_dir, &request_json).await?
                 )?
             );
+        }
+        DaemonCommand::PreventSleep { command } => {
+            let unhappy_home_dir = env::var("UNHAPPY_HOME_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+                        .join(".unhappy")
+                });
+            match command {
+                DaemonPreventSleepCommand::On => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(
+                            &set_prevent_sleep(&unhappy_home_dir, true).await?
+                        )?
+                    );
+                }
+                DaemonPreventSleepCommand::Off => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(
+                            &set_prevent_sleep(&unhappy_home_dir, false).await?
+                        )?
+                    );
+                }
+                DaemonPreventSleepCommand::Status { json } => {
+                    let status = prevent_sleep_status(&unhappy_home_dir)?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&status)?);
+                    } else {
+                        println!(
+                            "prevent-sleep={} running={} stale={}",
+                            status.enabled, status.running, status.stale
+                        );
+                    }
+                }
+            }
         }
         DaemonCommand::Install => {
             let config = Config::from_env()?;

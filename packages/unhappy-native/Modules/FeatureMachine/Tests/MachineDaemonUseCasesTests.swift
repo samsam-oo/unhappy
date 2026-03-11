@@ -35,6 +35,22 @@ struct MachineDaemonUseCasesTests {
     }
 
     @Test
+    func setPreventSleepReturnsMessage() async throws {
+        let useCase = MachineDaemonPreventSleepUseCase(
+            service: DaemonPreventSleepService(result: .init(success: true, message: "enabled", error: nil))
+        )
+
+        let result = try await useCase.setPreventSleep(
+            serverURLString: "https://api.unhappy.im",
+            token: "token",
+            machineID: "machine-1",
+            enabled: true
+        )
+
+        #expect(result.message == "enabled")
+    }
+
+    @Test
     func deleteMachineReturnsMessage() async throws {
         let useCase = MachineDeleteUseCase(
             service: MachineDeleteService(result: .init(success: true, message: "deleted", error: nil))
@@ -62,6 +78,19 @@ private struct DaemonStopService: MachineDaemonStopping {
     let result: APIMachineCommandResult
 
     func stopDaemon(serverURL: URL, token: String, machineID: String) async throws -> APIMachineCommandResult {
+        result
+    }
+}
+
+private struct DaemonPreventSleepService: MachineDaemonPreventSleepSetting {
+    let result: APIMachineCommandResult
+
+    func setDaemonPreventSleep(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        enabled: Bool
+    ) async throws -> APIMachineCommandResult {
         result
     }
 }

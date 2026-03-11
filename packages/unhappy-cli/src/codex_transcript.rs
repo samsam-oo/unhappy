@@ -43,6 +43,12 @@ struct ResumeBackfillMessage {
     role: &'static str,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TranscriptCommandAction {
+    kind: &'static str,
+    detail: String,
+}
+
 fn list_codex_thread_messages_blocking(
     transcript_path: &str,
     requested_limit: usize,
@@ -163,9 +169,9 @@ fn list_codex_thread_messages_blocking(
     }
 
     kept_rev.reverse();
-    let messages = kept_rev
+    let messages = coalesce_resume_backfill_messages(kept_rev)
         .into_iter()
-        .map(|(line_offset, mut message, _)| {
+        .map(|(line_offset, mut message)| {
             if let Some(object) = message.as_object_mut() {
                 object.insert("seq".to_string(), json!(line_offset));
             }
@@ -395,6 +401,13 @@ fn build_function_call_output_backfill_message(
         return None;
     }
 
+    let normalized_output = payload
+        .get("output")
+        .cloned()
+        .map(normalize_structured_transcript_value)
+        .and_then(|value| command_execution_presentation_value(&value).or(Some(value)))
+        .unwrap_or(Value::Null);
+
     Some(ResumeBackfillMessage {
         local_id: make_resume_backfill_local_id(resume_file, line_offset, "assistant", &call_id),
         data: json!({
@@ -403,13 +416,492 @@ fn build_function_call_output_backfill_message(
                 "content": [{
                     "type": "tool_result",
                     "toolUseId": call_id,
-                    "output": normalize_structured_transcript_value(
-                        payload.get("output").cloned().unwrap_or(Value::Null)
-                    )
+                    "output": normalized_output
                 }]
             }
         }),
         role: "assistant",
+    })
+}
+
+fn coalesce_resume_backfill_messages(messages: Vec<(u64, Value, usize)>) -> Vec<(u64, Value)> {
+    let mut result: Vec<Option<(u64, Value)>> = Vec::with_capacity(messages.len());
+    let mut pending_exec_command_call_index_by_id: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+
+    for (line_offset, message, _) in messages {
+        if let Some((tool_use_id, tool_name)) = extract_tool_call_identity(&message) {
+            let index = result.len();
+            if tool_name.eq_ignore_ascii_case("exec_command") {
+                pending_exec_command_call_index_by_id.insert(tool_use_id, index);
+            }
+            result.push(Some((line_offset, message)));
+            continue;
+        }
+
+        if let Some((tool_use_id, payload)) = extract_command_execution_payload(&message) {
+            if let Some(index) = pending_exec_command_call_index_by_id.remove(&tool_use_id) {
+                if index < result.len() {
+                    result[index] = None;
+                }
+            }
+
+            if is_exploration_only_command_payload(&payload) {
+                if let Some(existing_index) = result.iter().rposition(|item| item.is_some()) {
+                    if let Some((existing_offset, existing)) = result[existing_index].take() {
+                        if let Some((_, existing_payload)) =
+                            extract_command_execution_payload(&existing)
+                        {
+                            if is_exploration_only_command_payload(&existing_payload) {
+                                if let Some(merged) =
+                                    merge_exploration_messages(existing.clone(), message.clone())
+                                {
+                                    result[existing_index] = Some((existing_offset, merged));
+                                    continue;
+                                }
+                            }
+                        }
+                        result[existing_index] = Some((existing_offset, existing));
+                    }
+                }
+            }
+
+            result.push(Some((line_offset, message)));
+            continue;
+        }
+
+        result.push(Some((line_offset, message)));
+    }
+
+    result.into_iter().flatten().collect()
+}
+
+fn extract_tool_call_identity(message: &Value) -> Option<(String, String)> {
+    let chunk = first_assistant_content_chunk(message)?;
+    let chunk_type = chunk.get("type")?.as_str()?;
+    if chunk_type != "tool_use" && chunk_type != "tool-call" {
+        return None;
+    }
+    let tool_use_id = chunk
+        .get("callId")
+        .or_else(|| chunk.get("toolUseId"))
+        .and_then(Value::as_str)?
+        .trim()
+        .to_string();
+    let name = chunk.get("name")?.as_str()?.trim().to_string();
+    if tool_use_id.is_empty() || name.is_empty() {
+        return None;
+    }
+    Some((tool_use_id, name))
+}
+
+fn extract_command_execution_payload(message: &Value) -> Option<(String, Value)> {
+    let chunk = first_assistant_content_chunk(message)?;
+    let chunk_type = chunk.get("type")?.as_str()?;
+    if chunk_type != "tool_result" && chunk_type != "tool-call-result" {
+        return None;
+    }
+    let tool_use_id = chunk
+        .get("toolUseId")
+        .or_else(|| chunk.get("callId"))
+        .and_then(Value::as_str)?
+        .trim()
+        .to_string();
+    let output = chunk.get("output")?.clone();
+    let output_type = output
+        .as_object()
+        .and_then(|object| object.get("type"))
+        .and_then(Value::as_str)?;
+    if output_type != "commandExecutionPresentation" {
+        return None;
+    }
+    Some((tool_use_id, output))
+}
+
+fn first_assistant_content_chunk(message: &Value) -> Option<Map<String, Value>> {
+    let content = message.get("content")?.as_object()?;
+    let payload = content.get("payload")?.as_str()?;
+    let parsed = serde_json::from_str::<Value>(payload).ok()?;
+    let assistant = parsed.get("content")?.as_object()?;
+    let data = assistant.get("data")?.as_object()?;
+    let assistant_message = data.get("message")?.as_object()?;
+    let chunks = assistant_message.get("content")?.as_array()?;
+    chunks.first()?.as_object().cloned()
+}
+
+fn command_execution_presentation_value(value: &Value) -> Option<Value> {
+    let object = value.as_object()?;
+    let actions = parse_command_actions(object);
+    let command = object
+        .get("command")
+        .or_else(|| object.get("cmd"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| actions.first().map(|action| action.detail.clone()));
+    let cwd = object
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let logs = object
+        .get("logs")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let stdout = first_non_empty_string(object, &["stdout", "aggregatedOutput", "aggregated_output", "formatted_output", "output"]);
+    let stderr = first_non_empty_string(object, &["stderr", "error"]);
+    let session_id = first_non_empty_string(object, &["sessionId", "session_id"]);
+    let status = first_non_empty_string(object, &["status", "state"]);
+    let success = object.get("success").and_then(Value::as_bool);
+    let exit_code = first_int(object, &["exitCode", "exit_code", "code"]);
+    let duration_ms = first_int(object, &["durationMs", "duration_ms"]);
+
+    if command.is_none()
+        && cwd.is_none()
+        && logs.is_none()
+        && stdout.is_none()
+        && stderr.is_none()
+        && session_id.is_none()
+        && status.is_none()
+        && success.is_none()
+        && exit_code.is_none()
+        && duration_ms.is_none()
+        && actions.is_empty()
+    {
+        return None;
+    }
+
+    let summary = exploration_summary(&actions, false)
+        .or_else(|| first_non_empty_string(object, &["summary"]));
+
+    let mut payload = Map::new();
+    payload.insert("type".to_string(), Value::String("commandExecutionPresentation".to_string()));
+    if let Some(command) = command {
+        payload.insert("command".to_string(), Value::String(command));
+    }
+    if let Some(cwd) = cwd {
+        payload.insert("cwd".to_string(), Value::String(cwd));
+    }
+    if let Some(summary) = summary {
+        payload.insert("summary".to_string(), Value::String(summary));
+    }
+    if let Some(logs) = logs {
+        payload.insert("logs".to_string(), Value::String(logs));
+    }
+    if let Some(stdout) = stdout {
+        payload.insert("stdout".to_string(), Value::String(stdout));
+    }
+    if let Some(stderr) = stderr {
+        payload.insert("stderr".to_string(), Value::String(stderr));
+    }
+    if let Some(session_id) = session_id {
+        payload.insert("sessionId".to_string(), Value::String(session_id));
+    }
+    if let Some(success) = success {
+        payload.insert("success".to_string(), Value::Bool(success));
+    }
+    if let Some(exit_code) = exit_code {
+        payload.insert("exitCode".to_string(), Value::Number(exit_code.into()));
+    }
+    if let Some(status) = status {
+        payload.insert("status".to_string(), Value::String(status));
+    }
+    if let Some(duration_ms) = duration_ms {
+        payload.insert("durationMs".to_string(), Value::Number(duration_ms.into()));
+    }
+    if !actions.is_empty() {
+        payload.insert(
+            "commandActions".to_string(),
+            Value::Array(
+                actions
+                    .iter()
+                    .enumerate()
+                    .map(|(index, action)| {
+                        json!({
+                            "id": format!("action-{index}"),
+                            "type": action.kind,
+                            "detail": action.detail
+                        })
+                    })
+                    .collect()
+            )
+        );
+    }
+
+    Some(Value::Object(payload))
+}
+
+fn parse_command_actions(object: &Map<String, Value>) -> Vec<TranscriptCommandAction> {
+    let raw_actions = object
+        .get("commandActions")
+        .and_then(Value::as_array)
+        .cloned()
+        .or_else(|| object.get("parsed_cmd").and_then(Value::as_array).cloned())
+        .or_else(|| object.get("parsedCmd").and_then(Value::as_array).cloned())
+        .unwrap_or_default();
+
+    if raw_actions.is_empty() {
+        if let Some(command) = object
+            .get("command")
+            .or_else(|| object.get("cmd"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if let Some(inferred) = infer_command_action(command) {
+                return vec![inferred];
+            }
+        }
+        return Vec::new();
+    }
+
+    raw_actions
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, action)| {
+            let action = action.as_object()?;
+            let raw_type = action
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase();
+            let kind = match raw_type.as_str() {
+                "listfiles" | "listfile" | "ls" => "list",
+                "read" | "readfile" => "read",
+                "search" | "grep" | "ripgrep" | "rg" => "search",
+                "write" | "writefile" | "edit" | "applypatch" => "edit",
+                _ => "command",
+            };
+            let detail = first_non_empty_string(
+                action,
+                &["detail", "path", "query", "pattern", "command", "cmd"]
+            ).unwrap_or_else(|| format!("Action {}", index + 1));
+            Some(TranscriptCommandAction { kind, detail })
+        })
+        .collect()
+}
+
+fn infer_command_action(command: &str) -> Option<TranscriptCommandAction> {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let tokens = trimmed
+        .split(|character: char| character.is_whitespace() || ['|', ';', '&'].contains(&character))
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let executable = tokens.first()?.to_ascii_lowercase();
+    match executable.as_str() {
+        "rg" | "ripgrep" | "grep" => {
+            let pattern = first_non_flag_token(&tokens[1..]).unwrap_or(trimmed);
+            let scope = last_path_like_token(&tokens[1..]);
+            let detail = scope
+                .map(|scope| format!("{pattern} in {scope}"))
+                .unwrap_or_else(|| pattern.to_string());
+            Some(TranscriptCommandAction { kind: "search", detail })
+        }
+        "sed" | "cat" | "head" | "tail" | "less" | "awk" => {
+            let path = last_path_like_token(&tokens[1..]).unwrap_or(trimmed);
+            Some(TranscriptCommandAction {
+                kind: "read",
+                detail: path.to_string(),
+            })
+        }
+        "ls" | "find" | "tree" => {
+            let path = last_path_like_token(&tokens[1..]).unwrap_or(".");
+            Some(TranscriptCommandAction {
+                kind: "list",
+                detail: path.to_string(),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn is_exploration_only_command_payload(payload: &Value) -> bool {
+    let object = match payload.as_object() {
+        Some(object) => object,
+        None => return false,
+    };
+    let actions = match object.get("commandActions").and_then(Value::as_array) {
+        Some(actions) if !actions.is_empty() => actions,
+        _ => return false,
+    };
+    if object
+        .get("logs")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty())
+    {
+        return false;
+    }
+    actions.iter().all(|action| {
+        matches!(
+            action.get("type").and_then(Value::as_str),
+            Some("list") | Some("read") | Some("search")
+        )
+    })
+}
+
+fn merge_exploration_messages(existing: Value, current: Value) -> Option<Value> {
+    let (_, mut existing_payload) = extract_command_execution_payload(&existing)?;
+    let (_, current_payload) = extract_command_execution_payload(&current)?;
+    let existing_object = existing_payload.as_object_mut()?;
+    let current_object = current_payload.as_object()?;
+
+    let existing_actions = existing_object
+        .get("commandActions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let current_actions = current_object
+        .get("commandActions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let merged_actions = deduplicated_action_values(existing_actions, current_actions);
+    existing_object.insert("commandActions".to_string(), Value::Array(merged_actions.clone()));
+    if let Some(summary) = exploration_summary_from_values(&merged_actions, false) {
+        existing_object.insert("summary".to_string(), Value::String(summary));
+    }
+
+    let mut merged_message = existing;
+    let content = merged_message.get_mut("content")?.as_object_mut()?;
+    let payload = content.get_mut("payload")?;
+    let mut parsed_payload = serde_json::from_str::<Value>(payload.as_str()?).ok()?;
+    let assistant = parsed_payload.get_mut("content")?.as_object_mut()?;
+    let data = assistant.get_mut("data")?.as_object_mut()?;
+    let message = data.get_mut("message")?.as_object_mut()?;
+    let content_array = message.get_mut("content")?.as_array_mut()?;
+    let first_chunk = content_array.first_mut()?.as_object_mut()?;
+    first_chunk.insert("output".to_string(), existing_payload);
+    *payload = Value::String(serde_json::to_string(&parsed_payload).ok()?);
+    Some(merged_message)
+}
+
+fn deduplicated_action_values(existing: Vec<Value>, current: Vec<Value>) -> Vec<Value> {
+    let mut seen = std::collections::HashSet::new();
+    let mut result = Vec::new();
+    for action in existing.into_iter().chain(current) {
+        let detail = action
+            .get("detail")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let kind = action
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let key = format!("{kind}|{detail}");
+        if seen.insert(key) {
+            result.push(action);
+        }
+    }
+    result
+}
+
+fn exploration_summary_from_values(actions: &[Value], collapsed: bool) -> Option<String> {
+    let parsed = actions
+        .iter()
+        .filter_map(|action| {
+            let object = action.as_object()?;
+            let kind = match object
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .trim()
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "listfiles" | "listfile" | "ls" | "list" => "list",
+                "read" | "readfile" => "read",
+                "search" | "grep" | "ripgrep" | "rg" => "search",
+                "write" | "writefile" | "edit" | "applypatch" => "edit",
+                _ => "command",
+            };
+            Some(TranscriptCommandAction {
+                kind,
+                detail: object
+                    .get("detail")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+    exploration_summary(&parsed, collapsed)
+}
+
+fn exploration_summary(actions: &[TranscriptCommandAction], collapsed: bool) -> Option<String> {
+    if actions.is_empty() {
+        return None;
+    }
+    if !actions
+        .iter()
+        .all(|action| matches!(action.kind, "list" | "read" | "search"))
+    {
+        return None;
+    }
+
+    let file_count = actions.iter().filter(|action| action.kind != "search").count();
+    let search_count = actions.iter().filter(|action| action.kind == "search").count();
+
+    if collapsed {
+        let collapsed_count = std::cmp::max(actions.len(), file_count);
+        return Some(format!(
+            "Explored {collapsed_count} {}",
+            if collapsed_count == 1 { "file" } else { "files" }
+        ));
+    }
+
+    let mut parts = Vec::new();
+    if file_count > 0 {
+        parts.push(format!(
+            "{file_count} {}",
+            if file_count == 1 { "file" } else { "files" }
+        ));
+    }
+    if search_count > 0 {
+        parts.push(format!(
+            "{search_count} {}",
+            if search_count == 1 { "search" } else { "searches" }
+        ));
+    }
+    (!parts.is_empty()).then(|| format!("Explored {}", parts.join(", ")))
+}
+
+fn first_non_empty_string(object: &Map<String, Value>, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        object
+            .get(*key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    })
+}
+
+fn first_int(object: &Map<String, Value>, keys: &[&str]) -> Option<i64> {
+    keys.iter()
+        .find_map(|key| object.get(*key).and_then(Value::as_i64))
+}
+
+fn first_non_flag_token<'a>(tokens: &[&'a str]) -> Option<&'a str> {
+    tokens.iter().copied().find(|token| !token.starts_with('-'))
+}
+
+fn last_path_like_token<'a>(tokens: &[&'a str]) -> Option<&'a str> {
+    tokens.iter().rev().copied().find(|token| {
+        !token.starts_with('-')
+            && (token.contains('/') || token.contains('.') || token.starts_with('~') || *token == "sources" || *token == "tests")
     })
 }
 
@@ -770,6 +1262,157 @@ mod tests {
                 }
             ])
         );
+    }
+
+    #[test]
+    fn function_call_output_backfill_normalizes_exec_command_output() {
+        let payload = json!({
+            "call_id": "call-1",
+            "output": {
+                "command": "rg TODO Sources",
+                "cwd": "/tmp/project",
+                "parsed_cmd": [
+                    {
+                        "type": "search",
+                        "query": "TODO"
+                    }
+                ],
+                "stdout": "Sources/App.swift:1: TODO",
+                "success": true,
+                "exit_code": 0
+            }
+        });
+
+        let backfill = build_function_call_output_backfill_message(
+            payload.as_object().expect("payload object"),
+            42,
+            "/tmp/transcript.jsonl",
+        )
+        .expect("backfill");
+
+        let output = &backfill.data["message"]["content"][0]["output"];
+        assert_eq!(output["type"].as_str(), Some("commandExecutionPresentation"));
+        assert_eq!(output["command"].as_str(), Some("rg TODO Sources"));
+        assert_eq!(output["cwd"].as_str(), Some("/tmp/project"));
+        assert_eq!(output["stdout"].as_str(), Some("Sources/App.swift:1: TODO"));
+        assert_eq!(output["success"].as_bool(), Some(true));
+        assert_eq!(output["exitCode"].as_i64(), Some(0));
+        assert_eq!(output["summary"].as_str(), Some("Explored 1 search"));
+        assert_eq!(output["commandActions"][0]["type"].as_str(), Some("search"));
+        assert_eq!(output["commandActions"][0]["detail"].as_str(), Some("TODO"));
+    }
+
+    #[test]
+    fn coalesce_resume_backfill_messages_merges_adjacent_exploration_results() {
+        let read_call = build_function_call_backfill_message(
+            json!({
+                "name": "exec_command",
+                "call_id": "call-read",
+                "arguments": { "command": "cat README.md" }
+            })
+            .as_object()
+            .expect("read call payload"),
+            10,
+            "/tmp/transcript.jsonl",
+        )
+        .expect("read call");
+        let read_result = build_function_call_output_backfill_message(
+            json!({
+                "call_id": "call-read",
+                "output": {
+                    "command": "cat README.md",
+                    "cwd": "/tmp/project",
+                    "parsed_cmd": [
+                        {
+                            "type": "read",
+                            "path": "README.md"
+                        }
+                    ]
+                }
+            })
+            .as_object()
+            .expect("read result payload"),
+            11,
+            "/tmp/transcript.jsonl",
+        )
+        .expect("read result");
+        let search_call = build_function_call_backfill_message(
+            json!({
+                "name": "exec_command",
+                "call_id": "call-search",
+                "arguments": { "command": "rg TODO Sources" }
+            })
+            .as_object()
+            .expect("search call payload"),
+            12,
+            "/tmp/transcript.jsonl",
+        )
+        .expect("search call");
+        let search_result = build_function_call_output_backfill_message(
+            json!({
+                "call_id": "call-search",
+                "output": {
+                    "command": "rg TODO Sources",
+                    "cwd": "/tmp/project",
+                    "parsed_cmd": [
+                        {
+                            "type": "search",
+                            "query": "TODO"
+                        }
+                    ]
+                }
+            })
+            .as_object()
+            .expect("search result payload"),
+            13,
+            "/tmp/transcript.jsonl",
+        )
+        .expect("search result");
+
+        let merged = coalesce_resume_backfill_messages(vec![
+            (10, make_test_backfill_message(read_call), 0),
+            (11, make_test_backfill_message(read_result), 0),
+            (12, make_test_backfill_message(search_call), 0),
+            (13, make_test_backfill_message(search_result), 0),
+        ]);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].0, 11);
+
+        let output = test_message_output(&merged[0].1);
+        assert_eq!(output["type"].as_str(), Some("commandExecutionPresentation"));
+        assert_eq!(output["summary"].as_str(), Some("Explored 1 file, 1 search"));
+        let actions = output["commandActions"].as_array().expect("actions");
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0]["type"].as_str(), Some("read"));
+        assert_eq!(actions[0]["detail"].as_str(), Some("README.md"));
+        assert_eq!(actions[1]["type"].as_str(), Some("search"));
+        assert_eq!(actions[1]["detail"].as_str(), Some("TODO"));
+    }
+
+    fn make_test_backfill_message(backfill: ResumeBackfillMessage) -> Value {
+        json!({
+            "id": backfill.local_id,
+            "content": {
+                "type": "text",
+                "payload": serde_json::to_string(&json!({
+                    "role": if backfill.role == "assistant" { "agent" } else { "user" },
+                    "content": {
+                        "type": if backfill.role == "assistant" { "output" } else { "input" },
+                        "data": backfill.data
+                    }
+                }))
+                .expect("payload")
+            }
+        })
+    }
+
+    fn test_message_output(message: &Value) -> Value {
+        let payload = message["content"]["payload"]
+            .as_str()
+            .expect("payload string");
+        let parsed: Value = serde_json::from_str(payload).expect("parsed payload");
+        parsed["content"]["data"]["message"]["content"][0]["output"].clone()
     }
 }
 

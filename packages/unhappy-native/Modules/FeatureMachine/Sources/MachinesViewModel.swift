@@ -10,16 +10,19 @@ public final class MachinesViewModel: ObservableObject {
 
     @Published public private(set) var spawningMachineIDs: Set<String> = []
     @Published public private(set) var updatingMachineIDs: Set<String> = []
+    @Published public private(set) var togglingPreventSleepMachineIDs: Set<String> = []
     @Published public private(set) var stoppingMachineIDs: Set<String> = []
     @Published public private(set) var deletingMachineIDs: Set<String> = []
     @Published public private(set) var statusByMachineID: [String: String] = [:]
     @Published public private(set) var errorByMachineID: [String: String] = [:]
     @Published public private(set) var approvalDirectoryByMachineID: [String: String] = [:]
     @Published public private(set) var spawnedSessionIDByMachineID: [String: String] = [:]
+    @Published public private(set) var preventSleepByMachineID: [String: Bool] = [:]
 
     private let loader: any MachinesLoadingAction
     private let spawner: any MachineSpawnAction
     private let updater: any MachineDaemonUpdateAction
+    private let preventSleepSetter: any MachineDaemonPreventSleepAction
     private let stopper: any MachineDaemonStopAction
     private let deleter: any MachineDeleteAction
 
@@ -27,12 +30,14 @@ public final class MachinesViewModel: ObservableObject {
         loader: any MachinesLoadingAction,
         spawner: any MachineSpawnAction,
         updater: any MachineDaemonUpdateAction,
+        preventSleepSetter: any MachineDaemonPreventSleepAction,
         stopper: any MachineDaemonStopAction,
         deleter: any MachineDeleteAction
     ) {
         self.loader = loader
         self.spawner = spawner
         self.updater = updater
+        self.preventSleepSetter = preventSleepSetter
         self.stopper = stopper
         self.deleter = deleter
     }
@@ -49,6 +54,7 @@ public final class MachinesViewModel: ObservableObject {
                 serverURLString: serverURLString,
                 token: token
             )
+            refreshPreventSleepState()
             clearStalePerMachineState()
             errorMessage = nil
             reconnectingStatusText = nil
@@ -167,6 +173,33 @@ public final class MachinesViewModel: ObservableObject {
         }
     }
 
+    public func setPreventSleep(
+        machineID: String,
+        enabled: Bool,
+        serverURLString: String,
+        token: String
+    ) async {
+        togglingPreventSleepMachineIDs.insert(machineID)
+        statusByMachineID[machineID] = nil
+        errorByMachineID[machineID] = nil
+        defer { togglingPreventSleepMachineIDs.remove(machineID) }
+
+        do {
+            let result = try await preventSleepSetter.setPreventSleep(
+                serverURLString: serverURLString,
+                token: token,
+                machineID: machineID,
+                enabled: enabled
+            )
+            preventSleepByMachineID[machineID] = enabled
+            statusByMachineID[machineID] = result.message
+            errorByMachineID[machineID] = nil
+        } catch {
+            statusByMachineID[machineID] = nil
+            errorByMachineID[machineID] = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     public func deleteMachine(
         machineID: String,
         serverURLString: String,
@@ -196,12 +229,17 @@ public final class MachinesViewModel: ObservableObject {
 
     public func isSpawning(machineID: String) -> Bool { spawningMachineIDs.contains(machineID) }
     public func isUpdating(machineID: String) -> Bool { updatingMachineIDs.contains(machineID) }
+    public func isTogglingPreventSleep(machineID: String) -> Bool { togglingPreventSleepMachineIDs.contains(machineID) }
     public func isStopping(machineID: String) -> Bool { stoppingMachineIDs.contains(machineID) }
     public func isDeleting(machineID: String) -> Bool { deletingMachineIDs.contains(machineID) }
     public func status(machineID: String) -> String? { statusByMachineID[machineID] }
     public func error(machineID: String) -> String? { errorByMachineID[machineID] }
     public func approvalDirectory(machineID: String) -> String? { approvalDirectoryByMachineID[machineID] }
     public func spawnedSessionID(machineID: String) -> String? { spawnedSessionIDByMachineID[machineID] }
+    public func machine(machineID: String) -> APIMachine? { machines.first(where: { $0.id == machineID }) }
+    public func preventSleepEnabled(machineID: String) -> Bool {
+        preventSleepByMachineID[machineID] ?? false
+    }
 
     private func clearStalePerMachineState() {
         let liveMachineIDs = Set(machines.map(\.id))
@@ -209,9 +247,29 @@ public final class MachinesViewModel: ObservableObject {
         errorByMachineID = errorByMachineID.filter { liveMachineIDs.contains($0.key) }
         approvalDirectoryByMachineID = approvalDirectoryByMachineID.filter { liveMachineIDs.contains($0.key) }
         spawnedSessionIDByMachineID = spawnedSessionIDByMachineID.filter { liveMachineIDs.contains($0.key) }
+        preventSleepByMachineID = preventSleepByMachineID.filter { liveMachineIDs.contains($0.key) }
         spawningMachineIDs = spawningMachineIDs.filter { liveMachineIDs.contains($0) }
         updatingMachineIDs = updatingMachineIDs.filter { liveMachineIDs.contains($0) }
+        togglingPreventSleepMachineIDs = togglingPreventSleepMachineIDs.filter { liveMachineIDs.contains($0) }
         stoppingMachineIDs = stoppingMachineIDs.filter { liveMachineIDs.contains($0) }
         deletingMachineIDs = deletingMachineIDs.filter { liveMachineIDs.contains($0) }
+    }
+
+    private func refreshPreventSleepState() {
+        preventSleepByMachineID = Dictionary(
+            uniqueKeysWithValues: machines.map { machine in
+                (machine.id, Self.parsePreventSleep(from: machine.daemonState))
+            }
+        )
+    }
+
+    private static func parsePreventSleep(from daemonState: String?) -> Bool {
+        guard let daemonState,
+              let data = daemonState.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return false
+        }
+        return object["preventIdleSleep"] as? Bool ?? false
     }
 }

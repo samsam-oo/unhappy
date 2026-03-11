@@ -9,6 +9,15 @@ public protocol MachineDaemonUpdateAction: Sendable {
     func updateDaemon(serverURLString: String, token: String, machineID: String) async throws -> APIMachineCommandResult
 }
 
+public protocol MachineDaemonPreventSleepAction: Sendable {
+    func setPreventSleep(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        enabled: Bool
+    ) async throws -> APIMachineCommandResult
+}
+
 public enum MachineDaemonError: LocalizedError, Equatable {
     case missingToken
     case invalidServerURL
@@ -76,6 +85,41 @@ public actor MachineDaemonUpdateUseCase: MachineDaemonUpdateAction {
             serverURL: serverURL,
             token: normalizedToken,
             machineID: normalizedMachineID
+        )
+        if result.success {
+            return result
+        }
+        let normalizedError = result.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        throw MachineDaemonError.failed(
+            message: (normalizedError?.isEmpty == false ? normalizedError : nil) ?? result.message
+        )
+    }
+}
+
+public actor MachineDaemonPreventSleepUseCase: MachineDaemonPreventSleepAction {
+    private let service: any MachineDaemonPreventSleepSetting
+
+    public init(service: any MachineDaemonPreventSleepSetting) {
+        self.service = service
+    }
+
+    public func setPreventSleep(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        enabled: Bool
+    ) async throws -> APIMachineCommandResult {
+        let (serverURL, normalizedToken, normalizedMachineID) = try normalizeInputs(
+            serverURLString: serverURLString,
+            token: token,
+            machineID: machineID
+        )
+
+        let result = try await service.setDaemonPreventSleep(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            enabled: enabled
         )
         if result.success {
             return result

@@ -29,7 +29,7 @@ use std::time::Instant;
 use tokio::{
     process::Command,
     task::JoinHandle,
-    time::{sleep, Duration, MissedTickBehavior},
+    time::{sleep, timeout, Duration, MissedTickBehavior},
 };
 use tokio_tungstenite::{
     connect_async,
@@ -41,6 +41,10 @@ use uuid::Uuid;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 pub type DataPlaneStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+const DATA_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(12);
+const DATA_PLANE_HELLO_ACK_TIMEOUT: Duration = Duration::from_secs(12);
+const DATA_PLANE_HELLO_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct RequestTrace {
     operation: MachineDataPlaneOperation,
@@ -265,8 +269,9 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32], Dur
 
     let request = machine_data_plane_request(&url, &config.token)?;
 
-    let (mut socket, _) = connect_async(request)
+    let (mut socket, _) = timeout(DATA_PLANE_CONNECT_TIMEOUT, connect_async(request))
         .await
+        .context("machine data-plane websocket connect timed out")?
         .context("failed to connect to machine data plane websocket")?;
     eprintln!(
         "[{}] [daemon-rs] category=handshake phase=socket-connected elapsed_ms={} machine_id={}",
@@ -280,12 +285,18 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32], Dur
         &config.machine_data_key_base64url,
     )?;
     let hello = crypto.hello_frame();
-    socket
-        .send(Message::Text(serde_json::to_string(&hello)?.into()))
-        .await
-        .context("failed to send hello frame")?;
+    timeout(
+        DATA_PLANE_HELLO_SEND_TIMEOUT,
+        socket.send(Message::Text(serde_json::to_string(&hello)?.into())),
+    )
+    .await
+    .context("machine data-plane hello send timed out")?
+    .context("failed to send hello frame")?;
 
-    let next = socket.next().await.context("missing hello-ack frame")??;
+    let next = timeout(DATA_PLANE_HELLO_ACK_TIMEOUT, socket.next())
+        .await
+        .context("machine data-plane hello-ack timed out")?
+        .context("missing hello-ack frame")??;
     let ack = match next {
         Message::Text(text) => serde_json::from_str::<MachineDataPlaneHelloAckFrame>(&text)
             .context("failed to decode hello-ack frame")?,
@@ -426,6 +437,7 @@ fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
     match operation {
         MachineDataPlaneOperation::MachinePing => "machine.ping",
         MachineDataPlaneOperation::MachineListModels => "machine.listModels",
+        MachineDataPlaneOperation::DaemonPreventSleep => "daemon.preventSleep",
         MachineDataPlaneOperation::DaemonStop => "daemon.stop",
         MachineDataPlaneOperation::DaemonUpdate => "daemon.update",
         MachineDataPlaneOperation::ProviderSpawn => "provider.spawn",
@@ -515,6 +527,13 @@ async fn dispatch_request(
         }
         MachineDataPlaneOperation::MachineListModels => {
             local_ops::list_models(config, payload.get("agent").and_then(Value::as_str)).await
+        }
+        MachineDataPlaneOperation::DaemonPreventSleep => {
+            let enabled = payload
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| anyhow!("enabled is required"))?;
+            Ok(serde_json::to_value(state.set_prevent_idle_sleep(enabled).await?)?)
         }
         MachineDataPlaneOperation::DaemonStop => {
             state.request_shutdown_with_reason("mobile-app").await;

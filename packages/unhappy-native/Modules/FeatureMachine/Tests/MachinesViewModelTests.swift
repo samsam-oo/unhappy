@@ -11,6 +11,7 @@ struct MachinesViewModelTests {
             loader: ReconnectingMachinesLoader(),
             spawner: NoopMachineSpawner(),
             updater: NoopMachineUpdater(),
+            preventSleepSetter: NoopMachinePreventSleepSetter(),
             stopper: NoopMachineStopper(),
             deleter: NoopMachineDeleter()
         )
@@ -53,6 +54,17 @@ private struct NoopMachineUpdater: MachineDaemonUpdateAction {
 private struct NoopMachineStopper: MachineDaemonStopAction {
     func stopDaemon(serverURLString: String, token: String, machineID: String) async throws -> APIMachineCommandResult {
         APIMachineCommandResult(success: true, message: "stopped", error: nil)
+    }
+}
+
+private struct NoopMachinePreventSleepSetter: MachineDaemonPreventSleepAction {
+    func setPreventSleep(
+        serverURLString: String,
+        token: String,
+        machineID: String,
+        enabled: Bool
+    ) async throws -> APIMachineCommandResult {
+        APIMachineCommandResult(success: true, message: enabled ? "enabled" : "disabled", error: nil)
     }
 }
 
