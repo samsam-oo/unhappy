@@ -1,10 +1,10 @@
 import Foundation
 import CoreKit
 
-enum SessionMachineActivityGuard {
+public enum SessionMachineActivityGuard {
     private static let staleMachineGraceInterval: TimeInterval = 45
 
-    static func isEligibleForSessionSync(
+    public static func isEligibleForSessionSync(
         _ machine: APIMachine,
         now: Date = .now
     ) -> Bool {
@@ -13,7 +13,7 @@ enum SessionMachineActivityGuard {
         return now.timeIntervalSince1970 - machine.activeAt <= staleMachineGraceInterval
     }
 
-    static func eligibleMachines(
+    public static func eligibleMachines(
         from machines: [APIMachine],
         now: Date = .now
     ) -> [APIMachine] {

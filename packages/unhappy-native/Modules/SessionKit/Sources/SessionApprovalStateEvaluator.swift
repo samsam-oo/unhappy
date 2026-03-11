@@ -1,7 +1,7 @@
 import Foundation
 
-enum SessionApprovalStateEvaluator {
-    static func hasPendingApprovalRequest(
+public enum SessionApprovalStateEvaluator {
+    public static func hasPendingApprovalRequest(
         agentState: [String: Any],
         metadata: [String: Any]
     ) -> Bool {

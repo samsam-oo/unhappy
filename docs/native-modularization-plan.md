@@ -89,6 +89,9 @@ Refine `CoreKit` internally into:
 
 This stays inside `CoreKit` first. It does not need a new public target immediately.
 
-## Current Step
+## Progress
 
-The current implementation step is `Slice 1: SessionKit foundation`.
+- `Slice 1` completed:
+  shared session model types now live in `SessionKit`
+- current step:
+  move pure session-domain helpers from `FeatureSessions` into `SessionKit`

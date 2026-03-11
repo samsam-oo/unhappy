@@ -1,12 +1,12 @@
 import Foundation
 import CoreKit
 
-enum SessionDisplayTitleResolver {
-    static func resolvedDisplayTitle(for session: APISession) -> String? {
+public enum SessionDisplayTitleResolver {
+    public static func resolvedDisplayTitle(for session: APISession) -> String? {
         resolvedDisplayTitle(for: session, context: SessionRuntimeContext(session: session))
     }
 
-    static func resolvedDisplayTitle(
+    public static func resolvedDisplayTitle(
         for session: APISession,
         context: SessionRuntimeContext
     ) -> String? {
@@ -31,7 +31,7 @@ enum SessionDisplayTitleResolver {
         return nil
     }
 
-    static func fallbackTitle(for session: APISession) -> String {
+    public static func fallbackTitle(for session: APISession) -> String {
         if let seq = session.seq, seq > 0 {
             return "Session \(seq)"
         }

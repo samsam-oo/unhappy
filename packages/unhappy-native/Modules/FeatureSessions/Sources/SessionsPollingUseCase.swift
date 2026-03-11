@@ -1,5 +1,6 @@
 import Foundation
 import CoreKit
+import SessionKit
 
 public protocol SessionsPolling: Sendable {
     func makePollingStream(

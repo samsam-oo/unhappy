@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-enum SessionPayloadValueResolver {
+public enum SessionPayloadValueResolver {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
     private static let payloadBundleVersion: UInt8 = 2
     private static let wrappedDataKeyBundleVersion: UInt8 = 2
@@ -16,7 +16,7 @@ enum SessionPayloadValueResolver {
     private static let wrappedDataKeyKDFInfo =
         Data("unhappy.data.encryption-key.wrap.info.v2".utf8)
 
-    static func decodeJSONObject(
+    public static func decodeJSONObject(
         payload: String?,
         dataEncryptionKey: String?
     ) -> [String: Any] {
@@ -42,7 +42,7 @@ enum SessionPayloadValueResolver {
         return [:]
     }
 
-    static func firstString(
+    public static func firstString(
         in objects: [[String: Any]],
         keys: [String]
     ) -> String? {
@@ -61,7 +61,7 @@ enum SessionPayloadValueResolver {
         return nil
     }
 
-    static func firstBool(
+    public static func firstBool(
         in objects: [[String: Any]],
         keys: [String]
     ) -> Bool? {
@@ -87,7 +87,7 @@ enum SessionPayloadValueResolver {
         return nil
     }
 
-    static func hasNonEmptyArray(
+    public static func hasNonEmptyArray(
         in objects: [[String: Any]],
         keys: [String]
     ) -> Bool {
@@ -101,7 +101,7 @@ enum SessionPayloadValueResolver {
         return false
     }
 
-    static func hasNonEmptyDictionary(
+    public static func hasNonEmptyDictionary(
         in objects: [[String: Any]],
         keys: [String]
     ) -> Bool {
@@ -115,7 +115,7 @@ enum SessionPayloadValueResolver {
         return false
     }
 
-    static func firstDictionary(
+    public static func firstDictionary(
         in objects: [[String: Any]],
         keys: [String]
     ) -> [String: Any]? {
