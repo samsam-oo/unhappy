@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import CoreKit
+import SecurityKit
 
 enum MachineDisplayNameResolver {
     private static let accountSecretDefaultsKey = "unhappy.native.account.secret"
@@ -342,7 +343,7 @@ enum MachineDisplayNameResolver {
             .string(forKey: accountSecretDefaultsKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let raw, !raw.isEmpty else { return nil }
-        guard let decoded = decodeBase64(raw), decoded.count == 32 else {
+        guard let decoded = AccountSecretCodec.decode(raw), decoded.count == 32 else {
             return nil
         }
         return decoded
