@@ -312,6 +312,39 @@ struct SessionTranscriptProcessingTests {
         #expect(secondCommand.status == .running)
     }
 
+    @Test
+    func mergesAdjacentExplorationOnlyCommandsIntoSingleCard() {
+        let first = makeEntry(
+            id: "explore-1",
+            kind: .toolResult,
+            title: "Ran command",
+            body: #"{"command":"cat README.md","cwd":"/tmp/project"}"#,
+            sourceType: "item_completed"
+        )
+        let second = makeEntry(
+            id: "explore-2",
+            kind: .toolResult,
+            title: "Ran command",
+            body: #"{"command":"rg TODO Sources","cwd":"/tmp/project"}"#,
+            sourceType: "item_completed"
+        )
+
+        let coalesced = SessionTranscriptProcessing.coalesceStreamingEntries(in: [
+            makePresentation(messageID: "msg-1", sequenceText: "1", createdAt: 100, createdAtText: "10:00", entry: first),
+            makePresentation(messageID: "msg-2", sequenceText: "2", createdAt: 101, createdAtText: "10:01", entry: second),
+        ])
+
+        #expect(coalesced.count == 1)
+        guard case .commandExecution(let command)? =
+                SessionTranscriptRichContentParser.richToolContent(for: coalesced[0].entries[0]) else {
+            Issue.record("Expected merged exploration card")
+            return
+        }
+
+        #expect(command.summary == "Explored 1 file, 1 search")
+        #expect(command.actions.map(\.kind) == [.read, .search])
+    }
+
     private func makeCommandPresentations() -> [SessionTranscriptMessagePresentation] {
         let commandBody = """
         {"command":"corepack yarn test","cwd":"/tmp/project","commandActions":[{"type":"read","path":"README.md"},{"type":"search","query":"TODO"}]}

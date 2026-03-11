@@ -423,7 +423,101 @@ public enum SessionTranscriptProcessing {
             result.append(flattenedEntry)
         }
 
+        return coalesceExplorationCommandEntries(in: result)
+    }
+
+    private static func coalesceExplorationCommandEntries(
+        in entries: [FlattenedTranscriptEntry]
+    ) -> [FlattenedTranscriptEntry] {
+        guard !entries.isEmpty else { return entries }
+
+        var result: [FlattenedTranscriptEntry] = []
+        result.reserveCapacity(entries.count)
+
+        for entry in entries {
+            guard let payload = commandPayloadIfApplicable(for: entry.entry),
+                  isExplorationOnly(payload) else {
+                result.append(entry)
+                continue
+            }
+
+            if let last = result.last,
+               let lastPayload = commandPayloadIfApplicable(for: last.entry),
+               isExplorationOnly(lastPayload) {
+                let mergedPayload = SessionTranscriptCommandExecutionPayload(
+                    command: lastPayload.command,
+                    cwd: lastPayload.cwd ?? payload.cwd,
+                    summary: explorationSummary(for: lastPayload.actions + payload.actions),
+                    logs: nil,
+                    stdout: nil,
+                    stderr: nil,
+                    sessionID: lastPayload.sessionID ?? payload.sessionID,
+                    success: payload.success ?? lastPayload.success,
+                    exitCode: payload.exitCode ?? lastPayload.exitCode,
+                    status: payload.status ?? lastPayload.status,
+                    durationMs: payload.durationMs ?? lastPayload.durationMs,
+                    actions: deduplicatedExplorationActions(lastPayload.actions + payload.actions),
+                    supplementalEntries: lastPayload.supplementalEntries + payload.supplementalEntries
+                )
+                result[result.count - 1] = replacingEntry(
+                    last,
+                    makeCommandEntry(
+                        from: last.entry,
+                        kind: entry.entry.kind == .toolResult ? .toolResult : last.entry.kind,
+                        payload: mergedPayload
+                    )
+                )
+                continue
+            }
+
+            result.append(entry)
+        }
+
         return result
+    }
+
+    private static func isExplorationOnly(_ payload: SessionTranscriptCommandExecutionPayload) -> Bool {
+        guard !payload.actions.isEmpty else { return false }
+        guard payload.displayedLogs?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false else {
+            return false
+        }
+        guard payload.supplementalEntries.isEmpty else { return false }
+        let explorationKinds = Set([
+            SessionTranscriptCommandExecutionPayload.Action.Kind.list,
+            .read,
+            .search,
+        ])
+        return payload.actions.allSatisfy { explorationKinds.contains($0.kind) }
+    }
+
+    private static func deduplicatedExplorationActions(
+        _ actions: [SessionTranscriptCommandExecutionPayload.Action]
+    ) -> [SessionTranscriptCommandExecutionPayload.Action] {
+        var seen: Set<String> = []
+        var result: [SessionTranscriptCommandExecutionPayload.Action] = []
+        for action in actions {
+            let key = "\(action.kind.rawValue)|\(action.detail)"
+            if seen.insert(key).inserted {
+                result.append(action)
+            }
+        }
+        return result
+    }
+
+    private static func explorationSummary(
+        for actions: [SessionTranscriptCommandExecutionPayload.Action]
+    ) -> String? {
+        let fileCount = actions.filter { $0.kind != .search }.count
+        let searchCount = actions.filter { $0.kind == .search }.count
+        var parts: [String] = []
+        if fileCount > 0 {
+            parts.append("\(fileCount) \(fileCount == 1 ? "file" : "files")")
+        }
+        if searchCount > 0 {
+            parts.append("\(searchCount) \(searchCount == 1 ? "search" : "searches")")
+        }
+        guard !parts.isEmpty else { return nil }
+        return "Explored " + parts.joined(separator: ", ")
     }
 
     private static func commandPayloadIfApplicable(
