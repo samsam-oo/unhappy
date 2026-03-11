@@ -93,7 +93,7 @@ struct SessionTranscriptRichContentTests {
 
         let summary = SessionTranscriptRichContentParser.summaryTitle(for: entry)
 
-        #expect(summary == "Explored 2 paths, 1 search")
+        #expect(summary == "Listed 2 paths, 1 search")
     }
 
     @Test
@@ -140,8 +140,8 @@ struct SessionTranscriptRichContentTests {
             threadID: nil
         )
 
-        #expect(SessionTranscriptRichContentParser.summaryTitle(for: singleReadEntry) == "Explored 1 file")
-        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Explored 2 files, 1 search")
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: singleReadEntry) == "Read 1 file")
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: multiReadEntry) == "Read 2 files, 1 search")
     }
 
     @Test
@@ -314,6 +314,89 @@ struct SessionTranscriptRichContentTests {
         #expect(tool.subtitle == "Worker finished the patch")
         #expect(tool.fields.contains(where: { $0.label == "Timeout Ms" && $0.value == "30000 ms" }))
         #expect(tool.fields.contains(where: { $0.label == "Ids" && $0.value == "agent-1, agent-2" }))
+    }
+
+    @Test
+    func genericToolParserTreatsSendInputAsSteer() {
+        let entry = SessionTranscriptEntry(
+            id: "steer-agent",
+            role: .agent,
+            kind: .toolResult,
+            title: "send_input",
+            body: """
+            {
+              "nickname": "Copernicus",
+              "text": "Double-check the migration ordering."
+            }
+            """,
+            toolUseID: "tool-steer",
+            sourceType: "tool_result",
+            toolName: "send_input",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .toolDetails(let tool)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected steer card")
+            return
+        }
+
+        #expect(tool.kind == .stdin)
+        #expect(tool.title == "Steer Agent")
+        #expect(tool.compactSummary == "Copernicus")
+        #expect(tool.badgeText == "Steered")
+        #expect(tool.subtitle == "Double-check the migration ordering.")
+        #expect(tool.body == "Double-check the migration ordering.")
+    }
+
+    @Test
+    func genericToolParserHidesEmptyWriteStdinPoll() {
+        let entry = SessionTranscriptEntry(
+            id: "stdin-poll",
+            role: .agent,
+            kind: .toolCall,
+            title: "write_stdin",
+            body: """
+            {
+              "session_id": 42046,
+              "chars": "",
+              "yield_time_ms": 1000
+            }
+            """,
+            toolUseID: "tool-poll",
+            sourceType: "tool_call",
+            toolName: "write_stdin",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        #expect(SessionTranscriptRichContentParser.richToolContent(for: entry) == nil)
+    }
+
+    @Test
+    func diffSummaryReadsAsEditedFiles() {
+        let entry = SessionTranscriptEntry(
+            id: "diff-summary",
+            role: .agent,
+            kind: .toolResult,
+            title: "Tool Result",
+            body: """
+            diff --git a/Sources/App.swift b/Sources/App.swift
+            @@ -1,1 +1,2 @@
+            -import Foundation
+            +import Foundation
+            +import SwiftUI
+            """,
+            toolUseID: "tool-diff",
+            sourceType: "tool_result",
+            toolName: "diff",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        #expect(SessionTranscriptRichContentParser.summaryTitle(for: entry) == "Edited App.swift")
+        #expect(SessionTranscriptRichContentParser.summarySubtitle(for: entry) == "1 hunk")
     }
 
     @Test
