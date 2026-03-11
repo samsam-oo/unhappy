@@ -801,6 +801,12 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         guard !normalizedPath.isEmpty else {
             throw MachinesAPIError.missingPath
         }
+        let resolvedWrappedMachineDataEncryptionKey = try await resolvedWrappedMachineDataEncryptionKey(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            preferredWrappedKey: wrappedMachineDataEncryptionKey
+        )
 
         let requestBody: [String: Any] = [
             "threadId": normalizedThreadID,
@@ -813,7 +819,7 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            wrappedMachineDataEncryptionKey: resolvedWrappedMachineDataEncryptionKey,
             operation: .codexListMessages,
             bodyObject: requestBody
         )
@@ -972,12 +978,18 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         guard !normalizedCWD.isEmpty else {
             throw MachinesAPIError.missingPath
         }
+        let resolvedWrappedMachineDataEncryptionKey = try await resolvedWrappedMachineDataEncryptionKey(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            preferredWrappedKey: wrappedMachineDataEncryptionKey
+        )
 
         let responseData = try await dataPlaneClient.requestJSON(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            wrappedMachineDataEncryptionKey: resolvedWrappedMachineDataEncryptionKey,
             operation: .claudeListMessages,
             bodyObject: [
                 "sessionId": normalizedSessionID,
@@ -1063,12 +1075,18 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
         guard !normalizedSessionID.isEmpty else {
             throw MachinesAPIError.rpcCallFailed("Session ID is required")
         }
+        let resolvedWrappedMachineDataEncryptionKey = try await resolvedWrappedMachineDataEncryptionKey(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            preferredWrappedKey: wrappedMachineDataEncryptionKey
+        )
 
         let responseData = try await dataPlaneClient.requestJSON(
             serverURL: serverURL,
             token: token,
             machineID: normalizedMachineID,
-            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey,
+            wrappedMachineDataEncryptionKey: resolvedWrappedMachineDataEncryptionKey,
             operation: .geminiListMessages,
             bodyObject: [
                 "sessionId": normalizedSessionID,
@@ -1315,6 +1333,24 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
         }
         return wrappedKey
+    }
+
+    private func resolvedWrappedMachineDataEncryptionKey(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        preferredWrappedKey: String?
+    ) async throws -> String {
+        let normalizedPreferredKey = preferredWrappedKey?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedPreferredKey, !normalizedPreferredKey.isEmpty {
+            return normalizedPreferredKey
+        }
+        return try await fetchWrappedMachineDataEncryptionKey(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID
+        )
     }
 
     private func decodeSessionMessagesPage(_ data: Data) throws -> APISessionMessagesPage {
