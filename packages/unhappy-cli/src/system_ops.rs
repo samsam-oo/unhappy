@@ -241,15 +241,40 @@ fn classify_process(
 }
 
 async fn terminate_process(pid: u32) -> Result<()> {
-    send_signal(pid, libc::SIGTERM)?;
-    tokio::time::sleep(Duration::from_secs(1)).await;
-    if !pid_is_alive(pid) {
+    #[cfg(unix)]
+    {
+        send_signal(pid, libc::SIGTERM)?;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        if !pid_is_alive(pid) {
+            return Ok(());
+        }
+        send_signal(pid, libc::SIGKILL)?;
         return Ok(());
     }
-    send_signal(pid, libc::SIGKILL)?;
-    Ok(())
+
+    #[cfg(windows)]
+    {
+        if !pid_is_alive(pid) {
+            return Ok(());
+        }
+        let status = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .status()
+            .context("failed to invoke taskkill")?;
+        if status.success() || !pid_is_alive(pid) {
+            return Ok(());
+        }
+        return Err(anyhow!("failed to terminate pid {pid}: taskkill exited with {status}"));
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = pid;
+        Err(anyhow!("process termination is unsupported on this platform"))
+    }
 }
 
+#[cfg(unix)]
 fn send_signal(pid: u32, signal: i32) -> Result<()> {
     let result = unsafe { libc::kill(pid as i32, signal) };
     if result == 0 || !pid_is_alive(pid) {
@@ -259,7 +284,35 @@ fn send_signal(pid: u32, signal: i32) -> Result<()> {
 }
 
 fn pid_is_alive(pid: u32) -> bool {
-    unsafe { libc::kill(pid as i32, 0) == 0 }
+    #[cfg(unix)]
+    {
+        return unsafe { libc::kill(pid as i32, 0) == 0 };
+    }
+
+    #[cfg(windows)]
+    {
+        let output = Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output();
+        return tasklist_output_contains_pid(pid, output.ok().as_ref());
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+#[cfg(windows)]
+fn tasklist_output_contains_pid(pid: u32, output: Option<&std::process::Output>) -> bool {
+    let Some(output) = output else { return false };
+    if !output.status.success() {
+        return false;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let needle = format!(",\"{pid}\",");
+    stdout.lines().any(|line| line.contains(&needle))
 }
 
 fn ensure_supported_install_platform() -> Result<()> {
