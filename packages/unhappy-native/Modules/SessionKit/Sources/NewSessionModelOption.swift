@@ -33,7 +33,7 @@ public struct NewSessionModelOption: Equatable, Identifiable, Sendable {
     }
 
     public var menuLabel: String {
-        return displayName
+        displayName
     }
 
     public static func fromCapabilities(_ capabilities: APIMachineAgentCapabilities) -> [NewSessionModelOption] {

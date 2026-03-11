@@ -1,6 +1,6 @@
 import Foundation
 import CoreKit
-import FeatureNewSession
+import SessionKit
 
 @MainActor
 public final class DirectSessionViewModel: ObservableObject {
