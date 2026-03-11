@@ -1,4 +1,4 @@
-name: Monorepo TypeScript typecheck
+name: Monorepo Static Checks
 
 on:
     pull_request:
@@ -28,11 +28,19 @@ jobs:
                   node-version: 20
                   cache: yarn
 
+            - name: Setup Rust
+              uses: dtolnay/rust-toolchain@stable
+
+            - name: Cache Rust build outputs
+              uses: Swatinem/rust-cache@v2
+              with:
+                  workspaces: packages/unhappy-cli -> target
+
             - name: Install dependencies
               run: yarn install --frozen-lockfile
 
-            - name: TypeScript typecheck (CLI)
-              run: yarn workspace unhappy-cli typecheck
+            - name: Rust typecheck (CLI)
+              run: cargo check --manifest-path packages/unhappy-cli/Cargo.toml --all-targets --locked
 
-            - name: TypeScript typecheck (Server)
+            - name: TypeScript build (Server)
               run: yarn workspace unhappy-server build

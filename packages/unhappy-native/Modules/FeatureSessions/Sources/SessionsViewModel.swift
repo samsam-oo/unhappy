@@ -20,6 +20,9 @@ public final class SessionsViewModel: ObservableObject {
     @Published public private(set) var removingProjectID: String?
     @Published public private(set) var archivingUpstreamSessionID: String?
     @Published public private(set) var upstreamSessions: [SessionLinkedUpstreamSession] = []
+    @Published public private(set) var recentCatalogSessions: [SessionLinkedUpstreamSession] = []
+    @Published public private(set) var isLoadingRecentCatalogSessions = false
+    @Published public private(set) var recentCatalogSessionsErrorMessage: String?
     @Published public private(set) var isLoadingUpstreamSessions = false
     @Published public private(set) var upstreamSessionsErrorMessage: String?
     private var attemptedDuplicateCleanupSessionIDs: Set<String> = []
@@ -28,9 +31,11 @@ public final class SessionsViewModel: ObservableObject {
     private let pageLoader: any SessionsPageLoading
     private let poller: any SessionsPolling
     private let projectsLoader: (any SessionProjectsLoadingAction)?
+    private let projectSessionsLoader: (any SessionProjectSessionsLoadingAction)?
     private let projectOpener: (any SessionProjectOpeningAction)?
     private let projectRemover: (any SessionProjectRemovingAction)?
     private let upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)?
+    private let recentCatalogSessionsLoader: (any SessionRecentCatalogLoadingAction)?
     private let upstreamSessionArchiver: (any DirectSessionArchivingAction)?
     private let deleteUseCase: any SessionDeletingAction
     private var nextCursor: String?
@@ -38,7 +43,12 @@ public final class SessionsViewModel: ObservableObject {
     private var lastSupportingDataFingerprint: String?
     private var multiAgentInProgressCountCache = 0
     private var activeUpstreamScopeIDs: Set<String> = []
+    private var resolvedUpstreamScopeIDs: Set<String> = []
     private var activeUpstreamLoadCount = 0
+    private var activeProjectSessionScopeIDs: Set<String> = []
+    private var resolvedProjectSessionScopeIDs: Set<String> = []
+    @Published public private(set) var projectScopedSessions: [String: [SessionLinkedUpstreamSession]] = [:]
+    @Published public private(set) var projectScopedSessionErrors: [String: String] = [:]
     private var supportingDataTask: Task<Void, Never>?
     private var lastPrimarySessionLoadAt: TimeInterval?
 
@@ -47,9 +57,11 @@ public final class SessionsViewModel: ObservableObject {
         pageLoader: any SessionsPageLoading,
         poller: any SessionsPolling,
         projectsLoader: (any SessionProjectsLoadingAction)? = nil,
+        projectSessionsLoader: (any SessionProjectSessionsLoadingAction)? = nil,
         projectOpener: (any SessionProjectOpeningAction)? = nil,
         projectRemover: (any SessionProjectRemovingAction)? = nil,
         upstreamSessionsLoader: (any SessionUpstreamSessionsLoadingAction)? = nil,
+        recentCatalogSessionsLoader: (any SessionRecentCatalogLoadingAction)? = nil,
         upstreamSessionArchiver: (any DirectSessionArchivingAction)? = nil,
         deleteUseCase: any SessionDeletingAction
     ) {
@@ -57,9 +69,11 @@ public final class SessionsViewModel: ObservableObject {
         self.pageLoader = pageLoader
         self.poller = poller
         self.projectsLoader = projectsLoader
+        self.projectSessionsLoader = projectSessionsLoader
         self.projectOpener = projectOpener
         self.projectRemover = projectRemover
         self.upstreamSessionsLoader = upstreamSessionsLoader
+        self.recentCatalogSessionsLoader = recentCatalogSessionsLoader
         self.upstreamSessionArchiver = upstreamSessionArchiver
         self.deleteUseCase = deleteUseCase
     }
@@ -100,6 +114,118 @@ public final class SessionsViewModel: ObservableObject {
 
     public var multiAgentInProgressCount: Int {
         multiAgentInProgressCountCache
+    }
+
+    public func isProjectSessionsLoading(
+        machineID: String,
+        projectPath: String
+    ) -> Bool {
+        guard let scopeID = canonicalProjectID(machineID: machineID, projectPath: projectPath) else {
+            return false
+        }
+        return activeProjectSessionScopeIDs.contains(scopeID)
+    }
+
+    public func hasLoadedProjectSessions(
+        machineID: String,
+        projectPath: String
+    ) -> Bool {
+        guard let scopeID = canonicalProjectID(machineID: machineID, projectPath: projectPath) else {
+            return false
+        }
+        return resolvedProjectSessionScopeIDs.contains(scopeID)
+    }
+
+    public func projectSessions(
+        machineID: String,
+        projectPath: String
+    ) -> [SessionLinkedUpstreamSession] {
+        guard let scopeID = canonicalProjectID(machineID: machineID, projectPath: projectPath) else {
+            return []
+        }
+        return projectScopedSessions[scopeID] ?? []
+    }
+
+    public func projectSessionsError(
+        machineID: String,
+        projectPath: String
+    ) -> String? {
+        guard let scopeID = canonicalProjectID(machineID: machineID, projectPath: projectPath) else {
+            return nil
+        }
+        return projectScopedSessionErrors[scopeID]
+    }
+
+    public var aggregatedProjectRows: [SessionLinkedUpstreamSession] {
+        var rowsByID: [String: SessionLinkedUpstreamSession] = [:]
+        for row in upstreamSessions {
+            rowsByID[row.id] = row
+        }
+        for rows in projectScopedSessions.values {
+            for row in rows {
+                let existing = rowsByID[row.id]
+                if let existing, existing.sortTimestamp >= row.sortTimestamp {
+                    continue
+                }
+                rowsByID[row.id] = row
+            }
+        }
+        return rowsByID.values.sorted { lhs, rhs in
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    public var aggregatedRecentSessions: [SessionLinkedUpstreamSession] {
+        var rowsByID: [String: SessionLinkedUpstreamSession] = [:]
+        for row in aggregatedProjectRows {
+            rowsByID[row.id] = row
+        }
+        for row in recentCatalogSessions {
+            let existing = rowsByID[row.id]
+            if let existing, existing.sortTimestamp >= row.sortTimestamp {
+                continue
+            }
+            rowsByID[row.id] = row
+        }
+        return rowsByID.values.sorted { lhs, rhs in
+            if lhs.sortTimestamp != rhs.sortTimestamp {
+                return lhs.sortTimestamp > rhs.sortTimestamp
+            }
+            if lhs.machineDisplayName != rhs.machineDisplayName {
+                return lhs.machineDisplayName.localizedCaseInsensitiveCompare(rhs.machineDisplayName) == .orderedAscending
+            }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    public func loadRecentCatalogSessions(
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let recentCatalogSessionsLoader else { return }
+        guard !isLoadingRecentCatalogSessions else { return }
+
+        isLoadingRecentCatalogSessions = true
+        defer { isLoadingRecentCatalogSessions = false }
+
+        do {
+            let rows = try await recentCatalogSessionsLoader.loadRecentSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+            if recentCatalogSessions != rows {
+                recentCatalogSessions = rows
+            }
+            recentCatalogSessionsErrorMessage = nil
+        } catch {
+            recentCatalogSessionsErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
     }
 
     public func load(serverURLString: String, token: String) async {
@@ -218,6 +344,12 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) async {
+        guard shouldLoadGlobalUpstreamState else {
+            setUpstreamSessionsIfChanged([])
+            upstreamSessionsErrorMessage = nil
+            isLoadingUpstreamSessions = false
+            return
+        }
         await loadUpstreamSessions(
             serverURLString: serverURLString,
             token: token,
@@ -235,6 +367,15 @@ public final class SessionsViewModel: ObservableObject {
             machineID: machineID,
             projectPath: projectPath
         ) else {
+            return
+        }
+        if let projectSessionsLoader {
+            await refreshProjectScopedSessions(
+                project: targetProject,
+                loader: projectSessionsLoader,
+                serverURLString: serverURLString,
+                token: token
+            )
             return
         }
         guard let upstreamSessionsLoader else { return }
@@ -291,6 +432,36 @@ public final class SessionsViewModel: ObservableObject {
         token: String,
         projectsToSync: [SessionMachineProject]
     ) async {
+        if let projectSessionsLoader {
+            let acceptedProjects = beginUpstreamLoad(for: projectsToSync)
+            guard !acceptedProjects.isEmpty else {
+                upstreamSessionsErrorMessage = nil
+                isLoadingUpstreamSessions = false
+                return
+            }
+            defer { endUpstreamLoad(for: acceptedProjects) }
+
+            var firstErrorMessage: String?
+            for project in acceptedProjects {
+                await refreshProjectScopedSessions(
+                    project: project,
+                    loader: projectSessionsLoader,
+                    serverURLString: serverURLString,
+                    token: token
+                )
+                if firstErrorMessage == nil,
+                   let error = projectSessionsError(
+                    machineID: project.machineID,
+                    projectPath: project.summary.path
+                   ),
+                   !error.isEmpty {
+                    firstErrorMessage = error
+                }
+            }
+            upstreamSessionsErrorMessage = firstErrorMessage
+            return
+        }
+
         guard let upstreamSessionsLoader else {
             upstreamSessions = []
             upstreamSessionsErrorMessage = nil
@@ -372,7 +543,7 @@ public final class SessionsViewModel: ObservableObject {
                             machineID: machineID
                         )
                     )
-                    if !refreshedProjects.isEmpty {
+                    if shouldHydrateProjectScopedSessionsForLists, !refreshedProjects.isEmpty {
                         scheduleIncrementalUpstreamLoad(
                             projects: refreshedProjects,
                             serverURLString: serverURLString,
@@ -421,12 +592,21 @@ public final class SessionsViewModel: ObservableObject {
 
         let usesIncrementalSupportingStreams =
             (projectsLoader as? any SessionProjectsStreamingAction) != nil &&
-            (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
+            (
+                shouldHydrateProjectScopedSessionsForLists ||
+                shouldLoadGlobalUpstreamState && (upstreamSessionsLoader as? any SessionUpstreamSessionsStreamingAction) != nil
+            )
 
         await loadProjects(
             serverURLString: serverURLString,
             token: token
         )
+        if recentCatalogSessionsLoader != nil {
+            await loadRecentCatalogSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
         if !usesIncrementalSupportingStreams {
             await loadUpstreamSessions(
                 serverURLString: serverURLString,
@@ -586,6 +766,9 @@ public final class SessionsViewModel: ObservableObject {
         serverURLString: String,
         token: String
     ) {
+        guard shouldHydrateProjectScopedSessionsForLists || shouldLoadGlobalUpstreamState else {
+            return
+        }
         Task { [weak self] in
             guard let self else { return }
             await self.loadUpstreamSessions(
@@ -770,6 +953,47 @@ public final class SessionsViewModel: ObservableObject {
         }
     }
 
+    private func refreshProjectScopedSessions(
+        project: SessionMachineProject,
+        loader: any SessionProjectSessionsLoadingAction,
+        serverURLString: String,
+        token: String
+    ) async {
+        guard let scopeID = canonicalProjectID(
+            machineID: project.machineID,
+            projectPath: project.summary.path
+        ) else {
+            return
+        }
+        guard activeProjectSessionScopeIDs.insert(scopeID).inserted else { return }
+        defer {
+            activeProjectSessionScopeIDs.remove(scopeID)
+            resolvedProjectSessionScopeIDs.insert(scopeID)
+        }
+
+        do {
+            let rows = try await loader.loadProjectSessions(
+                serverURLString: serverURLString,
+                token: token,
+                project: project
+            )
+            if projectScopedSessions[scopeID] != rows {
+                projectScopedSessions[scopeID] = rows
+            }
+            projectScopedSessionErrors[scopeID] = nil
+            setUpstreamSessionsIfChanged(
+                mergeProjectScopedUpstreamRows(
+                    existing: upstreamSessions,
+                    refreshed: rows,
+                    machineID: project.machineID,
+                    projectPath: project.summary.path
+                )
+            )
+        } catch {
+            projectScopedSessionErrors[scopeID] = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     private func beginUpstreamLoad(
         for projects: [SessionMachineProject]
     ) -> [SessionMachineProject] {
@@ -803,6 +1027,7 @@ public final class SessionsViewModel: ObservableObject {
                 projectPath: project.summary.path
             ) {
                 activeUpstreamScopeIDs.remove(scopeID)
+                resolvedUpstreamScopeIDs.insert(scopeID)
             }
         }
         activeUpstreamLoadCount = max(0, activeUpstreamLoadCount - 1)
@@ -858,12 +1083,31 @@ public final class SessionsViewModel: ObservableObject {
             }
             return allowedScopeIDs.contains(scopeID)
         }
-        guard projects != nextProjects || filteredUpstreamRows != upstreamSessions else { return }
+        let filteredProjectScopedSessions = projectScopedSessions.filter { allowedScopeIDs.contains($0.key) }
+        let filteredProjectScopedSessionErrors = projectScopedSessionErrors.filter { allowedScopeIDs.contains($0.key) }
+        let filteredResolvedProjectSessionScopeIDs = resolvedProjectSessionScopeIDs.intersection(allowedScopeIDs)
+
+        guard
+            projects != nextProjects ||
+            filteredUpstreamRows != upstreamSessions ||
+            filteredProjectScopedSessions != projectScopedSessions ||
+            filteredProjectScopedSessionErrors != projectScopedSessionErrors ||
+            filteredResolvedProjectSessionScopeIDs != resolvedProjectSessionScopeIDs
+        else { return }
         if projects != nextProjects {
             projects = nextProjects
         }
         if filteredUpstreamRows != upstreamSessions {
             upstreamSessions = filteredUpstreamRows
+        }
+        if filteredProjectScopedSessions != projectScopedSessions {
+            projectScopedSessions = filteredProjectScopedSessions
+        }
+        if filteredProjectScopedSessionErrors != projectScopedSessionErrors {
+            projectScopedSessionErrors = filteredProjectScopedSessionErrors
+        }
+        if filteredResolvedProjectSessionScopeIDs != resolvedProjectSessionScopeIDs {
+            resolvedProjectSessionScopeIDs = filteredResolvedProjectSessionScopeIDs
         }
     }
 
@@ -876,6 +1120,16 @@ public final class SessionsViewModel: ObservableObject {
         guard !sessions.isEmpty else { return false }
         guard let lastPrimarySessionLoadAt else { return false }
         return Date().timeIntervalSince1970 - lastPrimarySessionLoadAt < 5
+    }
+
+    private var shouldHydrateProjectScopedSessionsForLists: Bool {
+        projectSessionsLoader != nil && recentCatalogSessionsLoader == nil
+    }
+
+    private var shouldLoadGlobalUpstreamState: Bool {
+        upstreamSessionsLoader != nil &&
+            projectSessionsLoader == nil &&
+            recentCatalogSessionsLoader == nil
     }
 
     func waitForPendingSupportingDataRefresh() async {

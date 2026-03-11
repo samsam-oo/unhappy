@@ -136,7 +136,8 @@ extension SessionTranscriptPresentationBuilder {
                         role: .user,
                         kind: .text,
                         title: nil,
-                        body: imagePlaceholderText(index: 1)
+                        body: imagePlaceholderText(index: 1),
+                        attachmentDataURL: extractImageDataURL(from: content)
                     )
                 ]
             default:
@@ -176,6 +177,7 @@ extension SessionTranscriptPresentationBuilder {
         kind: SessionTranscriptEntryKind,
         title: String?,
         body: String,
+        attachmentDataURL: String? = nil,
         toolUseID: String? = nil,
         sourceType: String? = nil,
         preserveWhitespace: Bool = false,
@@ -218,6 +220,7 @@ extension SessionTranscriptPresentationBuilder {
             kind: kind,
             title: cleanedTitle,
             body: normalizedBody,
+            attachmentDataURL: normalizedImageDataURL(attachmentDataURL),
             toolUseID: toolUseID,
             sourceType: normalizedSourceType,
             toolName: normalizedToolName,
@@ -375,7 +378,8 @@ extension SessionTranscriptPresentationBuilder {
                         role: .user,
                         kind: .text,
                         title: nil,
-                        body: imagePlaceholderText(index: imageIndex)
+                        body: imagePlaceholderText(index: imageIndex),
+                        attachmentDataURL: extractImageDataURL(from: chunk)
                     )
                 )
             default:
@@ -387,7 +391,8 @@ extension SessionTranscriptPresentationBuilder {
                             role: .user,
                             kind: .text,
                             title: nil,
-                            body: imagePlaceholderText(index: imageIndex)
+                            body: imagePlaceholderText(index: imageIndex),
+                            attachmentDataURL: extractImageDataURL(from: chunk)
                         )
                     )
                     continue
@@ -425,6 +430,32 @@ extension SessionTranscriptPresentationBuilder {
 
     static func imagePlaceholderText(index: Int) -> String {
         "[Image #\(max(1, index))]"
+    }
+
+    static func extractImageDataURL(from dictionary: [String: Any]) -> String? {
+        if let imageURL = normalizedText(dictionary["image_url"]) {
+            return normalizedImageDataURL(imageURL)
+        }
+        if let imageURL = normalizedText(dictionary["imageUrl"]) {
+            return normalizedImageDataURL(imageURL)
+        }
+        if let url = normalizedText(dictionary["url"]) {
+            return normalizedImageDataURL(url)
+        }
+        if let source = dictionary["source"] as? [String: Any] {
+            return extractImageDataURL(from: source)
+        }
+        return nil
+    }
+
+    static func normalizedImageDataURL(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if trimmed.hasPrefix("data:image/") || trimmed.hasPrefix("/") {
+            return trimmed
+        }
+        return nil
     }
 
     static func sanitizeText(_ value: String) -> String {
@@ -501,6 +532,12 @@ extension SessionTranscriptPresentationBuilder {
             return "View Diff"
         case "task":
             return "Run Task"
+        case "spawnagent":
+            return "Spawn Agent"
+        case "wait":
+            return "Wait for Agent"
+        case "writestdin", "sendinput":
+            return "Send Input"
         case "webfetch":
             return "Fetch Web"
         case "codexreasoning":

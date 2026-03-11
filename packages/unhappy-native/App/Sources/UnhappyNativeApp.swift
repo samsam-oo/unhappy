@@ -89,6 +89,8 @@ struct UnhappyNativeApp: App {
         let sessionsPageLoader = SessionsPageLoadUseCase(service: sessionsService)
         let sessionsPoller = SessionsPollingUseCase(loader: sessionsLoader)
         let sessionProjectsLoader = SessionProjectsLoadUseCase(service: machinesService)
+        let sessionProjectSessionsLoader = SessionProjectSessionsLoadUseCase(service: machinesService)
+        let sessionRecentCatalogLoader = SessionRecentCatalogLoadUseCase(service: machinesService)
         let sessionProjectOpener = SessionProjectOpenUseCase(service: machinesService)
         let sessionProjectRemover = SessionProjectRemoveUseCase(service: machinesService)
         let directSessionMessagesLoader = DirectSessionMessagesLoadUseCase(
@@ -123,9 +125,11 @@ struct UnhappyNativeApp: App {
                 pageLoader: sessionsPageLoader,
                 poller: sessionsPoller,
                 projectsLoader: sessionProjectsLoader,
+                projectSessionsLoader: sessionProjectSessionsLoader,
                 projectOpener: sessionProjectOpener,
                 projectRemover: sessionProjectRemover,
                 upstreamSessionsLoader: upstreamSessionsLoader,
+                recentCatalogSessionsLoader: sessionRecentCatalogLoader,
                 upstreamSessionArchiver: directSessionArchiver,
                 deleteUseCase: sessionDeleteUseCase
             )

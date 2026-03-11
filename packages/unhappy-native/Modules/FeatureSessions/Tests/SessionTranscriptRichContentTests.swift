@@ -228,4 +228,118 @@ struct SessionTranscriptRichContentTests {
         #expect(command.exitCode == 0)
         #expect(command.durationText == "11s")
     }
+
+    @Test
+    func commandStatusPresentationUsesReadableLabelsAndTones() {
+        #expect(SessionTranscriptCommandRunPresentation.Status.running.badgeLabel == "Running")
+        #expect(SessionTranscriptCommandRunPresentation.Status.running.tone == .running)
+
+        #expect(SessionTranscriptCommandRunPresentation.Status.succeeded.badgeLabel == "Success")
+        #expect(SessionTranscriptCommandRunPresentation.Status.succeeded.tone == .success)
+
+        #expect(SessionTranscriptCommandRunPresentation.Status.failed.badgeLabel == "Failed")
+        #expect(SessionTranscriptCommandRunPresentation.Status.failed.tone == .failure)
+    }
+
+    @Test
+    func genericToolParserBuildsSpawnAgentCard() {
+        let entry = SessionTranscriptEntry(
+            id: "spawn-agent",
+            role: .agent,
+            kind: .toolResult,
+            title: "Spawn Agent Result",
+            body: """
+            {
+              "agent_id": "agent-123",
+              "nickname": "Copernicus",
+              "agent_type": "worker",
+              "message": "Own the transcript rendering path"
+            }
+            """,
+            toolUseID: "tool-spawn",
+            sourceType: "tool_result",
+            toolName: "spawn_agent",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .toolDetails(let tool)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected generic spawn agent card")
+            return
+        }
+
+        #expect(tool.kind == .spawnAgent)
+        #expect(tool.title == "Spawn Agent")
+        #expect(tool.compactSummary == "Copernicus")
+        #expect(tool.badgeText == "Started")
+        #expect(tool.subtitle == "Own the transcript rendering path")
+        #expect(tool.fields.contains(where: { $0.label == "Agent Id" && $0.value == "agent-123" }))
+    }
+
+    @Test
+    func genericToolParserBuildsWaitCard() {
+        let entry = SessionTranscriptEntry(
+            id: "wait-agent",
+            role: .agent,
+            kind: .toolResult,
+            title: "Wait Result",
+            body: """
+            {
+              "status": "completed",
+              "completed": {
+                "message": "Worker finished the patch"
+              },
+              "timeout_ms": 30000,
+              "ids": ["agent-1", "agent-2"]
+            }
+            """,
+            toolUseID: "tool-wait",
+            sourceType: "tool_result",
+            toolName: "wait",
+            isSidechain: false,
+            threadID: nil
+        )
+
+        guard case .toolDetails(let tool)? =
+                SessionTranscriptRichContentParser.richToolContent(for: entry) else {
+            Issue.record("Expected generic wait card")
+            return
+        }
+
+        #expect(tool.kind == .wait)
+        #expect(tool.title == "Wait for Agent")
+        #expect(tool.compactSummary == "2 agents")
+        #expect(tool.badgeText == "Completed")
+        #expect(tool.subtitle == "Worker finished the patch")
+        #expect(tool.fields.contains(where: { $0.label == "Timeout Ms" && $0.value == "30000 ms" }))
+        #expect(tool.fields.contains(where: { $0.label == "Ids" && $0.value == "agent-1, agent-2" }))
+    }
+
+    @Test
+    func markdownParserTreatsStandaloneImageAsImageBlock() {
+        let blocks = SessionTranscriptRichContentParser.markdownBlocks(
+            from: "![Screenshot](/tmp/screenshot.png)"
+        )
+
+        #expect(blocks.count == 1)
+        guard case .image(let altText, let source) = blocks[0] else {
+            Issue.record("Expected image block")
+            return
+        }
+        #expect(altText == "Screenshot")
+        #expect(source == "/tmp/screenshot.png")
+    }
+
+    @Test
+    func attributedInlineMarkdownNormalizesSkillLinksToReadableMentions() {
+        let attributed = SessionTranscriptRichContentParser.attributedInlineMarkdown(
+            "Use [$openai-docs](/Users/test/.codex/skills/openai-docs/SKILL.md) for the API docs."
+        )
+        let plainText = attributed.map { String($0.characters) } ?? ""
+
+        #expect(attributed != nil)
+        #expect(plainText.contains("$openai-docs"))
+        #expect(plainText.contains("SKILL.md") == false)
+    }
 }

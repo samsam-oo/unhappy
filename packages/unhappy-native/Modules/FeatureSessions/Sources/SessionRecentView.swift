@@ -23,11 +23,24 @@ public struct SessionRecentView: View {
 
     public var body: some View {
         let sections = SessionRecentPresentationBuilder.make(
-            upstreamSessions: viewModel.upstreamSessions
+            upstreamSessions: viewModel.aggregatedRecentSessions
         )
 
         List {
-            if sections.isEmpty {
+            if viewModel.isLoadingRecentCatalogSessions && sections.isEmpty {
+                ProgressView("Loading recent sessions…")
+                    .foregroundStyle(.secondary)
+            } else if let error = viewModel.recentCatalogSessionsErrorMessage,
+                      sections.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Unable to load recent sessions")
+                        .font(.headline)
+                    Text(error)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            } else if sections.isEmpty {
                 Text("No recent sessions")
                     .foregroundStyle(.secondary)
             } else {
@@ -42,6 +55,12 @@ public struct SessionRecentView: View {
         }
         .navigationTitle("Recent Sessions")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await viewModel.loadRecentCatalogSessions(
+                serverURLString: serverURLString,
+                token: token
+            )
+        }
         .alert(
             "Couldn't Archive Session",
             isPresented: Binding(
@@ -60,7 +79,7 @@ public struct SessionRecentView: View {
             Text(archiveErrorMessage ?? "")
         }
         .refreshable {
-            await viewModel.load(
+            await viewModel.loadRecentCatalogSessions(
                 serverURLString: serverURLString,
                 token: token
             )
@@ -80,7 +99,7 @@ public struct SessionRecentView: View {
                     },
                     onArchived: {
                         Task {
-                            await viewModel.loadUpstreamSessions(
+                            await viewModel.loadRecentCatalogSessions(
                                 serverURLString: serverURLString,
                                 token: token
                             )
@@ -94,15 +113,15 @@ public struct SessionRecentView: View {
                 if identity.provider == .codex {
                     Button(role: .destructive) {
                         Task {
-                            let archived = await viewModel.archiveUpstreamSession(
-                                identity,
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                            guard !archived else { return }
-                            archiveErrorMessage = viewModel.upstreamSessionsErrorMessage ?? "Failed to archive session"
-                        }
-                    } label: {
+                        let archived = await viewModel.archiveUpstreamSession(
+                            identity,
+                            serverURLString: serverURLString,
+                            token: token
+                        )
+                        guard !archived else { return }
+                        archiveErrorMessage = "Failed to archive session"
+                    }
+                } label: {
                         Label("Archive", systemImage: "archivebox")
                     }
                     .disabled(viewModel.isArchiving(upstreamSessionID: identity.id))
@@ -117,10 +136,19 @@ private struct RecentDirectSessionRow: View {
     let updatedAt: TimeInterval
 
     var body: some View {
+        let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
+            inProgressCount: identity.collabInProgressCount
+        )
         VStack(alignment: .leading, spacing: 6) {
-            Text(identity.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+            HStack(spacing: 8) {
+                Text(identity.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if let multiAgentStatus {
+                    MultiAgentStatusBadge(presentation: multiAgentStatus)
+                }
+            }
 
             HStack(spacing: 8) {
                 Text(identity.provider.displayName)

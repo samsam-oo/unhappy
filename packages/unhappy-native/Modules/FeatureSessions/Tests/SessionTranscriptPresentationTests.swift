@@ -124,6 +124,14 @@ struct SessionTranscriptPresentationTests {
     }
 
     @Test
+    func readableToolNamesCoverMultiAgentAndInputTools() {
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("spawn_agent") == "Spawn Agent")
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("wait") == "Wait for Agent")
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("write_stdin") == "Send Input")
+        #expect(SessionTranscriptPresentationBuilder.toolDisplayName("send_input") == "Send Input")
+    }
+
+    @Test
     func outputUserToolResultKeepsToolUseID() {
         let payload: [String: Any] = [
             "role": "agent",
@@ -452,6 +460,7 @@ struct SessionTranscriptPresentationTests {
         #expect(presentation.entries[0].role == .user)
         #expect(presentation.entries[0].kind == .text)
         #expect(presentation.entries[0].body == "[Image #1]")
+        #expect(presentation.entries[0].attachmentDataURL == "data:image/png;base64,AAAA")
         #expect(presentation.entries[1].body == "Please inspect this screenshot.")
     }
 

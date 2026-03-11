@@ -115,6 +115,19 @@ public enum MachinesAPI {
         return try makeRequest(url: url, method: "GET", token: token)
     }
 
+    public static func makeProjectCatalogProjectsRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let projectsURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/project-catalog/projects")
+        return try makeRequest(url: projectsURL, method: "GET", token: token)
+    }
+
     public static func makeOpenProjectRequest(
         serverURL: URL,
         token: String,
@@ -133,6 +146,66 @@ public enum MachinesAPI {
         var request = try makeRequest(url: openProjectURL, method: "POST", token: token)
         request.httpBody = try JSONEncoder().encode(["path": normalizedPath])
         return request
+    }
+
+    public static func makeProjectSessionsCatalogRequest(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        path: String,
+        limit: Int = 100,
+        cursor: String? = nil
+    ) throws -> URLRequest {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+
+        let catalogURL = serverURL.appending(path: "v1/machines/\(normalizedMachineID)/session-catalog/project-sessions")
+        guard var components = URLComponents(url: catalogURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "path", value: normalizedPath),
+            URLQueryItem(name: "limit", value: "\(min(max(limit, 1), 200))"),
+        ]
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: normalizedCursor))
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(url: url, method: "GET", token: token)
+    }
+
+    public static func makeRecentSessionCatalogRequest(
+        serverURL: URL,
+        token: String,
+        limit: Int = 100,
+        cursor: String? = nil
+    ) throws -> URLRequest {
+        let recentURL = serverURL.appending(path: "v1/session-catalog/recent")
+        guard var components = URLComponents(url: recentURL, resolvingAgainstBaseURL: false) else {
+            throw URLError(.badURL)
+        }
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: "\(min(max(limit, 1), 200))"),
+        ]
+        let normalizedCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let normalizedCursor, !normalizedCursor.isEmpty {
+            queryItems.append(URLQueryItem(name: "cursor", value: normalizedCursor))
+        }
+        components.queryItems = queryItems
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+        return try makeRequest(url: url, method: "GET", token: token)
     }
 
     public static func makeRemoveProjectRequest(
@@ -361,6 +434,34 @@ public enum MachinesAPI {
         )
     }
 
+    public static func decodeProjectSessionsPageResponse(_ data: Data) throws -> APIProjectSessionsPage {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(MachinesProjectSessionsResponse.self, from: data)
+        let nextCursor = response.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+        let hasNext = response.hasNext ?? (normalizedCursor != nil)
+        let normalizedError = response.error?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return APIProjectSessionsPage(
+            sessions: response.sessions ?? [],
+            nextCursor: normalizedCursor,
+            hasNext: hasNext,
+            error: normalizedError?.isEmpty == false ? normalizedError : nil
+        )
+    }
+
+    public static func decodeRecentCatalogSessionsPageResponse(_ data: Data) throws -> APIRecentCatalogSessionsPage {
+        let decoder = JSONDecoder()
+        let response = try decoder.decode(MachinesRecentCatalogSessionsResponse.self, from: data)
+        let nextCursor = response.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+        let hasNext = response.hasNext ?? (normalizedCursor != nil)
+        return APIRecentCatalogSessionsPage(
+            sessions: response.sessions ?? [],
+            nextCursor: normalizedCursor,
+            hasNext: hasNext
+        )
+    }
+
     public static func decodeAgentCapabilitiesResponse(_ data: Data) throws -> APIMachineAgentCapabilities {
         let decoder = JSONDecoder()
         let response = try decoder.decode(MachinesListModelsResponse.self, from: data)
@@ -528,6 +629,21 @@ private struct MachinesClaudeSessionsResponse: Decodable {
 private struct MachinesGeminiSessionsResponse: Decodable {
     let success: Bool
     let sessions: [APIGeminiSessionSummary]?
+    let nextCursor: String?
+    let hasNext: Bool?
+}
+
+private struct MachinesProjectSessionsResponse: Decodable {
+    let success: Bool
+    let sessions: [APIUpstreamSessionSummary]?
+    let nextCursor: String?
+    let hasNext: Bool?
+    let error: String?
+}
+
+private struct MachinesRecentCatalogSessionsResponse: Decodable {
+    let success: Bool
+    let sessions: [APICatalogSessionSummary]?
     let nextCursor: String?
     let hasNext: Bool?
 }
@@ -969,6 +1085,27 @@ public protocol MachineGeminiSessionsFetching: Sendable {
     ) async throws -> [APIGeminiSessionSummary]
 }
 
+public protocol MachineProjectSessionsFetching: Sendable {
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage
+}
+
+public protocol MachineRecentSessionCatalogFetching: Sendable {
+    func fetchRecentSessionCatalogPage(
+        serverURL: URL,
+        token: String,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIRecentCatalogSessionsPage
+}
+
 public protocol MachineGeminiSessionMessagesFetching: Sendable {
     func fetchGeminiSessionMessages(
         serverURL: URL,
@@ -1123,6 +1260,8 @@ public actor URLSessionMachinesService:
     MachineClaudeSessionMessagesFetching,
     MachineClaudeSessionMessaging,
     MachineGeminiSessionsFetching,
+    MachineProjectSessionsFetching,
+    MachineRecentSessionCatalogFetching,
     MachineGeminiSessionMessagesFetching,
     MachineGeminiSessionMessaging,
     MachineModelsListing,
@@ -1155,18 +1294,34 @@ public actor URLSessionMachinesService:
         let cachedAt: TimeInterval
     }
 
+    struct MachineDataPlanePrewarmKey: Hashable, Sendable {
+        let serverURLString: String
+        let token: String
+        let machineID: String
+        let wrappedMachineDataEncryptionKey: String
+    }
+
+    enum MachineDataPlanePrewarmConfig {
+        static let throttleInterval: TimeInterval = 20
+        static let recentActivityInterval: TimeInterval = 30
+    }
+
     let httpClient: any MachineHTTPClient
     let rpcDirectoryService: any MachineRPCDirectoryListing
+    let prewarmPolicy: any MachineDataPlanePrewarmPolicy
     var machinesCache: [MachinesCacheKey: MachinesCacheEntry] = [:]
     var inFlightMachineFetches: [MachinesCacheKey: Task<[APIMachine], Error>] = [:]
     var projectsCache: [ProjectsCacheKey: ProjectsCacheEntry] = [:]
     var inFlightProjectFetches: [ProjectsCacheKey: Task<[APIMachineProjectSummary], Error>] = [:]
+    var lastMachineDataPlanePrewarmAt: [MachineDataPlanePrewarmKey: TimeInterval] = [:]
 
     public init(
         httpClient: any MachineHTTPClient = URLSessionMachineHTTPClient(),
-        rpcDirectoryService: any MachineRPCDirectoryListing = SocketIOMachineRPCDirectoryService()
+        rpcDirectoryService: any MachineRPCDirectoryListing = SocketIOMachineRPCDirectoryService(),
+        prewarmPolicy: any MachineDataPlanePrewarmPolicy = DefaultMachineDataPlanePrewarmPolicy.shared
     ) {
         self.httpClient = httpClient
         self.rpcDirectoryService = rpcDirectoryService
+        self.prewarmPolicy = prewarmPolicy
     }
 }

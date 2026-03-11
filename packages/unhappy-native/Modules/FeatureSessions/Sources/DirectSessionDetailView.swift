@@ -44,6 +44,7 @@ public struct DirectSessionDetailView: View {
     @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var shouldFollowTranscript = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
+    @State private var pendingOlderMessagesAnchorID: String?
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var compactTranscriptHorizontalPadding: CGFloat = 10
@@ -124,6 +125,14 @@ public struct DirectSessionDetailView: View {
                 }
             )
             .onChange(of: transcriptPresentations.map(\.messageID)) { _, _ in
+                if let pendingOlderMessagesAnchorID {
+                    self.pendingOlderMessagesAnchorID = nil
+                    Task { @MainActor in
+                        await Task.yield()
+                        scrollToMessage(pendingOlderMessagesAnchorID, using: proxy)
+                    }
+                    return
+                }
                 guard shouldFollowTranscript else { return }
                 scrollTranscriptToBottom(using: proxy, animated: true)
             }
@@ -178,8 +187,8 @@ public struct DirectSessionDetailView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 8) {
-                if viewModel.identity.collabInProgressCount > 0 {
-                    SessionSubAgentLiveBar(count: viewModel.identity.collabInProgressCount)
+                if displayedCollabCount > 0 {
+                    SessionSubAgentLiveBar(count: displayedCollabCount)
                 }
                 bottomDock
                     .padding(.horizontal, 12)
@@ -307,6 +316,46 @@ public struct DirectSessionDetailView: View {
         cachedTranscriptPresentations
     }
 
+    private var displayedCollabCount: Int {
+        max(viewModel.identity.collabInProgressCount, transcriptDerivedCollabCount)
+    }
+
+    private var transcriptDerivedCollabCount: Int {
+        let entries = transcriptPresentations.flatMap(\.entries)
+        let sidechainThreads = Set(
+            entries
+                .filter(\.isSidechain)
+                .compactMap(\.threadID)
+        )
+        if !sidechainThreads.isEmpty {
+            return sidechainThreads.count
+        }
+
+        let relevantToolNames = Set(["spawn_agent", "wait"])
+        let startedToolUseIDs = Set(
+            entries.compactMap { entry -> String? in
+                guard entry.kind == .toolCall else { return nil }
+                guard let toolName = entry.toolName?.lowercased(),
+                      relevantToolNames.contains(toolName) else {
+                    return nil
+                }
+                return entry.toolUseID
+            }
+        )
+        let completedToolUseIDs = Set(
+            entries.compactMap { entry -> String? in
+                guard entry.kind == .toolResult else { return nil }
+                guard let toolName = entry.toolName?.lowercased(),
+                      relevantToolNames.contains(toolName) else {
+                    return nil
+                }
+                return entry.toolUseID
+            }
+        )
+        let outstandingToolUseIDs = startedToolUseIDs.subtracting(completedToolUseIDs)
+        return outstandingToolUseIDs.isEmpty ? 0 : outstandingToolUseIDs.count
+    }
+
     @ViewBuilder
     private func topPagingRow(proxy: ScrollViewProxy) -> some View {
         HStack {
@@ -315,23 +364,21 @@ public struct DirectSessionDetailView: View {
                 ProgressView("Loading earlier messages…")
                     .font(.footnote)
             } else {
-                Color.clear
-                    .frame(height: 1)
-                    .onAppear {
-                        guard !shouldFollowTranscript else { return }
-                        let anchorMessageID = transcriptPresentations.first?.messageID
-                        Task {
-                            await viewModel.loadOlderMessages(
-                                serverURLString: serverURLString,
-                                token: token
-                            )
-                            guard let anchorMessageID else { return }
-                            scrollToMessage(anchorMessageID, using: proxy)
-                        }
-                    }
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppPalette.secondaryText)
+                    Text("Loading earlier messages automatically…")
+                        .font(.footnote)
+                        .foregroundStyle(AppPalette.secondaryText)
+                }
+                .onAppear {
+                    autoLoadOlderMessagesIfNeeded()
+                }
             }
             Spacer()
         }
+        .id(viewModel.olderMessagesLoadTriggerID ?? "no-older-messages")
     }
 
     private var summaryCard: some View {
@@ -342,6 +389,12 @@ public struct DirectSessionDetailView: View {
                         .modifier(DockChipModifier(tone: .primary))
                     Text(viewModel.identity.machineDisplayName)
                         .modifier(DockChipModifier(tone: .neutral))
+                    if let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
+                        inProgressCount: displayedCollabCount
+                    ) {
+                        Spacer(minLength: 0)
+                        MultiAgentStatusBadge(presentation: multiAgentStatus)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -793,6 +846,22 @@ public struct DirectSessionDetailView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             proxy.scrollTo(messageID, anchor: .top)
+        }
+    }
+
+    private func autoLoadOlderMessagesIfNeeded() {
+        guard viewModel.isLoadingOlderMessages == false else { return }
+        guard viewModel.hasOlderMessages else { return }
+        guard let anchorMessageID = transcriptPresentations.first?.messageID else { return }
+
+        shouldFollowTranscript = false
+        pendingOlderMessagesAnchorID = anchorMessageID
+
+        Task {
+            await viewModel.loadOlderMessages(
+                serverURLString: serverURLString,
+                token: token
+            )
         }
     }
 }

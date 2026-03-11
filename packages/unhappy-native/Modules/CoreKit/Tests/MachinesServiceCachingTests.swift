@@ -82,6 +82,7 @@ struct MachinesServiceCachingTests {
 
     @Test
     func fetchMachinesPrewarmsActiveMachineDataPlane() async throws {
+        let activeAt = Date().timeIntervalSince1970
         let httpClient = CountingMachineHTTPClient(
             responseData: Data(
                 """
@@ -89,7 +90,7 @@ struct MachinesServiceCachingTests {
                   {
                     "id": "machine-1",
                     "active": true,
-                    "activeAt": 1,
+                    "activeAt": \(activeAt),
                     "createdAt": 1,
                     "updatedAt": 1,
                     "metadataVersion": 1,
@@ -101,7 +102,7 @@ struct MachinesServiceCachingTests {
                   {
                     "id": "machine-2",
                     "active": false,
-                    "activeAt": 1,
+                    "activeAt": \(activeAt),
                     "createdAt": 1,
                     "updatedAt": 1,
                     "metadataVersion": 1,
@@ -117,7 +118,8 @@ struct MachinesServiceCachingTests {
         let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
         let service = URLSessionMachinesService(
             httpClient: httpClient,
-            rpcDirectoryService: rpcDirectoryService
+            rpcDirectoryService: rpcDirectoryService,
+            prewarmPolicy: TestMachineDataPlanePrewarmPolicy(allowsBackgroundPrewarm: true)
         )
 
         _ = try await service.fetchMachines(
@@ -131,7 +133,51 @@ struct MachinesServiceCachingTests {
     }
 
     @Test
-    func fetchMachinesPrewarmsActiveMachineDataPlaneOnCacheHit() async throws {
+    func fetchMachinesDoesNotRepeatPrewarmOnCacheHit() async throws {
+        let activeAt = Date().timeIntervalSince1970
+        let httpClient = CountingMachineHTTPClient(
+            responseData: Data(
+                """
+                [
+                  {
+                    "id": "machine-1",
+                    "active": true,
+                    "activeAt": \(activeAt),
+                    "createdAt": 1,
+                    "updatedAt": 1,
+                    "metadataVersion": 1,
+                    "metadata": "{}",
+                    "daemonStateVersion": 1,
+                    "daemonState": "{}",
+                    "dataEncryptionKey": "wrapped-key"
+                  }
+                ]
+                """.utf8
+            )
+        )
+        let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
+        let service = URLSessionMachinesService(
+            httpClient: httpClient,
+            rpcDirectoryService: rpcDirectoryService,
+            prewarmPolicy: TestMachineDataPlanePrewarmPolicy(allowsBackgroundPrewarm: true)
+        )
+
+        _ = try await service.fetchMachines(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token"
+        )
+        _ = try await service.fetchMachines(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token"
+        )
+        try? await Task.sleep(for: .milliseconds(50))
+
+        let prewarmedMachineIDs = await rpcDirectoryService.prewarmedMachineIDs
+        #expect(prewarmedMachineIDs == ["machine-1"])
+    }
+
+    @Test
+    func fetchMachinesSkipsPrewarmForStaleActiveMachine() async throws {
         let httpClient = CountingMachineHTTPClient(
             responseData: Data(
                 """
@@ -155,13 +201,10 @@ struct MachinesServiceCachingTests {
         let rpcDirectoryService = PrewarmingMachineRPCDirectoryService()
         let service = URLSessionMachinesService(
             httpClient: httpClient,
-            rpcDirectoryService: rpcDirectoryService
+            rpcDirectoryService: rpcDirectoryService,
+            prewarmPolicy: TestMachineDataPlanePrewarmPolicy(allowsBackgroundPrewarm: true)
         )
 
-        _ = try await service.fetchMachines(
-            serverURL: URL(string: "https://api.unhappy.im")!,
-            token: "token"
-        )
         _ = try await service.fetchMachines(
             serverURL: URL(string: "https://api.unhappy.im")!,
             token: "token"
@@ -169,16 +212,103 @@ struct MachinesServiceCachingTests {
         try? await Task.sleep(for: .milliseconds(50))
 
         let prewarmedMachineIDs = await rpcDirectoryService.prewarmedMachineIDs
-        #expect(prewarmedMachineIDs == ["machine-1", "machine-1"])
+        #expect(prewarmedMachineIDs.isEmpty)
+    }
+
+    @Test
+    func fetchAgentCapabilitiesPrefersRPCWhenLegacyEndpointSaysNotConnected() async throws {
+        let httpClient = CountingMachineHTTPClient(
+            responseData: Data(#"{"success":false,"error":"Machine daemon is not connected"}"#.utf8),
+            statusCode: 409
+        )
+        let rpcDirectoryService = NoopMachineRPCDirectoryService(
+            invokeCommandResult: .success(
+                Data(
+                    """
+                    {
+                      "models": ["gpt-5-codex"],
+                      "reasoningEfforts": ["medium"],
+                      "details": [
+                        { "id": "gpt-5-codex", "label": "GPT-5 Codex" }
+                      ]
+                    }
+                    """.utf8
+                )
+            )
+        )
+        let service = URLSessionMachinesService(
+            httpClient: httpClient,
+            rpcDirectoryService: rpcDirectoryService
+        )
+
+        let capabilities = try await service.fetchAgentCapabilities(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token",
+            machineID: "machine-1",
+            agent: .codex
+        )
+
+        #expect(capabilities.models == ["gpt-5-codex"])
+        #expect(capabilities.reasoningEfforts == ["medium"])
+        #expect(await httpClient.requestCount == 0)
+        #expect(await rpcDirectoryService.invokedCommands == ["list-models"])
+    }
+
+    @Test
+    func fetchAgentCapabilitiesFallsBackToLegacyEndpointWhenRPCFails() async throws {
+        let httpClient = CountingMachineHTTPClient(
+            responseData: Data(
+                """
+                {
+                  "models": ["claude-sonnet-4-5"],
+                  "reasoningEfforts": ["high"]
+                }
+                """.utf8
+            ),
+            statusCode: 200
+        )
+        let rpcDirectoryService = NoopMachineRPCDirectoryService(
+            invokeCommandResult: .failure(MachinesAPIError.rpcTimedOut)
+        )
+        let service = URLSessionMachinesService(
+            httpClient: httpClient,
+            rpcDirectoryService: rpcDirectoryService
+        )
+
+        let capabilities = try await service.fetchAgentCapabilities(
+            serverURL: URL(string: "https://api.unhappy.im")!,
+            token: "token",
+            machineID: "machine-1",
+            agent: .claude
+        )
+
+        #expect(capabilities.models == ["claude-sonnet-4-5"])
+        #expect(capabilities.reasoningEfforts == ["high"])
+        #expect(await httpClient.requestCount == 1)
+        #expect(await rpcDirectoryService.invokedCommands == ["list-models"])
+    }
+}
+
+private actor TestMachineDataPlanePrewarmPolicy: MachineDataPlanePrewarmPolicy {
+    let allowsBackgroundPrewarmValue: Bool
+
+    init(allowsBackgroundPrewarm: Bool) {
+        allowsBackgroundPrewarmValue = allowsBackgroundPrewarm
+    }
+
+    func allowsBackgroundPrewarm() async -> Bool {
+        allowsBackgroundPrewarmValue
     }
 }
 
 private actor CountingMachineHTTPClient: MachineHTTPClient {
     let responseData: Data
+    let statusCode: Int
     private(set) var requestCount = 0
 
-    init(responseData: Data) {
+    init(responseData: Data, statusCode: Int = 200) {
         self.responseData = responseData
+        self.statusCode = statusCode
     }
 
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -187,7 +317,7 @@ private actor CountingMachineHTTPClient: MachineHTTPClient {
             responseData,
             HTTPURLResponse(
                 url: request.url ?? URL(string: "https://api.unhappy.im")!,
-                statusCode: 200,
+                statusCode: statusCode,
                 httpVersion: nil,
                 headerFields: nil
             )!
@@ -196,6 +326,13 @@ private actor CountingMachineHTTPClient: MachineHTTPClient {
 }
 
 private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
+    private let invokeCommandResult: Result<Data, Error>
+    private(set) var invokedCommands: [String] = []
+
+    init(invokeCommandResult: Result<Data, Error> = .success(Data())) {
+        self.invokeCommandResult = invokeCommandResult
+    }
+
     func fetchProjects(
         serverURL: URL,
         token: String,
@@ -204,6 +341,18 @@ private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
         wrappedMachineDataEncryptionKey: String?
     ) async throws -> [APIMachineProjectSummary] {
         []
+    }
+
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        APIProjectSessionsPage(sessions: [], nextCursor: nil, hasNext: false)
     }
 
     func openProject(
@@ -272,6 +421,17 @@ private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
         cursor: String?
     ) async throws -> APICodexThreadsPage {
         APICodexThreadsPage(threads: [], nextCursor: nil, hasNext: false)
+    }
+
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        APIMachineCommandResult(success: true, message: "ok", error: nil)
     }
 
     func fetchClaudeSessionsPage(
@@ -387,7 +547,8 @@ private actor NoopMachineRPCDirectoryService: MachineRPCDirectoryListing {
         command: String,
         params: [String : RPCParameterValue]
     ) async throws -> Data {
-        Data()
+        invokedCommands.append(command)
+        return try invokeCommandResult.get()
     }
 }
 
@@ -408,6 +569,18 @@ private actor CountingProjectRPCDirectoryService: MachineRPCDirectoryListing {
     ) async throws -> [APIMachineProjectSummary] {
         fetchProjectsCount += 1
         return projects
+    }
+
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        APIProjectSessionsPage(sessions: [], nextCursor: nil, hasNext: false)
     }
 
     func openProject(
@@ -476,6 +649,17 @@ private actor CountingProjectRPCDirectoryService: MachineRPCDirectoryListing {
         cursor: String?
     ) async throws -> APICodexThreadsPage {
         APICodexThreadsPage(threads: [], nextCursor: nil, hasNext: false)
+    }
+
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        APIMachineCommandResult(success: true, message: "ok", error: nil)
     }
 
     func fetchClaudeSessionsPage(
@@ -617,6 +801,18 @@ private actor PrewarmingMachineRPCDirectoryService: MachineRPCDirectoryListing {
         []
     }
 
+    func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        APIProjectSessionsPage(sessions: [], nextCursor: nil, hasNext: false)
+    }
+
     func openProject(
         serverURL: URL,
         token: String,
@@ -683,6 +879,17 @@ private actor PrewarmingMachineRPCDirectoryService: MachineRPCDirectoryListing {
         cursor: String?
     ) async throws -> APICodexThreadsPage {
         APICodexThreadsPage(threads: [], nextCursor: nil, hasNext: false)
+    }
+
+    func archiveCodexThread(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String?,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> APIMachineCommandResult {
+        APIMachineCommandResult(success: true, message: "ok", error: nil)
     }
 
     func fetchClaudeSessionsPage(

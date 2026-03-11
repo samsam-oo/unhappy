@@ -87,14 +87,14 @@ struct MachinesAPITests {
         )
         let payload = MachineSessionSpawnRPCParametersBuilder().build(from: request)
 
-        #expect(payload["directory"] as? String == "/tmp/work")
-        #expect(payload["machineId"] as? String == "machine-1")
-        #expect(payload["agent"] as? String == "codex")
-        #expect(payload["codexResumeThreadId"] as? String == "thread-1")
+        #expect(payload["directory"] == .string("/tmp/work"))
+        #expect(payload["machineId"] == .string("machine-1"))
+        #expect(payload["agent"] == .string("codex"))
+        #expect(payload["codexResumeThreadId"] == .string("thread-1"))
         #expect(payload["claudeResumeSessionId"] == nil)
-        #expect(payload["token"] as? String == "session-token")
-        #expect(payload["model"] as? String == "gpt-5-codex")
-        #expect(payload["reasoningEffort"] as? String == "high")
+        #expect(payload["token"] == .string("session-token"))
+        #expect(payload["model"] == .string("gpt-5-codex"))
+        #expect(payload["reasoningEffort"] == .string("high"))
     }
 
     @Test
@@ -111,6 +111,58 @@ struct MachinesAPITests {
         #expect(result.success == false)
         #expect(result.requiresUserApproval == true)
         #expect(result.directory == "/tmp/new")
+    }
+
+    @Test
+    func projectSessionsCatalogRequestUsesExpectedPathAndQuery() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeProjectSessionsCatalogRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            machineID: "machine-1",
+            path: "/tmp/workspace",
+            limit: 120,
+            cursor: "8"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/machines/machine-1/session-catalog/project-sessions?path=/tmp/workspace&limit=120&cursor=8"
+        )
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
+    func recentSessionCatalogRequestUsesExpectedPathAndQuery() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeRecentSessionCatalogRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            limit: 80,
+            cursor: "12"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(
+            request.url?.absoluteString
+                == "https://api.unhappy.im/v1/session-catalog/recent?limit=80&cursor=12"
+        )
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
+    }
+
+    @Test
+    func projectCatalogProjectsRequestUsesExpectedPath() throws {
+        let baseURL = URL(string: "https://api.unhappy.im")!
+        let request = try MachinesAPI.makeProjectCatalogProjectsRequest(
+            serverURL: baseURL,
+            token: "abc123",
+            machineID: "machine-1"
+        )
+
+        #expect(request.httpMethod == "GET")
+        #expect(request.url?.absoluteString == "https://api.unhappy.im/v1/machines/machine-1/project-catalog/projects")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer abc123")
     }
 
     @Test

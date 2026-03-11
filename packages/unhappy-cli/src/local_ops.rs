@@ -17,38 +17,8 @@ use tokio::{
 pub async fn list_models(config: &Config, agent: Option<&str>) -> Result<Value> {
     match agent.unwrap_or_default().trim() {
         "codex" => list_codex_models(config).await,
-        "claude" => Ok(json!({
-            "success": true,
-            "models": ["claude-opus-4-6", "claude-sonnet-4-5", "claude-haiku-4-5"],
-            "reasoningEfforts": ["auto", "low", "medium", "high", "max"],
-        })),
-        "gemini" => Ok(json!({
-            "success": true,
-            "models": ["auto", "gemini-3-flash-preview", "gemini-3-pro-preview"],
-            "reasoningEfforts": ["auto"],
-            "modelMetadata": [
-                {
-                    "id": "auto",
-                    "model": "auto",
-                    "displayName": "Auto",
-                    "description": "Let Gemini CLI choose the best current model.",
-                    "isDefault": true
-                },
-                {
-                    "id": "gemini-3-flash-preview",
-                    "model": "gemini-3-flash-preview",
-                    "displayName": "Gemini 3 Flash Preview",
-                    "description": "Fast general-purpose Gemini 3 preview model."
-                },
-                {
-                    "id": "gemini-3-pro-preview",
-                    "model": "gemini-3-pro-preview",
-                    "displayName": "Gemini 3 Pro Preview",
-                    "description": "Higher-capability Gemini 3 preview model.",
-                    "upgrade": "preview"
-                }
-            ]
-        })),
+        "claude" => list_claude_models(config).await,
+        "gemini" => list_gemini_models(config).await,
         _ => Ok(json!({
             "success": false,
             "error": "Agent is required. Choose one of: 'claude', 'codex', 'gemini'."
@@ -375,7 +345,42 @@ async fn list_codex_models(config: &Config) -> Result<Value> {
     Ok(normalize_codex_model_list(result))
 }
 
+async fn list_claude_models(config: &Config) -> Result<Value> {
+    let reasoning_efforts = detect_claude_reasoning_efforts(config).await;
+    let model_metadata = if let Some(executable_path) = resolve_executable_path(
+        if config.provider_commands.resolve(Provider::Claude).executable() == "unhappy" {
+            "claude"
+        } else {
+            config.provider_commands.resolve(Provider::Claude).executable()
+        },
+    ) {
+        match read_claude_model_metadata_from_binary(&executable_path).await {
+            Some(metadata) if !metadata.is_empty() => metadata,
+            _ => claude_model_metadata_fallback(),
+        }
+    } else {
+        claude_model_metadata_fallback()
+    };
+    let models = model_metadata
+        .iter()
+        .filter_map(|row| row.get("id").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "success": true,
+        "models": models,
+        "reasoningEfforts": reasoning_efforts,
+        "modelMetadata": model_metadata,
+    }))
+}
+
 fn normalize_codex_model_list(result: Value) -> Value {
+    let top_level_reasoning = result
+        .get("reasoningEfforts")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let rows = result
         .get("data")
         .or_else(|| result.get("items"))
@@ -386,6 +391,12 @@ fn normalize_codex_model_list(result: Value) -> Value {
     let mut models = Vec::<String>::new();
     let mut reasoning = Vec::<String>::new();
     let mut metadata = Vec::<Value>::new();
+
+    for effort in top_level_reasoning {
+        if let Some(value) = normalized_reasoning_effort_value(&effort) {
+            reasoning.push(value);
+        }
+    }
 
     for row in rows {
         if let Some(id) = row
@@ -411,11 +422,20 @@ fn normalize_codex_model_list(result: Value) -> Value {
         if let Some(default_effort) = object
             .get("defaultReasoningEffort")
             .or_else(|| object.get("default_reasoning_effort"))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+            .and_then(normalized_reasoning_effort_value)
         {
-            reasoning.push(default_effort.to_string());
+            reasoning.push(default_effort);
+        }
+        if let Some(supported_efforts) = object
+            .get("supportedReasoningEfforts")
+            .or_else(|| object.get("supported_reasoning_efforts"))
+            .and_then(Value::as_array)
+        {
+            for effort in supported_efforts {
+                if let Some(value) = normalized_reasoning_effort_value(effort) {
+                    reasoning.push(value);
+                }
+            }
         }
         metadata.push(row);
     }
@@ -434,6 +454,496 @@ fn normalize_codex_model_list(result: Value) -> Value {
         "reasoningEfforts": reasoning,
         "modelMetadata": metadata
     })
+}
+
+fn normalized_reasoning_effort_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        Value::Object(object) => object
+            .get("reasoningEffort")
+            .or_else(|| object.get("reasoning_effort"))
+            .or_else(|| object.get("effort"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|effort| !effort.is_empty())
+            .map(ToOwned::to_owned),
+        _ => None,
+    }
+}
+
+fn claude_model_metadata_fallback() -> Vec<Value> {
+    vec![
+        json!({
+            "id": "default",
+            "model": "default",
+            "displayName": "Default",
+            "description": "Use Claude Code's current default model alias.",
+            "isDefault": true,
+        }),
+        json!({
+            "id": "sonnet",
+            "model": "sonnet",
+            "displayName": "Sonnet",
+            "description": "Claude Code Sonnet alias from the official model configuration docs.",
+        }),
+        json!({
+            "id": "opus",
+            "model": "opus",
+            "displayName": "Opus",
+            "description": "Claude Code Opus alias from the official model configuration docs.",
+        }),
+        json!({
+            "id": "haiku",
+            "model": "haiku",
+            "displayName": "Haiku",
+            "description": "Claude Code Haiku alias from the official model configuration docs.",
+        }),
+        json!({
+            "id": "sonnet[1m]",
+            "model": "sonnet[1m]",
+            "displayName": "Sonnet 1M",
+            "description": "Claude Code Sonnet alias with 1M context from the official model configuration docs.",
+        }),
+        json!({
+            "id": "opusplan",
+            "model": "opusplan",
+            "displayName": "Opus Plan",
+            "description": "Claude Code Opus Plan alias from the official model configuration docs.",
+        }),
+    ]
+}
+
+async fn read_claude_model_metadata_from_binary(executable_path: &Path) -> Option<Vec<Value>> {
+    let output = Command::new("strings")
+        .arg("-a")
+        .arg(executable_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_claude_model_metadata(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_claude_model_metadata(source: &str) -> Option<Vec<Value>> {
+    let alias_order = ["default", "sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"];
+    let available_aliases = alias_order
+        .iter()
+        .copied()
+        .filter(|alias| source.lines().any(|line| line.trim() == *alias))
+        .collect::<Vec<_>>();
+
+    let latest_family_models = latest_claude_family_models(source);
+    if available_aliases.is_empty() && latest_family_models.is_empty() {
+        return None;
+    }
+
+    let mut metadata = Vec::<Value>::new();
+    for alias in available_aliases {
+        metadata.push(match alias {
+            "default" => json!({
+                "id": "default",
+                "model": "default",
+                "displayName": "Default",
+                "description": "Installed Claude Code binary default model alias.",
+                "isDefault": true,
+            }),
+            "sonnet" => json!({
+                "id": "sonnet",
+                "model": "sonnet",
+                "displayName": "Sonnet",
+                "description": "Installed Claude Code binary Sonnet alias.",
+            }),
+            "opus" => json!({
+                "id": "opus",
+                "model": "opus",
+                "displayName": "Opus",
+                "description": "Installed Claude Code binary Opus alias.",
+            }),
+            "haiku" => json!({
+                "id": "haiku",
+                "model": "haiku",
+                "displayName": "Haiku",
+                "description": "Installed Claude Code binary Haiku alias.",
+            }),
+            "sonnet[1m]" => json!({
+                "id": "sonnet[1m]",
+                "model": "sonnet[1m]",
+                "displayName": "Sonnet 1M",
+                "description": "Installed Claude Code binary Sonnet 1M alias.",
+            }),
+            "opusplan" => json!({
+                "id": "opusplan",
+                "model": "opusplan",
+                "displayName": "Opus Plan",
+                "description": "Installed Claude Code binary Opus Plan alias.",
+            }),
+            _ => continue,
+        });
+    }
+
+    for model_id in latest_family_models {
+        let display_name = model_id
+            .strip_prefix("claude-")
+            .map(|value| value.replace('-', " "))
+            .unwrap_or_else(|| model_id.clone());
+        metadata.push(json!({
+            "id": model_id,
+            "model": model_id,
+            "displayName": display_name,
+            "description": "Latest installed Claude Code family model id discovered from the local binary surface."
+        }));
+    }
+
+    Some(metadata)
+}
+
+fn latest_claude_family_models(source: &str) -> Vec<String> {
+    let mut latest = std::collections::HashMap::<&str, (u8, u32, u32, String)>::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        let Some((family, category, major, minor)) = parse_claude_model_rank(trimmed) else {
+            continue;
+        };
+        match latest.get(family) {
+            Some((best_category, best_major, best_minor, _))
+                if (*best_category, *best_major, *best_minor) >= (category, major, minor) => {}
+            _ => {
+                latest.insert(family, (category, major, minor, trimmed.to_string()));
+            }
+        }
+    }
+
+    ["sonnet", "opus", "haiku"]
+        .into_iter()
+        .filter_map(|family| latest.get(family).map(|(_, _, _, model)| model.clone()))
+        .collect()
+}
+
+fn parse_claude_model_rank(value: &str) -> Option<(&str, u8, u32, u32)> {
+    let trimmed = value.trim();
+    let stripped = trimmed.strip_prefix("claude-")?;
+    let (family, version) = stripped.split_once('-')?;
+    if !matches!(family, "sonnet" | "opus" | "haiku") {
+        return None;
+    }
+    let parts = version.split('-').collect::<Vec<_>>();
+    if parts.len() == 2
+        && parts[0].chars().all(|char| char.is_ascii_digit())
+        && parts[1].chars().all(|char| char.is_ascii_digit())
+        && parts[1].len() <= 2
+    {
+        return Some((
+            family,
+            3,
+            parts[0].parse::<u32>().ok()?,
+            parts[1].parse::<u32>().ok()?,
+        ));
+    }
+    if parts.len() == 1 && parts[0].chars().all(|char| char.is_ascii_digit()) {
+        return Some((family, 2, parts[0].parse::<u32>().ok()?, 0));
+    }
+    if parts.len() == 2
+        && parts[0].chars().all(|char| char.is_ascii_digit())
+        && parts[1].chars().all(|char| char.is_ascii_digit())
+    {
+        return Some((family, 1, parts[0].parse::<u32>().ok()?, 0));
+    }
+    None
+}
+
+async fn list_gemini_models(config: &Config) -> Result<Value> {
+    if let Some(models_js_path) = find_gemini_models_js(config) {
+        if let Ok(source) = fs::read_to_string(&models_js_path).await {
+            if let Some(payload) = parse_gemini_model_payload(&source) {
+                return Ok(payload);
+            }
+        }
+    }
+    Ok(gemini_model_payload_fallback())
+}
+
+fn gemini_model_payload_fallback() -> Value {
+    json!({
+        "success": true,
+        "models": ["auto", "auto-gemini-3", "gemini-3.1-pro-preview", "gemini-3-flash-preview"],
+        "reasoningEfforts": ["auto"],
+        "modelMetadata": [
+            {
+                "id": "auto",
+                "model": "auto",
+                "displayName": "Auto",
+                "description": "Let Gemini CLI choose the current stable Gemini model family for the active account.",
+                "isDefault": true
+            },
+            {
+                "id": "auto-gemini-3",
+                "model": "auto-gemini-3",
+                "displayName": "Auto Gemini 3",
+                "description": "Installed Gemini CLI preview auto selector. Routes across Gemini 3 preview models."
+            },
+            {
+                "id": "gemini-3.1-pro-preview",
+                "model": "gemini-3.1-pro-preview",
+                "displayName": "Gemini 3.1 Pro Preview",
+                "description": "Installed Gemini CLI preview Pro model constant."
+            },
+            {
+                "id": "gemini-3-flash-preview",
+                "model": "gemini-3-flash-preview",
+                "displayName": "Gemini 3 Flash Preview",
+                "description": "Installed Gemini CLI preview Flash model constant."
+            }
+        ]
+    })
+}
+
+fn find_gemini_models_js(config: &Config) -> Option<PathBuf> {
+    let configured_command = config.provider_commands.resolve(Provider::Gemini);
+    let executable = if configured_command.executable() == "unhappy" {
+        "gemini"
+    } else {
+        configured_command.executable()
+    };
+    let executable_path = resolve_executable_path(executable)?;
+
+    let mut candidates = Vec::<PathBuf>::new();
+    for ancestor in executable_path.ancestors() {
+        candidates.push(
+            ancestor.join("node_modules")
+                .join("@google")
+                .join("gemini-cli-core")
+                .join("dist")
+                .join("src")
+                .join("config")
+                .join("models.js"),
+        );
+        candidates.push(
+            ancestor.join("node_modules")
+                .join("@google")
+                .join("gemini-cli")
+                .join("node_modules")
+                .join("@google")
+                .join("gemini-cli-core")
+                .join("dist")
+                .join("src")
+                .join("config")
+                .join("models.js"),
+        );
+        candidates.push(
+            ancestor.join("libexec")
+                .join("lib")
+                .join("node_modules")
+                .join("@google")
+                .join("gemini-cli")
+                .join("node_modules")
+                .join("@google")
+                .join("gemini-cli-core")
+                .join("dist")
+                .join("src")
+                .join("config")
+                .join("models.js"),
+        );
+    }
+
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn resolve_executable_path(executable: &str) -> Option<PathBuf> {
+    let candidate = PathBuf::from(executable);
+    if candidate.is_absolute() || executable.contains(std::path::MAIN_SEPARATOR) {
+        return std::fs::canonicalize(candidate).ok();
+    }
+
+    let path_env = env::var_os("PATH")?;
+    env::split_paths(&path_env)
+        .map(|directory| directory.join(executable))
+        .find_map(|path| std::fs::canonicalize(path).ok())
+}
+
+fn parse_gemini_model_payload(source: &str) -> Option<Value> {
+    let constants = parse_exported_string_constants(source);
+    let preview_pro = constants
+        .get("PREVIEW_GEMINI_3_1_MODEL")
+        .or_else(|| constants.get("PREVIEW_GEMINI_MODEL"))
+        .cloned();
+    let preview_auto = constants.get("PREVIEW_GEMINI_MODEL_AUTO").cloned();
+    let preview_flash = constants.get("PREVIEW_GEMINI_FLASH_MODEL").cloned();
+    let default_auto = constants.get("DEFAULT_GEMINI_MODEL_AUTO").cloned();
+    let default_pro = constants.get("DEFAULT_GEMINI_MODEL").cloned();
+    let default_flash = constants.get("DEFAULT_GEMINI_FLASH_MODEL").cloned();
+    let default_flash_lite = constants.get("DEFAULT_GEMINI_FLASH_LITE_MODEL").cloned();
+
+    let mut metadata = Vec::<Value>::new();
+    metadata.push(json!({
+        "id": "auto",
+        "model": "auto",
+        "displayName": "Auto",
+        "description": "Gemini CLI convenience alias that resolves through the installed package defaults.",
+        "isDefault": true
+    }));
+
+    if let Some(value) = preview_auto {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Auto Gemini 3",
+            "description": "Installed Gemini CLI preview auto selector."
+        }));
+    }
+    if let Some(value) = preview_pro {
+        let display_name = if value.contains("3.1") {
+            "Gemini 3.1 Pro Preview"
+        } else {
+            "Gemini 3 Pro Preview"
+        };
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": display_name,
+            "description": "Installed Gemini CLI preview Pro model constant."
+        }));
+    }
+    if let Some(value) = preview_flash {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 3 Flash Preview",
+            "description": "Installed Gemini CLI preview Flash model constant."
+        }));
+    }
+    if let Some(value) = default_auto {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Auto Gemini 2.5",
+            "description": "Installed Gemini CLI stable auto selector."
+        }));
+    }
+    if let Some(value) = default_pro {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 2.5 Pro",
+            "description": "Installed Gemini CLI stable Pro model constant."
+        }));
+    }
+    if let Some(value) = default_flash {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 2.5 Flash",
+            "description": "Installed Gemini CLI stable Flash model constant."
+        }));
+    }
+    if let Some(value) = default_flash_lite {
+        metadata.push(json!({
+            "id": value,
+            "model": value,
+            "displayName": "Gemini 2.5 Flash Lite",
+            "description": "Installed Gemini CLI stable Flash Lite model constant."
+        }));
+    }
+
+    let mut models = metadata
+        .iter()
+        .filter_map(|row| row.get("id").and_then(Value::as_str))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
+
+    (!models.is_empty()).then(|| {
+        json!({
+            "success": true,
+            "models": models,
+            "reasoningEfforts": ["auto"],
+            "modelMetadata": metadata
+        })
+    })
+}
+
+fn parse_exported_string_constants(source: &str) -> std::collections::HashMap<String, String> {
+    source
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let remainder = trimmed.strip_prefix("export const ")?;
+            let (name, value) = remainder.split_once(" = ")?;
+            let value = value.trim_end_matches(';').trim();
+            let value = value
+                .strip_prefix('\'')
+                .and_then(|value| value.strip_suffix('\''))?;
+            Some((name.trim().to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+async fn detect_claude_reasoning_efforts(config: &Config) -> Vec<String> {
+    let configured_command = config.provider_commands.resolve(Provider::Claude);
+    let executable = if configured_command.executable() == "unhappy" {
+        "claude"
+    } else {
+        configured_command.executable()
+    };
+    let output = Command::new(executable)
+        .arg("--help")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await;
+    let help_text = match output {
+        Ok(output) if output.status.success() => String::from_utf8_lossy(&output.stdout).to_string(),
+        _ => String::new(),
+    };
+    let mut efforts = extract_claude_effort_choices(&help_text);
+    if !efforts.iter().any(|value| value == "auto") {
+        efforts.insert(0, "auto".to_string());
+    }
+    efforts
+}
+
+fn extract_claude_effort_choices(help_text: &str) -> Vec<String> {
+    let mut efforts = help_text
+        .lines()
+        .find_map(|line| {
+            if !line.contains("--effort") {
+                return None;
+            }
+            let start = line.rfind('(')?;
+            let end = line.rfind(')')?;
+            (end > start).then(|| {
+                line[start + 1..end]
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+        })
+        .unwrap_or_else(|| {
+            vec![
+                "low".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+                "max".to_string(),
+            ]
+        });
+    efforts.sort();
+    efforts.dedup();
+    efforts
 }
 
 fn build_tree_node(path: &Path, max_depth: usize) -> Result<Value> {
@@ -522,4 +1032,157 @@ fn resolve_path(raw: &str) -> PathBuf {
 
 fn home_dir() -> PathBuf {
     PathBuf::from(env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_codex_model_list_preserves_models_and_supported_reasoning_efforts() {
+        let result = normalize_codex_model_list(json!({
+            "data": [
+                {
+                    "id": "gpt-5.4",
+                    "displayName": "gpt-5.4",
+                    "defaultReasoningEffort": "medium",
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low" },
+                        { "reasoningEffort": "medium" },
+                        { "reasoningEffort": "high" },
+                        { "reasoningEffort": "xhigh" }
+                    ]
+                },
+                {
+                    "id": "gpt-5.3-codex",
+                    "displayName": "gpt-5.3-codex",
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "medium" },
+                        { "reasoningEffort": "xhigh" }
+                    ]
+                }
+            ]
+        }));
+
+        assert_eq!(
+            result["models"].as_array().expect("models"),
+            &vec![
+                Value::String("gpt-5.3-codex".to_string()),
+                Value::String("gpt-5.4".to_string()),
+            ]
+        );
+        assert_eq!(
+            result["reasoningEfforts"].as_array().expect("reasoning"),
+            &vec![
+                Value::String("auto".to_string()),
+                Value::String("high".to_string()),
+                Value::String("low".to_string()),
+                Value::String("medium".to_string()),
+                Value::String("xhigh".to_string()),
+            ]
+        );
+        assert_eq!(result["modelMetadata"].as_array().map(Vec::len), Some(2));
+    }
+
+    #[test]
+    fn extract_claude_effort_choices_reads_choices_from_help_output() {
+        let help = "  --effort <level>  Effort level for the current session (low, medium, high, max)";
+        let efforts = extract_claude_effort_choices(help);
+
+        assert_eq!(
+            efforts,
+            vec![
+                "high".to_string(),
+                "low".to_string(),
+                "max".to_string(),
+                "medium".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn claude_model_metadata_uses_documented_aliases() {
+        let metadata = claude_model_metadata_fallback();
+        let ids = metadata
+            .iter()
+            .filter_map(|row| row.get("id").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec!["default", "sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"]
+        );
+    }
+
+    #[test]
+    fn parse_claude_model_metadata_reads_aliases_and_latest_family_models() {
+        let metadata = parse_claude_model_metadata(
+            "default\n\
+             sonnet\n\
+             opus\n\
+             haiku\n\
+             sonnet[1m]\n\
+             opusplan\n\
+             claude-sonnet-4-5\n\
+             claude-sonnet-4-6\n\
+             claude-opus-4-5\n\
+             claude-opus-4-6\n\
+             claude-haiku-4-5\n\
+             claude-opus-4-20250514\n",
+        )
+        .expect("metadata");
+
+        let ids = metadata
+            .iter()
+            .filter_map(|row| row.get("id").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ids,
+            vec![
+                "default",
+                "sonnet",
+                "opus",
+                "haiku",
+                "sonnet[1m]",
+                "opusplan",
+                "claude-sonnet-4-6",
+                "claude-opus-4-6",
+                "claude-haiku-4-5",
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_gemini_model_payload_reads_installed_package_constants() {
+        let payload = parse_gemini_model_payload(
+            "export const PREVIEW_GEMINI_MODEL = 'gemini-3-pro-preview';\n\
+             export const PREVIEW_GEMINI_3_1_MODEL = 'gemini-3.1-pro-preview';\n\
+             export const PREVIEW_GEMINI_FLASH_MODEL = 'gemini-3-flash-preview';\n\
+             export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';\n\
+             export const DEFAULT_GEMINI_FLASH_MODEL = 'gemini-2.5-flash';\n\
+             export const DEFAULT_GEMINI_FLASH_LITE_MODEL = 'gemini-2.5-flash-lite';\n\
+             export const PREVIEW_GEMINI_MODEL_AUTO = 'auto-gemini-3';\n\
+             export const DEFAULT_GEMINI_MODEL_AUTO = 'auto-gemini-2.5';\n",
+        )
+        .expect("payload");
+
+        assert_eq!(
+            payload["models"].as_array().expect("models"),
+            &vec![
+                Value::String("auto".to_string()),
+                Value::String("auto-gemini-2.5".to_string()),
+                Value::String("auto-gemini-3".to_string()),
+                Value::String("gemini-2.5-flash".to_string()),
+                Value::String("gemini-2.5-flash-lite".to_string()),
+                Value::String("gemini-2.5-pro".to_string()),
+                Value::String("gemini-3-flash-preview".to_string()),
+                Value::String("gemini-3.1-pro-preview".to_string()),
+            ]
+        );
+        assert_eq!(
+            payload["reasoningEfforts"].as_array().expect("reasoning"),
+            &vec![Value::String("auto".to_string())]
+        );
+    }
 }

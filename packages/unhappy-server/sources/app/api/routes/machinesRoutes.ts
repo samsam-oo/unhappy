@@ -14,9 +14,248 @@ import {
     findConnectedMachine,
     invokePublicCommand
 } from "./codexPublicCommands";
+import { Prisma } from "@prisma/client";
+import { deriveMachineActive } from "./machineLiveness";
 
 export function machinesRoutes(app: Fastify) {
-    const MACHINE_ACTIVE_STALE_AFTER_MS = 1000 * 60 * 2;
+    const sessionCatalogScopeSchema = z.object({
+        provider: z.enum(['codex', 'claude', 'gemini']),
+        projectPath: z.string().min(1),
+        observedAtMs: z.number().int().nonnegative().optional(),
+        sessions: z.array(z.object({
+            providerSessionId: z.string().min(1),
+            title: z.string().min(1),
+            preview: z.string().nullable().optional(),
+            cwd: z.string().nullable().optional(),
+            transcriptPath: z.string().nullable().optional(),
+            model: z.string().nullable().optional(),
+            archived: z.boolean().optional(),
+            providerCreatedAt: z.string().nullable().optional(),
+            providerUpdatedAt: z.string().min(1),
+        })),
+    });
+
+    type SessionCatalogScope = z.infer<typeof sessionCatalogScopeSchema>;
+
+    function normalizeCatalogString(value: string | null | undefined): string | null {
+        if (typeof value !== 'string') return null;
+        const normalized = value.trim();
+        return normalized.length > 0 ? normalized : null;
+    }
+
+    function buildProjectSessionCatalogResponseRow(row: {
+        provider: string;
+        machineId?: string;
+        providerSessionId: string;
+        title: string;
+        preview: string | null;
+        cwd: string | null;
+        transcriptPath: string | null;
+        model: string | null;
+        archived: boolean;
+        providerCreatedAt: Date | null;
+        providerUpdatedAt: Date;
+    }) {
+        return {
+            machineId: row.machineId,
+            id: row.providerSessionId,
+            provider: row.provider,
+            title: row.title,
+            preview: row.preview,
+            cwd: row.cwd,
+            path: row.transcriptPath,
+            updatedAt: row.providerUpdatedAt.toISOString(),
+            createdAt: row.providerCreatedAt?.toISOString() ?? row.providerUpdatedAt.toISOString(),
+            archived: row.archived,
+            model: row.model,
+        };
+    }
+
+    function isMissingCatalogTableError(error: unknown): boolean {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+            return false;
+        }
+        return error.code === 'P2021'
+            && typeof error.meta?.table === 'string'
+            && (error.meta.table.includes('MachineSessionCatalogEntry')
+                || error.meta.table.includes('MachineProjectCatalogEntry'));
+    }
+
+    function sendCatalogUnavailable(reply: any) {
+        return reply.code(503).send({
+            error: 'Session catalog unavailable',
+            message: 'Session catalog tables are unavailable until the latest database migrations are applied',
+            statusCode: 503,
+        });
+    }
+
+    async function replaceSessionCatalogScope(
+        userId: string,
+        machineId: string,
+        scope: SessionCatalogScope
+    ) {
+        const projectPath = scope.projectPath.trim();
+        const observedAt = new Date(scope.observedAtMs ?? Date.now());
+        const providerSessionIds = scope.sessions.map((session) => session.providerSessionId.trim());
+        const latestUpdatedAt = scope.sessions.reduce<Date>(
+            (currentLatest, session) => {
+                const candidate = new Date(session.providerUpdatedAt);
+                if (Number.isNaN(candidate.getTime())) {
+                    return currentLatest;
+                }
+                return candidate > currentLatest ? candidate : currentLatest;
+            },
+            observedAt
+        );
+
+        await db.$transaction(async (tx) => {
+            await tx.machineProjectCatalogEntry.upsert({
+                where: {
+                    accountId_machineId_projectPath: {
+                        accountId: userId,
+                        machineId,
+                        projectPath,
+                    },
+                },
+                create: {
+                    accountId: userId,
+                    machineId,
+                    projectPath,
+                    displayPath: projectPath,
+                    openedExplicitly: true,
+                    latestUpdatedAt,
+                    lastObservedAt: observedAt,
+                },
+                update: {
+                    displayPath: projectPath,
+                    openedExplicitly: true,
+                    latestUpdatedAt,
+                    lastObservedAt: observedAt,
+                },
+            });
+
+            await tx.machineSessionCatalogEntry.deleteMany({
+                where: {
+                    accountId: userId,
+                    machineId,
+                    provider: scope.provider,
+                    projectPath,
+                    providerSessionId: {
+                        notIn: providerSessionIds,
+                    },
+                },
+            });
+
+            for (const session of scope.sessions) {
+                const providerSessionId = session.providerSessionId.trim();
+                await tx.machineSessionCatalogEntry.upsert({
+                    where: {
+                        accountId_machineId_provider_projectPath_providerSessionId: {
+                            accountId: userId,
+                            machineId,
+                            provider: scope.provider,
+                            projectPath,
+                            providerSessionId,
+                        },
+                    },
+                    create: {
+                        accountId: userId,
+                        machineId,
+                        provider: scope.provider,
+                        projectPath,
+                        providerSessionId,
+                        title: session.title.trim(),
+                        preview: normalizeCatalogString(session.preview),
+                        cwd: normalizeCatalogString(session.cwd),
+                        transcriptPath: normalizeCatalogString(session.transcriptPath),
+                        model: normalizeCatalogString(session.model),
+                        archived: session.archived ?? false,
+                        providerCreatedAt: session.providerCreatedAt != null
+                            ? new Date(session.providerCreatedAt)
+                            : null,
+                        providerUpdatedAt: new Date(session.providerUpdatedAt),
+                        lastObservedAt: observedAt,
+                    },
+                    update: {
+                        title: session.title.trim(),
+                        preview: normalizeCatalogString(session.preview),
+                        cwd: normalizeCatalogString(session.cwd),
+                        transcriptPath: normalizeCatalogString(session.transcriptPath),
+                        model: normalizeCatalogString(session.model),
+                        archived: session.archived ?? false,
+                        providerCreatedAt: session.providerCreatedAt != null
+                            ? new Date(session.providerCreatedAt)
+                            : null,
+                        providerUpdatedAt: new Date(session.providerUpdatedAt),
+                        lastObservedAt: observedAt,
+                    },
+                });
+            }
+        });
+    }
+
+    async function buildMachineProjectCatalogRows(
+        userId: string,
+        machineId: string
+    ) {
+        const projects = await db.machineProjectCatalogEntry.findMany({
+            where: {
+                accountId: userId,
+                machineId,
+                openedExplicitly: true,
+            },
+            orderBy: [
+                { latestUpdatedAt: 'desc' },
+                { projectPath: 'asc' },
+            ],
+        });
+
+        const sessions = await db.machineSessionCatalogEntry.findMany({
+            where: {
+                accountId: userId,
+                machineId,
+                projectPath: {
+                    in: projects.map((project) => project.projectPath),
+                },
+            },
+            select: {
+                projectPath: true,
+                provider: true,
+                providerUpdatedAt: true,
+            },
+        });
+
+        const countsByProject = new Map<string, { codex: number; claude: number; latestUpdatedAt: Date | null }>();
+        for (const session of sessions) {
+            const current = countsByProject.get(session.projectPath) ?? {
+                codex: 0,
+                claude: 0,
+                latestUpdatedAt: null,
+            };
+            if (session.provider === 'codex') {
+                current.codex += 1;
+            } else if (session.provider === 'claude') {
+                current.claude += 1;
+            }
+            if (!current.latestUpdatedAt || session.providerUpdatedAt > current.latestUpdatedAt) {
+                current.latestUpdatedAt = session.providerUpdatedAt;
+            }
+            countsByProject.set(session.projectPath, current);
+        }
+
+        return projects.map((project) => {
+            const counts = countsByProject.get(project.projectPath);
+            const latestUpdatedAt = counts?.latestUpdatedAt ?? project.latestUpdatedAt;
+            return {
+                path: project.projectPath,
+                displayPath: project.displayPath ?? project.projectPath,
+                latestUpdatedAt: latestUpdatedAt.toISOString(),
+                codexThreadCount: counts?.codex ?? 0,
+                claudeSessionCount: counts?.claude ?? 0,
+                openedExplicitly: true,
+            };
+        });
+    }
 
     function rejectEncryptedDataPlaneRequired(
         reply: { code: (statusCode: number) => { send: (payload: unknown) => unknown } }
@@ -64,39 +303,18 @@ export function machinesRoutes(app: Fastify) {
         createdAt: Date;
         updatedAt: Date;
     }>(machine: T): Promise<T> {
-        if (!machine.active) {
-            return machine;
-        }
-
-        const staleCutoff = Date.now() - MACHINE_ACTIVE_STALE_AFTER_MS;
-        if (machine.lastActiveAt.getTime() > staleCutoff) {
-            return machine;
-        }
-
-        const updated = await db.machine.updateManyAndReturn({
-            where: {
-                accountId: machine.accountId,
-                id: machine.id,
-                active: true,
-                lastActiveAt: machine.lastActiveAt,
-            },
-            data: {
-                active: false,
-            }
+        const effectiveActive = deriveMachineActive({
+            active: machine.active,
+            lastActiveAtMs: machine.lastActiveAt.getTime(),
+            connected: Boolean(findConnectedMachine(machine.accountId, machine.id)),
         });
-
-        const normalized = updated[0];
-        if (!normalized) {
+        if (effectiveActive == machine.active) {
             return machine;
         }
-
-        eventRouter.emitEphemeral({
-            userId: normalized.accountId,
-            payload: buildMachineActivityEphemeral(normalized.id, false, normalized.lastActiveAt.getTime()),
-            recipientFilter: { type: 'user-scoped-only' }
-        });
-
-        return normalized as T;
+        return {
+            ...machine,
+            active: effectiveActive,
+        };
     }
 
     async function invokeMachineCommand(
@@ -298,6 +516,41 @@ export function machinesRoutes(app: Fastify) {
         }
     });
 
+    app.post('/v1/machines/:id/session-catalog/delta', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            body: z.object({
+                scopes: z.array(sessionCatalogScopeSchema),
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        try {
+            for (const scope of request.body.scopes) {
+                await replaceSessionCatalogScope(userId, id, scope);
+            }
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
+        }
+
+        return reply.send({
+            success: true,
+            scopeCount: request.body.scopes.length,
+        });
+    });
+
 
     // Machines API
     app.get('/v1/machines', {
@@ -369,6 +622,168 @@ export function machinesRoutes(app: Fastify) {
                 updatedAt: normalizedMachine.updatedAt.getTime()
             }
         };
+    });
+
+    app.get('/v1/machines/:id/session-catalog/project-sessions', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            }),
+            querystring: z.object({
+                path: z.string(),
+                limit: z.coerce.number().int().min(1).max(200).default(100),
+                cursor: z.string().optional()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const projectPath = request.query.path.trim();
+        if (!projectPath) {
+            return reply.code(400).send({ success: false, error: 'path is required' });
+        }
+
+        const limit = request.query.limit;
+        const cursor = Number.parseInt((request.query.cursor ?? '').trim(), 10);
+        const offset = Number.isFinite(cursor) && cursor >= 0 ? cursor : 0;
+
+        let rows;
+        try {
+            rows = await db.machineSessionCatalogEntry.findMany({
+                where: {
+                    accountId: userId,
+                    machineId: id,
+                    projectPath,
+                },
+                orderBy: [
+                    { providerUpdatedAt: 'desc' },
+                    { providerSessionId: 'asc' },
+                ],
+                skip: offset,
+                take: limit + 1,
+            });
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
+        }
+
+        const hasNext = rows.length > limit;
+        const pageRows = hasNext ? rows.slice(0, limit) : rows;
+
+        return reply.send({
+            success: true,
+            sessions: pageRows.map((row) => buildProjectSessionCatalogResponseRow({
+                machineId: row.machineId,
+                provider: row.provider,
+                providerSessionId: row.providerSessionId,
+                title: row.title,
+                preview: row.preview,
+                cwd: row.cwd,
+                transcriptPath: row.transcriptPath,
+                model: row.model,
+                archived: row.archived,
+                providerCreatedAt: row.providerCreatedAt,
+                providerUpdatedAt: row.providerUpdatedAt,
+            })),
+            hasNext,
+            nextCursor: hasNext ? String(offset + limit) : null,
+        });
+    });
+
+    app.get('/v1/machines/:id/project-catalog/projects', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({
+                id: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const machineExists = await ensureMachineBelongsToUser(userId, id);
+        if (!machineExists) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        let projects;
+        try {
+            projects = await buildMachineProjectCatalogRows(userId, id);
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
+        }
+        return reply.send({
+            success: true,
+            projects,
+        });
+    });
+
+    app.get('/v1/session-catalog/recent', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                limit: z.coerce.number().int().min(1).max(200).default(100),
+                cursor: z.string().optional()
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const limit = request.query.limit;
+        const cursor = Number.parseInt((request.query.cursor ?? '').trim(), 10);
+        const offset = Number.isFinite(cursor) && cursor >= 0 ? cursor : 0;
+
+        let rows;
+        try {
+            rows = await db.machineSessionCatalogEntry.findMany({
+                where: {
+                    accountId: userId,
+                },
+                orderBy: [
+                    { providerUpdatedAt: 'desc' },
+                    { machineId: 'asc' },
+                    { providerSessionId: 'asc' },
+                ],
+                skip: offset,
+                take: limit + 1,
+            });
+        } catch (error) {
+            if (isMissingCatalogTableError(error)) {
+                return sendCatalogUnavailable(reply);
+            }
+            throw error;
+        }
+
+        const hasNext = rows.length > limit;
+        const pageRows = hasNext ? rows.slice(0, limit) : rows;
+
+        return reply.send({
+            success: true,
+            sessions: pageRows.map((row) => buildProjectSessionCatalogResponseRow({
+                machineId: row.machineId,
+                provider: row.provider,
+                providerSessionId: row.providerSessionId,
+                title: row.title,
+                preview: row.preview,
+                cwd: row.cwd,
+                transcriptPath: row.transcriptPath,
+                model: row.model,
+                archived: row.archived,
+                providerCreatedAt: row.providerCreatedAt,
+                providerUpdatedAt: row.providerUpdatedAt,
+            })),
+            hasNext,
+            nextCursor: hasNext ? String(offset + limit) : null,
+        });
     });
 
     app.delete('/v1/machines/:id', {

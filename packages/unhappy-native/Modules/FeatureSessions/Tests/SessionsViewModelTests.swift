@@ -207,6 +207,55 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func loadProjectsStreamingDoesNotPreloadProjectScopedSessionsWhenCatalogDrivesLists() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T04:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let projectsLoader = StreamingProjectsLoader(
+            snapshots: [
+                SessionProjectsLoadSnapshot(
+                    machineID: "machine-1",
+                    projects: [project],
+                    errorMessage: nil,
+                    isFinal: false
+                ),
+                SessionProjectsLoadSnapshot(
+                    machineID: nil,
+                    projects: [],
+                    errorMessage: nil,
+                    isFinal: true
+                ),
+            ]
+        )
+        let projectSessionsLoader = RecordingProjectSessionsLoader(result: .success([row]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: projectsLoader,
+            projectSessionsLoader: projectSessionsLoader,
+            upstreamSessionsLoader: RecordingUpstreamSessionsLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(await projectSessionsLoader.callCount() == 0)
+        #expect(model.projectSessions(machineID: "machine-1", projectPath: "/repo/app").isEmpty)
+        #expect(model.upstreamSessions.isEmpty)
+    }
+
+    @Test
     func loadRemovesDuplicateMirroredSessionsBoundToSameUpstreamIdentity() async throws {
         let olderSession = APISession(
             id: "session-older",
@@ -507,6 +556,73 @@ struct SessionsViewModelTests {
     }
 
     @Test
+    func removeProjectClearsProjectScopedSessionCacheImmediately() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIMachineProjectSummary(
+                path: "/repo/app",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Remote Session",
+                cwd: "/repo/app",
+                path: "/tmp/thread.jsonl",
+                updatedAt: "2026-03-06T01:00:00.000Z",
+                createdAt: "2026-03-06T00:30:00.000Z",
+                archived: false
+            )
+        )
+        let projectsLoader = SequenceProjectsLoader(
+            results: [
+                .success([project]),
+                .success([]),
+            ]
+        )
+        let projectSessionsLoader = RecordingProjectSessionsLoader(result: .success([row]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: projectsLoader,
+            projectSessionsLoader: projectSessionsLoader,
+            projectRemover: MockProjectRemover(result: .success(project)),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.refreshProject(
+            machineID: "machine-1",
+            projectPath: "/repo/app",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        #expect(model.projectSessions(machineID: "machine-1", projectPath: "/repo/app").map(\.id) == [row.id])
+
+        await model.removeProject(
+            machineID: "machine-1",
+            projectPath: "/repo/app",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.projectSessions(machineID: "machine-1", projectPath: "/repo/app").isEmpty)
+        #expect(model.projectSessionsError(machineID: "machine-1", projectPath: "/repo/app") == nil)
+    }
+
+    @Test
     func archiveUpstreamSessionRemovesRowAndClearsArchivingState() async throws {
         let project = SessionMachineProject(
             machineID: "machine-1",
@@ -667,6 +783,317 @@ struct SessionsViewModelTests {
         let requestedProjects = await upstreamLoader.requestedProjectSnapshots()
         #expect(requestedProjects.count == 2)
         #expect(requestedProjects.map { $0.map(\.id) } == [[projectOne.id], [projectTwo.id]])
+    }
+
+    @Test
+    func projectSessionScopeIsMarkedLoadingUntilRefreshFinishes() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let upstreamLoader = DelayedStreamingUpstreamSessionsLoader(delay: .milliseconds(150))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            upstreamSessionsLoader: upstreamLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+
+        let refreshTask = Task {
+            await model.refreshProject(
+                machineID: "machine-1",
+                projectPath: "/repo/one",
+                serverURLString: "https://api.unhappy.im",
+                token: "token"
+            )
+        }
+
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(model.isProjectSessionsLoading(machineID: "machine-1", projectPath: "/repo/one"))
+        #expect(!model.hasLoadedProjectSessions(machineID: "machine-1", projectPath: "/repo/one"))
+
+        _ = await refreshTask.value
+
+        #expect(!model.isProjectSessionsLoading(machineID: "machine-1", projectPath: "/repo/one"))
+        #expect(model.hasLoadedProjectSessions(machineID: "machine-1", projectPath: "/repo/one"))
+    }
+
+    @Test
+    func refreshProjectStoresRowsInProjectScopedCacheWhenDedicatedLoaderExists() async throws {
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Fix loading",
+                cwd: "/repo/one",
+                path: "/tmp/thread.jsonl",
+                updatedAt: "2026-03-06T01:00:00Z",
+                createdAt: "2026-03-06T00:00:00Z",
+                archived: false,
+                model: "gpt-5-codex",
+                effort: .high,
+                preview: "Fix loading",
+                statusType: nil
+            )
+        )
+        let projectSessionsLoader = RecordingProjectSessionsLoader(result: .success([row]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            projectSessionsLoader: projectSessionsLoader,
+            upstreamSessionsLoader: RecordingUpstreamSessionsLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.refreshProject(
+            machineID: "machine-1",
+            projectPath: "/repo/one",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(await projectSessionsLoader.callCount() == 1)
+        #expect(model.projectSessions(machineID: "machine-1", projectPath: "/repo/one").map(\.id) == [row.id])
+        #expect(model.projectSessionsError(machineID: "machine-1", projectPath: "/repo/one") == nil)
+    }
+
+    @Test
+    func aggregatedRecentSessionsPreferProjectScopedRowsOverOlderGlobalRows() async throws {
+        let olderGlobalRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Older Global",
+                cwd: "/repo/one",
+                path: "/tmp/old.jsonl",
+                updatedAt: "2026-03-06T00:00:00Z",
+                createdAt: "2026-03-05T23:00:00Z",
+                archived: false
+            )
+        )
+        let newerProjectRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Newer Scoped",
+                cwd: "/repo/one",
+                path: "/tmp/new.jsonl",
+                updatedAt: "2026-03-06T01:00:00Z",
+                createdAt: "2026-03-06T00:30:00Z",
+                archived: false
+            )
+        )
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            projectSessionsLoader: RecordingProjectSessionsLoader(result: .success([newerProjectRow])),
+            upstreamSessionsLoader: MockUpstreamSessionsLoader(result: .success([olderGlobalRow])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.refreshProject(
+            machineID: "machine-1",
+            projectPath: "/repo/one",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        _ = model.aggregatedRecentSessions
+
+        #expect(model.aggregatedRecentSessions.count == 1)
+        #expect(model.aggregatedRecentSessions.first?.title == "Newer Scoped")
+        #expect(model.aggregatedRecentSessions.first?.summary.path == "/tmp/new.jsonl")
+    }
+
+    @Test
+    func loadRecentCatalogSessionsPublishesCatalogRows() async throws {
+        let row = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Recent Thread",
+                cwd: "/repo/app",
+                path: "/tmp/thread.jsonl",
+                updatedAt: "2026-03-11T00:00:00.000Z",
+                createdAt: "2026-03-10T23:00:00.000Z",
+                archived: false
+            )
+        )
+        let recentLoader = RecordingRecentCatalogSessionsLoader(result: .success([row]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            recentCatalogSessionsLoader: recentLoader,
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadRecentCatalogSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(await recentLoader.callCount() == 1)
+        #expect(model.recentCatalogSessions.map(\.id) == [row.id])
+        #expect(model.aggregatedRecentSessions.map(\.id) == [row.id])
+        #expect(model.recentCatalogSessionsErrorMessage == nil)
+    }
+
+    @Test
+    func loadUpstreamSessionsBecomesNoOpWhenCatalogBackedScreensAreEnabled() async throws {
+        let upstreamLoader = RecordingUpstreamSessionsLoader(result: .success([
+            SessionLinkedUpstreamSession(
+                machineID: "machine-1",
+                machineDisplayName: "Work Mac",
+                summary: APIUpstreamSessionSummary(
+                    id: "thread-1",
+                    provider: .codex,
+                    title: "Thread",
+                    cwd: "/repo/app",
+                    updatedAt: "2026-03-06T05:00:00.000Z",
+                    createdAt: "2026-03-06T04:00:00.000Z",
+                    archived: false
+                )
+            )
+        ]))
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectSessionsLoader: RecordingProjectSessionsLoader(result: .success([])),
+            upstreamSessionsLoader: upstreamLoader,
+            recentCatalogSessionsLoader: RecordingRecentCatalogSessionsLoader(result: .success([])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadUpstreamSessions(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(await upstreamLoader.callCount() == 0)
+        #expect(model.upstreamSessions.isEmpty)
+        #expect(model.upstreamSessionsErrorMessage == nil)
+        #expect(model.isLoadingUpstreamSessions == false)
+    }
+
+    @Test
+    func aggregatedProjectRowsPreferProjectScopedRowsOverOlderGlobalRows() async throws {
+        let olderGlobalRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Older Global",
+                cwd: "/repo/one",
+                path: "/tmp/old.jsonl",
+                updatedAt: "2026-03-06T00:00:00Z",
+                createdAt: "2026-03-05T23:00:00Z",
+                archived: false
+            )
+        )
+        let newerProjectRow = SessionLinkedUpstreamSession(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIUpstreamSessionSummary(
+                id: "thread-1",
+                provider: .codex,
+                title: "Newer Scoped",
+                cwd: "/repo/one",
+                path: "/tmp/new.jsonl",
+                updatedAt: "2026-03-06T01:00:00Z",
+                createdAt: "2026-03-06T00:30:00Z",
+                archived: false
+            )
+        )
+        let project = SessionMachineProject(
+            machineID: "machine-1",
+            machineDisplayName: "Work Mac",
+            wrappedMachineDataEncryptionKey: "wrapped-key",
+            summary: APIMachineProjectSummary(
+                path: "/repo/one",
+                latestUpdatedAt: "2026-03-06T00:00:00.000Z",
+                codexThreadCount: 1,
+                claudeSessionCount: 0,
+                openedExplicitly: true
+            )
+        )
+        let model = SessionsViewModel(
+            loader: MockSessionsLoader(result: .success([])),
+            pageLoader: MockSessionsPageLoader(result: .success(.init(sessions: [], nextCursor: nil, hasNext: false))),
+            poller: MockSessionsPoller(rows: []),
+            projectsLoader: RecordingProjectsLoader(result: .success([project])),
+            projectSessionsLoader: RecordingProjectSessionsLoader(result: .success([newerProjectRow])),
+            upstreamSessionsLoader: MockUpstreamSessionsLoader(result: .success([olderGlobalRow])),
+            deleteUseCase: MockSessionDeleteUseCase(result: .success(()))
+        )
+
+        await model.loadProjects(serverURLString: "https://api.unhappy.im", token: "token")
+        await model.refreshProject(
+            machineID: "machine-1",
+            projectPath: "/repo/one",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(model.aggregatedProjectRows.count == 1)
+        #expect(model.aggregatedProjectRows.first?.title == "Newer Scoped")
+        #expect(model.aggregatedProjectRows.first?.summary.path == "/tmp/new.jsonl")
     }
 
 

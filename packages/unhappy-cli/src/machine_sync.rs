@@ -1,5 +1,8 @@
 use crate::config::Config;
+use crate::control_server::ListChild;
 use crate::daemon_state::SharedDaemonState;
+use crate::provider::Provider;
+use crate::provider_session_ops;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use anyhow::{anyhow, Context, Result};
@@ -99,7 +102,142 @@ async fn post_machine_snapshot(
         return Err(anyhow!("machine sync failed with HTTP {status}: {body}"));
     }
 
+    if active {
+        post_session_catalog_delta(client, config, state).await?;
+    }
+
     Ok(())
+}
+
+async fn post_session_catalog_delta(
+    client: &Client,
+    config: &Config,
+    state: SharedDaemonState,
+) -> Result<()> {
+    let scopes = build_session_catalog_scopes(config, state).await?;
+    let response = client
+        .post(format!(
+            "{}/v1/machines/{}/session-catalog/delta",
+            config.server_url.trim_end_matches('/'),
+            config.machine_id
+        ))
+        .bearer_auth(&config.token)
+        .json(&json!({ "scopes": scopes }))
+        .send()
+        .await
+        .context("failed to POST session catalog delta")?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("session catalog delta failed with HTTP {status}: {body}"));
+    }
+
+    Ok(())
+}
+
+async fn build_session_catalog_scopes(
+    config: &Config,
+    state: SharedDaemonState,
+) -> Result<Vec<Value>> {
+    let opened_projects = state.list_opened_projects().await;
+    let children = state.list_children().await;
+    let mut scopes = Vec::<Value>::new();
+
+    for opened_project in opened_projects {
+        for provider in [Provider::Codex, Provider::Claude, Provider::Gemini] {
+            let rows = provider_session_rows_for_project(config, provider, &opened_project.path, &children).await?;
+            scopes.push(json!({
+                "provider": provider.command_name(),
+                "projectPath": opened_project.path,
+                "observedAtMs": now_millis(),
+                "sessions": rows,
+            }));
+        }
+    }
+
+    Ok(scopes)
+}
+
+async fn provider_session_rows_for_project(
+    config: &Config,
+    provider: Provider,
+    project_path: &str,
+    children: &[ListChild],
+) -> Result<Vec<Value>> {
+    let active_sessions = children
+        .iter()
+        .filter(|child| child.provider == Some(provider))
+        .filter_map(active_provider_session_row)
+        .collect::<Vec<_>>();
+
+    let response = provider_session_ops::list_provider_sessions(
+        provider,
+        config,
+        &json!({
+            "cwd": project_path,
+            "limit": 200,
+        }),
+        &active_sessions,
+    )
+    .await?;
+
+    let field = match provider {
+        Provider::Codex => "threads",
+        Provider::Claude | Provider::Gemini => "sessions",
+    };
+
+    let rows = response
+        .get(field)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|row| session_catalog_row_from_provider_row(row))
+        .collect();
+
+    Ok(rows)
+}
+
+fn session_catalog_row_from_provider_row(row: &Value) -> Option<Value> {
+    let provider_session_id = row.get("id")?.as_str()?.trim();
+    if provider_session_id.is_empty() {
+        return None;
+    }
+
+    let title = row
+        .get("title")
+        .and_then(Value::as_str)
+        .or_else(|| row.get("name").and_then(Value::as_str))
+        .or_else(|| row.get("preview").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Untitled");
+
+    let provider_updated_at = row
+        .get("updatedAt")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(now_rfc3339);
+    let provider_created_at = row
+        .get("createdAt")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    Some(json!({
+        "providerSessionId": provider_session_id,
+        "title": title,
+        "preview": normalized_optional_string(row.get("preview").and_then(Value::as_str)),
+        "cwd": normalized_optional_string(row.get("cwd").and_then(Value::as_str)),
+        "transcriptPath": normalized_optional_string(row.get("path").and_then(Value::as_str)),
+        "model": normalized_optional_string(row.get("model").and_then(Value::as_str)),
+        "archived": row.get("archived").and_then(Value::as_bool).unwrap_or(false),
+        "providerCreatedAt": provider_created_at,
+        "providerUpdatedAt": provider_updated_at,
+    }))
 }
 
 fn build_machine_metadata(config: &Config) -> Value {
@@ -164,6 +302,86 @@ fn normalize_host(value: Option<&str>) -> Option<String> {
         return None;
     }
     Some(trimmed.trim_end_matches(".local").to_string())
+}
+
+fn normalized_optional_string(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn active_provider_session_row(child: &ListChild) -> Option<Value> {
+    let metadata = child.metadata.as_ref()?;
+    if metadata
+        .get("agentNickname")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+    {
+        return None;
+    }
+
+    let provider_session_id = child.provider_session_id.trim();
+    if provider_session_id.is_empty() {
+        return None;
+    }
+    let cwd = metadata
+        .get("directory")
+        .or_else(|| metadata.get("cwd"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let title = metadata
+        .get("name")
+        .or_else(|| metadata.get("title"))
+        .or_else(|| metadata.get("preview"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let model = metadata
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let updated_at = metadata
+        .get("updatedAt")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(now_rfc3339);
+    let created_at = metadata
+        .get("createdAt")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| updated_at.clone());
+
+    Some(json!({
+        "id": provider_session_id,
+        "cwd": cwd,
+        "title": title,
+        "updatedAt": updated_at,
+        "createdAt": created_at,
+        "model": model,
+        "startedBy": child.started_by,
+    }))
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn now_rfc3339() -> String {
+    time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| now_millis().to_string())
 }
 
 fn is_generic_host(value: &str) -> bool {

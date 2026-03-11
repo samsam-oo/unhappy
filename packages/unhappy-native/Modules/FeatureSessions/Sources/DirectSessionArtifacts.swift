@@ -40,6 +40,8 @@ enum DirectSessionArtifacts {
         case .diff(let files):
             return files.contains(where: { pathMatches($0.path, filePath) }) ||
                 rawBody(entry.body, references: filePath)
+        case .toolDetails:
+            return rawBody(entry.body, references: filePath)
         }
     }
 

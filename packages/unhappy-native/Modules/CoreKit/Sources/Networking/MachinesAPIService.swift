@@ -121,15 +121,26 @@ extension URLSessionMachinesService {
             return try await inFlightTask.value
         }
 
-        let rpcDirectoryService = self.rpcDirectoryService
+        let httpClient = self.httpClient
         let task = Task<[APIMachineProjectSummary], Error> {
-            try await rpcDirectoryService.fetchProjects(
+            let request = try MachinesAPI.makeProjectCatalogProjectsRequest(
                 serverURL: serverURL,
                 token: normalizedToken,
-                machineID: normalizedMachineID,
-                explicitOnly: explicitOnly,
-                wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+                machineID: normalizedMachineID
             )
+            let (data, http) = try await httpClient.data(for: request)
+            guard (200..<300).contains(http.statusCode) else {
+                let errorMessage = parseServerErrorMessage(from: data)
+                if let errorMessage {
+                    throw MachinesAPIError.rpcCallFailed(errorMessage)
+                }
+                throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+            }
+            let projects = try MachinesAPI.decodeProjectsResponse(data)
+            if explicitOnly {
+                return projects.filter(\.openedExplicitly)
+            }
+            return projects
         }
 
         inFlightProjectFetches[cacheKey] = task
@@ -141,6 +152,57 @@ extension URLSessionMachinesService {
             cachedAt: Date().timeIntervalSince1970
         )
         return projects
+    }
+
+    public func fetchProjectSessionsPage(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        projectPath: String,
+        wrappedMachineDataEncryptionKey: String?,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIProjectSessionsPage {
+        let request = try MachinesAPI.makeProjectSessionsCatalogRequest(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            path: projectPath,
+            limit: limit,
+            cursor: cursor
+        )
+        let (data, http) = try await httpClient.data(for: request)
+        guard (200..<300).contains(http.statusCode) else {
+            let errorMessage = parseServerErrorMessage(from: data)
+            if let errorMessage {
+                throw MachinesAPIError.rpcCallFailed(errorMessage)
+            }
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+        return try MachinesAPI.decodeProjectSessionsPageResponse(data)
+    }
+
+    public func fetchRecentSessionCatalogPage(
+        serverURL: URL,
+        token: String,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APIRecentCatalogSessionsPage {
+        let request = try MachinesAPI.makeRecentSessionCatalogRequest(
+            serverURL: serverURL,
+            token: token,
+            limit: limit,
+            cursor: cursor
+        )
+        let (data, http) = try await httpClient.data(for: request)
+        guard (200..<300).contains(http.statusCode) else {
+            let errorMessage = parseServerErrorMessage(from: data)
+            if let errorMessage {
+                throw MachinesAPIError.rpcCallFailed(errorMessage)
+            }
+            throw MachinesAPIError.invalidHTTPStatus(http.statusCode)
+        }
+        return try MachinesAPI.decodeRecentCatalogSessionsPageResponse(data)
     }
 
     public func openProject(
@@ -196,11 +258,6 @@ extension URLSessionMachinesService {
 
         if let cached = machinesCache[cacheKey],
            Date().timeIntervalSince1970 - cached.cachedAt < MachinesCachePolicy.ttl {
-            scheduleMachineDataPlanePrewarm(
-                machines: cached.machines,
-                serverURL: serverURL,
-                token: normalizedToken
-            )
             return cached.machines
         }
 
@@ -258,21 +315,59 @@ extension URLSessionMachinesService {
         serverURL: URL,
         token: String
     ) {
-        let rpcDirectoryService = self.rpcDirectoryService
-        let activeMachines = machines.filter(\.active)
-        guard !activeMachines.isEmpty else { return }
+        let prewarmPolicy = self.prewarmPolicy
+        Task(priority: .utility) {
+            guard await prewarmPolicy.allowsBackgroundPrewarm() else { return }
+            await self.performMachineDataPlanePrewarm(
+                machines: machines,
+                serverURL: serverURL,
+                token: token
+            )
+        }
+    }
 
-        Task(priority: .userInitiated) {
-            await withTaskGroup(of: Void.self) { group in
-                for machine in activeMachines where machine.dataEncryptionKey?.isEmpty == false {
-                    group.addTask {
-                        await rpcDirectoryService.prewarmMachineDataPlane(
-                            serverURL: serverURL,
-                            token: token,
-                            machineID: machine.id,
-                            wrappedMachineDataEncryptionKey: machine.dataEncryptionKey
-                        )
-                    }
+    private func performMachineDataPlanePrewarm(
+        machines: [APIMachine],
+        serverURL: URL,
+        token: String
+    ) async {
+        let rpcDirectoryService = self.rpcDirectoryService
+        let now = Date().timeIntervalSince1970
+        let eligibleMachines = machines.compactMap { machine -> (APIMachine, String)? in
+            guard machine.active else { return nil }
+            guard machine.activeAt > 0 else { return nil }
+            guard now - machine.activeAt <= MachineDataPlanePrewarmConfig.recentActivityInterval else {
+                return nil
+            }
+            guard let wrappedKey = machine.dataEncryptionKey?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  wrappedKey.isEmpty == false else {
+                return nil
+            }
+
+            let prewarmKey = MachineDataPlanePrewarmKey(
+                serverURLString: serverURL.absoluteString,
+                token: token,
+                machineID: machine.id,
+                wrappedMachineDataEncryptionKey: wrappedKey
+            )
+            if let lastPrewarmAt = lastMachineDataPlanePrewarmAt[prewarmKey],
+               now - lastPrewarmAt < MachineDataPlanePrewarmConfig.throttleInterval {
+                return nil
+            }
+            lastMachineDataPlanePrewarmAt[prewarmKey] = now
+            return (machine, wrappedKey)
+        }
+        guard !eligibleMachines.isEmpty else { return }
+
+        await withTaskGroup(of: Void.self) { group in
+            for (machine, wrappedKey) in eligibleMachines {
+                group.addTask {
+                    await rpcDirectoryService.prewarmMachineDataPlane(
+                        serverURL: serverURL,
+                        token: token,
+                        machineID: machine.id,
+                        wrappedMachineDataEncryptionKey: wrappedKey
+                    )
                 }
             }
         }
@@ -334,6 +429,21 @@ extension URLSessionMachinesService {
         let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedMachineID.isEmpty else {
             throw MachinesAPIError.missingMachineID
+        }
+
+        do {
+            let data = try await rpcDirectoryService.invokeCommand(
+                serverURL: serverURL,
+                token: token,
+                machineID: normalizedMachineID,
+                command: "list-models",
+                params: ["agent": .string(agent.rawValue)]
+            )
+            return try MachinesAPI.decodeAgentCapabilitiesResponse(data)
+        } catch let error as MachinesAPIError {
+            if shouldFallbackToLegacyModelsEndpoint(error) == false {
+                throw error
+            }
         }
 
         do {
@@ -819,6 +929,27 @@ extension URLSessionMachinesService {
 
     private func shouldFallbackToRPC(statusCode: Int) -> Bool {
         statusCode == 404 || statusCode == 405 || statusCode == 501
+    }
+
+    private func shouldFallbackToLegacyModelsEndpoint(_ error: MachinesAPIError) -> Bool {
+        switch error {
+        case .rpcTimedOut,
+             .rpcSocketConnectionFailed,
+             .invalidRPCPayload:
+            return true
+        case .rpcCallFailed:
+            return true
+        case .missingToken,
+             .missingMachineID,
+             .missingThreadID,
+             .missingDirectory,
+             .missingPath,
+             .missingCommand,
+             .machineNotFound,
+             .endpointUnavailable,
+             .invalidHTTPStatus:
+            return false
+        }
     }
 
     private func parseServerErrorMessage(from data: Data) -> String? {

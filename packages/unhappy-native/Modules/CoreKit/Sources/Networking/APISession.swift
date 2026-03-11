@@ -561,7 +561,7 @@ public enum APIUpstreamSessionProvider: String, Codable, CaseIterable, Sendable 
     }
 }
 
-public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
+public struct APIUpstreamSessionSummary: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let provider: APIUpstreamSessionProvider
     public let title: String
@@ -601,6 +601,88 @@ public struct APIUpstreamSessionSummary: Equatable, Identifiable, Sendable {
         self.effort = effort
         self.preview = preview
         self.statusType = statusType
+    }
+}
+
+public struct APIProjectSessionsPage: Decodable, Equatable, Sendable {
+    public let sessions: [APIUpstreamSessionSummary]
+    public let nextCursor: String?
+    public let hasNext: Bool
+    public let error: String?
+
+    public init(
+        sessions: [APIUpstreamSessionSummary],
+        nextCursor: String?,
+        hasNext: Bool,
+        error: String? = nil
+    ) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
+        self.error = error
+    }
+}
+
+public struct APICatalogSessionSummary: Decodable, Equatable, Sendable {
+    public let machineID: String
+    public let summary: APIUpstreamSessionSummary
+
+    public init(
+        machineID: String,
+        summary: APIUpstreamSessionSummary
+    ) {
+        self.machineID = machineID
+        self.summary = summary
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case machineID = "machineId"
+        case id
+        case provider
+        case title
+        case cwd
+        case path
+        case updatedAt
+        case createdAt
+        case archived
+        case model
+        case preview
+        case statusType
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        machineID = (try? container.decode(String.self, forKey: .machineID)) ?? ""
+        summary = APIUpstreamSessionSummary(
+            id: (try? container.decode(String.self, forKey: .id)) ?? "",
+            provider: (try? container.decode(APIUpstreamSessionProvider.self, forKey: .provider)) ?? .codex,
+            title: (try? container.decode(String.self, forKey: .title)) ?? "Untitled",
+            cwd: try? container.decodeIfPresent(String.self, forKey: .cwd),
+            path: try? container.decodeIfPresent(String.self, forKey: .path),
+            updatedAt: try? container.decodeIfPresent(String.self, forKey: .updatedAt),
+            createdAt: try? container.decodeIfPresent(String.self, forKey: .createdAt),
+            archived: try? container.decodeIfPresent(Bool.self, forKey: .archived),
+            model: try? container.decodeIfPresent(String.self, forKey: .model),
+            effort: nil,
+            preview: try? container.decodeIfPresent(String.self, forKey: .preview),
+            statusType: try? container.decodeIfPresent(String.self, forKey: .statusType)
+        )
+    }
+}
+
+public struct APIRecentCatalogSessionsPage: Decodable, Equatable, Sendable {
+    public let sessions: [APICatalogSessionSummary]
+    public let nextCursor: String?
+    public let hasNext: Bool
+
+    public init(
+        sessions: [APICatalogSessionSummary],
+        nextCursor: String?,
+        hasNext: Bool
+    ) {
+        self.sessions = sessions
+        self.nextCursor = nextCursor
+        self.hasNext = hasNext
     }
 }
 

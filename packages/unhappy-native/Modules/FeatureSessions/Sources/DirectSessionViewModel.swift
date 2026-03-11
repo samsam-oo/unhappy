@@ -49,7 +49,15 @@ public final class DirectSessionViewModel: ObservableObject {
     private var postSendRefreshTask: Task<Void, Never>?
     private var activeMessagesLoadTask: Task<APISessionMessagesPage, Error>?
     private var olderMessagesCursor: String?
+    private var requestedOlderMessageCursors: Set<String> = []
     private var hasPrependedOlderPages = false
+
+    public var olderMessagesLoadTriggerID: String? {
+        guard hasOlderMessages else { return nil }
+        guard let olderMessagesCursor else { return nil }
+        let trimmed = olderMessagesCursor.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
 
     public init(
         identity: DirectSessionIdentity,
@@ -104,11 +112,17 @@ public final class DirectSessionViewModel: ObservableObject {
             hasOlderMessages = false
             return
         }
+        guard requestedOlderMessageCursors.contains(olderMessagesCursor) == false else {
+            self.olderMessagesCursor = nil
+            hasOlderMessages = false
+            return
+        }
 
         isLoadingOlderMessages = true
         defer { isLoadingOlderMessages = false }
 
         do {
+            requestedOlderMessageCursors.insert(olderMessagesCursor)
             let page = try await loader.loadMessages(
                 serverURLString: serverURLString,
                 token: token,
@@ -123,8 +137,17 @@ public final class DirectSessionViewModel: ObservableObject {
                 messages = prepended + messages
                 hasPrependedOlderPages = true
             }
-            self.olderMessagesCursor = page.nextCursor
-            hasOlderMessages = page.hasNext
+            let nextCursor = page.nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let normalizedNextCursor = (nextCursor?.isEmpty == true) ? nil : nextCursor
+            if let normalizedNextCursor,
+               normalizedNextCursor != olderMessagesCursor,
+               requestedOlderMessageCursors.contains(normalizedNextCursor) == false {
+                self.olderMessagesCursor = normalizedNextCursor
+                hasOlderMessages = page.hasNext
+            } else {
+                self.olderMessagesCursor = nil
+                hasOlderMessages = false
+            }
             errorMessage = nil
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -475,6 +498,7 @@ public final class DirectSessionViewModel: ObservableObject {
         setMessagesIfChanged(latestMessages)
         olderMessagesCursor = page.nextCursor
         hasOlderMessages = page.hasNext
+        requestedOlderMessageCursors = []
     }
 
     private func applyIncrementalLatestPage(_ page: APISessionMessagesPage) {

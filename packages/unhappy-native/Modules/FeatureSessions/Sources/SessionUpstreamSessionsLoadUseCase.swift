@@ -142,7 +142,7 @@ public actor SessionUpstreamSessionsLoadUseCase: SessionUpstreamSessionsLoadingA
                 continuation.finish()
                 return
             }
-            let activeMachines = machines.filter(\.active)
+            let activeMachines = SessionMachineActivityGuard.eligibleMachines(from: machines)
             let projectPathsByMachineID = groupedProjectPathsByMachineID(from: projects)
             var rows: [SessionLinkedUpstreamSession] = []
             var seenRowIDs = Set<String>()

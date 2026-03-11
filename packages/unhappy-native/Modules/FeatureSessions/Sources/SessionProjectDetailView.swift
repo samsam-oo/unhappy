@@ -66,7 +66,34 @@ public struct SessionProjectDetailView: View {
                 summaryCard
             }
 
-            if sessionEntries.isEmpty {
+            if shouldShowSessionsLoadingState {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Loading sessions…")
+                                .font(.headline)
+                            Text("Pulling Codex, Claude, and Gemini sessions for this project.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 4)
+                }
+            } else if let projectSessionsErrorMessage, sessionEntries.isEmpty {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Couldn't load sessions")
+                            .font(.headline)
+                        Text(projectSessionsErrorMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+            } else if sessionEntries.isEmpty {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("No sessions yet")
@@ -88,11 +115,11 @@ public struct SessionProjectDetailView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Color(uiColor: .systemGroupedBackground))
-        .task(id: group.id) {
-            if sessionEntries.isEmpty {
+        .task(id: initialGroup.id) {
+            if shouldTriggerInitialProjectSessionLoad {
                 await viewModel.refreshProject(
-                    machineID: group.machineID,
-                    projectPath: group.projectPath,
+                    machineID: initialGroup.machineID,
+                    projectPath: initialGroup.projectPath,
                     serverURLString: serverURLString,
                     token: token
                 )
@@ -100,13 +127,13 @@ public struct SessionProjectDetailView: View {
         }
         .refreshable {
             await viewModel.refreshProject(
-                machineID: group.machineID,
-                projectPath: group.projectPath,
+                machineID: initialGroup.machineID,
+                projectPath: initialGroup.projectPath,
                 serverURLString: serverURLString,
                 token: token
             )
         }
-        .navigationTitle(group.title)
+        .navigationTitle(projectTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { projectActionsToolbar }
         .alert(
@@ -136,8 +163,8 @@ public struct SessionProjectDetailView: View {
                 onArchived: {
                     Task {
                         await viewModel.refreshProject(
-                            machineID: group.machineID,
-                            projectPath: group.projectPath,
+                            machineID: initialGroup.machineID,
+                            projectPath: initialGroup.projectPath,
                             serverURLString: serverURLString,
                             token: token
                         )
@@ -150,13 +177,13 @@ public struct SessionProjectDetailView: View {
                 serverURLString: serverURLString,
                 token: token,
                 defaultAgent: defaultNewSessionAgent,
-                initialMachineID: group.machineID,
-                initialDirectoryPath: group.projectPath,
+                initialMachineID: initialGroup.machineID,
+                initialDirectoryPath: initialGroup.projectPath,
                 makeViewModel: makeNewSessionViewModel,
                 onSessionSpawned: { context in
                     guard let sessionID = context.sessionID else { return }
                     Task {
-                        let resolvedMachineID = context.machineID ?? group.machineID
+                        let resolvedMachineID = context.machineID ?? initialGroup.machineID
                         await viewModel.refreshProject(
                             machineID: resolvedMachineID,
                             projectPath: context.directoryPath,
@@ -172,7 +199,10 @@ public struct SessionProjectDetailView: View {
                         case .gemini:
                             provider = .gemini
                         }
-                        if let directRow = viewModel.upstreamSessions.first(where: {
+                        if let directRow = viewModel.projectSessions(
+                            machineID: resolvedMachineID,
+                            projectPath: context.directoryPath
+                        ).first(where: {
                             $0.machineID == resolvedMachineID &&
                             $0.summary.provider == provider &&
                             $0.summary.id == sessionID
@@ -191,8 +221,8 @@ public struct SessionProjectDetailView: View {
                         }
                         spawnedDirectSessionIdentity = DirectSessionIdentity(
                             machineID: resolvedMachineID,
-                            machineDisplayName: group.machineDisplayName,
-                            wrappedMachineDataEncryptionKey: group.wrappedMachineDataEncryptionKey,
+                            machineDisplayName: projectDisplayGroup.machineDisplayName,
+                            wrappedMachineDataEncryptionKey: projectDisplayGroup.wrappedMachineDataEncryptionKey,
                             provider: fallbackProvider,
                             upstreamSessionID: sessionID,
                             title: "Session",
@@ -217,19 +247,19 @@ public struct SessionProjectDetailView: View {
             } label: {
                 Image(systemName: "plus")
             }
-            .disabled(!group.hasConcreteProjectPath)
+            .disabled(!projectDisplayGroup.hasConcreteProjectPath)
             .accessibilityLabel("New Session")
         }
 
         if viewModel.isTrackedProject(
-            machineID: group.machineID,
-            projectPath: group.projectPath
+            machineID: initialGroup.machineID,
+            projectPath: initialGroup.projectPath
         ) {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isPresentingProjectActions = true
                 } label: {
-                    if viewModel.isRemoving(projectID: group.id) {
+                    if viewModel.isRemoving(projectID: initialGroup.id) {
                         ProgressView()
                             .controlSize(.small)
                     } else {
@@ -245,9 +275,9 @@ public struct SessionProjectDetailView: View {
                     Button("Stop Syncing Project", role: .destructive) {
                         Task {
                             let didRemove = await viewModel.removeProject(
-                                machineID: group.machineID,
-                                projectPath: group.projectPath,
-                                wrappedMachineDataEncryptionKey: group.wrappedMachineDataEncryptionKey,
+                                machineID: initialGroup.machineID,
+                                projectPath: initialGroup.projectPath,
+                                wrappedMachineDataEncryptionKey: projectDisplayGroup.wrappedMachineDataEncryptionKey,
                                 serverURLString: serverURLString,
                                 token: token
                             )
@@ -256,32 +286,45 @@ public struct SessionProjectDetailView: View {
                             }
                         }
                     }
-                    .disabled(viewModel.isRemoving(projectID: group.id))
+                    .disabled(viewModel.isRemoving(projectID: initialGroup.id))
                 }
             }
         }
     }
 
-    private var group: SessionProjectGroup {
+    private var projectDisplayGroup: SessionProjectGroup {
         SessionListPresentationBuilder.projectGroup(
             id: initialGroup.id,
-            upstreamSessions: viewModel.upstreamSessions,
+            upstreamSessions: viewModel.aggregatedProjectRows,
             projects: viewModel.projects
         ) ?? initialGroup
+    }
+
+    private var projectTitle: String {
+        projectDisplayGroup.title
     }
 
     private var summaryCard: some View {
         SessionSurfaceCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text(group.machineDisplayName)
+                    Text(projectDisplayGroup.machineDisplayName)
                         .modifier(DockChipModifier(tone: .neutral))
-                    Text("\(sessionEntries.count) sessions")
+                    if shouldShowSessionsLoadingState {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Loading…")
+                        }
                         .modifier(DockChipModifier(tone: .primary))
+                    } else {
+                        Text("\(sessionEntries.count) sessions")
+                            .modifier(DockChipModifier(tone: .primary))
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(group.projectDisplayPath)
+                    Text(projectDisplayGroup.projectDisplayPath)
                         .font(.body.monospaced())
                         .foregroundStyle(AppPalette.primaryText)
                         .textSelection(.enabled)
@@ -295,7 +338,7 @@ public struct SessionProjectDetailView: View {
     }
 
     private var sessionEntries: [SessionListEntry] {
-        let directEntries: [SessionListEntry] = group.displayUpstreamSessions.compactMap { row in
+        let directEntries: [SessionListEntry] = projectScopedRows.compactMap { row in
             guard let identity = DirectSessionIdentityResolver.resolve(from: row) else {
                 return nil
             }
@@ -307,6 +350,53 @@ public struct SessionProjectDetailView: View {
             }
             return lhs.id.localizedCaseInsensitiveCompare(rhs.id) == .orderedAscending
         }
+    }
+
+    private var projectScopedRows: [SessionLinkedUpstreamSession] {
+        let rows = viewModel.projectSessions(
+            machineID: initialGroup.machineID,
+            projectPath: initialGroup.projectPath
+        )
+        if !rows.isEmpty || viewModel.hasLoadedProjectSessions(
+            machineID: initialGroup.machineID,
+            projectPath: initialGroup.projectPath
+        ) {
+            return rows
+        }
+        return projectDisplayGroup.displayUpstreamSessions
+    }
+
+    private var projectSessionsErrorMessage: String? {
+        viewModel.projectSessionsError(
+            machineID: initialGroup.machineID,
+            projectPath: initialGroup.projectPath
+        )
+    }
+
+    private var shouldShowSessionsLoadingState: Bool {
+        sessionEntries.isEmpty &&
+            (
+                viewModel.isProjectSessionsLoading(
+                    machineID: initialGroup.machineID,
+                    projectPath: initialGroup.projectPath
+                ) ||
+                !viewModel.hasLoadedProjectSessions(
+                    machineID: initialGroup.machineID,
+                    projectPath: initialGroup.projectPath
+                )
+            )
+    }
+
+    private var shouldTriggerInitialProjectSessionLoad: Bool {
+        sessionEntries.isEmpty &&
+            !viewModel.isProjectSessionsLoading(
+                machineID: initialGroup.machineID,
+                projectPath: initialGroup.projectPath
+            ) &&
+            !viewModel.hasLoadedProjectSessions(
+                machineID: initialGroup.machineID,
+                projectPath: initialGroup.projectPath
+            )
     }
 
     @ViewBuilder
@@ -323,8 +413,8 @@ public struct SessionProjectDetailView: View {
                     onArchived: {
                         Task {
                             await viewModel.refreshProject(
-                                machineID: group.machineID,
-                                projectPath: group.projectPath,
+                                machineID: initialGroup.machineID,
+                                projectPath: initialGroup.projectPath,
                                 serverURLString: serverURLString,
                                 token: token
                             )
@@ -356,7 +446,7 @@ public struct SessionProjectDetailView: View {
             token: token
         )
         guard archived else {
-            archiveErrorMessage = viewModel.upstreamSessionsErrorMessage ?? "Failed to archive session"
+            archiveErrorMessage = "Failed to archive session"
             return
         }
     }
@@ -368,6 +458,9 @@ private struct ProjectDirectSessionRow: View {
 
     var body: some View {
         let updatedLabel = SessionTimestampPresentation.updatedLabelIfKnown(for: updatedAt)
+        let multiAgentStatus = MultiAgentStatusPresentationBuilder.make(
+            inProgressCount: identity.collabInProgressCount
+        )
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Text(identity.title)
@@ -376,6 +469,10 @@ private struct ProjectDirectSessionRow: View {
                 Text(identity.provider.displayName)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if let multiAgentStatus {
+                    MultiAgentStatusBadge(presentation: multiAgentStatus)
+                }
             }
 
             HStack(spacing: 8) {
