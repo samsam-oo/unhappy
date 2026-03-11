@@ -537,6 +537,7 @@ export function machinesRoutes(app: Fastify) {
                 id: z.string()
             }),
             body: z.object({
+                openedProjects: z.array(z.string().min(1)).default([]),
                 scopes: z.array(sessionCatalogScopeSchema),
             })
         }
@@ -549,6 +550,32 @@ export function machinesRoutes(app: Fastify) {
         }
 
         try {
+            const openedProjects = request.body.openedProjects
+                .map(projectPath => projectPath.trim())
+                .filter(projectPath => projectPath.length > 0);
+
+            await db.$transaction(async (tx) => {
+                await tx.machineSessionCatalogEntry.deleteMany({
+                    where: {
+                        accountId: userId,
+                        machineId: id,
+                        projectPath: {
+                            notIn: openedProjects,
+                        },
+                    },
+                });
+
+                await tx.machineProjectCatalogEntry.deleteMany({
+                    where: {
+                        accountId: userId,
+                        machineId: id,
+                        projectPath: {
+                            notIn: openedProjects,
+                        },
+                    },
+                });
+            });
+
             for (const scope of request.body.scopes) {
                 await replaceSessionCatalogScope(userId, id, scope);
             }
