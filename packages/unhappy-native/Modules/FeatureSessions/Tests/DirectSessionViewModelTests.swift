@@ -126,6 +126,55 @@ struct DirectSessionViewModelTests {
     }
 
     @Test
+    func sendMessageImmediatelyShowsOptimisticUserMessage() async {
+        let loader = BlockingMessagesLoader()
+        let sender = SuccessfulSender()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: sender
+        )
+
+        let sent = await viewModel.sendMessage(
+            "ship it",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(sent == true)
+        let optimisticTexts = viewModel.messages.compactMap { message in
+            SessionTranscriptPresentationBuilder.make(from: message, dataEncryptionKey: nil)
+                .entries
+                .first(where: { $0.role == .user && $0.kind == .text })?
+                .body
+        }
+        #expect(optimisticTexts.contains("ship it"))
+    }
+
+    @Test
+    func sendMessageReconcilesOptimisticMessageAfterRefreshLoadsMatchingUserText() async throws {
+        let loader = ReplacingMessagesLoader()
+        let sender = SuccessfulSender()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: sender
+        )
+
+        _ = await viewModel.sendMessage(
+            "ship it",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.messages.map(\.id).contains(where: { $0.hasPrefix("optimistic:") }))
+
+        try await Task.sleep(for: .milliseconds(350))
+
+        #expect(viewModel.messages.map(\.id) == ["server-user"])
+    }
+
+    @Test
     func initialLoadRequestsTailFirstPageOfTwoHundredFortyMessages() async {
         let loader = RecordingMessagesLoader()
         let viewModel = DirectSessionViewModel(
@@ -398,6 +447,41 @@ private actor OlderMessagesPrependLoader: DirectSessionMessagesLoadingAction {
                     createdAt: 2,
                     updatedAt: 2
                 ),
+            ],
+            nextCursor: nil,
+            hasNext: false
+        )
+    }
+}
+
+private actor ReplacingMessagesLoader: DirectSessionMessagesLoadingAction {
+    private var callCount = 0
+
+    func loadMessages(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity,
+        limit: Int,
+        cursor: String?
+    ) async throws -> APISessionMessagesPage {
+        callCount += 1
+        if callCount == 1 {
+            return APISessionMessagesPage(messages: [], nextCursor: nil, hasNext: false)
+        }
+
+        return APISessionMessagesPage(
+            messages: [
+                APISessionMessage(
+                    id: "server-user",
+                    seq: 1,
+                    localId: nil,
+                    content: APIEncryptedMessageContent(
+                        type: "json",
+                        payload: sessionsMakeOptimisticUserPayload(text: "ship it")
+                    ),
+                    createdAt: 1,
+                    updatedAt: 1
+                )
             ],
             nextCursor: nil,
             hasNext: false
