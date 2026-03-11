@@ -9,8 +9,43 @@ struct SessionTranscriptGenericToolField: Equatable, Identifiable, Sendable {
     let value: String
 }
 
+struct SessionTranscriptPlanStepPresentation: Equatable, Identifiable, Sendable {
+    enum Status: String, Equatable, Sendable {
+        case pending
+        case inProgress = "in_progress"
+        case completed
+
+        var label: String {
+            switch self {
+            case .pending:
+                return "Planned"
+            case .inProgress:
+                return "In Progress"
+            case .completed:
+                return "Completed"
+            }
+        }
+
+        var symbolName: String {
+            switch self {
+            case .pending:
+                return "circle"
+            case .inProgress:
+                return "circle.dotted"
+            case .completed:
+                return "checkmark.circle.fill"
+            }
+        }
+    }
+
+    let id: String
+    let step: String
+    let status: Status
+}
+
 struct SessionTranscriptGenericToolPresentation: Equatable, Sendable {
     enum Kind: Equatable, Sendable {
+        case plan
         case spawnAgent
         case wait
         case stdin
@@ -33,6 +68,7 @@ struct SessionTranscriptGenericToolPresentation: Equatable, Sendable {
     let badgeTone: BadgeTone
     let fields: [SessionTranscriptGenericToolField]
     let body: String?
+    let planItems: [SessionTranscriptPlanStepPresentation]
 }
 
 struct SessionMarkdownListItem: Equatable, Sendable {
@@ -685,6 +721,8 @@ enum SessionTranscriptRichContentParser {
             .lowercased()
         let kind: SessionTranscriptGenericToolPresentation.Kind = {
             switch normalizedToolName {
+            case "update_plan":
+                return .plan
             case "spawn_agent":
                 return .spawnAgent
             case "wait":
@@ -698,6 +736,8 @@ enum SessionTranscriptRichContentParser {
 
         let title: String
         switch kind {
+        case .plan:
+            title = "Plan"
         case .spawnAgent:
             title = "Spawn Agent"
         case .wait:
@@ -713,6 +753,7 @@ enum SessionTranscriptRichContentParser {
         let compactSummary = genericToolCompactSummary(kind: kind, object: object)
         let subtitle = genericToolSubtitle(kind: kind, object: object)
         let badge = genericToolBadge(kind: kind, entryKind: entry.kind, object: object)
+        let planItems = parsePlanItems(from: object["plan"]) ?? []
 
         let interestingKeys = Set([
             "agent_id",
@@ -742,6 +783,8 @@ enum SessionTranscriptRichContentParser {
         switch kind {
         case .stdin:
             body = normalizeString(object["chars"]) ?? normalizeString(object["text"])
+        case .plan:
+            body = nil
         default:
             body = formattedGenericToolBody(
                 object,
@@ -749,6 +792,8 @@ enum SessionTranscriptRichContentParser {
                     "message",
                     "prompt",
                     "description",
+                    "explanation",
+                    "plan",
                     "chars",
                     "text",
                 ])
@@ -762,7 +807,8 @@ enum SessionTranscriptRichContentParser {
         let hasStructuredHighlights = compactSummary != nil ||
             subtitle != nil ||
             badge != nil ||
-            !fields.isEmpty
+            !fields.isEmpty ||
+            !planItems.isEmpty
 
         if !hasStructuredHighlights {
             return nil
@@ -776,7 +822,8 @@ enum SessionTranscriptRichContentParser {
             badgeText: badge?.text,
             badgeTone: badge?.tone ?? .neutral,
             fields: fields,
-            body: body
+            body: body,
+            planItems: planItems
         )
     }
 
@@ -1379,6 +1426,9 @@ enum SessionTranscriptRichContentParser {
         object: [String: Any]
     ) -> String? {
         switch kind {
+        case .plan:
+            guard let items = parsePlanItems(from: object["plan"]), !items.isEmpty else { return nil }
+            return items.count == 1 ? "1 step" : "\(items.count) steps"
         case .spawnAgent:
             return firstString(
                 object["nickname"],
@@ -1419,6 +1469,13 @@ enum SessionTranscriptRichContentParser {
         object: [String: Any]
     ) -> String? {
         switch kind {
+        case .plan:
+            return firstString(
+                object["explanation"],
+                object["message"],
+                object["prompt"],
+                object["description"]
+            )
         case .spawnAgent:
             return firstString(
                 object["message"],
@@ -1470,6 +1527,17 @@ enum SessionTranscriptRichContentParser {
         }
 
         switch kind {
+        case .plan:
+            if let items = parsePlanItems(from: object["plan"]), !items.isEmpty {
+                if items.contains(where: { $0.status == .inProgress }) {
+                    return ("In Progress", .accent)
+                }
+                if items.allSatisfy({ $0.status == .completed }) {
+                    return ("Completed", .success)
+                }
+                return ("Planned", .neutral)
+            }
+            return entryKind == .toolResult ? ("Updated", .neutral) : ("Planning", .accent)
         case .spawnAgent:
             return entryKind == .toolResult ? ("Started", .success) : ("Requested", .accent)
         case .wait:
@@ -1493,6 +1561,36 @@ enum SessionTranscriptRichContentParser {
             }
         }
         return nil
+    }
+
+    private static func parsePlanItems(
+        from value: Any?
+    ) -> [SessionTranscriptPlanStepPresentation]? {
+        guard let array = value as? [[String: Any]] else { return nil }
+        let items = array.enumerated().compactMap { index, item -> SessionTranscriptPlanStepPresentation? in
+            guard let step = normalizeString(item["step"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !step.isEmpty else {
+                return nil
+            }
+            let rawStatus = normalizeString(item["status"])?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() ?? "pending"
+            let status: SessionTranscriptPlanStepPresentation.Status
+            switch rawStatus {
+            case "completed", "complete", "done", "success":
+                status = .completed
+            case "in_progress", "inprogress", "running", "active":
+                status = .inProgress
+            default:
+                status = .pending
+            }
+            return SessionTranscriptPlanStepPresentation(
+                id: "plan-\(index)",
+                step: step,
+                status: status
+            )
+        }
+        return items.isEmpty ? nil : items
     }
 
     private static func genericToolFieldValue(for key: String, value: Any?) -> String? {
@@ -1839,6 +1937,35 @@ struct SessionTranscriptToolRichContentView: View {
                         .foregroundStyle(AppPalette.secondaryText)
                 }
 
+                if !tool.planItems.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(tool.planItems) { item in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: item.status.symbolName)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(planStatusTint(item.status))
+                                    .padding(.top, 2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(item.step)
+                                        .font(.footnote.weight(.medium))
+                                        .foregroundStyle(AppPalette.primaryText)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text(item.status.label)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(planStatusTint(item.status))
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            Capsule(style: .continuous)
+                                                .fill(planStatusTint(item.status).opacity(0.12))
+                                        )
+                                }
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
+
                 if !tool.fields.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(tool.fields) { field in
@@ -1873,6 +2000,8 @@ struct SessionTranscriptToolRichContentView: View {
         _ kind: SessionTranscriptGenericToolPresentation.Kind
     ) -> String {
         switch kind {
+        case .plan:
+            return "checklist"
         case .spawnAgent:
             return "person.badge.plus"
         case .wait:
@@ -1898,6 +2027,19 @@ struct SessionTranscriptToolRichContentView: View {
             return .orange
         case .neutral:
             return AppPalette.secondaryText
+        }
+    }
+
+    private func planStatusTint(
+        _ status: SessionTranscriptPlanStepPresentation.Status
+    ) -> Color {
+        switch status {
+        case .pending:
+            return AppPalette.secondaryText
+        case .inProgress:
+            return AppPalette.accent
+        case .completed:
+            return .green
         }
     }
 
