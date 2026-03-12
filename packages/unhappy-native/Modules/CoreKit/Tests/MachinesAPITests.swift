@@ -128,6 +128,23 @@ struct MachinesAPITests {
     }
 
     @Test
+    func spawnRPCResponseParserPreservesTranscriptPathOnSuccess() throws {
+        let json = Data("""
+        {
+          "type": "success",
+          "sessionId": "thread-123",
+          "transcriptPath": "/tmp/codex/thread-123.jsonl"
+        }
+        """.utf8)
+
+        let result = try MachineSessionSpawnRPCResponseParser.parse(json)
+
+        #expect(result.success == true)
+        #expect(result.sessionID == "thread-123")
+        #expect(result.transcriptPath == "/tmp/codex/thread-123.jsonl")
+    }
+
+    @Test
     func projectSessionsCatalogRequestUsesExpectedPathAndQuery() throws {
         let baseURL = URL(string: "https://api.unhappy.im")!
         let request = try MachinesAPI.makeProjectSessionsCatalogRequest(

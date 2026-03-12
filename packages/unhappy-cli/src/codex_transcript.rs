@@ -440,9 +440,11 @@ fn coalesce_resume_backfill_messages(messages: Vec<(u64, Value, usize)>) -> Vec<
         }
 
         if let Some((tool_use_id, payload)) = extract_command_execution_payload(&message) {
-            if let Some(index) = pending_exec_command_call_index_by_id.remove(&tool_use_id) {
-                if index < result.len() {
-                    result[index] = None;
+            if let Some(tool_use_id) = tool_use_id.as_deref() {
+                if let Some(index) = pending_exec_command_call_index_by_id.remove(tool_use_id) {
+                    if index < result.len() {
+                        result[index] = None;
+                    }
                 }
             }
 
@@ -495,7 +497,7 @@ fn extract_tool_call_identity(message: &Value) -> Option<(String, String)> {
     Some((tool_use_id, name))
 }
 
-fn extract_command_execution_payload(message: &Value) -> Option<(String, Value)> {
+fn extract_command_execution_payload(message: &Value) -> Option<(Option<String>, Value)> {
     let chunk = first_assistant_content_chunk(message)?;
     let chunk_type = chunk.get("type")?.as_str()?;
     if chunk_type != "tool_result" && chunk_type != "tool-call-result" {
@@ -504,9 +506,10 @@ fn extract_command_execution_payload(message: &Value) -> Option<(String, Value)>
     let tool_use_id = chunk
         .get("toolUseId")
         .or_else(|| chunk.get("callId"))
-        .and_then(Value::as_str)?
-        .trim()
-        .to_string();
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
     let output = chunk.get("output")?.clone();
     let output_type = output
         .as_object()
@@ -1388,6 +1391,98 @@ mod tests {
         assert_eq!(actions[0]["detail"].as_str(), Some("README.md"));
         assert_eq!(actions[1]["type"].as_str(), Some("search"));
         assert_eq!(actions[1]["detail"].as_str(), Some("TODO"));
+    }
+
+    #[test]
+    fn coalesce_resume_backfill_messages_merges_exploration_results_without_tool_use_ids() {
+        let read_result = build_function_call_output_backfill_message(
+            json!({
+                "call_id": "call-read",
+                "output": {
+                    "command": "cat README.md",
+                    "cwd": "/tmp/project",
+                    "parsed_cmd": [
+                        {
+                            "type": "read",
+                            "path": "README.md"
+                        }
+                    ]
+                }
+            })
+            .as_object()
+            .expect("read result payload"),
+            11,
+            "/tmp/transcript.jsonl",
+        )
+        .expect("read result");
+        let search_result = build_function_call_output_backfill_message(
+            json!({
+                "call_id": "call-search",
+                "output": {
+                    "command": "rg TODO Sources",
+                    "cwd": "/tmp/project",
+                    "parsed_cmd": [
+                        {
+                            "type": "search",
+                            "query": "TODO"
+                        }
+                    ]
+                }
+            })
+            .as_object()
+            .expect("search result payload"),
+            13,
+            "/tmp/transcript.jsonl",
+        )
+        .expect("search result");
+
+        let read_message = remove_tool_use_id_from_test_message(make_test_backfill_message(read_result));
+        let search_message = remove_tool_use_id_from_test_message(make_test_backfill_message(search_result));
+
+        let merged = coalesce_resume_backfill_messages(vec![
+            (11, read_message, 0),
+            (13, search_message, 0),
+        ]);
+
+        assert_eq!(merged.len(), 1);
+        let output = test_message_output(&merged[0].1);
+        assert_eq!(output["summary"].as_str(), Some("Explored 1 file, 1 search"));
+        let actions = output["commandActions"].as_array().expect("actions");
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0]["type"].as_str(), Some("read"));
+        assert_eq!(actions[1]["type"].as_str(), Some("search"));
+    }
+
+    fn remove_tool_use_id_from_test_message(mut message: Value) -> Value {
+        let payload = message
+            .get("content")
+            .and_then(Value::as_object)
+            .and_then(|content| content.get("payload"))
+            .and_then(Value::as_str)
+            .expect("payload")
+            .to_string();
+        let mut parsed_payload = serde_json::from_str::<Value>(&payload).expect("parsed payload");
+        let chunk = parsed_payload
+            .get_mut("content")
+            .and_then(Value::as_object_mut)
+            .and_then(|content| content.get_mut("data"))
+            .and_then(Value::as_object_mut)
+            .and_then(|data| data.get_mut("message"))
+            .and_then(Value::as_object_mut)
+            .and_then(|message| message.get_mut("content"))
+            .and_then(Value::as_array_mut)
+            .and_then(|chunks| chunks.first_mut())
+            .and_then(Value::as_object_mut)
+            .expect("chunk");
+        chunk.remove("toolUseId");
+        chunk.remove("callId");
+        if let Some(content) = message.get_mut("content").and_then(Value::as_object_mut) {
+            content.insert(
+                "payload".to_string(),
+                Value::String(serde_json::to_string(&parsed_payload).expect("encoded payload")),
+            );
+        }
+        message
     }
 
     fn make_test_backfill_message(backfill: ResumeBackfillMessage) -> Value {

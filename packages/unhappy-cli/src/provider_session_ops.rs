@@ -278,10 +278,25 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    let code_home = payload
+    let transcript_path = payload
         .get("path")
         .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let code_home = transcript_path
+        .as_deref()
         .and_then(extract_codex_home_from_transcript_path);
+    let code_home = code_home.or_else(|| {
+        payload
+            .get("path")
+            .and_then(Value::as_str)
+            .and_then(extract_codex_home_from_transcript_path)
+    });
+    let expected_text = text.trim().to_string();
+    let code_home_dir = code_home
+        .as_ref()
+        .map(PathBuf::from);
     let mut command = Command::new("codex");
     command.arg("app-server");
     if let Some(codex_home) = code_home.as_ref() {
@@ -352,9 +367,28 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
     }
     let _ = call_rpc(&mut stdin, &mut reader, 3, "turn/start", turn_params).await?;
     drop(stdin);
-    spawn_codex_turn_completion_drain(child, reader);
 
-    Ok(json!({ "success": true }))
+    let resolved_transcript_path = if let Some(path) = transcript_path.clone() {
+        Some(path)
+    } else if let Some(code_home_dir) = code_home_dir.as_ref() {
+        find_transcript_path_for_codex_home(code_home_dir, &thread_id).await?
+    } else {
+        None
+    };
+
+    let persisted = wait_for_codex_turn_persistence(
+        child,
+        reader,
+        resolved_transcript_path.as_deref(),
+        &expected_text,
+    )
+    .await?;
+
+    Ok(json!({
+        "success": true,
+        "persisted": persisted,
+        "transcriptPath": resolved_transcript_path
+    }))
 }
 
 pub async fn claude_list_sessions(payload: &Value, active_sessions: &[Value]) -> Result<Value> {
@@ -994,31 +1028,119 @@ async fn call_rpc(
     Err(anyhow!("codex app-server closed before responding"))
 }
 
-fn spawn_codex_turn_completion_drain(
+async fn wait_for_codex_turn_persistence(
     mut child: tokio::process::Child,
     mut reader: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
-) {
-    tokio::spawn(async move {
-        let deadline = Instant::now() + Duration::from_secs(300);
+    transcript_path: Option<&str>,
+    expected_text: &str,
+) -> Result<bool> {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut persisted = false;
 
-        loop {
-            let next_line = tokio::time::timeout_at(deadline, reader.next_line()).await;
-            let line = match next_line {
-                Ok(Ok(Some(line))) => line,
-                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => break,
-            };
-            let parsed: Value = match serde_json::from_str(line.trim()) {
-                Ok(value) => value,
-                Err(_) => continue,
-            };
-            if codex_turn_has_completed(&parsed) {
+    loop {
+        if let Some(transcript_path) = transcript_path {
+            if codex_transcript_contains_user_text(transcript_path, expected_text).await? {
+                persisted = true;
                 break;
             }
         }
 
-        let _ = child.start_kill();
-        let _ = child.wait().await;
-    });
+        let next_line = tokio::time::timeout_at(deadline, reader.next_line()).await;
+        let line = match next_line {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) | Ok(Err(_)) | Err(_) => break,
+        };
+        let parsed: Value = match serde_json::from_str(line.trim()) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if codex_turn_has_completed(&parsed) {
+            if let Some(transcript_path) = transcript_path {
+                persisted = codex_transcript_contains_user_text(transcript_path, expected_text).await?;
+            } else {
+                persisted = true;
+            }
+            break;
+        }
+    }
+
+    let _ = child.start_kill();
+    let _ = child.wait().await;
+    Ok(persisted)
+}
+
+async fn codex_transcript_contains_user_text(transcript_path: &str, expected_text: &str) -> Result<bool> {
+    let normalized = expected_text.trim();
+    if normalized.is_empty() {
+        return Ok(false);
+    }
+
+    let page = list_codex_thread_messages(transcript_path, Some(80), None).await?;
+    let messages = page
+        .get("messages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for message in messages {
+        let payload = message
+            .get("content")
+            .and_then(Value::as_object)
+            .and_then(|content| content.get("payload"))
+            .and_then(Value::as_str);
+        let Some(payload) = payload else { continue };
+        if payload.contains(normalized) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+async fn find_transcript_path_for_codex_home(
+    codex_home_dir: &Path,
+    thread_id: &str,
+) -> Result<Option<String>> {
+    let sessions_root = codex_home_dir.join("sessions");
+    let suffix = format!("-{thread_id}.jsonl");
+    let root = sessions_root.clone();
+    let newest = tokio::task::spawn_blocking(move || {
+        let mut stack = vec![root];
+        let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+        while let Some(directory) = stack.pop() {
+            let entries = match std::fs::read_dir(&directory) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(_) => continue,
+                };
+                if file_type.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                    continue;
+                };
+                if !name.ends_with(&suffix) {
+                    continue;
+                }
+                let modified = entry
+                    .metadata()
+                    .and_then(|metadata| metadata.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                match &newest {
+                    Some((current_modified, _)) if *current_modified >= modified => {}
+                    _ => newest = Some((modified, path)),
+                }
+            }
+        }
+        newest.map(|(_, path)| path)
+    })
+    .await?;
+
+    Ok(newest.map(|path| path.to_string_lossy().to_string()))
 }
 
 fn codex_turn_has_completed(message: &Value) -> bool {

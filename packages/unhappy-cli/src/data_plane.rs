@@ -524,7 +524,11 @@ async fn dispatch_request(
         MachineDataPlaneOperation::ProviderSpawn => {
             let request: SpawnSessionRequest =
                 serde_json::from_value(payload).context("invalid provider spawn payload")?;
-            Ok(serde_json::to_value(state.spawn_session(request).await)?)
+            let response = state.spawn_session(request).await;
+            if response.success {
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+            }
+            Ok(serde_json::to_value(response)?)
         }
         MachineDataPlaneOperation::MachineListModels => {
             local_ops::list_models(config, payload.get("agent").and_then(Value::as_str)).await
@@ -604,7 +608,15 @@ async fn dispatch_request(
             provider_session_ops::codex_list_messages(&payload).await
         }
         MachineDataPlaneOperation::CodexSendMessage => {
-            provider_session_ops::codex_send_message(&payload).await
+            let response = provider_session_ops::codex_send_message(&payload).await?;
+            if response
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+            }
+            Ok(response)
         }
         MachineDataPlaneOperation::ClaudeListSessions => {
             let active_sessions =
@@ -621,7 +633,15 @@ async fn dispatch_request(
             provider_session_ops::claude_list_messages(&payload).await
         }
         MachineDataPlaneOperation::ClaudeSendMessage => {
-            provider_session_ops::claude_send_message(&payload).await
+            let response = provider_session_ops::claude_send_message(&payload).await?;
+            if response
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+            }
+            Ok(response)
         }
         MachineDataPlaneOperation::GeminiListSessions => {
             let active_sessions =
@@ -673,7 +693,15 @@ async fn dispatch_request(
             if let Some(object) = helper_payload.as_object_mut() {
                 object.insert("controlPort".to_string(), json!(control_port));
             }
-            provider_session_ops::gemini_send_message(&helper_payload).await
+            let response = provider_session_ops::gemini_send_message(&helper_payload).await?;
+            if response
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+            }
+            Ok(response)
         }
         MachineDataPlaneOperation::FsListDirectory => local_ops::list_directory(&payload).await,
         MachineDataPlaneOperation::FsGetDirectoryTree => {

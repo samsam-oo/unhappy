@@ -63,6 +63,7 @@ public struct SessionProjectStartSheetContext: Sendable {
 
 public struct SessionProjectStartResult: Equatable, Sendable {
     public let sessionID: String?
+    public let transcriptPath: String?
     public let agent: APISessionSpawnAgent
     public let machineID: String?
     public let directoryPath: String
@@ -70,12 +71,14 @@ public struct SessionProjectStartResult: Equatable, Sendable {
 
     public init(
         sessionID: String?,
+        transcriptPath: String?,
         agent: APISessionSpawnAgent,
         machineID: String?,
         directoryPath: String,
         model: String?
     ) {
         self.sessionID = sessionID
+        self.transcriptPath = transcriptPath
         self.agent = agent
         self.machineID = machineID
         self.directoryPath = directoryPath

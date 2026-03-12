@@ -106,9 +106,11 @@ pub struct DaemonPreventSleepResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnSessionResponse {
-    success: bool,
+    pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transcript_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     approved_new_directory_creation: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,10 +124,11 @@ pub struct SpawnSessionResponse {
 }
 
 impl SpawnSessionResponse {
-    pub fn success(session_id: String) -> Self {
+    pub fn success(session_id: String, transcript_path: Option<String>) -> Self {
         Self {
             success: true,
             session_id: Some(session_id),
+            transcript_path,
             approved_new_directory_creation: Some(true),
             requires_user_approval: None,
             action_required: None,
@@ -138,6 +141,7 @@ impl SpawnSessionResponse {
         Self {
             success: false,
             session_id: None,
+            transcript_path: None,
             approved_new_directory_creation: None,
             requires_user_approval: Some(true),
             action_required: Some("CREATE_DIRECTORY"),
@@ -150,6 +154,7 @@ impl SpawnSessionResponse {
         Self {
             success: false,
             session_id: None,
+            transcript_path: None,
             approved_new_directory_creation: None,
             requires_user_approval: None,
             action_required: None,

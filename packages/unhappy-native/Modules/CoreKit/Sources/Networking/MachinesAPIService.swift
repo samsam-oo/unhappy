@@ -55,6 +55,7 @@ enum MachineSessionSpawnRPCResponseParser {
                 return APISessionSpawnResult(
                     success: false,
                     sessionID: nil,
+                    transcriptPath: nil,
                     requiresUserApproval: true,
                     actionRequired: "CREATE_DIRECTORY",
                     directory: payload["directory"] as? String,
@@ -65,6 +66,7 @@ enum MachineSessionSpawnRPCResponseParser {
                 return APISessionSpawnResult(
                     success: true,
                     sessionID: sessionID,
+                    transcriptPath: payload["transcriptPath"] as? String,
                     requiresUserApproval: nil,
                     actionRequired: nil,
                     directory: nil,
@@ -77,6 +79,7 @@ enum MachineSessionSpawnRPCResponseParser {
             return APISessionSpawnResult(
                 success: false,
                 sessionID: nil,
+                transcriptPath: nil,
                 requiresUserApproval: nil,
                 actionRequired: nil,
                 directory: nil,
@@ -87,6 +90,7 @@ enum MachineSessionSpawnRPCResponseParser {
         return APISessionSpawnResult(
             success: false,
             sessionID: nil,
+            transcriptPath: nil,
             requiresUserApproval: nil,
             actionRequired: nil,
             directory: nil,
