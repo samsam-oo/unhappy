@@ -45,7 +45,6 @@ public struct DirectSessionDetailView: View {
     @State private var isUsingCustomModelOverride = false
     @State private var customModelDraft = ""
     @State private var selectedPermissionModeOverride: APISessionMessagePermissionMode?
-    @State private var showMissingDefaultsAlert = false
     @State private var cachedTranscriptPresentations: [SessionTranscriptMessagePresentation] = []
     @State private var isNearTranscriptBottom = true
     @State private var transcriptBottomAnchorID = UUID().uuidString
@@ -285,16 +284,6 @@ public struct DirectSessionDetailView: View {
             }
         }
         .alert(
-            "Set model and reasoning first",
-            isPresented: $showMissingDefaultsAlert,
-            actions: {
-                Button("OK", role: .cancel) {}
-            },
-            message: {
-                Text("Pick a model and reasoning level in the bottom dock before sending a message.")
-            }
-        )
-        .alert(
             "Couldn't Archive Session",
             isPresented: Binding(
                 get: { viewModel.archiveErrorMessage?.isEmpty == false },
@@ -513,18 +502,6 @@ public struct DirectSessionDetailView: View {
         !viewModel.isSending && (!trimmedDraftMessage.isEmpty || !queuedDraftMessages.isEmpty)
     }
 
-    private var hasConfiguredModelAndReasoning: Bool {
-        let hasModel = isUsingCustomModelOverride
-            ? !customModelDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            : (
-                !viewModel.selectedModelOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || !(viewModel.identity.model?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-            )
-
-        let hasReasoning = viewModel.selectedReasoningEffortOverride != .auto || viewModel.identity.effort != nil
-        return hasModel && hasReasoning
-    }
-
     private var bottomDock: some View {
         VStack(spacing: 10) {
             composerBar
@@ -627,7 +604,6 @@ public struct DirectSessionDetailView: View {
                 }
                 .buttonStyle(PressableScaleButtonStyle())
                 .disabled(!canSendDraft)
-                .opacity(hasConfiguredModelAndReasoning ? 1 : 0.58)
             }
 
             if isUsingCustomModelOverride {
@@ -812,10 +788,6 @@ public struct DirectSessionDetailView: View {
     }
 
     private func sendCurrentOrQueuedDraft() {
-        guard hasConfiguredModelAndReasoning else {
-            showMissingDefaultsAlert = true
-            return
-        }
         let currentDraft = trimmedDraftMessage
         let queuedDraft: String?
         if currentDraft.isEmpty {
