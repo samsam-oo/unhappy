@@ -500,6 +500,35 @@ fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -
                 fields.push(format!("path={}", path.replace('\n', "\\n")));
             }
         }
+        MachineDataPlaneOperation::CodexListMessages
+        | MachineDataPlaneOperation::CodexSendMessage => {
+            if let Some(thread_id) = payload.get("threadId").and_then(Value::as_str) {
+                fields.push(format!("thread_id={}", thread_id.replace('\n', "\\n")));
+            }
+            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+                fields.push(format!("cwd={}", cwd.replace('\n', "\\n")));
+            }
+            if let Some(path) = payload.get("path").and_then(Value::as_str) {
+                fields.push(format!("path={}", path.replace('\n', "\\n")));
+            }
+            if let Some(text) = payload.get("text").and_then(Value::as_str) {
+                fields.push(format!("text_len={}", text.chars().count()));
+            }
+        }
+        MachineDataPlaneOperation::ClaudeListMessages
+        | MachineDataPlaneOperation::ClaudeSendMessage
+        | MachineDataPlaneOperation::GeminiListMessages
+        | MachineDataPlaneOperation::GeminiSendMessage => {
+            if let Some(session_id) = payload.get("sessionId").and_then(Value::as_str) {
+                fields.push(format!("session_id={}", session_id.replace('\n', "\\n")));
+            }
+            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+                fields.push(format!("cwd={}", cwd.replace('\n', "\\n")));
+            }
+            if let Some(text) = payload.get("text").and_then(Value::as_str) {
+                fields.push(format!("text_len={}", text.chars().count()));
+            }
+        }
         _ => {}
     }
     fields.join(" ")
@@ -616,22 +645,15 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
-                let mut page_payload = payload.clone();
-                if let Some(response_path) = response
-                    .get("transcriptPath")
-                    .and_then(Value::as_str)
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                {
-                    if let Some(object) = page_payload.as_object_mut() {
-                        object.insert("path".to_string(), json!(response_path));
-                    }
-                }
-                if let Some(object) = page_payload.as_object_mut() {
-                    object.insert("limit".to_string(), json!(AUTHORITATIVE_DIRECT_MESSAGES_LIMIT));
-                    object.insert("cursor".to_string(), Value::Null);
-                }
-                let messages_page = provider_session_ops::codex_list_messages(&page_payload).await?;
+                let messages_page = authoritative_messages_page_for_send(
+                    config,
+                    MachineDataPlaneOperation::CodexSendMessage,
+                    &payload,
+                    &response,
+                    None,
+                    AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
+                )
+                .await?;
                 let mut response = response;
                 if let Some(object) = response.as_object_mut() {
                     object.insert("messagesPage".to_string(), messages_page);
@@ -663,12 +685,14 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
-                let messages_page = provider_session_ops::claude_list_messages(&json!({
-                    "sessionId": payload.get("sessionId").cloned().unwrap_or(Value::Null),
-                    "cwd": payload.get("cwd").cloned().unwrap_or(Value::Null),
-                    "limit": AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
-                    "cursor": Value::Null
-                }))
+                let messages_page = authoritative_messages_page_for_send(
+                    config,
+                    MachineDataPlaneOperation::ClaudeSendMessage,
+                    &payload,
+                    &response,
+                    None,
+                    AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
+                )
                 .await?;
                 let mut response = response;
                 if let Some(object) = response.as_object_mut() {
@@ -736,15 +760,13 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
-                let mut page_payload = helper_payload.clone();
-                if let Some(object) = page_payload.as_object_mut() {
-                    object.insert("limit".to_string(), json!(AUTHORITATIVE_DIRECT_MESSAGES_LIMIT));
-                    object.insert("cursor".to_string(), Value::Null);
-                }
-                let messages_page = provider_session_ops::gemini_list_messages(
+                let messages_page = authoritative_messages_page_for_send(
                     config,
-                    &page_payload,
+                    MachineDataPlaneOperation::GeminiSendMessage,
+                    &helper_payload,
+                    &response,
                     Some(control_port),
+                    AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
                 )
                 .await?;
                 let mut response = response;
@@ -767,6 +789,98 @@ async fn dispatch_request(
         MachineDataPlaneOperation::SearchRipgrep => local_ops::ripgrep(&payload).await,
         MachineDataPlaneOperation::DiffDifftastic => local_ops::difftastic(config, &payload).await,
     }
+}
+
+async fn authoritative_messages_page_for_send(
+    config: &Config,
+    send_operation: MachineDataPlaneOperation,
+    payload: &Value,
+    response: &Value,
+    gemini_control_port: Option<u16>,
+    limit: u64,
+) -> Result<Value> {
+    let expected_text = payload
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("text is required"))?
+        .to_string();
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let page = match send_operation {
+            MachineDataPlaneOperation::CodexSendMessage => {
+                let mut page_payload = payload.clone();
+                if let Some(response_path) = response
+                    .get("transcriptPath")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    if let Some(object) = page_payload.as_object_mut() {
+                        object.insert("path".to_string(), json!(response_path));
+                    }
+                }
+                if let Some(object) = page_payload.as_object_mut() {
+                    object.insert("limit".to_string(), json!(limit));
+                    object.insert("cursor".to_string(), Value::Null);
+                }
+                provider_session_ops::codex_list_messages(&page_payload).await?
+            }
+            MachineDataPlaneOperation::ClaudeSendMessage => {
+                provider_session_ops::claude_list_messages(&json!({
+                    "sessionId": payload.get("sessionId").cloned().unwrap_or(Value::Null),
+                    "cwd": payload.get("cwd").cloned().unwrap_or(Value::Null),
+                    "limit": limit,
+                    "cursor": Value::Null
+                }))
+                .await?
+            }
+            MachineDataPlaneOperation::GeminiSendMessage => {
+                let mut page_payload = payload.clone();
+                if let Some(object) = page_payload.as_object_mut() {
+                    object.insert("limit".to_string(), json!(limit));
+                    object.insert("cursor".to_string(), Value::Null);
+                }
+                provider_session_ops::gemini_list_messages(
+                    config,
+                    &page_payload,
+                    gemini_control_port,
+                )
+                .await?
+            }
+            _ => return Err(anyhow!("unsupported direct send operation")),
+        };
+
+        if messages_page_contains_user_text(&page, &expected_text) {
+            return Ok(page);
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    Err(anyhow!(
+        "direct message was not visible in the authoritative messages page before timeout"
+    ))
+}
+
+fn messages_page_contains_user_text(page: &Value, expected_text: &str) -> bool {
+    page.get("messages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|message| {
+            message
+                .get("content")
+                .and_then(Value::as_object)
+                .and_then(|content| content.get("payload"))
+                .and_then(Value::as_str)
+                .is_some_and(|payload| payload.contains(expected_text))
+        })
 }
 
 fn active_provider_session_row(child: crate::control_server::ListChild) -> Option<Value> {
