@@ -126,7 +126,7 @@ struct DirectSessionViewModelTests {
     }
 
     @Test
-    func sendMessageImmediatelyShowsOptimisticUserMessage() async {
+    func sendMessageImmediatelyAppliesAuthoritativeMessagesPage() async {
         let loader = BlockingMessagesLoader()
         let sender = SuccessfulSender()
         let viewModel = DirectSessionViewModel(
@@ -142,17 +142,18 @@ struct DirectSessionViewModelTests {
         )
 
         #expect(sent == true)
-        let optimisticTexts = viewModel.messages.compactMap { message in
+        let authoritativeTexts = viewModel.messages.compactMap { message in
             SessionTranscriptPresentationBuilder.make(from: message, dataEncryptionKey: nil)
                 .entries
                 .first(where: { $0.role == .user && $0.kind == .text })?
                 .body
         }
-        #expect(optimisticTexts.contains("ship it"))
+        #expect(authoritativeTexts == ["ship it"])
+        #expect(viewModel.messages.map(\.id) == ["server-user"])
     }
 
     @Test
-    func sendMessageReconcilesOptimisticMessageAfterRefreshLoadsMatchingUserText() async throws {
+    func sendMessageKeepsAuthoritativeMessagesAfterBackgroundRefresh() async throws {
         let loader = ReplacingMessagesLoader()
         let sender = SuccessfulSender()
         let viewModel = DirectSessionViewModel(
@@ -167,7 +168,7 @@ struct DirectSessionViewModelTests {
             token: "token"
         )
 
-        #expect(viewModel.messages.map(\.id).contains(where: { $0.hasPrefix("optimistic:") }))
+        #expect(viewModel.messages.map(\.id) == ["server-user"])
 
         try await Task.sleep(for: .milliseconds(350))
 
@@ -347,7 +348,26 @@ private actor SuccessfulSender: DirectSessionMessageSendingAction {
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?
     ) async throws -> APISessionSendMessageResult {
-        APISessionSendMessageResult(success: true, queueCount: 1, queuedMessages: [text], error: nil)
+        let message = APISessionMessage(
+            id: "server-user",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(
+                type: "json",
+                payload: """
+                {"role":"user","content":{"type":"text","text":"\(text)"}}
+                """
+            ),
+            createdAt: 1,
+            updatedAt: 1
+        )
+        return APISessionSendMessageResult(
+            success: true,
+            messagesPage: APISessionMessagesPage(messages: [message], nextCursor: nil, hasNext: false),
+            queueCount: 1,
+            queuedMessages: [text],
+            error: nil
+        )
     }
 }
 
