@@ -58,8 +58,6 @@ public final class DirectSessionViewModel: ObservableObject {
     private var olderMessagesCursor: String?
     private var requestedOlderMessageCursors: Set<String> = []
     private var hasPrependedOlderPages = false
-    private var optimisticMessageIDs: Set<String> = []
-
     public var olderMessagesLoadTriggerID: String? {
         guard hasOlderMessages else { return nil }
         guard let olderMessagesCursor else { return nil }
@@ -204,7 +202,7 @@ public final class DirectSessionViewModel: ObservableObject {
         defer { isSending = false }
 
         do {
-            _ = try await sender.sendMessage(
+            let result = try await sender.sendMessage(
                 serverURLString: serverURLString,
                 token: token,
                 identity: identity,
@@ -213,7 +211,15 @@ public final class DirectSessionViewModel: ObservableObject {
                 reasoningEffort: selectedReasoningEffortOverride.apiValue,
                 permissionMode: permissionMode
             )
-            appendOptimisticUserMessage(text: text)
+            if let page = result.messagesPage {
+                if messages.isEmpty {
+                    applyLatestPage(page)
+                } else {
+                    applyIncrementalLatestPage(page)
+                }
+                errorMessage = nil
+                liveStatusText = nil
+            }
             schedulePostSendRefresh(
                 serverURLString: serverURLString,
                 token: token
@@ -501,7 +507,7 @@ public final class DirectSessionViewModel: ObservableObject {
     }
 
     private func applyLatestPage(_ page: APISessionMessagesPage) {
-        let latestMessages = reconcileOptimisticMessages(in: page.messages)
+        let latestMessages = page.messages
         let latestIDs = Set(latestMessages.map(\.id))
 
         if hasPrependedOlderPages {
@@ -526,7 +532,7 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         let latestMessages = sessionsNormalizeMessageOrder(
-            reconcileOptimisticMessages(in: page.messages)
+            page.messages
         )
         let latestIDs = Set(latestMessages.map(\.id))
         let preservedMessages = messages.filter { !latestIDs.contains($0.id) }
@@ -606,58 +612,6 @@ public final class DirectSessionViewModel: ObservableObject {
         )
     }
 
-    private func appendOptimisticUserMessage(text: String) {
-        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedText.isEmpty else { return }
-
-        let optimisticID = "optimistic:\(UUID().uuidString)"
-        let optimisticMessage = APISessionMessage(
-            id: optimisticID,
-            seq: (messages.map(\.seq).max() ?? 0) + 1,
-            localId: optimisticID,
-            content: APIEncryptedMessageContent(
-                type: "json",
-                payload: sessionsMakeOptimisticUserPayload(text: normalizedText)
-            ),
-            createdAt: Date().timeIntervalSince1970,
-            updatedAt: Date().timeIntervalSince1970
-        )
-        optimisticMessageIDs.insert(optimisticID)
-        setMessagesIfChanged(
-            sessionsNormalizeMessageOrder(messages + [optimisticMessage])
-        )
-    }
-
-    private func reconcileOptimisticMessages(in fetchedMessages: [APISessionMessage]) -> [APISessionMessage] {
-        guard !optimisticMessageIDs.isEmpty else { return fetchedMessages }
-
-        let fetchedTexts = Set(
-            fetchedMessages.compactMap(Self.normalizedUserMessageText(for:))
-        )
-        let remainingOptimisticMessages = messages.filter { message in
-            guard optimisticMessageIDs.contains(message.id) else { return false }
-            guard let optimisticText = Self.normalizedUserMessageText(for: message) else {
-                return false
-            }
-            return !fetchedTexts.contains(optimisticText)
-        }
-
-        optimisticMessageIDs = Set(remainingOptimisticMessages.map(\.id))
-        return sessionsNormalizeMessageOrder(fetchedMessages + remainingOptimisticMessages)
-    }
-
-    private static func normalizedUserMessageText(for message: APISessionMessage) -> String? {
-        let presentation = SessionTranscriptPresentationBuilder.make(
-            from: message,
-            dataEncryptionKey: nil
-        )
-        let text = presentation.entries
-            .filter { $0.role == .user && $0.kind == .text }
-            .map(\.body)
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
-    }
 }
 
 private func normalizeReasoningEfforts(_ rawValues: [String]) -> [NewSessionReasoningEffort] {

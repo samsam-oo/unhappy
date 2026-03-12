@@ -517,6 +517,8 @@ async fn dispatch_request(
     operation: MachineDataPlaneOperation,
     payload: Value,
 ) -> Result<Value> {
+    const AUTHORITATIVE_DIRECT_MESSAGES_LIMIT: u64 = 40;
+
     match operation {
         MachineDataPlaneOperation::MachinePing => Ok(json!({
             "success": true
@@ -614,9 +616,31 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
+                let mut page_payload = payload.clone();
+                if let Some(response_path) = response
+                    .get("transcriptPath")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    if let Some(object) = page_payload.as_object_mut() {
+                        object.insert("path".to_string(), json!(response_path));
+                    }
+                }
+                if let Some(object) = page_payload.as_object_mut() {
+                    object.insert("limit".to_string(), json!(AUTHORITATIVE_DIRECT_MESSAGES_LIMIT));
+                    object.insert("cursor".to_string(), Value::Null);
+                }
+                let messages_page = provider_session_ops::codex_list_messages(&page_payload).await?;
+                let mut response = response;
+                if let Some(object) = response.as_object_mut() {
+                    object.insert("messagesPage".to_string(), messages_page);
+                }
                 machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+                Ok(response)
+            } else {
+                Ok(response)
             }
-            Ok(response)
         }
         MachineDataPlaneOperation::ClaudeListSessions => {
             let active_sessions =
@@ -639,9 +663,22 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
+                let messages_page = provider_session_ops::claude_list_messages(&json!({
+                    "sessionId": payload.get("sessionId").cloned().unwrap_or(Value::Null),
+                    "cwd": payload.get("cwd").cloned().unwrap_or(Value::Null),
+                    "limit": AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
+                    "cursor": Value::Null
+                }))
+                .await?;
+                let mut response = response;
+                if let Some(object) = response.as_object_mut() {
+                    object.insert("messagesPage".to_string(), messages_page);
+                }
                 machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+                Ok(response)
+            } else {
+                Ok(response)
             }
-            Ok(response)
         }
         MachineDataPlaneOperation::GeminiListSessions => {
             let active_sessions =
@@ -699,9 +736,26 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
+                let mut page_payload = helper_payload.clone();
+                if let Some(object) = page_payload.as_object_mut() {
+                    object.insert("limit".to_string(), json!(AUTHORITATIVE_DIRECT_MESSAGES_LIMIT));
+                    object.insert("cursor".to_string(), Value::Null);
+                }
+                let messages_page = provider_session_ops::gemini_list_messages(
+                    config,
+                    &page_payload,
+                    Some(control_port),
+                )
+                .await?;
+                let mut response = response;
+                if let Some(object) = response.as_object_mut() {
+                    object.insert("messagesPage".to_string(), messages_page);
+                }
                 machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+                Ok(response)
+            } else {
+                Ok(response)
             }
-            Ok(response)
         }
         MachineDataPlaneOperation::FsListDirectory => local_ops::list_directory(&payload).await,
         MachineDataPlaneOperation::FsGetDirectoryTree => {
