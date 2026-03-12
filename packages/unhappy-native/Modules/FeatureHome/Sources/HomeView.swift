@@ -214,6 +214,7 @@ public struct HomeView: View {
                         onSessionSpawned(
                             SessionProjectStartResult(
                                 sessionID: spawned.sessionID,
+                                transcriptPath: spawned.transcriptPath,
                                 agent: spawned.agent,
                                 machineID: spawned.machineID,
                                 directoryPath: spawned.directoryPath,

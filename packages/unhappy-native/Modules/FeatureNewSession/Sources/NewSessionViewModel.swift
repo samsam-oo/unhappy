@@ -39,6 +39,7 @@ public final class NewSessionViewModel: ObservableObject {
     @Published public private(set) var infoMessage: String?
     @Published public private(set) var approvalDirectory: String?
     @Published public private(set) var spawnedSessionID: String?
+    @Published public private(set) var spawnedTranscriptPath: String?
 
     private let machinesLoader: any NewSessionMachinesLoadingAction
     private let directoryLister: any NewSessionDirectoryListingAction
@@ -170,6 +171,7 @@ public final class NewSessionViewModel: ObservableObject {
         modelsErrorMessage = nil
         approvalDirectory = nil
         spawnedSessionID = nil
+        spawnedTranscriptPath = nil
         infoMessage = nil
         async let directoryLoad: Void = loadDirectory(
             serverURLString: serverURLString,
@@ -730,6 +732,7 @@ public final class NewSessionViewModel: ObservableObject {
         errorMessage = nil
         infoMessage = nil
         spawnedSessionID = nil
+        spawnedTranscriptPath = nil
         if approvedNewDirectoryCreation {
             approvalDirectory = nil
         }
@@ -757,6 +760,8 @@ public final class NewSessionViewModel: ObservableObject {
             )
             let sessionID = result.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
             spawnedSessionID = (sessionID?.isEmpty == false) ? sessionID : nil
+            let transcriptPath = result.transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines)
+            spawnedTranscriptPath = (transcriptPath?.isEmpty == false) ? transcriptPath : nil
             if let spawnedSessionID {
                 infoMessage = "Spawned session \(spawnedSessionID)"
             } else {
