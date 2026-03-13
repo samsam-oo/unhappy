@@ -339,33 +339,63 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
     }
     let _ = call_rpc(&mut stdin, &mut reader, 2, "thread/resume", resume_params).await?;
 
-    let mut turn_params = json!({
-        "threadId": thread_id,
-        "input": [{ "type": "text", "text": text }]
-    });
-    if let Some(model) = model {
-        turn_params["model"] = Value::String(model.to_string());
-    }
-    if let Some(effort) = effort {
-        turn_params["effort"] = Value::String(if effort == "max" {
-            "xhigh".to_string()
-        } else {
-            effort.to_string()
+    let active_turn_id = call_rpc(
+        &mut stdin,
+        &mut reader,
+        3,
+        "thread/read",
+        json!({
+            "threadId": thread_id,
+            "includeTurns": true
+        }),
+    )
+    .await
+    .ok()
+    .and_then(|response| codex_active_turn_id(&response));
+
+    if let Some(expected_turn_id) = active_turn_id {
+        let _ = call_rpc(
+            &mut stdin,
+            &mut reader,
+            4,
+            "turn/steer",
+            json!({
+                "threadId": thread_id,
+                "expectedTurnId": expected_turn_id,
+                "input": [{ "type": "text", "text": text }]
+            }),
+        )
+        .await?;
+    } else {
+        let mut turn_params = json!({
+            "threadId": thread_id,
+            "input": [{ "type": "text", "text": text }]
         });
-    }
-    if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
-        turn_params["cwd"] = Value::String(resolve_cwd(cwd));
-    }
-    if let Some((approval_policy, sandbox_policy)) = map_codex_permission_mode(permission_mode, cwd)
-    {
-        if let Some(approval_policy) = approval_policy {
-            turn_params["approvalPolicy"] = Value::String(approval_policy.to_string());
+        if let Some(model) = model {
+            turn_params["model"] = Value::String(model.to_string());
         }
-        if let Some(sandbox_policy) = sandbox_policy {
-            turn_params["sandboxPolicy"] = sandbox_policy;
+        if let Some(effort) = effort {
+            turn_params["effort"] = Value::String(if effort == "max" {
+                "xhigh".to_string()
+            } else {
+                effort.to_string()
+            });
         }
+        if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+            turn_params["cwd"] = Value::String(resolve_cwd(cwd));
+        }
+        if let Some((approval_policy, sandbox_policy)) =
+            map_codex_permission_mode(permission_mode, cwd)
+        {
+            if let Some(approval_policy) = approval_policy {
+                turn_params["approvalPolicy"] = Value::String(approval_policy.to_string());
+            }
+            if let Some(sandbox_policy) = sandbox_policy {
+                turn_params["sandboxPolicy"] = sandbox_policy;
+            }
+        }
+        let _ = call_rpc(&mut stdin, &mut reader, 4, "turn/start", turn_params).await?;
     }
-    let _ = call_rpc(&mut stdin, &mut reader, 3, "turn/start", turn_params).await?;
     drop(stdin);
 
     let resolved_transcript_path = if let Some(path) = transcript_path.clone() {
@@ -1163,6 +1193,47 @@ fn codex_turn_has_completed(message: &Value) -> bool {
         || method.contains("turn.completed")
 }
 
+fn codex_active_turn_id(response: &Value) -> Option<String> {
+    let thread = response.get("thread")?.as_object()?;
+    let status_type = thread
+        .get("status")
+        .and_then(Value::as_object)
+        .and_then(|status| status.get("type"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    if status_type.eq_ignore_ascii_case("idle") {
+        return None;
+    }
+
+    let turns = thread.get("turns")?.as_array()?;
+    for turn in turns.iter().rev() {
+        let status = turn
+            .get("status")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default();
+        if status.eq_ignore_ascii_case("completed")
+            || status.eq_ignore_ascii_case("interrupted")
+            || status.eq_ignore_ascii_case("failed")
+            || status.eq_ignore_ascii_case("cancelled")
+        {
+            continue;
+        }
+        if let Some(turn_id) = turn
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(turn_id.to_string());
+        }
+    }
+
+    None
+}
+
 async fn collect_jsonl_files(root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let mut queue = vec![root.to_path_buf()];
@@ -1956,6 +2027,35 @@ mod tests {
         assert_eq!(rows[0]["preview"].as_str(), Some("Root preview"));
         assert_eq!(rows[0]["updatedAt"].as_str(), Some("2026-05-07T05:06:40Z"));
         assert_eq!(rows[0]["createdAt"].as_str(), Some("2026-05-07T05:00:00Z"));
+    }
+
+    #[test]
+    fn codex_active_turn_id_uses_latest_non_terminal_turn_for_non_idle_threads() {
+        let response = json!({
+            "thread": {
+                "status": { "type": "running" },
+                "turns": [
+                    { "id": "turn-1", "status": "completed" },
+                    { "id": "turn-2", "status": "in_progress" }
+                ]
+            }
+        });
+
+        assert_eq!(codex_active_turn_id(&response).as_deref(), Some("turn-2"));
+    }
+
+    #[test]
+    fn codex_active_turn_id_returns_none_for_idle_threads() {
+        let response = json!({
+            "thread": {
+                "status": { "type": "idle" },
+                "turns": [
+                    { "id": "turn-1", "status": "completed" }
+                ]
+            }
+        });
+
+        assert_eq!(codex_active_turn_id(&response), None);
     }
 
     #[tokio::test]
