@@ -829,7 +829,7 @@ public struct DirectSessionDetailView: View {
         let parsedPresentations = viewModel.messages.map {
             SessionTranscriptPresentationBuilder.make(
                 from: $0,
-                dataEncryptionKey: nil
+                dataEncryptionKey: viewModel.identity.wrappedMachineDataEncryptionKey
             )
         }
         let nextPresentations = SessionTranscriptProcessing.coalesceStreamingEntries(
