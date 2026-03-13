@@ -58,6 +58,7 @@ public final class DirectSessionViewModel: ObservableObject {
     private var olderMessagesCursor: String?
     private var requestedOlderMessageCursors: Set<String> = []
     private var hasPrependedOlderPages = false
+    private var latestWindowLowerBoundSeq: Int?
     public var olderMessagesLoadTriggerID: String? {
         guard hasOlderMessages else { return nil }
         guard let olderMessagesCursor else { return nil }
@@ -513,6 +514,7 @@ public final class DirectSessionViewModel: ObservableObject {
         if hasPrependedOlderPages {
             let preservedOlderMessages = messages.filter { !latestIDs.contains($0.id) }
             setMessagesIfChanged(preservedOlderMessages + latestMessages)
+            latestWindowLowerBoundSeq = latestMessages.first?.seq
             if olderMessagesCursor == nil {
                 hasOlderMessages = false
             }
@@ -520,6 +522,7 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         setMessagesIfChanged(latestMessages)
+        latestWindowLowerBoundSeq = latestMessages.first?.seq
         olderMessagesCursor = page.nextCursor
         hasOlderMessages = page.hasNext
         requestedOlderMessageCursors = []
@@ -534,11 +537,17 @@ public final class DirectSessionViewModel: ObservableObject {
         let latestMessages = sessionsNormalizeMessageOrder(
             page.messages
         )
-        let latestIDs = Set(latestMessages.map(\.id))
-        let preservedMessages = messages.filter { !latestIDs.contains($0.id) }
+        guard let oldestLatestMessage = latestMessages.first else {
+            return
+        }
+        let preserveBelowSeq = latestWindowLowerBoundSeq ?? oldestLatestMessage.seq
+        let preservedMessages = messages.filter { message in
+            message.seq < preserveBelowSeq
+        }
         setMessagesIfChanged(
             sessionsNormalizeMessageOrder(preservedMessages + latestMessages)
         )
+        latestWindowLowerBoundSeq = oldestLatestMessage.seq
     }
 
     private func refreshLatestMessages(

@@ -176,6 +176,36 @@ struct DirectSessionViewModelTests {
     }
 
     @Test
+    func sendMessageReplacesLatestWindowButKeepsPrependedOlderMessages() async {
+        let loader = OlderMessagesPrependLoader()
+        let sender = AuthoritativeLatestWindowSender()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: sender
+        )
+
+        await viewModel.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        await viewModel.loadOlderMessages(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.messages.map(\.id) == ["older-1", "older-2", "latest-1", "latest-2"])
+
+        _ = await viewModel.sendMessage(
+            "authoritative",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.messages.map(\.id) == ["older-1", "older-2", "latest-2", "latest-3"])
+    }
+
+    @Test
     func initialLoadRequestsTailFirstPageOfTwoHundredFortyMessages() async {
         let loader = RecordingMessagesLoader()
         let viewModel = DirectSessionViewModel(
@@ -470,6 +500,50 @@ private actor OlderMessagesPrependLoader: DirectSessionMessagesLoadingAction {
             ],
             nextCursor: nil,
             hasNext: false
+        )
+    }
+}
+
+private actor AuthoritativeLatestWindowSender: DirectSessionMessageSendingAction {
+    func sendMessage(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity,
+        text: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?
+    ) async throws -> APISessionSendMessageResult {
+        APISessionSendMessageResult(
+            success: true,
+            messagesPage: APISessionMessagesPage(
+                messages: [
+                    APISessionMessage(
+                        id: "latest-2",
+                        seq: 4,
+                        localId: nil,
+                        content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                        createdAt: 4,
+                        updatedAt: 4
+                    ),
+                    APISessionMessage(
+                        id: "latest-3",
+                        seq: 5,
+                        localId: nil,
+                        content: APIEncryptedMessageContent(
+                            type: "json",
+                            payload: sessionsMakeOptimisticUserPayload(text: text)
+                        ),
+                        createdAt: 5,
+                        updatedAt: 5
+                    ),
+                ],
+                nextCursor: nil,
+                hasNext: false
+            ),
+            queueCount: 1,
+            queuedMessages: [text],
+            error: nil
         )
     }
 }
