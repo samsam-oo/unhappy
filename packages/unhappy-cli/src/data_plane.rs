@@ -847,7 +847,7 @@ async fn authoritative_messages_page_for_send(
         .to_string();
 
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    loop {
+    let last_page_summary = loop {
         let page = match send_operation {
             MachineDataPlaneOperation::CodexSendMessage => {
                 let mut page_payload = payload.clone();
@@ -892,18 +892,21 @@ async fn authoritative_messages_page_for_send(
             _ => return Err(anyhow!("unsupported direct send operation")),
         };
 
+        let page_summary = messages_page_summary_for_log(&page, &expected_text);
+
         if messages_page_contains_user_text(&page, &expected_text) {
             return Ok(page);
         }
 
         if tokio::time::Instant::now() >= deadline {
-            break;
+            break page_summary;
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
-    }
+    };
 
     Err(anyhow!(
-        "direct message was not visible in the authoritative messages page before timeout"
+        "direct message was not visible in the authoritative messages page before timeout (latest_page={})",
+        last_page_summary
     ))
 }
 
@@ -920,6 +923,53 @@ fn messages_page_contains_user_text(page: &Value, expected_text: &str) -> bool {
                 .and_then(Value::as_str)
                 .is_some_and(|payload| payload.contains(expected_text))
         })
+}
+
+fn messages_page_summary_for_log(page: &Value, expected_text: &str) -> String {
+    let messages = page
+        .get("messages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let contains_expected = messages_page_contains_user_text(page, expected_text);
+    let recent = messages
+        .iter()
+        .rev()
+        .take(4)
+        .filter_map(message_preview_for_log)
+        .collect::<Vec<_>>();
+    format!(
+        "count={} contains_expected={} recent=[{}]",
+        messages.len(),
+        contains_expected,
+        recent.join(" | ")
+    )
+}
+
+fn message_preview_for_log(message: &Value) -> Option<String> {
+    let seq = message
+        .get("seq")
+        .and_then(Value::as_i64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    let payload = message
+        .get("content")
+        .and_then(Value::as_object)
+        .and_then(|content| content.get("payload"))
+        .and_then(Value::as_str)?;
+    let role = if payload.contains("\"role\":\"user\"") {
+        "user"
+    } else if payload.contains("\"role\":\"agent\"") {
+        "agent"
+    } else {
+        "unknown"
+    };
+    let preview = payload
+        .replace('\n', " ")
+        .chars()
+        .take(120)
+        .collect::<String>();
+    Some(format!("seq={seq} role={role} payload={preview}"))
 }
 
 fn active_provider_session_row(child: crate::control_server::ListChild) -> Option<Value> {
