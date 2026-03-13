@@ -3,32 +3,21 @@ use serde_json::{json, Map, Value};
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, OnceLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, OnceLock,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
-    sync::RwLock,
+    sync::{oneshot, Mutex, RwLock},
 };
 
 use crate::codex_transcript::list_codex_thread_messages;
 
 const LIVE_SESSION_MAX_MESSAGES: usize = 512;
-
-pub trait ProviderLiveSessionAdapter: Send + Sync {
-    fn provider_name(&self) -> &'static str;
-}
-
-pub struct CodexLiveSessionAdapter;
-
-impl ProviderLiveSessionAdapter for CodexLiveSessionAdapter {
-    fn provider_name(&self) -> &'static str {
-        "codex"
-    }
-}
-
-static CODEX_LIVE_SESSION_ADAPTER: CodexLiveSessionAdapter = CodexLiveSessionAdapter;
 
 #[derive(Debug, Clone)]
 pub struct CodexLiveSessionConfig {
@@ -42,6 +31,7 @@ pub struct CodexLiveSessionConfig {
 struct CodexLiveSessionHandle {
     config: CodexLiveSessionConfig,
     state: RwLock<CodexLiveSessionState>,
+    rpc: Arc<CodexLiveSessionRpc>,
 }
 
 #[derive(Debug, Default)]
@@ -58,10 +48,16 @@ struct CodexLiveSessionManager {
     sessions_by_thread_id: RwLock<HashMap<String, Arc<CodexLiveSessionHandle>>>,
 }
 
+#[derive(Debug)]
+struct CodexLiveSessionRpc {
+    stdin: Mutex<tokio::process::ChildStdin>,
+    next_id: AtomicU64,
+    pending: Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>,
+}
+
 type CodexLines = tokio::io::Lines<BufReader<tokio::process::ChildStdout>>;
 
 pub async fn ensure_codex_live_session(config: CodexLiveSessionConfig) -> Result<()> {
-    let adapter = codex_live_session_adapter();
     let manager = codex_live_session_manager();
     if manager
         .sessions_by_thread_id
@@ -73,37 +69,195 @@ pub async fn ensure_codex_live_session(config: CodexLiveSessionConfig) -> Result
     }
 
     let seeded = seed_live_state(config.transcript_path.as_deref()).await?;
-    let thread_id = config.thread_id.clone();
-    let handle = Arc::new(CodexLiveSessionHandle {
-        config: config.clone(),
-        state: RwLock::new(seeded),
-    });
+    let runtime = spawn_codex_live_runtime(config.clone(), seeded).await?;
+    initialize_codex_live_session(runtime.clone()).await?;
 
-    {
-        let mut sessions = manager.sessions_by_thread_id.write().await;
-        if sessions.contains_key(thread_id.as_str()) {
-            return Ok(());
-        }
-        sessions.insert(thread_id.clone(), handle.clone());
+    let mut sessions = manager.sessions_by_thread_id.write().await;
+    if sessions.contains_key(config.thread_id.as_str()) {
+        return Ok(());
     }
-
-    let manager = manager.clone();
-    tokio::spawn(async move {
-        if let Err(error) = run_codex_live_session(handle.clone()).await {
-            eprintln!(
-                "warning: {} live session adapter exited for thread {}: {error:#}",
-                adapter.provider_name(),
-                handle.config.thread_id
-            );
-        }
-        manager
-            .sessions_by_thread_id
-            .write()
-            .await
-            .remove(handle.config.thread_id.as_str());
-    });
+    sessions.insert(config.thread_id.clone(), runtime);
 
     Ok(())
+}
+
+pub async fn codex_live_send_message(
+    config: CodexLiveSessionConfig,
+    text: &str,
+    model: Option<&str>,
+    effort: Option<&str>,
+    permission_mode: Option<&str>,
+) -> Result<Value> {
+    ensure_codex_live_session(config.clone()).await?;
+    let handle = codex_live_session_handle(config.thread_id.as_str())
+        .await
+        .ok_or_else(|| anyhow!("Codex live session is unavailable"))?;
+
+    let active_turn_id = handle
+        .rpc
+        .call(
+            "thread/read",
+            json!({
+                "threadId": config.thread_id,
+                "includeTurns": true
+            }),
+        )
+        .await
+        .ok()
+        .and_then(|response| codex_active_turn_id(&response));
+
+    if let Some(expected_turn_id) = active_turn_id {
+        let _ = handle
+            .rpc
+            .call(
+                "turn/steer",
+                json!({
+                    "threadId": config.thread_id,
+                    "expectedTurnId": expected_turn_id,
+                    "input": [{ "type": "text", "text": text }]
+                }),
+            )
+            .await?;
+    } else {
+        let mut turn_params = json!({
+            "threadId": config.thread_id,
+            "input": [{ "type": "text", "text": text }],
+            "cwd": config.cwd,
+        });
+        if let Some(model) = model.map(str::trim).filter(|value| !value.is_empty()) {
+            turn_params["model"] = Value::String(model.to_string());
+        }
+        if let Some(effort) = effort.map(str::trim).filter(|value| !value.is_empty()) {
+            turn_params["effort"] = Value::String(if effort == "max" {
+                "xhigh".to_string()
+            } else {
+                effort.to_string()
+            });
+        }
+        if let Some((approval_policy, sandbox_policy)) =
+            map_codex_permission_mode(permission_mode, config.cwd.as_str())
+        {
+            if let Some(approval_policy) = approval_policy {
+                turn_params["approvalPolicy"] = Value::String(approval_policy.to_string());
+            }
+            if let Some(sandbox_policy) = sandbox_policy {
+                turn_params["sandboxPolicy"] = sandbox_policy;
+            }
+        }
+        let _ = handle.rpc.call("turn/start", turn_params).await?;
+    }
+
+    Ok(json!({
+        "success": true,
+        "persisted": true,
+        "transcriptPath": config.transcript_path,
+        "messagesPage": build_live_messages_page(handle, 120, None).await?
+    }))
+}
+
+fn map_codex_permission_mode<'a>(
+    mode: Option<&'a str>,
+    cwd: &'a str,
+) -> Option<(Option<&'a str>, Option<Value>)> {
+    match mode.unwrap_or_default() {
+        "" | "passthrough" => None,
+        "read-only" => Some((
+            Some("never"),
+            Some(json!({
+                "type": "readOnly",
+                "access": { "type": "fullAccess" }
+            })),
+        )),
+        "safe-yolo" => Some((
+            Some("on-failure"),
+            Some(json!({
+                "type": "workspaceWrite",
+                "writableRoots": [resolve_cwd(cwd)],
+                "readOnlyAccess": { "type": "fullAccess" },
+                "networkAccess": false,
+                "excludeTmpdirEnvVar": false,
+                "excludeSlashTmp": false
+            })),
+        )),
+        "yolo" | "bypassPermissions" => Some((
+            Some("on-failure"),
+            Some(json!({
+                "type": "dangerFullAccess"
+            })),
+        )),
+        "acceptEdits" => Some((
+            Some("on-request"),
+            Some(json!({
+                "type": "workspaceWrite",
+                "writableRoots": [resolve_cwd(cwd)],
+                "readOnlyAccess": { "type": "fullAccess" },
+                "networkAccess": false,
+                "excludeTmpdirEnvVar": false,
+                "excludeSlashTmp": false
+            })),
+        )),
+        _ => Some((
+            Some("untrusted"),
+            Some(json!({
+                "type": "workspaceWrite",
+                "writableRoots": [resolve_cwd(cwd)],
+                "readOnlyAccess": { "type": "fullAccess" },
+                "networkAccess": false,
+                "excludeTmpdirEnvVar": false,
+                "excludeSlashTmp": false
+            })),
+        )),
+    }
+}
+
+fn resolve_cwd(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        ".".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn codex_active_turn_id(response: &Value) -> Option<String> {
+    let thread = response.get("thread")?.as_object()?;
+    let status_type = thread
+        .get("status")
+        .and_then(Value::as_object)
+        .and_then(|status| status.get("type"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    if status_type.eq_ignore_ascii_case("idle") {
+        return None;
+    }
+
+    let turns = thread.get("turns")?.as_array()?;
+    for turn in turns.iter().rev() {
+        let status = turn
+            .get("status")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_default();
+        if status.eq_ignore_ascii_case("completed")
+            || status.eq_ignore_ascii_case("interrupted")
+            || status.eq_ignore_ascii_case("failed")
+            || status.eq_ignore_ascii_case("cancelled")
+        {
+            continue;
+        }
+        if let Some(turn_id) = turn
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(turn_id.to_string());
+        }
+    }
+
+    None
 }
 
 pub async fn codex_live_messages_page(
@@ -133,8 +287,13 @@ fn codex_live_session_manager() -> Arc<CodexLiveSessionManager> {
         .clone()
 }
 
-fn codex_live_session_adapter() -> &'static dyn ProviderLiveSessionAdapter {
-    &CODEX_LIVE_SESSION_ADAPTER
+async fn codex_live_session_handle(thread_id: &str) -> Option<Arc<CodexLiveSessionHandle>> {
+    codex_live_session_manager()
+        .sessions_by_thread_id
+        .read()
+        .await
+        .get(thread_id)
+        .cloned()
 }
 
 async fn seed_live_state(transcript_path: Option<&str>) -> Result<CodexLiveSessionState> {
@@ -195,10 +354,13 @@ async fn build_live_messages_page(
     list_codex_thread_messages(transcript_path, Some(limit), None).await
 }
 
-async fn run_codex_live_session(handle: Arc<CodexLiveSessionHandle>) -> Result<()> {
+async fn spawn_codex_live_runtime(
+    config: CodexLiveSessionConfig,
+    seeded: CodexLiveSessionState,
+) -> Result<Arc<CodexLiveSessionHandle>> {
     let mut command = Command::new("codex");
     command.arg("app-server");
-    if let Some(codex_home_dir) = handle.config.codex_home_dir.as_ref() {
+    if let Some(codex_home_dir) = config.codex_home_dir.as_ref() {
         command.env("CODEX_HOME", codex_home_dir);
     }
     command
@@ -208,40 +370,50 @@ async fn run_codex_live_session(handle: Arc<CodexLiveSessionHandle>) -> Result<(
     let mut child = command
         .spawn()
         .context("failed to spawn codex app-server for live session")?;
-    let mut stdin = child.stdin.take().context("missing codex stdin")?;
+    let stdin = child.stdin.take().context("missing codex stdin")?;
     let stdout = child.stdout.take().context("missing codex stdout")?;
-    let mut reader = BufReader::new(stdout).lines();
-
-    let _ = call_rpc(
-        &mut stdin,
-        &mut reader,
-        1,
-        "initialize",
-        json!({
-            "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" },
-            "capabilities": { "experimentalApi": true }
-        }),
-    )
-    .await?;
-
-    let _ = call_rpc(
-        &mut stdin,
-        &mut reader,
-        2,
-        "thread/resume",
-        json!({
-            "threadId": handle.config.thread_id,
-            "cwd": handle.config.cwd,
-            "persistExtendedHistory": true
-        }),
-    )
-    .await?;
-
-    drop(stdin);
-    drain_codex_live_notifications(child, reader, handle).await
+    let reader = BufReader::new(stdout).lines();
+    let rpc = Arc::new(CodexLiveSessionRpc {
+        stdin: Mutex::new(stdin),
+        next_id: AtomicU64::new(1),
+        pending: Mutex::new(HashMap::new()),
+    });
+    let handle = Arc::new(CodexLiveSessionHandle {
+        config,
+        state: RwLock::new(seeded),
+        rpc: rpc.clone(),
+    });
+    tokio::spawn(drive_codex_live_session(child, reader, handle.clone()));
+    Ok(handle)
 }
 
-async fn drain_codex_live_notifications(
+async fn initialize_codex_live_session(handle: Arc<CodexLiveSessionHandle>) -> Result<()> {
+    let _ = handle
+        .rpc
+        .call(
+            "initialize",
+            json!({
+                "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" },
+                "capabilities": { "experimentalApi": true }
+            }),
+        )
+        .await?;
+
+    let _ = handle
+        .rpc
+        .call(
+            "thread/resume",
+            json!({
+                "threadId": handle.config.thread_id,
+                "cwd": handle.config.cwd,
+                "persistExtendedHistory": true
+            }),
+        )
+        .await?;
+    Ok(())
+}
+
+async fn drive_codex_live_session(
     mut child: Child,
     mut reader: CodexLines,
     handle: Arc<CodexLiveSessionHandle>,
@@ -255,9 +427,24 @@ async fn drain_codex_live_notifications(
             Ok(value) => value,
             Err(_) => continue,
         };
+        if let Some(id) = parsed.get("id").and_then(Value::as_u64) {
+            let pending = handle.rpc.pending.lock().await.remove(&id);
+            if let Some(sender) = pending {
+                if let Some(error) = parsed.get("error") {
+                    let _ = sender.send(Err(error.to_string()));
+                } else {
+                    let _ = sender.send(Ok(parsed.get("result").cloned().unwrap_or(Value::Null)));
+                }
+            }
+            continue;
+        }
         handle_codex_live_notification(handle.clone(), &parsed).await?;
     }
 
+    let mut pending = handle.rpc.pending.lock().await;
+    for (_, sender) in pending.drain() {
+        let _ = sender.send(Err("codex app-server closed before responding".to_string()));
+    }
     let _ = child.start_kill();
     let _ = child.wait().await;
     Ok(())
@@ -688,40 +875,36 @@ fn trim_live_messages(messages: &mut Vec<Value>) {
     messages.drain(0..drop_count);
 }
 
-async fn call_rpc(
-    stdin: &mut tokio::process::ChildStdin,
-    reader: &mut CodexLines,
-    id: u64,
-    method: &str,
-    params: Value,
-) -> Result<Value> {
-    let request = json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": method,
-        "params": params
-    });
-    stdin
-        .write_all(serde_json::to_string(&request)?.as_bytes())
-        .await?;
-    stdin.write_all(b"\n").await?;
-    stdin.flush().await?;
+impl CodexLiveSessionRpc {
+    async fn call(&self, method: &str, params: Value) -> Result<Value> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let (sender, receiver) = oneshot::channel();
+        self.pending.lock().await.insert(id, sender);
 
-    while let Some(line) = reader.next_line().await? {
-        let parsed: Value = match serde_json::from_str(line.trim()) {
-            Ok(value) => value,
-            Err(_) => continue,
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        });
+        let encoded = serde_json::to_vec(&request)?;
+        let write_result = {
+            let mut stdin = self.stdin.lock().await;
+            stdin.write_all(&encoded).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.flush().await
         };
-        if parsed.get("id").and_then(Value::as_u64) != Some(id) {
-            continue;
+        if let Err(error) = write_result {
+            self.pending.lock().await.remove(&id);
+            return Err(error).context("failed to write codex rpc request");
         }
-        if let Some(error) = parsed.get("error") {
-            return Err(anyhow!("codex app-server error: {error}"));
-        }
-        return Ok(parsed.get("result").cloned().unwrap_or(Value::Null));
-    }
 
-    Err(anyhow!("codex app-server closed before responding"))
+        match receiver.await {
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(error)) => Err(anyhow!("codex app-server error: {error}")),
+            Err(_) => Err(anyhow!("codex app-server closed before responding")),
+        }
+    }
 }
 
 fn now_seconds() -> f64 {

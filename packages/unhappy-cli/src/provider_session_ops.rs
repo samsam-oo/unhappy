@@ -1,5 +1,8 @@
 use crate::{
-    codex_live_session::{codex_live_messages_page, ensure_codex_live_session, CodexLiveSessionConfig},
+    codex_live_session::{
+        codex_live_messages_page, codex_live_send_message, ensure_codex_live_session,
+        CodexLiveSessionConfig,
+    },
     codex_app_server::open_or_resume_codex_thread, codex_transcript::list_codex_thread_messages,
     config::Config, provider::Provider,
 };
@@ -18,7 +21,6 @@ use tokio::{
     fs::{self, File},
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
-    time::{Duration, Instant},
 };
 
 type ProviderSessionListFuture<'a> = Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>>;
@@ -322,114 +324,6 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
     let code_home_dir = code_home
         .as_ref()
         .map(PathBuf::from);
-    let _ = ensure_codex_live_session(CodexLiveSessionConfig {
-        thread_id: thread_id.to_string(),
-        cwd: resolve_cwd(cwd),
-        transcript_path: transcript_path.clone(),
-        codex_home_dir: code_home_dir.clone(),
-    })
-    .await;
-    let mut command = Command::new("codex");
-    command.arg("app-server");
-    if let Some(codex_home) = code_home.as_ref() {
-        command.env("CODEX_HOME", codex_home);
-    }
-    command
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    let mut child = command
-        .spawn()
-        .context("failed to spawn codex app-server")?;
-    let mut stdin = child.stdin.take().context("missing codex stdin")?;
-    let stdout = child.stdout.take().context("missing codex stdout")?;
-    let mut reader = BufReader::new(stdout).lines();
-
-    let _ = call_rpc(
-        &mut stdin,
-        &mut reader,
-        1,
-        "initialize",
-        json!({
-            "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" },
-            "capabilities": { "experimentalApi": true }
-        }),
-    )
-    .await?;
-
-    let mut resume_params = json!({
-        "threadId": thread_id,
-        "cwd": resolve_cwd(cwd),
-        "persistExtendedHistory": true
-    });
-    if let Some(model) = model {
-        resume_params["model"] = Value::String(model.to_string());
-    }
-    if let Some(effort) = effort {
-        resume_params["config"] =
-            json!({ "model_reasoning_effort": if effort == "max" { "xhigh" } else { effort } });
-    }
-    let _ = call_rpc(&mut stdin, &mut reader, 2, "thread/resume", resume_params).await?;
-
-    let active_turn_id = call_rpc(
-        &mut stdin,
-        &mut reader,
-        3,
-        "thread/read",
-        json!({
-            "threadId": thread_id,
-            "includeTurns": true
-        }),
-    )
-    .await
-    .ok()
-    .and_then(|response| codex_active_turn_id(&response));
-
-    if let Some(expected_turn_id) = active_turn_id {
-        let _ = call_rpc(
-            &mut stdin,
-            &mut reader,
-            4,
-            "turn/steer",
-            json!({
-                "threadId": thread_id,
-                "expectedTurnId": expected_turn_id,
-                "input": [{ "type": "text", "text": text }]
-            }),
-        )
-        .await?;
-    } else {
-        let mut turn_params = json!({
-            "threadId": thread_id,
-            "input": [{ "type": "text", "text": text }]
-        });
-        if let Some(model) = model {
-            turn_params["model"] = Value::String(model.to_string());
-        }
-        if let Some(effort) = effort {
-            turn_params["effort"] = Value::String(if effort == "max" {
-                "xhigh".to_string()
-            } else {
-                effort.to_string()
-            });
-        }
-        if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
-            turn_params["cwd"] = Value::String(resolve_cwd(cwd));
-        }
-        if let Some((approval_policy, sandbox_policy)) =
-            map_codex_permission_mode(permission_mode, cwd)
-        {
-            if let Some(approval_policy) = approval_policy {
-                turn_params["approvalPolicy"] = Value::String(approval_policy.to_string());
-            }
-            if let Some(sandbox_policy) = sandbox_policy {
-                turn_params["sandboxPolicy"] = sandbox_policy;
-            }
-        }
-        let _ = call_rpc(&mut stdin, &mut reader, 4, "turn/start", turn_params).await?;
-    }
-    drop(stdin);
-
     let resolved_transcript_path = if let Some(path) = transcript_path.clone() {
         Some(path)
     } else if let Some(code_home_dir) = code_home_dir.as_ref() {
@@ -438,19 +332,20 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
         None
     };
 
-    let persisted = wait_for_codex_turn_persistence(
-        child,
-        reader,
-        resolved_transcript_path.as_deref(),
-        &expected_text,
+    let _ = expected_text;
+    codex_live_send_message(
+        CodexLiveSessionConfig {
+            thread_id: thread_id.to_string(),
+            cwd: resolve_cwd(cwd),
+            transcript_path: resolved_transcript_path,
+            codex_home_dir: code_home_dir,
+        },
+        text,
+        model,
+        effort,
+        permission_mode,
     )
-    .await?;
-
-    Ok(json!({
-        "success": true,
-        "persisted": persisted,
-        "transcriptPath": resolved_transcript_path
-    }))
+    .await
 }
 
 pub async fn claude_list_sessions(payload: &Value, active_sessions: &[Value]) -> Result<Value> {
@@ -889,61 +784,6 @@ async fn parse_success_json(response: reqwest::Response) -> Result<Value> {
     Ok(payload)
 }
 
-fn map_codex_permission_mode<'a>(
-    mode: Option<&'a str>,
-    cwd: &'a str,
-) -> Option<(Option<&'a str>, Option<Value>)> {
-    match mode.unwrap_or_default() {
-        "" | "passthrough" => None,
-        "read-only" => Some((
-            Some("never"),
-            Some(json!({
-                "type": "readOnly",
-                "access": { "type": "fullAccess" }
-            })),
-        )),
-        "safe-yolo" => Some((
-            Some("on-failure"),
-            Some(json!({
-                "type": "workspaceWrite",
-                "writableRoots": [resolve_cwd(cwd)],
-                "readOnlyAccess": { "type": "fullAccess" },
-                "networkAccess": false,
-                "excludeTmpdirEnvVar": false,
-                "excludeSlashTmp": false
-            })),
-        )),
-        "yolo" | "bypassPermissions" => Some((
-            Some("on-failure"),
-            Some(json!({
-                "type": "dangerFullAccess"
-            })),
-        )),
-        "acceptEdits" => Some((
-            Some("on-request"),
-            Some(json!({
-                "type": "workspaceWrite",
-                "writableRoots": [resolve_cwd(cwd)],
-                "readOnlyAccess": { "type": "fullAccess" },
-                "networkAccess": false,
-                "excludeTmpdirEnvVar": false,
-                "excludeSlashTmp": false
-            })),
-        )),
-        _ => Some((
-            Some("untrusted"),
-            Some(json!({
-                "type": "workspaceWrite",
-                "writableRoots": [resolve_cwd(cwd)],
-                "readOnlyAccess": { "type": "fullAccess" },
-                "networkAccess": false,
-                "excludeTmpdirEnvVar": false,
-                "excludeSlashTmp": false
-            })),
-        )),
-    }
-}
-
 fn map_claude_permission_mode(mode: &str) -> &'static str {
     match mode {
         "bypassPermissions" | "yolo" => "bypassPermissions",
@@ -1090,73 +930,6 @@ async fn call_rpc(
     Err(anyhow!("codex app-server closed before responding"))
 }
 
-async fn wait_for_codex_turn_persistence(
-    mut child: tokio::process::Child,
-    mut reader: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
-    transcript_path: Option<&str>,
-    expected_text: &str,
-) -> Result<bool> {
-    let deadline = Instant::now() + Duration::from_secs(60);
-    let mut persisted = false;
-
-    loop {
-        if let Some(transcript_path) = transcript_path {
-            if codex_transcript_contains_user_text(transcript_path, expected_text).await? {
-                persisted = true;
-                break;
-            }
-        }
-
-        let next_line = tokio::time::timeout_at(deadline, reader.next_line()).await;
-        let line = match next_line {
-            Ok(Ok(Some(line))) => line,
-            Ok(Ok(None)) | Ok(Err(_)) | Err(_) => break,
-        };
-        let parsed: Value = match serde_json::from_str(line.trim()) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if codex_turn_has_completed(&parsed) {
-            if let Some(transcript_path) = transcript_path {
-                persisted = codex_transcript_contains_user_text(transcript_path, expected_text).await?;
-            } else {
-                persisted = true;
-            }
-            break;
-        }
-    }
-
-    let _ = child.start_kill();
-    let _ = child.wait().await;
-    Ok(persisted)
-}
-
-async fn codex_transcript_contains_user_text(transcript_path: &str, expected_text: &str) -> Result<bool> {
-    let normalized = expected_text.trim();
-    if normalized.is_empty() {
-        return Ok(false);
-    }
-
-    let page = list_codex_thread_messages(transcript_path, Some(80), None).await?;
-    let messages = page
-        .get("messages")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    for message in messages {
-        let payload = message
-            .get("content")
-            .and_then(Value::as_object)
-            .and_then(|content| content.get("payload"))
-            .and_then(Value::as_str);
-        let Some(payload) = payload else { continue };
-        if payload.contains(normalized) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
 async fn find_transcript_path_for_codex_home(
     codex_home_dir: &Path,
     thread_id: &str,
@@ -1203,67 +976,6 @@ async fn find_transcript_path_for_codex_home(
     .await?;
 
     Ok(newest.map(|path| path.to_string_lossy().to_string()))
-}
-
-fn codex_turn_has_completed(message: &Value) -> bool {
-    let Some(method) = message
-        .get("method")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return false;
-    };
-
-    matches!(
-        method,
-        "turn/completed"
-            | "turnCompleted"
-            | "codex/event/turn.completed"
-            | "codex/event/turn-completed"
-    ) || method.contains("turn/completed")
-        || method.contains("turn.completed")
-}
-
-fn codex_active_turn_id(response: &Value) -> Option<String> {
-    let thread = response.get("thread")?.as_object()?;
-    let status_type = thread
-        .get("status")
-        .and_then(Value::as_object)
-        .and_then(|status| status.get("type"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())?;
-    if status_type.eq_ignore_ascii_case("idle") {
-        return None;
-    }
-
-    let turns = thread.get("turns")?.as_array()?;
-    for turn in turns.iter().rev() {
-        let status = turn
-            .get("status")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_default();
-        if status.eq_ignore_ascii_case("completed")
-            || status.eq_ignore_ascii_case("interrupted")
-            || status.eq_ignore_ascii_case("failed")
-            || status.eq_ignore_ascii_case("cancelled")
-        {
-            continue;
-        }
-        if let Some(turn_id) = turn
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            return Some(turn_id.to_string());
-        }
-    }
-
-    None
 }
 
 async fn collect_jsonl_files(root: &Path) -> Result<Vec<PathBuf>> {
@@ -2061,35 +1773,6 @@ mod tests {
         assert_eq!(rows[0]["createdAt"].as_str(), Some("2026-05-07T05:00:00Z"));
     }
 
-    #[test]
-    fn codex_active_turn_id_uses_latest_non_terminal_turn_for_non_idle_threads() {
-        let response = json!({
-            "thread": {
-                "status": { "type": "running" },
-                "turns": [
-                    { "id": "turn-1", "status": "completed" },
-                    { "id": "turn-2", "status": "in_progress" }
-                ]
-            }
-        });
-
-        assert_eq!(codex_active_turn_id(&response).as_deref(), Some("turn-2"));
-    }
-
-    #[test]
-    fn codex_active_turn_id_returns_none_for_idle_threads() {
-        let response = json!({
-            "thread": {
-                "status": { "type": "idle" },
-                "turns": [
-                    { "id": "turn-1", "status": "completed" }
-                ]
-            }
-        });
-
-        assert_eq!(codex_active_turn_id(&response), None);
-    }
-
     #[tokio::test]
     async fn claude_list_sessions_uses_active_session_title() {
         let response = claude_list_sessions(
@@ -2120,19 +1803,6 @@ mod tests {
         ));
 
         assert_eq!(normalized, "Please inspect this screenshot.");
-    }
-
-    #[test]
-    fn codex_turn_has_completed_matches_current_and_legacy_notifications() {
-        assert!(codex_turn_has_completed(&json!({
-            "method": "turn/completed"
-        })));
-        assert!(codex_turn_has_completed(&json!({
-            "method": "codex/event/turn.completed"
-        })));
-        assert!(!codex_turn_has_completed(&json!({
-            "method": "item/completed"
-        })));
     }
 
     #[tokio::test]
