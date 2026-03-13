@@ -645,7 +645,8 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
-                let messages_page = authoritative_messages_page_for_send(
+                let mut response = response;
+                match authoritative_messages_page_for_send(
                     config,
                     MachineDataPlaneOperation::CodexSendMessage,
                     &payload,
@@ -653,10 +654,22 @@ async fn dispatch_request(
                     None,
                     AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
                 )
-                .await?;
-                let mut response = response;
-                if let Some(object) = response.as_object_mut() {
-                    object.insert("messagesPage".to_string(), messages_page);
+                .await
+                {
+                    Ok(messages_page) => {
+                        if let Some(object) = response.as_object_mut() {
+                            object.insert("messagesPage".to_string(), messages_page);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=error {} error={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::CodexSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::CodexSendMessage, &payload),
+                            error
+                        );
+                    }
                 }
                 machine_sync::sync_machine_snapshot_now(state.clone()).await?;
                 Ok(response)
@@ -685,7 +698,8 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
-                let messages_page = authoritative_messages_page_for_send(
+                let mut response = response;
+                match authoritative_messages_page_for_send(
                     config,
                     MachineDataPlaneOperation::ClaudeSendMessage,
                     &payload,
@@ -693,10 +707,22 @@ async fn dispatch_request(
                     None,
                     AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
                 )
-                .await?;
-                let mut response = response;
-                if let Some(object) = response.as_object_mut() {
-                    object.insert("messagesPage".to_string(), messages_page);
+                .await
+                {
+                    Ok(messages_page) => {
+                        if let Some(object) = response.as_object_mut() {
+                            object.insert("messagesPage".to_string(), messages_page);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=error {} error={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::ClaudeSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::ClaudeSendMessage, &payload),
+                            error
+                        );
+                    }
                 }
                 machine_sync::sync_machine_snapshot_now(state.clone()).await?;
                 Ok(response)
@@ -760,7 +786,8 @@ async fn dispatch_request(
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
             {
-                let messages_page = authoritative_messages_page_for_send(
+                let mut response = response;
+                match authoritative_messages_page_for_send(
                     config,
                     MachineDataPlaneOperation::GeminiSendMessage,
                     &helper_payload,
@@ -768,10 +795,22 @@ async fn dispatch_request(
                     Some(control_port),
                     AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
                 )
-                .await?;
-                let mut response = response;
-                if let Some(object) = response.as_object_mut() {
-                    object.insert("messagesPage".to_string(), messages_page);
+                .await
+                {
+                    Ok(messages_page) => {
+                        if let Some(object) = response.as_object_mut() {
+                            object.insert("messagesPage".to_string(), messages_page);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=error {} error={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::GeminiSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::GeminiSendMessage, &helper_payload),
+                            error
+                        );
+                    }
                 }
                 machine_sync::sync_machine_snapshot_now(state.clone()).await?;
                 Ok(response)
