@@ -657,6 +657,19 @@ async fn dispatch_request(
                 .await
                 {
                     Ok(messages_page) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=ok {} summary={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::CodexSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::CodexSendMessage, &payload),
+                            messages_page_summary_for_log(
+                                &messages_page,
+                                payload
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                            )
+                        );
                         if let Some(object) = response.as_object_mut() {
                             object.insert("messagesPage".to_string(), messages_page);
                         }
@@ -710,6 +723,19 @@ async fn dispatch_request(
                 .await
                 {
                     Ok(messages_page) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=ok {} summary={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::ClaudeSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::ClaudeSendMessage, &payload),
+                            messages_page_summary_for_log(
+                                &messages_page,
+                                payload
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                            )
+                        );
                         if let Some(object) = response.as_object_mut() {
                             object.insert("messagesPage".to_string(), messages_page);
                         }
@@ -798,6 +824,19 @@ async fn dispatch_request(
                 .await
                 {
                     Ok(messages_page) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=ok {} summary={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::GeminiSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::GeminiSendMessage, &helper_payload),
+                            messages_page_summary_for_log(
+                                &messages_page,
+                                helper_payload
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                            )
+                        );
                         if let Some(object) = response.as_object_mut() {
                             object.insert("messagesPage".to_string(), messages_page);
                         }
