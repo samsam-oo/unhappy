@@ -1,4 +1,5 @@
 use crate::{
+    codex_live_session::{codex_live_messages_page, ensure_codex_live_session, CodexLiveSessionConfig},
     codex_app_server::open_or_resume_codex_thread, codex_transcript::list_codex_thread_messages,
     config::Config, provider::Provider,
 };
@@ -172,6 +173,17 @@ pub async fn codex_open_thread(config: &Config, payload: &Value) -> Result<Value
         .filter(|value| !value.is_empty());
     let result =
         open_or_resume_codex_thread(config, &resolve_cwd(cwd), thread_id, model, effort).await?;
+    let resolved_cwd = resolve_cwd(cwd);
+    let _ = ensure_codex_live_session(CodexLiveSessionConfig {
+        thread_id: result.thread_id.clone(),
+        cwd: resolved_cwd,
+        transcript_path: result
+            .transcript_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string()),
+        codex_home_dir: Some(result.codex_home_dir.clone()),
+    })
+    .await;
     Ok(json!({
         "success": true,
         "threadId": result.thread_id,
@@ -245,6 +257,7 @@ pub async fn codex_archive_thread(config: &Config, payload: &Value) -> Result<Va
 }
 
 pub async fn codex_list_messages(payload: &Value) -> Result<Value> {
+    let thread_id = required_string(payload, "threadId")?;
     let path = required_string(payload, "path")?;
     let limit = payload
         .get("limit")
@@ -255,6 +268,18 @@ pub async fn codex_list_messages(payload: &Value) -> Result<Value> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
+
+    if let Some(live_page) = codex_live_messages_page(
+        thread_id,
+        limit.unwrap_or(120),
+        cursor,
+        Some(path),
+    )
+    .await
+    {
+        return live_page;
+    }
+
     list_codex_thread_messages(path, limit, cursor).await
 }
 
@@ -297,6 +322,13 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
     let code_home_dir = code_home
         .as_ref()
         .map(PathBuf::from);
+    let _ = ensure_codex_live_session(CodexLiveSessionConfig {
+        thread_id: thread_id.to_string(),
+        cwd: resolve_cwd(cwd),
+        transcript_path: transcript_path.clone(),
+        codex_home_dir: code_home_dir.clone(),
+    })
+    .await;
     let mut command = Command::new("codex");
     command.arg("app-server");
     if let Some(codex_home) = code_home.as_ref() {
