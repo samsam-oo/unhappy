@@ -81,6 +81,14 @@ public protocol DirectSessionMessageSendingAction: Sendable {
     ) async throws -> APISessionSendMessageResult
 }
 
+public protocol DirectSessionMessagesStreamingAction: Sendable {
+    func subscribeMessages(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws -> AsyncThrowingStream<APISessionMessagesPage, Error>
+}
+
 public protocol DirectSessionArchivingAction: Sendable {
     func archiveSession(
         serverURLString: String,
@@ -417,6 +425,57 @@ public actor DirectSessionMessageSendUseCase: DirectSessionMessageSendingAction 
             return result
         }
         throw MachinesAPIError.rpcCallFailed(result.error ?? "Failed to send message")
+    }
+}
+
+public actor DirectSessionMessagesStreamUseCase: DirectSessionMessagesStreamingAction {
+    private let codexService: any MachineCodexThreadMessagesStreaming
+
+    public init(codexService: any MachineCodexThreadMessagesStreaming) {
+        self.codexService = codexService
+    }
+
+    public func subscribeMessages(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity
+    ) async throws -> AsyncThrowingStream<APISessionMessagesPage, Error> {
+        let normalizedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedToken.isEmpty else {
+            throw DirectSessionUseCaseError.missingToken
+        }
+        let normalizedURL = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            !normalizedURL.isEmpty,
+            let serverURL = URL(string: normalizedURL),
+            serverURL.scheme != nil,
+            serverURL.host != nil
+        else {
+            throw DirectSessionUseCaseError.invalidServerURL
+        }
+        guard identity.provider == .codex else {
+            throw DirectSessionUseCaseError.failed(message: "Live subscription is only available for Codex")
+        }
+        let normalizedMachineID = identity.machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw DirectSessionUseCaseError.missingMachineID
+        }
+        let normalizedThreadID = identity.upstreamSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedThreadID.isEmpty else {
+            throw DirectSessionUseCaseError.missingUpstreamSessionID
+        }
+        let normalizedTranscriptPath = identity.transcriptPath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalizedTranscriptPath.isEmpty else {
+            throw DirectSessionUseCaseError.missingTranscriptPath
+        }
+        return try await codexService.subscribeCodexThreadMessages(
+            serverURL: serverURL,
+            token: normalizedToken,
+            machineID: normalizedMachineID,
+            threadID: normalizedThreadID,
+            transcriptPath: normalizedTranscriptPath,
+            wrappedMachineDataEncryptionKey: identity.wrappedMachineDataEncryptionKey
+        )
     }
 }
 

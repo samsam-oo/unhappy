@@ -47,12 +47,14 @@ public final class DirectSessionViewModel: ObservableObject {
 
     private let loader: any DirectSessionMessagesLoadingAction
     private let sender: any DirectSessionMessageSendingAction
+    private let streamer: (any DirectSessionMessagesStreamingAction)?
     private let archiver: (any DirectSessionArchivingAction)?
     private let capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)?
     private let fileLoader: (any DirectSessionFileLoadingAction)?
     private let reviewLoader: (any DirectSessionReviewLoadingAction)?
     private let worktreeLoader: (any DirectSessionWorktreeLoadingAction)?
     private var pollingTask: Task<Void, Never>?
+    private var subscriptionTask: Task<Void, Never>?
     private var postSendRefreshTask: Task<Void, Never>?
     private var activeMessagesLoadTask: Task<APISessionMessagesPage, Error>?
     private var olderMessagesCursor: String?
@@ -70,6 +72,7 @@ public final class DirectSessionViewModel: ObservableObject {
         identity: DirectSessionIdentity,
         loader: any DirectSessionMessagesLoadingAction,
         sender: any DirectSessionMessageSendingAction,
+        streamer: (any DirectSessionMessagesStreamingAction)? = nil,
         archiver: (any DirectSessionArchivingAction)? = nil,
         capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)? = nil,
         fileLoader: (any DirectSessionFileLoadingAction)? = nil,
@@ -79,6 +82,7 @@ public final class DirectSessionViewModel: ObservableObject {
         self.identity = identity
         self.loader = loader
         self.sender = sender
+        self.streamer = streamer
         self.archiver = archiver
         self.capabilitiesLoader = capabilitiesLoader
         self.fileLoader = fileLoader
@@ -94,6 +98,7 @@ public final class DirectSessionViewModel: ObservableObject {
 
     deinit {
         pollingTask?.cancel()
+        subscriptionTask?.cancel()
         postSendRefreshTask?.cancel()
     }
 
@@ -174,6 +179,7 @@ public final class DirectSessionViewModel: ObservableObject {
         token: String,
         interval: Duration = .seconds(5)
     ) {
+        startSubscription(serverURLString: serverURLString, token: token)
         guard pollingTask == nil else { return }
         pollingTask = Task { [weak self] in
             guard let self else { return }
@@ -188,6 +194,8 @@ public final class DirectSessionViewModel: ObservableObject {
     public func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+        subscriptionTask?.cancel()
+        subscriptionTask = nil
     }
 
     public func sendMessage(
@@ -505,6 +513,42 @@ public final class DirectSessionViewModel: ObservableObject {
     private func setMessagesIfChanged(_ nextMessages: [APISessionMessage]) {
         guard messages != nextMessages else { return }
         messages = nextMessages
+    }
+
+    private func startSubscription(
+        serverURLString: String,
+        token: String
+    ) {
+        guard identity.provider == .codex else { return }
+        guard subscriptionTask == nil else { return }
+        guard let streamer else { return }
+        subscriptionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let stream = try await streamer.subscribeMessages(
+                    serverURLString: serverURLString,
+                    token: token,
+                    identity: identity
+                )
+                for try await page in stream {
+                    guard !Task.isCancelled else { break }
+                    await MainActor.run {
+                        if self.messages.isEmpty {
+                            self.applyLatestPage(page)
+                        } else {
+                            self.applyIncrementalLatestPage(page)
+                        }
+                        self.errorMessage = nil
+                        self.liveStatusText = nil
+                    }
+                }
+            } catch {
+                if Task.isCancelled { return }
+            }
+            await MainActor.run {
+                self.subscriptionTask = nil
+            }
+        }
     }
 
     private func applyLatestPage(_ page: APISessionMessagesPage) {

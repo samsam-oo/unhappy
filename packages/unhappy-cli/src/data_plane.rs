@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     control_server::SpawnSessionRequest,
+    codex_live_session::{subscribe_codex_live_messages, CodexLiveSessionConfig},
     daemon_state::{OpenedProject, SharedDaemonState},
     local_ops,
     machine_sync,
@@ -377,6 +378,36 @@ async fn handle_request_frame(
         serde_json::from_slice(&request_payload).context("request payload was not valid JSON")?;
     let trace = RequestTrace::start(frame.op, &frame.stream_id, &request_json);
 
+    if frame.op == MachineDataPlaneOperation::CodexSubscribeMessages {
+        let result = handle_codex_subscription_frame(
+            socket,
+            session_key,
+            &frame.stream_id,
+            config,
+            request_json,
+        )
+        .await;
+        match result {
+            Ok(()) => trace.finish_ok(),
+            Err(error) => {
+                trace.finish_error(&error);
+                let response = MachineDataPlaneErrorFrame {
+                    v: MACHINE_DATA_PLANE_PROTOCOL_VERSION,
+                    t: "error".to_string(),
+                    stream_id: frame.stream_id,
+                    code: "request_failed".to_string(),
+                    message: error.to_string(),
+                    retryable: false,
+                };
+                socket
+                    .send(Message::Text(serde_json::to_string(&response)?.into()))
+                    .await
+                    .context("failed to send data-plane error frame")?;
+            }
+        }
+        return Ok(());
+    }
+
     let result = dispatch_request(config, state, frame.op, request_json).await;
     match result {
         Ok(result_json) => {
@@ -434,6 +465,102 @@ async fn handle_request_frame(
     Ok(())
 }
 
+async fn handle_codex_subscription_frame(
+    socket: &mut DataPlaneStream,
+    session_key: &[u8; 32],
+    stream_id: &str,
+    config: &Config,
+    payload: Value,
+) -> Result<()> {
+    let thread_id = payload
+        .get("threadId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("threadId is required"))?;
+    let cwd = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("cwd is required"))?;
+    let transcript_path = payload
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value as usize)
+        .unwrap_or(120);
+    let codex_home_dir = transcript_path
+        .as_deref()
+        .and_then(provider_session_ops::extract_codex_home_from_transcript_path)
+        .map(std::path::PathBuf::from)
+        .or_else(|| Some(config.codex_home_dir()));
+    let mut subscription = subscribe_codex_live_messages(
+        CodexLiveSessionConfig {
+            thread_id: thread_id.to_string(),
+            cwd: cwd.to_string(),
+            transcript_path,
+            codex_home_dir,
+        },
+        limit,
+    )
+    .await?;
+
+    let mut seq: u32 = 0;
+    loop {
+        let payload = subscription.borrow().clone();
+        send_streaming_complete_frame(socket, session_key, stream_id, seq, &payload, true).await?;
+        seq = seq.saturating_add(1);
+        if subscription.changed().await.is_err() {
+            break;
+        }
+    }
+    Ok(())
+}
+
+async fn send_streaming_complete_frame(
+    socket: &mut DataPlaneStream,
+    session_key: &[u8; 32],
+    stream_id: &str,
+    seq: u32,
+    payload: &Value,
+    has_more: bool,
+) -> Result<()> {
+    let complete_header = MachineDataPlaneCompleteFrame {
+        v: MACHINE_DATA_PLANE_PROTOCOL_VERSION,
+        t: "complete".to_string(),
+        stream_id: stream_id.to_string(),
+        seq,
+        body: MachineDataPlaneSealedBody {
+            algorithm: "aes-256-gcm".to_string(),
+            nonce: String::new(),
+            ciphertext: String::new(),
+            tag: String::new(),
+        },
+        has_more: Some(has_more),
+        next_cursor: None,
+    };
+    let sealed_body = seal_payload(
+        payload,
+        session_key,
+        complete_aad(&complete_header).as_bytes(),
+    )?;
+    let response = MachineDataPlaneCompleteFrame {
+        body: sealed_body,
+        ..complete_header
+    };
+    socket
+        .send(Message::Text(serde_json::to_string(&response)?.into()))
+        .await
+        .context("failed to send streaming data-plane complete frame")?;
+    Ok(())
+}
+
 fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
     match operation {
         MachineDataPlaneOperation::MachinePing => "machine.ping",
@@ -450,6 +577,7 @@ fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
         MachineDataPlaneOperation::CodexArchiveThread => "codex.archiveThread",
         MachineDataPlaneOperation::CodexOpenThread => "codex.openThread",
         MachineDataPlaneOperation::CodexListMessages => "codex.listMessages",
+        MachineDataPlaneOperation::CodexSubscribeMessages => "codex.subscribeMessages",
         MachineDataPlaneOperation::CodexSendMessage => "codex.sendMessage",
         MachineDataPlaneOperation::ClaudeListSessions => "claude.listSessions",
         MachineDataPlaneOperation::ClaudeListMessages => "claude.listMessages",
@@ -501,6 +629,7 @@ fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -
             }
         }
         MachineDataPlaneOperation::CodexListMessages
+        | MachineDataPlaneOperation::CodexSubscribeMessages
         | MachineDataPlaneOperation::CodexSendMessage => {
             if let Some(thread_id) = payload.get("threadId").and_then(Value::as_str) {
                 fields.push(format!("thread_id={}", thread_id.replace('\n', "\\n")));
@@ -637,6 +766,9 @@ async fn dispatch_request(
         }
         MachineDataPlaneOperation::CodexListMessages => {
             provider_session_ops::codex_list_messages(&payload).await
+        }
+        MachineDataPlaneOperation::CodexSubscribeMessages => {
+            Err(anyhow!("codex.subscribeMessages should be handled as a streaming request"))
         }
         MachineDataPlaneOperation::CodexSendMessage => {
             let response = provider_session_ops::codex_send_message(&payload).await?;

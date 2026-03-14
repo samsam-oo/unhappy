@@ -12,7 +12,7 @@ use std::{
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::{Child, Command},
-    sync::{oneshot, Mutex, RwLock},
+    sync::{oneshot, watch, Mutex, RwLock},
 };
 
 use crate::codex_transcript::list_codex_thread_messages;
@@ -32,6 +32,7 @@ struct CodexLiveSessionHandle {
     config: CodexLiveSessionConfig,
     state: RwLock<CodexLiveSessionState>,
     rpc: Arc<CodexLiveSessionRpc>,
+    snapshot_tx: watch::Sender<Value>,
 }
 
 #[derive(Debug, Default)]
@@ -153,6 +154,20 @@ pub async fn codex_live_send_message(
         "transcriptPath": config.transcript_path,
         "messagesPage": build_live_messages_page(handle, 120, None).await?
     }))
+}
+
+pub async fn subscribe_codex_live_messages(
+    config: CodexLiveSessionConfig,
+    limit: usize,
+) -> Result<watch::Receiver<Value>> {
+    ensure_codex_live_session(config.clone()).await?;
+    let handle = codex_live_session_handle(config.thread_id.as_str())
+        .await
+        .ok_or_else(|| anyhow!("Codex live session is unavailable"))?;
+    if let Ok(page) = build_live_messages_page(handle.clone(), limit, None).await {
+        let _ = handle.snapshot_tx.send(page);
+    }
+    Ok(handle.snapshot_tx.subscribe())
 }
 
 fn map_codex_permission_mode<'a>(
@@ -354,6 +369,17 @@ async fn build_live_messages_page(
     list_codex_thread_messages(transcript_path, Some(limit), None).await
 }
 
+fn state_to_live_messages_page(state: &CodexLiveSessionState, limit: usize) -> Value {
+    let bounded_limit = limit.clamp(1, 500);
+    let start = state.messages.len().saturating_sub(bounded_limit);
+    json!({
+        "success": true,
+        "messages": state.messages[start..].to_vec(),
+        "hasNext": state.has_next || start > 0,
+        "nextCursor": if state.has_next { state.next_cursor.clone() } else { None::<String> }
+    })
+}
+
 async fn spawn_codex_live_runtime(
     config: CodexLiveSessionConfig,
     seeded: CodexLiveSessionState,
@@ -373,6 +399,7 @@ async fn spawn_codex_live_runtime(
     let stdin = child.stdin.take().context("missing codex stdin")?;
     let stdout = child.stdout.take().context("missing codex stdout")?;
     let reader = BufReader::new(stdout).lines();
+    let (snapshot_tx, _) = watch::channel(state_to_live_messages_page(&seeded, 240));
     let rpc = Arc::new(CodexLiveSessionRpc {
         stdin: Mutex::new(stdin),
         next_id: AtomicU64::new(1),
@@ -382,6 +409,7 @@ async fn spawn_codex_live_runtime(
         config,
         state: RwLock::new(seeded),
         rpc: rpc.clone(),
+        snapshot_tx,
     });
     tokio::spawn(drive_codex_live_session(child, reader, handle.clone()));
     Ok(handle)
@@ -500,6 +528,7 @@ async fn handle_codex_live_notification(
             if let Ok(state) = seed_live_state(Some(transcript_path)).await {
                 let mut current = handle.state.write().await;
                 *current = state;
+                let _ = handle.snapshot_tx.send(state_to_live_messages_page(&current, 240));
             }
         }
     }
@@ -603,6 +632,7 @@ async fn upsert_live_item(handle: Arc<CodexLiveSessionHandle>, item: &Value) {
         .max()
         .unwrap_or(0)
         + 1;
+    let _ = handle.snapshot_tx.send(state_to_live_messages_page(&state, 240));
 }
 
 async fn codex_live_item_to_message(
@@ -724,6 +754,7 @@ async fn apply_agent_delta(handle: Arc<CodexLiveSessionHandle>, item_id: &str, d
         return;
     };
     append_agent_text_delta(message, delta);
+    let _ = handle.snapshot_tx.send(state_to_live_messages_page(&state, 240));
 }
 
 async fn apply_command_output_delta(handle: Arc<CodexLiveSessionHandle>, item_id: &str, delta: &str) {
@@ -739,6 +770,7 @@ async fn apply_command_output_delta(handle: Arc<CodexLiveSessionHandle>, item_id
         return;
     };
     append_command_output_delta(message, delta);
+    let _ = handle.snapshot_tx.send(state_to_live_messages_page(&state, 240));
 }
 
 fn append_agent_text_delta(message: &mut Value, delta: &str) {
