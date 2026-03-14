@@ -100,6 +100,9 @@ struct UnhappyNativeApp: App {
             claudeService: machinesService,
             geminiService: machinesService
         )
+        let directSessionMessagesStreamer = DirectSessionMessagesStreamUseCase(
+            codexService: machinesService
+        )
         let directSessionCapabilitiesLoader = DirectSessionCapabilitiesLoadUseCase(service: machinesService)
         let directSessionMessageSender = DirectSessionMessageSendUseCase(
             codexService: machinesService,
@@ -153,6 +156,7 @@ struct UnhappyNativeApp: App {
                 identity: identity,
                 loader: directSessionMessagesLoader,
                 sender: directSessionMessageSender,
+                streamer: directSessionMessagesStreamer,
                 archiver: directSessionArchiver,
                 capabilitiesLoader: directSessionCapabilitiesLoader,
                 fileLoader: directSessionFileLoader,

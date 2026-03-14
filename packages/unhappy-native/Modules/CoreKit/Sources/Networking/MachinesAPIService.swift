@@ -689,6 +689,24 @@ extension URLSessionMachinesService {
         )
     }
 
+    public func subscribeCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> AsyncThrowingStream<APISessionMessagesPage, Error> {
+        try await rpcDirectoryService.subscribeCodexThreadMessages(
+            serverURL: serverURL,
+            token: token,
+            machineID: machineID,
+            threadID: threadID,
+            transcriptPath: transcriptPath,
+            wrappedMachineDataEncryptionKey: wrappedMachineDataEncryptionKey
+        )
+    }
+
     public func archiveCodexThread(
         serverURL: URL,
         token: String,

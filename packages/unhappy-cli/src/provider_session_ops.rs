@@ -1537,7 +1537,7 @@ fn paginate_message_values(
     }))
 }
 
-fn extract_codex_home_from_transcript_path(path: &str) -> Option<String> {
+pub(crate) fn extract_codex_home_from_transcript_path(path: &str) -> Option<String> {
     let marker = format!(
         "{}sessions{}",
         std::path::MAIN_SEPARATOR,

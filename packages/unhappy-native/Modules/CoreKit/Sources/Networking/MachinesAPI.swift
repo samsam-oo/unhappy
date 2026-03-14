@@ -1030,6 +1030,17 @@ public protocol MachineCodexThreadMessagesFetching: Sendable {
     ) async throws -> APISessionMessagesPage
 }
 
+public protocol MachineCodexThreadMessagesStreaming: Sendable {
+    func subscribeCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> AsyncThrowingStream<APISessionMessagesPage, Error>
+}
+
 public protocol MachineCodexThreadMessaging: Sendable {
     func sendCodexThreadMessage(
         serverURL: URL,
@@ -1287,6 +1298,7 @@ public actor URLSessionMachinesService:
     MachineCodexThreadsFetching,
     MachineCodexThreadArchiving,
     MachineCodexThreadMessagesFetching,
+    MachineCodexThreadMessagesStreaming,
     MachineCodexThreadMessaging,
     MachineClaudeSessionsFetching,
     MachineClaudeSessionMessagesFetching,

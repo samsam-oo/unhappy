@@ -59,6 +59,8 @@ pub enum MachineDataPlaneOperation {
     CodexOpenThread,
     #[serde(rename = "codex.listMessages")]
     CodexListMessages,
+    #[serde(rename = "codex.subscribeMessages")]
+    CodexSubscribeMessages,
     #[serde(rename = "codex.sendMessage")]
     CodexSendMessage,
     #[serde(rename = "claude.listSessions")]
