@@ -45,7 +45,6 @@ use x25519_dalek::{PublicKey, StaticSecret};
 pub type DataPlaneStream = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 const DATA_PLANE_CONNECT_TIMEOUT: Duration = Duration::from_secs(12);
-const DATA_PLANE_HELLO_ACK_TIMEOUT: Duration = Duration::from_secs(12);
 const DATA_PLANE_HELLO_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct RequestTrace {
@@ -295,9 +294,12 @@ async fn connect_once(config: &Config) -> Result<(DataPlaneStream, [u8; 32], Dur
     .context("machine data-plane hello send timed out")?
     .context("failed to send hello frame")?;
 
-    let next = timeout(DATA_PLANE_HELLO_ACK_TIMEOUT, socket.next())
+    // The relay only has enough key material to acknowledge the daemon once the
+    // native peer has also sent its hello frame. Keep the daemon registered and
+    // wait for the peer instead of timing out the handshake locally.
+    let next = socket
+        .next()
         .await
-        .context("machine data-plane hello-ack timed out")?
         .context("missing hello-ack frame")??;
     let ack = match next {
         Message::Text(text) => serde_json::from_str::<MachineDataPlaneHelloAckFrame>(&text)
