@@ -6,6 +6,7 @@ import SessionKit
 public struct NewSessionView: View {
     public struct SpawnedContext: Equatable {
         public let sessionID: String?
+        public let transcriptPath: String?
         public let agent: APISessionSpawnAgent
         public let machineID: String?
         public let directoryPath: String
@@ -97,6 +98,7 @@ public struct NewSessionView: View {
                             onSessionSpawned(
                                 SpawnedContext(
                                     sessionID: viewModel.spawnedSessionID,
+                                    transcriptPath: viewModel.spawnedTranscriptPath,
                                     agent: viewModel.selectedAgent,
                                     machineID: viewModel.selectedMachineID,
                                     directoryPath: viewModel.directoryPath,

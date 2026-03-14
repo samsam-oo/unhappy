@@ -840,6 +840,7 @@ public enum APISessionSteerMode: String, Encodable, CaseIterable, Sendable {
 public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
     public let success: Bool
     public let sessionID: String?
+    public let transcriptPath: String?
     public let requiresUserApproval: Bool?
     public let actionRequired: String?
     public let directory: String?
@@ -848,6 +849,7 @@ public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
     public init(
         success: Bool,
         sessionID: String?,
+        transcriptPath: String? = nil,
         requiresUserApproval: Bool?,
         actionRequired: String?,
         directory: String?,
@@ -855,6 +857,7 @@ public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
     ) {
         self.success = success
         self.sessionID = sessionID
+        self.transcriptPath = transcriptPath
         self.requiresUserApproval = requiresUserApproval
         self.actionRequired = actionRequired
         self.directory = directory
@@ -864,6 +867,7 @@ public struct APISessionSpawnResult: Decodable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case success
         case sessionID = "sessionId"
+        case transcriptPath
         case requiresUserApproval
         case actionRequired
         case directory
@@ -978,12 +982,20 @@ public struct APISessionSwitchResult: Decodable, Equatable, Sendable {
 
 public struct APISessionSendMessageResult: Decodable, Equatable, Sendable {
     public let success: Bool
+    public let messagesPage: APISessionMessagesPage?
     public let queueCount: Int?
     public let queuedMessages: [String]?
     public let error: String?
 
-    public init(success: Bool, queueCount: Int?, queuedMessages: [String]?, error: String?) {
+    public init(
+        success: Bool,
+        messagesPage: APISessionMessagesPage? = nil,
+        queueCount: Int?,
+        queuedMessages: [String]?,
+        error: String?
+    ) {
         self.success = success
+        self.messagesPage = messagesPage
         self.queueCount = queueCount
         self.queuedMessages = queuedMessages
         self.error = error

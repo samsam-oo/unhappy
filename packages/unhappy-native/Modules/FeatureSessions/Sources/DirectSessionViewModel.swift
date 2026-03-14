@@ -47,19 +47,20 @@ public final class DirectSessionViewModel: ObservableObject {
 
     private let loader: any DirectSessionMessagesLoadingAction
     private let sender: any DirectSessionMessageSendingAction
+    private let streamer: (any DirectSessionMessagesStreamingAction)?
     private let archiver: (any DirectSessionArchivingAction)?
     private let capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)?
     private let fileLoader: (any DirectSessionFileLoadingAction)?
     private let reviewLoader: (any DirectSessionReviewLoadingAction)?
     private let worktreeLoader: (any DirectSessionWorktreeLoadingAction)?
     private var pollingTask: Task<Void, Never>?
+    private var subscriptionTask: Task<Void, Never>?
     private var postSendRefreshTask: Task<Void, Never>?
     private var activeMessagesLoadTask: Task<APISessionMessagesPage, Error>?
     private var olderMessagesCursor: String?
     private var requestedOlderMessageCursors: Set<String> = []
     private var hasPrependedOlderPages = false
-    private var optimisticMessageIDs: Set<String> = []
-
+    private var latestWindowLowerBoundSeq: Int?
     public var olderMessagesLoadTriggerID: String? {
         guard hasOlderMessages else { return nil }
         guard let olderMessagesCursor else { return nil }
@@ -71,6 +72,7 @@ public final class DirectSessionViewModel: ObservableObject {
         identity: DirectSessionIdentity,
         loader: any DirectSessionMessagesLoadingAction,
         sender: any DirectSessionMessageSendingAction,
+        streamer: (any DirectSessionMessagesStreamingAction)? = nil,
         archiver: (any DirectSessionArchivingAction)? = nil,
         capabilitiesLoader: (any DirectSessionCapabilitiesLoadingAction)? = nil,
         fileLoader: (any DirectSessionFileLoadingAction)? = nil,
@@ -80,6 +82,7 @@ public final class DirectSessionViewModel: ObservableObject {
         self.identity = identity
         self.loader = loader
         self.sender = sender
+        self.streamer = streamer
         self.archiver = archiver
         self.capabilitiesLoader = capabilitiesLoader
         self.fileLoader = fileLoader
@@ -95,6 +98,7 @@ public final class DirectSessionViewModel: ObservableObject {
 
     deinit {
         pollingTask?.cancel()
+        subscriptionTask?.cancel()
         postSendRefreshTask?.cancel()
     }
 
@@ -175,6 +179,7 @@ public final class DirectSessionViewModel: ObservableObject {
         token: String,
         interval: Duration = .seconds(5)
     ) {
+        startSubscription(serverURLString: serverURLString, token: token)
         guard pollingTask == nil else { return }
         pollingTask = Task { [weak self] in
             guard let self else { return }
@@ -189,6 +194,8 @@ public final class DirectSessionViewModel: ObservableObject {
     public func stopPolling() {
         pollingTask?.cancel()
         pollingTask = nil
+        subscriptionTask?.cancel()
+        subscriptionTask = nil
     }
 
     public func sendMessage(
@@ -204,7 +211,7 @@ public final class DirectSessionViewModel: ObservableObject {
         defer { isSending = false }
 
         do {
-            _ = try await sender.sendMessage(
+            let result = try await sender.sendMessage(
                 serverURLString: serverURLString,
                 token: token,
                 identity: identity,
@@ -213,7 +220,15 @@ public final class DirectSessionViewModel: ObservableObject {
                 reasoningEffort: selectedReasoningEffortOverride.apiValue,
                 permissionMode: permissionMode
             )
-            appendOptimisticUserMessage(text: text)
+            if let page = result.messagesPage {
+                if messages.isEmpty {
+                    applyLatestPage(page)
+                } else {
+                    applyIncrementalLatestPage(page)
+                }
+                errorMessage = nil
+                liveStatusText = nil
+            }
             schedulePostSendRefresh(
                 serverURLString: serverURLString,
                 token: token
@@ -500,13 +515,50 @@ public final class DirectSessionViewModel: ObservableObject {
         messages = nextMessages
     }
 
+    private func startSubscription(
+        serverURLString: String,
+        token: String
+    ) {
+        guard identity.provider == .codex else { return }
+        guard subscriptionTask == nil else { return }
+        guard let streamer else { return }
+        subscriptionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let stream = try await streamer.subscribeMessages(
+                    serverURLString: serverURLString,
+                    token: token,
+                    identity: identity
+                )
+                for try await page in stream {
+                    guard !Task.isCancelled else { break }
+                    await MainActor.run {
+                        if self.messages.isEmpty {
+                            self.applyLatestPage(page)
+                        } else {
+                            self.applyIncrementalLatestPage(page)
+                        }
+                        self.errorMessage = nil
+                        self.liveStatusText = nil
+                    }
+                }
+            } catch {
+                if Task.isCancelled { return }
+            }
+            await MainActor.run {
+                self.subscriptionTask = nil
+            }
+        }
+    }
+
     private func applyLatestPage(_ page: APISessionMessagesPage) {
-        let latestMessages = reconcileOptimisticMessages(in: page.messages)
+        let latestMessages = page.messages
         let latestIDs = Set(latestMessages.map(\.id))
 
         if hasPrependedOlderPages {
             let preservedOlderMessages = messages.filter { !latestIDs.contains($0.id) }
             setMessagesIfChanged(preservedOlderMessages + latestMessages)
+            latestWindowLowerBoundSeq = latestMessages.first?.seq
             if olderMessagesCursor == nil {
                 hasOlderMessages = false
             }
@@ -514,6 +566,7 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         setMessagesIfChanged(latestMessages)
+        latestWindowLowerBoundSeq = latestMessages.first?.seq
         olderMessagesCursor = page.nextCursor
         hasOlderMessages = page.hasNext
         requestedOlderMessageCursors = []
@@ -526,13 +579,19 @@ public final class DirectSessionViewModel: ObservableObject {
         }
 
         let latestMessages = sessionsNormalizeMessageOrder(
-            reconcileOptimisticMessages(in: page.messages)
+            page.messages
         )
-        let latestIDs = Set(latestMessages.map(\.id))
-        let preservedMessages = messages.filter { !latestIDs.contains($0.id) }
+        guard let oldestLatestMessage = latestMessages.first else {
+            return
+        }
+        let preserveBelowSeq = latestWindowLowerBoundSeq ?? oldestLatestMessage.seq
+        let preservedMessages = messages.filter { message in
+            message.seq < preserveBelowSeq
+        }
         setMessagesIfChanged(
             sessionsNormalizeMessageOrder(preservedMessages + latestMessages)
         )
+        latestWindowLowerBoundSeq = oldestLatestMessage.seq
     }
 
     private func refreshLatestMessages(
@@ -606,58 +665,6 @@ public final class DirectSessionViewModel: ObservableObject {
         )
     }
 
-    private func appendOptimisticUserMessage(text: String) {
-        let normalizedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedText.isEmpty else { return }
-
-        let optimisticID = "optimistic:\(UUID().uuidString)"
-        let optimisticMessage = APISessionMessage(
-            id: optimisticID,
-            seq: (messages.map(\.seq).max() ?? 0) + 1,
-            localId: optimisticID,
-            content: APIEncryptedMessageContent(
-                type: "json",
-                payload: sessionsMakeOptimisticUserPayload(text: normalizedText)
-            ),
-            createdAt: Date().timeIntervalSince1970,
-            updatedAt: Date().timeIntervalSince1970
-        )
-        optimisticMessageIDs.insert(optimisticID)
-        setMessagesIfChanged(
-            sessionsNormalizeMessageOrder(messages + [optimisticMessage])
-        )
-    }
-
-    private func reconcileOptimisticMessages(in fetchedMessages: [APISessionMessage]) -> [APISessionMessage] {
-        guard !optimisticMessageIDs.isEmpty else { return fetchedMessages }
-
-        let fetchedTexts = Set(
-            fetchedMessages.compactMap(Self.normalizedUserMessageText(for:))
-        )
-        let remainingOptimisticMessages = messages.filter { message in
-            guard optimisticMessageIDs.contains(message.id) else { return false }
-            guard let optimisticText = Self.normalizedUserMessageText(for: message) else {
-                return false
-            }
-            return !fetchedTexts.contains(optimisticText)
-        }
-
-        optimisticMessageIDs = Set(remainingOptimisticMessages.map(\.id))
-        return sessionsNormalizeMessageOrder(fetchedMessages + remainingOptimisticMessages)
-    }
-
-    private static func normalizedUserMessageText(for message: APISessionMessage) -> String? {
-        let presentation = SessionTranscriptPresentationBuilder.make(
-            from: message,
-            dataEncryptionKey: nil
-        )
-        let text = presentation.entries
-            .filter { $0.role == .user && $0.kind == .text }
-            .map(\.body)
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? nil : text
-    }
 }
 
 private func normalizeReasoningEfforts(_ rawValues: [String]) -> [NewSessionReasoningEffort] {

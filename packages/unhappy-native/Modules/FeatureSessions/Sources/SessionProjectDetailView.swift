@@ -228,7 +228,7 @@ public struct SessionProjectDetailView: View {
                         upstreamSessionID: sessionID,
                         title: "Session",
                         cwd: context.directoryPath,
-                        transcriptPath: nil,
+                        transcriptPath: context.transcriptPath,
                         model: context.model,
                         effort: nil,
                         permissionMode: nil,

@@ -32,6 +32,7 @@ export const MachineDataPlaneOperationSchema = z.enum([
   'codex.archiveThread',
   'codex.openThread',
   'codex.listMessages',
+  'codex.subscribeMessages',
   'codex.sendMessage',
   'claude.listSessions',
   'claude.listMessages',

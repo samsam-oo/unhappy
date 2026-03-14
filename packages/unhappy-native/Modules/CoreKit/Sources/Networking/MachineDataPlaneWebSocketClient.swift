@@ -29,6 +29,7 @@ public actor MachineDataPlaneWebSocketClient {
             switch operation {
             case .codexSendMessage,
                  .codexListMessages,
+                 .codexSubscribeMessages,
                  .claudeSendMessage,
                  .claudeListMessages,
                  .geminiSendMessage,
@@ -182,6 +183,201 @@ public actor MachineDataPlaneWebSocketClient {
             )
             throw error
         }
+    }
+
+    public func subscribeJSON(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        wrappedMachineDataEncryptionKey: String?,
+        operation: MachineDataPlaneOperation,
+        bodyObject: [String: Any]
+    ) async throws -> AsyncThrowingStream<Data, Error> {
+        guard let machineDataKey = MachineDataPlaneEncryption.resolveMachineDataKey(
+            rawWrappedKey: wrappedMachineDataEncryptionKey
+        ) else {
+            throw MachinesAPIError.rpcCallFailed("Machine data encryption key is unavailable")
+        }
+
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let requestBody = bodyObject
+        let connectTimeoutInterval = requestTimeoutInterval
+        let transport = try Self.makeSubscriptionTransport(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            connectTimeoutInterval: connectTimeoutInterval
+        )
+        let handshake = try MachineDataPlaneEncryption.generateSessionHandshakeMaterial()
+        let hello = MachineDataPlaneHelloFrame(
+            connectionID: UUID().uuidString,
+            role: .native,
+            keyExchange: MachineDataPlaneKeyExchange(
+                publicKey: handshake.publicKeyBase64URL,
+                nonce: handshake.nonceBase64URL
+            )
+        )
+        try await Self.sendSubscriptionFrame(hello, transport: transport)
+        let helloAck = try await Self.receiveSubscriptionHelloAck(transport: transport)
+        await transport.configureKeepalive(idleTimeoutSeconds: helloAck.idleTimeoutSeconds)
+        let sessionKey = try MachineDataPlaneEncryption.deriveSessionKey(
+            machineDataKey: machineDataKey,
+            localPrivateKey: handshake.privateKey,
+            localNonceBase64URL: handshake.nonceBase64URL,
+            peerPublicKeyBase64URL: helloAck.keyExchange.publicKey,
+            peerNonceBase64URL: helloAck.keyExchange.nonce,
+            role: "native"
+        )
+        let requestFrame = try Self.makeSubscriptionRequestFrame(
+            operation: operation,
+            bodyObject: requestBody,
+            sessionKey: sessionKey
+        )
+        try await Self.sendSubscriptionFrame(requestFrame.frame, transport: transport)
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    defer {
+                        Task { await transport.close() }
+                    }
+
+                    while !Task.isCancelled {
+                        let text = try await transport.receiveText()
+                        if let errorFrame = try? JSONDecoder().decode(
+                            MachineDataPlaneErrorFrame.self,
+                            from: Data(text.utf8)
+                        ) {
+                            throw MachinesAPIError.rpcCallFailed(errorFrame.message)
+                        }
+                        guard let completeFrame = try? JSONDecoder().decode(
+                            MachineDataPlaneCompleteFrame.self,
+                            from: Data(text.utf8)
+                        ) else {
+                            continue
+                        }
+                        guard completeFrame.streamID == requestFrame.streamID else { continue }
+                        let payload = try MachineDataPlaneEncryption.decryptDataPlanePayload(
+                            MachineDataPlaneSealedPayload(
+                                nonce: completeFrame.body.nonce,
+                                ciphertext: completeFrame.body.ciphertext,
+                                tag: completeFrame.body.tag
+                            ),
+                            sessionKey: sessionKey,
+                            authenticatedData: Self.subscriptionCompleteAAD(for: completeFrame)
+                        )
+                        continuation.yield(payload)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
+    private static func makeSubscriptionTransport(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        connectTimeoutInterval: TimeInterval
+    ) throws -> any MachineDataPlaneTextTransport {
+        guard let url = subscriptionDataPlaneURL(serverURL: serverURL, machineID: machineID) else {
+            throw MachinesAPIError.invalidRPCPayload
+        }
+        return MachineDataPlaneNetworkTransport(
+            url: url,
+            token: token,
+            subprotocol: MachineDataPlaneProtocol.subprotocol,
+            connectTimeoutInterval: connectTimeoutInterval
+        )
+    }
+
+    private static func subscriptionDataPlaneURL(serverURL: URL, machineID: String) -> URL? {
+        guard var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        components.path = "/v1/machines/\(machineID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? machineID)/data-plane"
+        components.query = nil
+        return components.url
+    }
+
+    private static func receiveSubscriptionHelloAck(
+        transport: any MachineDataPlaneTextTransport
+    ) async throws -> MachineDataPlaneHelloAckFrame {
+        let text = try await transport.receiveText()
+        return try JSONDecoder().decode(MachineDataPlaneHelloAckFrame.self, from: Data(text.utf8))
+    }
+
+    private static func makeSubscriptionRequestFrame(
+        operation: MachineDataPlaneOperation,
+        bodyObject: [String: Any],
+        sessionKey: Data
+    ) throws -> (streamID: String, frame: MachineDataPlaneRequestFrame) {
+        let streamID = UUID().uuidString
+        let requestHeader = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: operation,
+            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: "")
+        )
+        let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
+            bodyObject,
+            sessionKey: sessionKey,
+            authenticatedData: subscriptionRequestAAD(for: requestHeader)
+        )
+        let requestFrame = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: operation,
+            body: MachineDataPlaneSealedBody(
+                nonce: sealedBody.nonce,
+                ciphertext: sealedBody.ciphertext,
+                tag: sealedBody.tag
+            )
+        )
+        return (streamID, requestFrame)
+    }
+
+    private static func sendSubscriptionFrame<T: Encodable>(
+        _ frame: T,
+        transport: any MachineDataPlaneTextTransport
+    ) async throws {
+        let data = try JSONEncoder().encode(frame)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw MachinesAPIError.invalidRPCPayload
+        }
+        try await transport.send(text: text)
+    }
+
+    private static func subscriptionRequestAAD(for frame: MachineDataPlaneRequestFrame) -> Data {
+        subscriptionAAD([
+            ("v", String(frame.v)),
+            ("t", frame.t.rawValue),
+            ("streamId", frame.streamID),
+            ("op", frame.op.rawValue),
+        ])
+    }
+
+    private static func subscriptionCompleteAAD(for frame: MachineDataPlaneCompleteFrame) -> Data {
+        subscriptionAAD([
+            ("v", String(frame.v)),
+            ("t", frame.t.rawValue),
+            ("streamId", frame.streamID),
+            ("seq", String(frame.seq)),
+            ("hasMore", frame.hasMore == true ? "1" : "0"),
+            ("nextCursor", frame.nextCursor ?? ""),
+        ])
+    }
+
+    private static func subscriptionAAD(_ entries: [(String, String)]) -> Data {
+        Data(entries.map { "\($0.0)=\($0.1)" }.joined(separator: "\n").utf8)
     }
 
     public func prewarmConnection(
@@ -423,6 +619,34 @@ public actor MachineDataPlaneWebSocketClient {
                 throw mappedError
             }
         }
+    }
+
+    private func makeRequestFrame(
+        operation: MachineDataPlaneOperation,
+        bodyObject: [String: Any],
+        sessionKey: Data
+    ) throws -> (streamID: String, frame: MachineDataPlaneRequestFrame) {
+        let streamID = UUID().uuidString
+        let requestHeader = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: operation,
+            body: MachineDataPlaneSealedBody(nonce: "", ciphertext: "", tag: "")
+        )
+        let sealedBody = try MachineDataPlaneEncryption.encryptDataPlaneJSONObject(
+            bodyObject,
+            sessionKey: sessionKey,
+            authenticatedData: requestAAD(for: requestHeader)
+        )
+        let requestFrame = MachineDataPlaneRequestFrame(
+            streamID: streamID,
+            op: operation,
+            body: MachineDataPlaneSealedBody(
+                nonce: sealedBody.nonce,
+                ciphertext: sealedBody.ciphertext,
+                tag: sealedBody.tag
+            )
+        )
+        return (streamID, requestFrame)
     }
 
     private func liveConnection(

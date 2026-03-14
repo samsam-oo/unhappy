@@ -367,7 +367,15 @@ impl DaemonState {
         {
             Ok(Ok(session)) => {
                 if let Some(provider_session_id) = session.provider_session_id() {
-                    SpawnSessionResponse::success(provider_session_id.to_string())
+                    let transcript_path = session
+                        .to_list_child()
+                        .and_then(|child| child.metadata)
+                        .and_then(|metadata| metadata.get("agentTranscriptPath").cloned())
+                        .and_then(|value| value.as_str().map(ToOwned::to_owned));
+                    SpawnSessionResponse::success(
+                        provider_session_id.to_string(),
+                        transcript_path,
+                    )
                 } else {
                     SpawnSessionResponse::error(format!(
                         "Session webhook completed for PID {pid} without providerSessionId"
@@ -429,7 +437,13 @@ impl DaemonState {
                     self.snapshot_from_inner(&inner)
                 };
                 self.persist_snapshot_best_effort(snapshot).await;
-                SpawnSessionResponse::success(session.thread_id)
+                SpawnSessionResponse::success(
+                    session.thread_id,
+                    session
+                        .transcript_path
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().to_string()),
+                )
             }
             Err(error) => {
                 SpawnSessionResponse::error(format!("Failed to open Codex thread: {error}"))

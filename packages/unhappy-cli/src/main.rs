@@ -1,4 +1,5 @@
 mod codex_app_server;
+mod codex_live_session;
 mod codex_transcript;
 mod config;
 mod control_server;

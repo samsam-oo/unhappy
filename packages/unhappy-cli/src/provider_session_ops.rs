@@ -1,4 +1,8 @@
 use crate::{
+    codex_live_session::{
+        codex_live_messages_page, codex_live_send_message, ensure_codex_live_session,
+        CodexLiveSessionConfig,
+    },
     codex_app_server::open_or_resume_codex_thread, codex_transcript::list_codex_thread_messages,
     config::Config, provider::Provider,
 };
@@ -17,7 +21,6 @@ use tokio::{
     fs::{self, File},
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
-    time::{Duration, Instant},
 };
 
 type ProviderSessionListFuture<'a> = Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>>;
@@ -172,6 +175,17 @@ pub async fn codex_open_thread(config: &Config, payload: &Value) -> Result<Value
         .filter(|value| !value.is_empty());
     let result =
         open_or_resume_codex_thread(config, &resolve_cwd(cwd), thread_id, model, effort).await?;
+    let resolved_cwd = resolve_cwd(cwd);
+    let _ = ensure_codex_live_session(CodexLiveSessionConfig {
+        thread_id: result.thread_id.clone(),
+        cwd: resolved_cwd,
+        transcript_path: result
+            .transcript_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string()),
+        codex_home_dir: Some(result.codex_home_dir.clone()),
+    })
+    .await;
     Ok(json!({
         "success": true,
         "threadId": result.thread_id,
@@ -245,6 +259,7 @@ pub async fn codex_archive_thread(config: &Config, payload: &Value) -> Result<Va
 }
 
 pub async fn codex_list_messages(payload: &Value) -> Result<Value> {
+    let thread_id = required_string(payload, "threadId")?;
     let path = required_string(payload, "path")?;
     let limit = payload
         .get("limit")
@@ -255,6 +270,18 @@ pub async fn codex_list_messages(payload: &Value) -> Result<Value> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
+
+    if let Some(live_page) = codex_live_messages_page(
+        thread_id,
+        limit.unwrap_or(120),
+        cursor,
+        Some(path),
+    )
+    .await
+    {
+        return live_page;
+    }
+
     list_codex_thread_messages(path, limit, cursor).await
 }
 
@@ -278,83 +305,47 @@ pub async fn codex_send_message(payload: &Value) -> Result<Value> {
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    let code_home = payload
+    let transcript_path = payload
         .get("path")
         .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let code_home = transcript_path
+        .as_deref()
         .and_then(extract_codex_home_from_transcript_path);
-    let mut command = Command::new("codex");
-    command.arg("app-server");
-    if let Some(codex_home) = code_home.as_ref() {
-        command.env("CODEX_HOME", codex_home);
-    }
-    command
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    let mut child = command
-        .spawn()
-        .context("failed to spawn codex app-server")?;
-    let mut stdin = child.stdin.take().context("missing codex stdin")?;
-    let stdout = child.stdout.take().context("missing codex stdout")?;
-    let mut reader = BufReader::new(stdout).lines();
+    let code_home = code_home.or_else(|| {
+        payload
+            .get("path")
+            .and_then(Value::as_str)
+            .and_then(extract_codex_home_from_transcript_path)
+    });
+    let expected_text = text.trim().to_string();
+    let code_home_dir = code_home
+        .as_ref()
+        .map(PathBuf::from);
+    let resolved_transcript_path = if let Some(path) = transcript_path.clone() {
+        Some(path)
+    } else if let Some(code_home_dir) = code_home_dir.as_ref() {
+        find_transcript_path_for_codex_home(code_home_dir, &thread_id).await?
+    } else {
+        None
+    };
 
-    let _ = call_rpc(
-        &mut stdin,
-        &mut reader,
-        1,
-        "initialize",
-        json!({
-            "clientInfo": { "name": "unhappy-cli", "version": "1.0.0" },
-            "capabilities": { "experimentalApi": true }
-        }),
+    let _ = expected_text;
+    codex_live_send_message(
+        CodexLiveSessionConfig {
+            thread_id: thread_id.to_string(),
+            cwd: resolve_cwd(cwd),
+            transcript_path: resolved_transcript_path,
+            codex_home_dir: code_home_dir,
+        },
+        text,
+        model,
+        effort,
+        permission_mode,
     )
-    .await?;
-
-    let mut resume_params = json!({
-        "threadId": thread_id,
-        "cwd": resolve_cwd(cwd),
-        "persistExtendedHistory": true
-    });
-    if let Some(model) = model {
-        resume_params["model"] = Value::String(model.to_string());
-    }
-    if let Some(effort) = effort {
-        resume_params["config"] =
-            json!({ "model_reasoning_effort": if effort == "max" { "xhigh" } else { effort } });
-    }
-    let _ = call_rpc(&mut stdin, &mut reader, 2, "thread/resume", resume_params).await?;
-
-    let mut turn_params = json!({
-        "threadId": thread_id,
-        "input": [{ "type": "text", "text": text }]
-    });
-    if let Some(model) = model {
-        turn_params["model"] = Value::String(model.to_string());
-    }
-    if let Some(effort) = effort {
-        turn_params["effort"] = Value::String(if effort == "max" {
-            "xhigh".to_string()
-        } else {
-            effort.to_string()
-        });
-    }
-    if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
-        turn_params["cwd"] = Value::String(resolve_cwd(cwd));
-    }
-    if let Some((approval_policy, sandbox_policy)) = map_codex_permission_mode(permission_mode, cwd)
-    {
-        if let Some(approval_policy) = approval_policy {
-            turn_params["approvalPolicy"] = Value::String(approval_policy.to_string());
-        }
-        if let Some(sandbox_policy) = sandbox_policy {
-            turn_params["sandboxPolicy"] = sandbox_policy;
-        }
-    }
-    let _ = call_rpc(&mut stdin, &mut reader, 3, "turn/start", turn_params).await?;
-    drop(stdin);
-    spawn_codex_turn_completion_drain(child, reader);
-
-    Ok(json!({ "success": true }))
+    .await
 }
 
 pub async fn claude_list_sessions(payload: &Value, active_sessions: &[Value]) -> Result<Value> {
@@ -793,61 +784,6 @@ async fn parse_success_json(response: reqwest::Response) -> Result<Value> {
     Ok(payload)
 }
 
-fn map_codex_permission_mode<'a>(
-    mode: Option<&'a str>,
-    cwd: &'a str,
-) -> Option<(Option<&'a str>, Option<Value>)> {
-    match mode.unwrap_or_default() {
-        "" | "passthrough" => None,
-        "read-only" => Some((
-            Some("never"),
-            Some(json!({
-                "type": "readOnly",
-                "access": { "type": "fullAccess" }
-            })),
-        )),
-        "safe-yolo" => Some((
-            Some("on-failure"),
-            Some(json!({
-                "type": "workspaceWrite",
-                "writableRoots": [resolve_cwd(cwd)],
-                "readOnlyAccess": { "type": "fullAccess" },
-                "networkAccess": false,
-                "excludeTmpdirEnvVar": false,
-                "excludeSlashTmp": false
-            })),
-        )),
-        "yolo" | "bypassPermissions" => Some((
-            Some("on-failure"),
-            Some(json!({
-                "type": "dangerFullAccess"
-            })),
-        )),
-        "acceptEdits" => Some((
-            Some("on-request"),
-            Some(json!({
-                "type": "workspaceWrite",
-                "writableRoots": [resolve_cwd(cwd)],
-                "readOnlyAccess": { "type": "fullAccess" },
-                "networkAccess": false,
-                "excludeTmpdirEnvVar": false,
-                "excludeSlashTmp": false
-            })),
-        )),
-        _ => Some((
-            Some("untrusted"),
-            Some(json!({
-                "type": "workspaceWrite",
-                "writableRoots": [resolve_cwd(cwd)],
-                "readOnlyAccess": { "type": "fullAccess" },
-                "networkAccess": false,
-                "excludeTmpdirEnvVar": false,
-                "excludeSlashTmp": false
-            })),
-        )),
-    }
-}
-
 fn map_claude_permission_mode(mode: &str) -> &'static str {
     match mode {
         "bypassPermissions" | "yolo" => "bypassPermissions",
@@ -994,51 +930,52 @@ async fn call_rpc(
     Err(anyhow!("codex app-server closed before responding"))
 }
 
-fn spawn_codex_turn_completion_drain(
-    mut child: tokio::process::Child,
-    mut reader: tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
-) {
-    tokio::spawn(async move {
-        let deadline = Instant::now() + Duration::from_secs(300);
-
-        loop {
-            let next_line = tokio::time::timeout_at(deadline, reader.next_line()).await;
-            let line = match next_line {
-                Ok(Ok(Some(line))) => line,
-                Ok(Ok(None)) | Ok(Err(_)) | Err(_) => break,
-            };
-            let parsed: Value = match serde_json::from_str(line.trim()) {
-                Ok(value) => value,
+async fn find_transcript_path_for_codex_home(
+    codex_home_dir: &Path,
+    thread_id: &str,
+) -> Result<Option<String>> {
+    let sessions_root = codex_home_dir.join("sessions");
+    let suffix = format!("-{thread_id}.jsonl");
+    let root = sessions_root.clone();
+    let newest = tokio::task::spawn_blocking(move || {
+        let mut stack = vec![root];
+        let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+        while let Some(directory) = stack.pop() {
+            let entries = match std::fs::read_dir(&directory) {
+                Ok(entries) => entries,
                 Err(_) => continue,
             };
-            if codex_turn_has_completed(&parsed) {
-                break;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let file_type = match entry.file_type() {
+                    Ok(file_type) => file_type,
+                    Err(_) => continue,
+                };
+                if file_type.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                    continue;
+                };
+                if !name.ends_with(&suffix) {
+                    continue;
+                }
+                let modified = entry
+                    .metadata()
+                    .and_then(|metadata| metadata.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                match &newest {
+                    Some((current_modified, _)) if *current_modified >= modified => {}
+                    _ => newest = Some((modified, path)),
+                }
             }
         }
+        newest.map(|(_, path)| path)
+    })
+    .await?;
 
-        let _ = child.start_kill();
-        let _ = child.wait().await;
-    });
-}
-
-fn codex_turn_has_completed(message: &Value) -> bool {
-    let Some(method) = message
-        .get("method")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return false;
-    };
-
-    matches!(
-        method,
-        "turn/completed"
-            | "turnCompleted"
-            | "codex/event/turn.completed"
-            | "codex/event/turn-completed"
-    ) || method.contains("turn/completed")
-        || method.contains("turn.completed")
+    Ok(newest.map(|path| path.to_string_lossy().to_string()))
 }
 
 async fn collect_jsonl_files(root: &Path) -> Result<Vec<PathBuf>> {
@@ -1600,7 +1537,7 @@ fn paginate_message_values(
     }))
 }
 
-fn extract_codex_home_from_transcript_path(path: &str) -> Option<String> {
+pub(crate) fn extract_codex_home_from_transcript_path(path: &str) -> Option<String> {
     let marker = format!(
         "{}sessions{}",
         std::path::MAIN_SEPARATOR,
@@ -1866,19 +1803,6 @@ mod tests {
         ));
 
         assert_eq!(normalized, "Please inspect this screenshot.");
-    }
-
-    #[test]
-    fn codex_turn_has_completed_matches_current_and_legacy_notifications() {
-        assert!(codex_turn_has_completed(&json!({
-            "method": "turn/completed"
-        })));
-        assert!(codex_turn_has_completed(&json!({
-            "method": "codex/event/turn.completed"
-        })));
-        assert!(!codex_turn_has_completed(&json!({
-            "method": "item/completed"
-        })));
     }
 
     #[tokio::test]

@@ -189,6 +189,15 @@ public protocol MachineRPCDirectoryListing: Sendable {
         cursor: String?
     ) async throws -> APISessionMessagesPage
 
+    func subscribeCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> AsyncThrowingStream<APISessionMessagesPage, Error>
+
     func sendCodexThreadMessage(
         serverURL: URL,
         token: String,
@@ -828,6 +837,64 @@ public actor SocketIOMachineRPCDirectoryService: MachineRPCDirectoryListing {
             bodyObject: requestBody
         )
         return try decodeSessionMessagesPage(responseData)
+    }
+
+    public func subscribeCodexThreadMessages(
+        serverURL: URL,
+        token: String,
+        machineID: String,
+        threadID: String,
+        transcriptPath: String,
+        wrappedMachineDataEncryptionKey: String?
+    ) async throws -> AsyncThrowingStream<APISessionMessagesPage, Error> {
+        let normalizedMachineID = machineID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedMachineID.isEmpty else {
+            throw MachinesAPIError.missingMachineID
+        }
+        let normalizedThreadID = threadID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedThreadID.isEmpty else {
+            throw MachinesAPIError.rpcCallFailed("Thread ID is required")
+        }
+        let normalizedPath = transcriptPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedPath.isEmpty else {
+            throw MachinesAPIError.missingPath
+        }
+        let resolvedWrappedMachineDataEncryptionKey = try await resolvedWrappedMachineDataEncryptionKey(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            preferredWrappedKey: wrappedMachineDataEncryptionKey
+        )
+
+        let stream = try await dataPlaneClient.subscribeJSON(
+            serverURL: serverURL,
+            token: token,
+            machineID: normalizedMachineID,
+            wrappedMachineDataEncryptionKey: resolvedWrappedMachineDataEncryptionKey,
+            operation: .codexSubscribeMessages,
+            bodyObject: [
+                "threadId": normalizedThreadID,
+                "path": normalizedPath,
+                "cwd": ".",
+                "limit": 240,
+            ]
+        )
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    for try await data in stream {
+                        continuation.yield(try decodeSessionMessagesPage(data))
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
     }
 
     public func readFile(

@@ -1,6 +1,7 @@
 use crate::{
     config::Config,
     control_server::SpawnSessionRequest,
+    codex_live_session::{subscribe_codex_live_messages, CodexLiveSessionConfig},
     daemon_state::{OpenedProject, SharedDaemonState},
     local_ops,
     machine_sync,
@@ -377,6 +378,36 @@ async fn handle_request_frame(
         serde_json::from_slice(&request_payload).context("request payload was not valid JSON")?;
     let trace = RequestTrace::start(frame.op, &frame.stream_id, &request_json);
 
+    if frame.op == MachineDataPlaneOperation::CodexSubscribeMessages {
+        let result = handle_codex_subscription_frame(
+            socket,
+            session_key,
+            &frame.stream_id,
+            config,
+            request_json,
+        )
+        .await;
+        match result {
+            Ok(()) => trace.finish_ok(),
+            Err(error) => {
+                trace.finish_error(&error);
+                let response = MachineDataPlaneErrorFrame {
+                    v: MACHINE_DATA_PLANE_PROTOCOL_VERSION,
+                    t: "error".to_string(),
+                    stream_id: frame.stream_id,
+                    code: "request_failed".to_string(),
+                    message: error.to_string(),
+                    retryable: false,
+                };
+                socket
+                    .send(Message::Text(serde_json::to_string(&response)?.into()))
+                    .await
+                    .context("failed to send data-plane error frame")?;
+            }
+        }
+        return Ok(());
+    }
+
     let result = dispatch_request(config, state, frame.op, request_json).await;
     match result {
         Ok(result_json) => {
@@ -434,6 +465,102 @@ async fn handle_request_frame(
     Ok(())
 }
 
+async fn handle_codex_subscription_frame(
+    socket: &mut DataPlaneStream,
+    session_key: &[u8; 32],
+    stream_id: &str,
+    config: &Config,
+    payload: Value,
+) -> Result<()> {
+    let thread_id = payload
+        .get("threadId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("threadId is required"))?;
+    let cwd = payload
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("cwd is required"))?;
+    let transcript_path = payload
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let limit = payload
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map(|value| value as usize)
+        .unwrap_or(120);
+    let codex_home_dir = transcript_path
+        .as_deref()
+        .and_then(provider_session_ops::extract_codex_home_from_transcript_path)
+        .map(std::path::PathBuf::from)
+        .or_else(|| Some(config.codex_home_dir()));
+    let mut subscription = subscribe_codex_live_messages(
+        CodexLiveSessionConfig {
+            thread_id: thread_id.to_string(),
+            cwd: cwd.to_string(),
+            transcript_path,
+            codex_home_dir,
+        },
+        limit,
+    )
+    .await?;
+
+    let mut seq: u32 = 0;
+    loop {
+        let payload = subscription.borrow().clone();
+        send_streaming_complete_frame(socket, session_key, stream_id, seq, &payload, true).await?;
+        seq = seq.saturating_add(1);
+        if subscription.changed().await.is_err() {
+            break;
+        }
+    }
+    Ok(())
+}
+
+async fn send_streaming_complete_frame(
+    socket: &mut DataPlaneStream,
+    session_key: &[u8; 32],
+    stream_id: &str,
+    seq: u32,
+    payload: &Value,
+    has_more: bool,
+) -> Result<()> {
+    let complete_header = MachineDataPlaneCompleteFrame {
+        v: MACHINE_DATA_PLANE_PROTOCOL_VERSION,
+        t: "complete".to_string(),
+        stream_id: stream_id.to_string(),
+        seq,
+        body: MachineDataPlaneSealedBody {
+            algorithm: "aes-256-gcm".to_string(),
+            nonce: String::new(),
+            ciphertext: String::new(),
+            tag: String::new(),
+        },
+        has_more: Some(has_more),
+        next_cursor: None,
+    };
+    let sealed_body = seal_payload(
+        payload,
+        session_key,
+        complete_aad(&complete_header).as_bytes(),
+    )?;
+    let response = MachineDataPlaneCompleteFrame {
+        body: sealed_body,
+        ..complete_header
+    };
+    socket
+        .send(Message::Text(serde_json::to_string(&response)?.into()))
+        .await
+        .context("failed to send streaming data-plane complete frame")?;
+    Ok(())
+}
+
 fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
     match operation {
         MachineDataPlaneOperation::MachinePing => "machine.ping",
@@ -450,6 +577,7 @@ fn operation_name(operation: MachineDataPlaneOperation) -> &'static str {
         MachineDataPlaneOperation::CodexArchiveThread => "codex.archiveThread",
         MachineDataPlaneOperation::CodexOpenThread => "codex.openThread",
         MachineDataPlaneOperation::CodexListMessages => "codex.listMessages",
+        MachineDataPlaneOperation::CodexSubscribeMessages => "codex.subscribeMessages",
         MachineDataPlaneOperation::CodexSendMessage => "codex.sendMessage",
         MachineDataPlaneOperation::ClaudeListSessions => "claude.listSessions",
         MachineDataPlaneOperation::ClaudeListMessages => "claude.listMessages",
@@ -500,6 +628,36 @@ fn operation_log_fields(operation: MachineDataPlaneOperation, payload: &Value) -
                 fields.push(format!("path={}", path.replace('\n', "\\n")));
             }
         }
+        MachineDataPlaneOperation::CodexListMessages
+        | MachineDataPlaneOperation::CodexSubscribeMessages
+        | MachineDataPlaneOperation::CodexSendMessage => {
+            if let Some(thread_id) = payload.get("threadId").and_then(Value::as_str) {
+                fields.push(format!("thread_id={}", thread_id.replace('\n', "\\n")));
+            }
+            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+                fields.push(format!("cwd={}", cwd.replace('\n', "\\n")));
+            }
+            if let Some(path) = payload.get("path").and_then(Value::as_str) {
+                fields.push(format!("path={}", path.replace('\n', "\\n")));
+            }
+            if let Some(text) = payload.get("text").and_then(Value::as_str) {
+                fields.push(format!("text_len={}", text.chars().count()));
+            }
+        }
+        MachineDataPlaneOperation::ClaudeListMessages
+        | MachineDataPlaneOperation::ClaudeSendMessage
+        | MachineDataPlaneOperation::GeminiListMessages
+        | MachineDataPlaneOperation::GeminiSendMessage => {
+            if let Some(session_id) = payload.get("sessionId").and_then(Value::as_str) {
+                fields.push(format!("session_id={}", session_id.replace('\n', "\\n")));
+            }
+            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+                fields.push(format!("cwd={}", cwd.replace('\n', "\\n")));
+            }
+            if let Some(text) = payload.get("text").and_then(Value::as_str) {
+                fields.push(format!("text_len={}", text.chars().count()));
+            }
+        }
         _ => {}
     }
     fields.join(" ")
@@ -517,6 +675,8 @@ async fn dispatch_request(
     operation: MachineDataPlaneOperation,
     payload: Value,
 ) -> Result<Value> {
+    const AUTHORITATIVE_DIRECT_MESSAGES_LIMIT: u64 = 40;
+
     match operation {
         MachineDataPlaneOperation::MachinePing => Ok(json!({
             "success": true
@@ -524,7 +684,11 @@ async fn dispatch_request(
         MachineDataPlaneOperation::ProviderSpawn => {
             let request: SpawnSessionRequest =
                 serde_json::from_value(payload).context("invalid provider spawn payload")?;
-            Ok(serde_json::to_value(state.spawn_session(request).await)?)
+            let response = state.spawn_session(request).await;
+            if response.success {
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+            }
+            Ok(serde_json::to_value(response)?)
         }
         MachineDataPlaneOperation::MachineListModels => {
             local_ops::list_models(config, payload.get("agent").and_then(Value::as_str)).await
@@ -603,8 +767,60 @@ async fn dispatch_request(
         MachineDataPlaneOperation::CodexListMessages => {
             provider_session_ops::codex_list_messages(&payload).await
         }
+        MachineDataPlaneOperation::CodexSubscribeMessages => {
+            Err(anyhow!("codex.subscribeMessages should be handled as a streaming request"))
+        }
         MachineDataPlaneOperation::CodexSendMessage => {
-            provider_session_ops::codex_send_message(&payload).await
+            let response = provider_session_ops::codex_send_message(&payload).await?;
+            if response
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                let mut response = response;
+                match authoritative_messages_page_for_send(
+                    config,
+                    MachineDataPlaneOperation::CodexSendMessage,
+                    &payload,
+                    &response,
+                    None,
+                    AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
+                )
+                .await
+                {
+                    Ok(messages_page) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=ok {} summary={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::CodexSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::CodexSendMessage, &payload),
+                            messages_page_summary_for_log(
+                                &messages_page,
+                                payload
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                            )
+                        );
+                        if let Some(object) = response.as_object_mut() {
+                            object.insert("messagesPage".to_string(), messages_page);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=error {} error={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::CodexSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::CodexSendMessage, &payload),
+                            error
+                        );
+                    }
+                }
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+                Ok(response)
+            } else {
+                Ok(response)
+            }
         }
         MachineDataPlaneOperation::ClaudeListSessions => {
             let active_sessions =
@@ -621,7 +837,56 @@ async fn dispatch_request(
             provider_session_ops::claude_list_messages(&payload).await
         }
         MachineDataPlaneOperation::ClaudeSendMessage => {
-            provider_session_ops::claude_send_message(&payload).await
+            let response = provider_session_ops::claude_send_message(&payload).await?;
+            if response
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                let mut response = response;
+                match authoritative_messages_page_for_send(
+                    config,
+                    MachineDataPlaneOperation::ClaudeSendMessage,
+                    &payload,
+                    &response,
+                    None,
+                    AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
+                )
+                .await
+                {
+                    Ok(messages_page) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=ok {} summary={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::ClaudeSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::ClaudeSendMessage, &payload),
+                            messages_page_summary_for_log(
+                                &messages_page,
+                                payload
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                            )
+                        );
+                        if let Some(object) = response.as_object_mut() {
+                            object.insert("messagesPage".to_string(), messages_page);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=error {} error={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::ClaudeSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::ClaudeSendMessage, &payload),
+                            error
+                        );
+                    }
+                }
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+                Ok(response)
+            } else {
+                Ok(response)
+            }
         }
         MachineDataPlaneOperation::GeminiListSessions => {
             let active_sessions =
@@ -673,7 +938,56 @@ async fn dispatch_request(
             if let Some(object) = helper_payload.as_object_mut() {
                 object.insert("controlPort".to_string(), json!(control_port));
             }
-            provider_session_ops::gemini_send_message(&helper_payload).await
+            let response = provider_session_ops::gemini_send_message(&helper_payload).await?;
+            if response
+                .get("success")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                let mut response = response;
+                match authoritative_messages_page_for_send(
+                    config,
+                    MachineDataPlaneOperation::GeminiSendMessage,
+                    &helper_payload,
+                    &response,
+                    Some(control_port),
+                    AUTHORITATIVE_DIRECT_MESSAGES_LIMIT,
+                )
+                .await
+                {
+                    Ok(messages_page) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=ok {} summary={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::GeminiSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::GeminiSendMessage, &helper_payload),
+                            messages_page_summary_for_log(
+                                &messages_page,
+                                helper_payload
+                                    .get("text")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or_default()
+                            )
+                        );
+                        if let Some(object) = response.as_object_mut() {
+                            object.insert("messagesPage".to_string(), messages_page);
+                        }
+                    }
+                    Err(error) => {
+                        eprintln!(
+                            "[{}] [daemon-rs] category=data-plane op={} phase=best-effort-messages-page status=error {} error={}",
+                            trace_timestamp(),
+                            operation_name(MachineDataPlaneOperation::GeminiSendMessage),
+                            operation_log_fields(MachineDataPlaneOperation::GeminiSendMessage, &helper_payload),
+                            error
+                        );
+                    }
+                }
+                machine_sync::sync_machine_snapshot_now(state.clone()).await?;
+                Ok(response)
+            } else {
+                Ok(response)
+            }
         }
         MachineDataPlaneOperation::FsListDirectory => local_ops::list_directory(&payload).await,
         MachineDataPlaneOperation::FsGetDirectoryTree => {
@@ -685,6 +999,148 @@ async fn dispatch_request(
         MachineDataPlaneOperation::SearchRipgrep => local_ops::ripgrep(&payload).await,
         MachineDataPlaneOperation::DiffDifftastic => local_ops::difftastic(config, &payload).await,
     }
+}
+
+async fn authoritative_messages_page_for_send(
+    config: &Config,
+    send_operation: MachineDataPlaneOperation,
+    payload: &Value,
+    response: &Value,
+    gemini_control_port: Option<u16>,
+    limit: u64,
+) -> Result<Value> {
+    let expected_text = payload
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| anyhow!("text is required"))?
+        .to_string();
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let last_page_summary = loop {
+        let page = match send_operation {
+            MachineDataPlaneOperation::CodexSendMessage => {
+                let mut page_payload = payload.clone();
+                if let Some(response_path) = response
+                    .get("transcriptPath")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    if let Some(object) = page_payload.as_object_mut() {
+                        object.insert("path".to_string(), json!(response_path));
+                    }
+                }
+                if let Some(object) = page_payload.as_object_mut() {
+                    object.insert("limit".to_string(), json!(limit));
+                    object.insert("cursor".to_string(), Value::Null);
+                }
+                provider_session_ops::codex_list_messages(&page_payload).await?
+            }
+            MachineDataPlaneOperation::ClaudeSendMessage => {
+                provider_session_ops::claude_list_messages(&json!({
+                    "sessionId": payload.get("sessionId").cloned().unwrap_or(Value::Null),
+                    "cwd": payload.get("cwd").cloned().unwrap_or(Value::Null),
+                    "limit": limit,
+                    "cursor": Value::Null
+                }))
+                .await?
+            }
+            MachineDataPlaneOperation::GeminiSendMessage => {
+                let mut page_payload = payload.clone();
+                if let Some(object) = page_payload.as_object_mut() {
+                    object.insert("limit".to_string(), json!(limit));
+                    object.insert("cursor".to_string(), Value::Null);
+                }
+                provider_session_ops::gemini_list_messages(
+                    config,
+                    &page_payload,
+                    gemini_control_port,
+                )
+                .await?
+            }
+            _ => return Err(anyhow!("unsupported direct send operation")),
+        };
+
+        let page_summary = messages_page_summary_for_log(&page, &expected_text);
+
+        if messages_page_contains_user_text(&page, &expected_text) {
+            return Ok(page);
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            break page_summary;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    };
+
+    Err(anyhow!(
+        "direct message was not visible in the authoritative messages page before timeout (latest_page={})",
+        last_page_summary
+    ))
+}
+
+fn messages_page_contains_user_text(page: &Value, expected_text: &str) -> bool {
+    page.get("messages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|message| {
+            message
+                .get("content")
+                .and_then(Value::as_object)
+                .and_then(|content| content.get("payload"))
+                .and_then(Value::as_str)
+                .is_some_and(|payload| payload.contains(expected_text))
+        })
+}
+
+fn messages_page_summary_for_log(page: &Value, expected_text: &str) -> String {
+    let messages = page
+        .get("messages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let contains_expected = messages_page_contains_user_text(page, expected_text);
+    let recent = messages
+        .iter()
+        .rev()
+        .take(4)
+        .filter_map(message_preview_for_log)
+        .collect::<Vec<_>>();
+    format!(
+        "count={} contains_expected={} recent=[{}]",
+        messages.len(),
+        contains_expected,
+        recent.join(" | ")
+    )
+}
+
+fn message_preview_for_log(message: &Value) -> Option<String> {
+    let seq = message
+        .get("seq")
+        .and_then(Value::as_i64)
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    let payload = message
+        .get("content")
+        .and_then(Value::as_object)
+        .and_then(|content| content.get("payload"))
+        .and_then(Value::as_str)?;
+    let role = if payload.contains("\"role\":\"user\"") {
+        "user"
+    } else if payload.contains("\"role\":\"agent\"") {
+        "agent"
+    } else {
+        "unknown"
+    };
+    let preview = payload
+        .replace('\n', " ")
+        .chars()
+        .take(120)
+        .collect::<String>();
+    Some(format!("seq={seq} role={role} payload={preview}"))
 }
 
 fn active_provider_session_row(child: crate::control_server::ListChild) -> Option<Value> {

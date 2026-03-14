@@ -126,7 +126,7 @@ struct DirectSessionViewModelTests {
     }
 
     @Test
-    func sendMessageImmediatelyShowsOptimisticUserMessage() async {
+    func sendMessageImmediatelyAppliesAuthoritativeMessagesPage() async {
         let loader = BlockingMessagesLoader()
         let sender = SuccessfulSender()
         let viewModel = DirectSessionViewModel(
@@ -142,17 +142,18 @@ struct DirectSessionViewModelTests {
         )
 
         #expect(sent == true)
-        let optimisticTexts = viewModel.messages.compactMap { message in
+        let authoritativeTexts = viewModel.messages.compactMap { message in
             SessionTranscriptPresentationBuilder.make(from: message, dataEncryptionKey: nil)
                 .entries
                 .first(where: { $0.role == .user && $0.kind == .text })?
                 .body
         }
-        #expect(optimisticTexts.contains("ship it"))
+        #expect(authoritativeTexts == ["ship it"])
+        #expect(viewModel.messages.map(\.id) == ["server-user"])
     }
 
     @Test
-    func sendMessageReconcilesOptimisticMessageAfterRefreshLoadsMatchingUserText() async throws {
+    func sendMessageKeepsAuthoritativeMessagesAfterBackgroundRefresh() async throws {
         let loader = ReplacingMessagesLoader()
         let sender = SuccessfulSender()
         let viewModel = DirectSessionViewModel(
@@ -167,11 +168,41 @@ struct DirectSessionViewModelTests {
             token: "token"
         )
 
-        #expect(viewModel.messages.map(\.id).contains(where: { $0.hasPrefix("optimistic:") }))
+        #expect(viewModel.messages.map(\.id) == ["server-user"])
 
         try await Task.sleep(for: .milliseconds(350))
 
         #expect(viewModel.messages.map(\.id) == ["server-user"])
+    }
+
+    @Test
+    func sendMessageReplacesLatestWindowButKeepsPrependedOlderMessages() async {
+        let loader = OlderMessagesPrependLoader()
+        let sender = AuthoritativeLatestWindowSender()
+        let viewModel = DirectSessionViewModel(
+            identity: makeIdentity(),
+            loader: loader,
+            sender: sender
+        )
+
+        await viewModel.load(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+        await viewModel.loadOlderMessages(
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.messages.map(\.id) == ["older-1", "older-2", "latest-1", "latest-2"])
+
+        _ = await viewModel.sendMessage(
+            "authoritative",
+            serverURLString: "https://api.unhappy.im",
+            token: "token"
+        )
+
+        #expect(viewModel.messages.map(\.id) == ["older-1", "older-2", "latest-2", "latest-3"])
     }
 
     @Test
@@ -347,7 +378,26 @@ private actor SuccessfulSender: DirectSessionMessageSendingAction {
         reasoningEffort: APISessionReasoningEffort?,
         permissionMode: APISessionMessagePermissionMode?
     ) async throws -> APISessionSendMessageResult {
-        APISessionSendMessageResult(success: true, queueCount: 1, queuedMessages: [text], error: nil)
+        let message = APISessionMessage(
+            id: "server-user",
+            seq: 1,
+            localId: nil,
+            content: APIEncryptedMessageContent(
+                type: "json",
+                payload: """
+                {"role":"user","content":{"type":"text","text":"\(text)"}}
+                """
+            ),
+            createdAt: 1,
+            updatedAt: 1
+        )
+        return APISessionSendMessageResult(
+            success: true,
+            messagesPage: APISessionMessagesPage(messages: [message], nextCursor: nil, hasNext: false),
+            queueCount: 1,
+            queuedMessages: [text],
+            error: nil
+        )
     }
 }
 
@@ -450,6 +500,50 @@ private actor OlderMessagesPrependLoader: DirectSessionMessagesLoadingAction {
             ],
             nextCursor: nil,
             hasNext: false
+        )
+    }
+}
+
+private actor AuthoritativeLatestWindowSender: DirectSessionMessageSendingAction {
+    func sendMessage(
+        serverURLString: String,
+        token: String,
+        identity: DirectSessionIdentity,
+        text: String,
+        model: String?,
+        reasoningEffort: APISessionReasoningEffort?,
+        permissionMode: APISessionMessagePermissionMode?
+    ) async throws -> APISessionSendMessageResult {
+        APISessionSendMessageResult(
+            success: true,
+            messagesPage: APISessionMessagesPage(
+                messages: [
+                    APISessionMessage(
+                        id: "latest-2",
+                        seq: 4,
+                        localId: nil,
+                        content: APIEncryptedMessageContent(type: "text", payload: "{}"),
+                        createdAt: 4,
+                        updatedAt: 4
+                    ),
+                    APISessionMessage(
+                        id: "latest-3",
+                        seq: 5,
+                        localId: nil,
+                        content: APIEncryptedMessageContent(
+                            type: "json",
+                            payload: sessionsMakeOptimisticUserPayload(text: text)
+                        ),
+                        createdAt: 5,
+                        updatedAt: 5
+                    ),
+                ],
+                nextCursor: nil,
+                hasNext: false
+            ),
+            queueCount: 1,
+            queuedMessages: [text],
+            error: nil
         )
     }
 }
